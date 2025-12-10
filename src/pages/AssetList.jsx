@@ -1,9 +1,12 @@
 // src/pages/AssetList.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { db } from '../services/firebase'; // <--- TROCA: Importar db direto
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore'; // <--- TROCA: Importar onSnapshot
-import { updateAsset } from '../services/assetService'; 
+// REMOVIDO: import { useAssets } from '../hooks/useAssets';
+// ADICIONADO:
+import { db } from '../services/firebase';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+
+import { updateAsset } from '../services/assetService';
+import { Link } from 'react-router-dom';
 import * as XLSX from 'xlsx'; 
 import { useReactToPrint } from 'react-to-print'; 
 import { QRCodeSVG } from 'qrcode.react'; 
@@ -17,25 +20,22 @@ import {
 } from 'lucide-react';
 
 const AssetList = () => {
-  // --- ESTADO LOCAL (Substituindo useAssets) ---
+  // --- ESTADO LOCAL (Agora gerenciado pelo onSnapshot) ---
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('Todos');
   const [sortOrder, setSortOrder] = useState('asc');
    
   // --- ESTADOS DE AÇÃO EM MASSA ---
   const [selectedIds, setSelectedIds] = useState([]);
-  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false); 
+  const [bulkProcessing, setBulkProcessing] = useState(false); 
 
   // --- MUDANÇA PRINCIPAL: LISTA EM TEMPO REAL ---
-  // Isso garante que a lista sempre mostre os dados mais recentes do banco
   useEffect(() => {
     setLoading(true);
-    
-    // Ordena por criação para os novos aparecerem primeiro, ou tire o orderBy se preferir
     const q = query(collection(db, 'assets'), orderBy('createdAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -50,7 +50,6 @@ const AssetList = () => {
       setLoading(false);
     });
 
-    // Limpeza ao sair da tela
     return () => unsubscribe();
   }, []);
 
@@ -136,18 +135,13 @@ const AssetList = () => {
       
       setBulkProcessing(true);
       try {
-          // Executa atualizações em paralelo
           const updates = selectedIds.map(id => updateAsset(id, { status: newStatus }));
-          
           await Promise.all(updates);
           
           alert("Status atualizados com sucesso!");
           setSelectedIds([]); 
           setIsStatusModalOpen(false); 
-          
-          // NÃO PRECISA MAIS DE refreshAssets()
-          // O onSnapshot vai detectar a mudança no banco e atualizar a tela sozinho!
-          
+          // O refreshAssets() foi removido pois o onSnapshot atualizará a tela sozinho
       } catch (error) {
           console.error("Erro na atualização em massa:", error);
           alert("Erro ao atualizar alguns itens.");
