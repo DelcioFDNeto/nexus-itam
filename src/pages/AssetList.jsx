@@ -1,10 +1,7 @@
 // src/pages/AssetList.jsx
 import React, { useState, useEffect, useRef } from 'react';
-// REMOVIDO: import { useAssets } from '../hooks/useAssets';
-// ADICIONADO:
 import { db } from '../services/firebase';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
-
 import { updateAsset } from '../services/assetService';
 import { Link } from 'react-router-dom';
 import * as XLSX from 'xlsx'; 
@@ -20,7 +17,7 @@ import {
 } from 'lucide-react';
 
 const AssetList = () => {
-  // --- ESTADO LOCAL (Agora gerenciado pelo onSnapshot) ---
+  // --- ESTADO LOCAL ---
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -33,7 +30,7 @@ const AssetList = () => {
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false); 
   const [bulkProcessing, setBulkProcessing] = useState(false); 
 
-  // --- MUDANÇA PRINCIPAL: LISTA EM TEMPO REAL ---
+  // --- LISTA EM TEMPO REAL ---
   useEffect(() => {
     setLoading(true);
     const q = query(collection(db, 'assets'), orderBy('createdAt', 'desc'));
@@ -53,14 +50,14 @@ const AssetList = () => {
     return () => unsubscribe();
   }, []);
 
-  // --- CONFIGURAÇÃO DE IMPRESSÃO EM MASSA ---
+  // --- CONFIGURAÇÃO DE IMPRESSÃO ---
   const bulkPrintRef = useRef();
   const handleBulkPrint = useReactToPrint({
     contentRef: bulkPrintRef,
     documentTitle: 'Etiquetas_Lote_Shineray',
   });
 
-  // --- HELPER DE GARANTIA ---
+  // --- HELPERS ---
   const getWarrantyStatus = (dateStr) => {
     if (!dateStr || dateStr.length < 10) return null;
     const purchase = new Date(dateStr);
@@ -75,13 +72,15 @@ const AssetList = () => {
     return <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 ml-2 shadow-sm" title="Garantia Vigente"></span>;
   };
 
-  // --- FILTRAGEM ---
+  // --- FILTRAGEM CORRIGIDA ---
   const filteredAssets = assets.filter(asset => {
+    // CORREÇÃO AQUI: Definimos o nome oficial (assignedTo ganha prioridade)
+    const officialName = asset.assignedTo || asset.clientName || '';
+
     const matchesSearch = 
       asset.model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       asset.internalId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      asset.clientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      asset.assignedTo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      officialName.toLowerCase().includes(searchTerm.toLowerCase()) || // Busca no nome certo
       asset.vendedor?.toLowerCase().includes(searchTerm.toLowerCase());
 
     let matchesType = true;
@@ -129,7 +128,7 @@ const AssetList = () => {
 
   const selectedAssetsData = assets.filter(a => selectedIds.includes(a.id));
 
-  // --- LÓGICA DE ATUALIZAÇÃO EM MASSA (STATUS) ---
+  // --- AÇÕES EM MASSA ---
   const handleBulkStatusChange = async (newStatus) => {
       if (!confirm(`Tem certeza que deseja mudar o status de ${selectedIds.length} ativos para "${newStatus}"?`)) return;
       
@@ -141,7 +140,6 @@ const AssetList = () => {
           alert("Status atualizados com sucesso!");
           setSelectedIds([]); 
           setIsStatusModalOpen(false); 
-          // O refreshAssets() foi removido pois o onSnapshot atualizará a tela sozinho
       } catch (error) {
           console.error("Erro na atualização em massa:", error);
           alert("Erro ao atualizar alguns itens.");
@@ -158,7 +156,7 @@ const AssetList = () => {
         'Tipo': asset.type,
         'Categoria': asset.category,
         'Status': asset.status,
-        'Responsável': asset.clientName || asset.assignedTo || '---',
+        'Responsável': asset.assignedTo || asset.clientName || '---', // CORREÇÃO NA EXPORTAÇÃO
         'Vendedor': asset.vendedor || '',
         'Localização': asset.location,
         'Serial': asset.serialNumber || '',
@@ -173,18 +171,23 @@ const AssetList = () => {
     XLSX.writeFile(workbook, `Inventario_Shineray_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
   };
 
-  // --- HELPERS VISUAIS ---
+  // --- HELPER VISUAL CORRIGIDO ---
   const getResponsiblePerson = (asset) => {
+    // CORREÇÃO CRUCIAL: Prioriza assignedTo (novo) sobre clientName (antigo)
+    const officialName = asset.assignedTo || asset.clientName;
+
     if (asset.category === 'Promocional' || asset.internalId?.includes('PRM')) {
         return (
             <div className="flex flex-col">
-                <span className="text-purple-700 font-bold text-xs">{asset.clientName || asset.assignedTo || "Cliente Final"}</span>
+                <span className="text-purple-700 font-bold text-xs">{officialName || "Cliente Final"}</span>
                 {asset.vendedor && <span className="text-[10px] text-gray-400">Vend: {asset.vendedor}</span>}
             </div>
         );
     } 
-    const name = asset.clientName || asset.assignedTo;
-    return (!name || name === 'Não definido') ? <span className="text-gray-400 italic">---</span> : <span className="text-gray-900 font-medium capitalize">{name.toLowerCase()}</span>;
+    
+    return (!officialName || officialName === 'Não definido') 
+        ? <span className="text-gray-400 italic">---</span> 
+        : <span className="text-gray-900 font-medium capitalize">{officialName.toLowerCase()}</span>;
   };
 
   const getTypeIcon = (asset) => {
@@ -218,7 +221,7 @@ const AssetList = () => {
   return (
     <div className="p-8 max-w-[1600px] mx-auto relative">
       
-      {/* --- ÁREA DE IMPRESSÃO EM MASSA (OCULTA) --- */}
+      {/* IMPRESSÃO OCULTA */}
       <div style={{ display: 'none' }}>
         <div ref={bulkPrintRef} className="print-grid">
             <style>{`
@@ -261,7 +264,6 @@ const AssetList = () => {
                 <span className="text-sm font-bold whitespace-nowrap">{selectedIds.length} selecionados</span>
                 <div className="h-4 w-px bg-gray-600 mx-2"></div>
                 
-                {/* BOTÃO MUDAR STATUS */}
                 <button 
                     onClick={() => setIsStatusModalOpen(true)}
                     className="flex items-center gap-2 hover:text-shineray transition-colors text-sm font-bold uppercase"
@@ -269,7 +271,6 @@ const AssetList = () => {
                     <RefreshCcw size={18} /> Alterar Status
                 </button>
 
-                {/* BOTÃO IMPRIMIR */}
                 <button 
                     onClick={handleBulkPrint}
                     className="flex items-center gap-2 hover:text-shineray transition-colors text-sm font-bold uppercase ml-4"
