@@ -1,15 +1,19 @@
 // src/pages/AssetDetail.jsx
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAssets } from '../hooks/useAssets';
+// REMOVIDO: import { useAssets } from '../hooks/useAssets';
+// ADICIONADO: Imports do Firestore direto
+import { db } from '../services/firebase';
+import { doc, onSnapshot, collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+
 import { moveAsset, registerMaintenance, updateAsset, deleteAsset } from '../services/assetService'; 
 import MoveAssetModal from '../components/MoveAssetModal';
 import MaintenanceModal from '../components/MaintenanceModal';
 import { QRCodeSVG } from 'qrcode.react'; 
 import { 
   ArrowLeft, Printer, Edit, MapPin, User, Tag, Smartphone, Monitor, History, Network, 
-  Building2, DollarSign, ArrowRightLeft, QrCode, Wrench, StickyNote, Save, 
-  Truck, Gift, PackageCheck, CreditCard, BadgeCheck, HeartPulse, AlertTriangle, 
+  Building2, ArrowRightLeft, QrCode, Wrench, StickyNote, Save, 
+  Truck, Gift, PackageCheck, CreditCard, BadgeCheck, AlertTriangle, 
   RefreshCcw, CheckCircle, Trash2, Link as LinkIcon, ExternalLink, Plus
 } from 'lucide-react';
 import AssetTimeline from '../components/AssetTimeline';
@@ -19,7 +23,6 @@ import logoShineray from '../assets/logo-shineray.png';
 const AssetDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { getAssetById, getAssetHistory } = useAssets();
   
   const [asset, setAsset] = useState(null);
   const [history, setHistory] = useState([]);
@@ -31,7 +34,7 @@ const AssetDetail = () => {
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const [isMaintModalOpen, setIsMaintModalOpen] = useState(false);
 
-  // --- ESTADOS PARA LINKS ---
+  // Estados Link
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [newLinkName, setNewLinkName] = useState('');
   const [isAddingLink, setIsAddingLink] = useState(false);
@@ -41,92 +44,79 @@ const AssetDetail = () => {
   const labelRef = useRef(null);
   const handlePrintLabel = useReactToPrint({ contentRef: labelRef, documentTitle: `Etiqueta_${id}` });
 
-  const loadData = async () => {
+  // --- BUSCA DO HISTÓRICO (Função Auxiliar) ---
+  const fetchHistory = async () => {
     try {
-      const [assetData, historyData] = await Promise.all([
-          getAssetById(id),
-          getAssetHistory(id)
-      ]);
-      setAsset(assetData);
-      setHistory(historyData);
-      // Carrega notas apenas se estiver vazio para não sobrescrever edição em andamento
-      if(loading) setNotes(assetData.notes || ''); 
-    } catch (error) {
-      console.error(error);
-      navigate('/assets');
-    } finally {
-      setLoading(false);
+        const q = query(collection(db, 'history'), where('assetId', '==', id), orderBy('date', 'desc'));
+        const snapshot = await getDocs(q);
+        setHistory(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+        console.error("Erro ao buscar histórico", err);
     }
   };
 
+  // --- EFEITO PRINCIPAL: ESCUTAR O ATIVO EM TEMPO REAL ---
   useEffect(() => {
-    loadData();
-  }, [id, getAssetById, getAssetHistory, navigate]);
+    setLoading(true);
+    const assetRef = doc(db, 'assets', id);
+
+    // O onSnapshot dispara sempre que o documento muda no banco
+    const unsubscribe = onSnapshot(assetRef, (docSnap) => {
+        if (docSnap.exists()) {
+            const data = { id: docSnap.id, ...docSnap.data() };
+            setAsset(data);
+            
+            // Atualiza notas apenas se for a primeira carga para não atrapalhar digitação
+            if (loading) setNotes(data.notes || '');
+            
+            // Sempre que o ativo muda (ex: mudou status), recarregamos o histórico
+            fetchHistory();
+        } else {
+            navigate('/assets'); // Se apagaram o ativo, volta pra lista
+        }
+        setLoading(false);
+    }, (error) => {
+        console.error("Erro no realtime:", error);
+        setLoading(false);
+    });
+
+    return () => unsubscribe(); // Limpa o ouvinte ao sair
+  }, [id, navigate]); // Dependências reduzidas
 
   // --- FUNÇÕES DE LINK ---
   const handleAddLink = async () => {
       if (!newLinkUrl || !newLinkName) return alert("Preencha o nome e o link!");
-      
       setIsAddingLink(true);
       try {
           const currentLinks = asset.attachments || [];
-          const newLink = {
-              name: newLinkName,
-              url: newLinkUrl,
-              type: 'link',
-              addedAt: new Date()
-          };
-
-          await updateAsset(id, {
-              attachments: [...currentLinks, newLink]
-          });
-
-          setNewLinkUrl('');
-          setNewLinkName('');
-          await loadData();
-      } catch (error) {
-          console.error(error);
-          alert("Erro ao salvar link.");
-      } finally {
-          setIsAddingLink(false);
-      }
+          const newLink = { name: newLinkName, url: newLinkUrl, type: 'link', addedAt: new Date() };
+          await updateAsset(id, { attachments: [...currentLinks, newLink] });
+          setNewLinkUrl(''); setNewLinkName('');
+      } catch (error) { alert("Erro ao salvar link."); } finally { setIsAddingLink(false); }
   };
 
   const handleDeleteLink = async (linkToDelete) => {
-      if(!confirm("Remover este link da lista?")) return;
+      if(!confirm("Remover este link?")) return;
       try {
           const currentLinks = asset.attachments || [];
           const newLinks = currentLinks.filter(l => l.url !== linkToDelete.url);
           await updateAsset(id, { attachments: newLinks });
-          await loadData();
-      } catch (error) {
-          alert("Erro ao remover.");
-      }
+      } catch (error) { alert("Erro ao remover."); }
   };
 
   const handleDelete = async () => {
       if (window.confirm("TEM CERTEZA que deseja excluir este ativo?")) {
           setIsDeleting(true);
-          try {
-              await deleteAsset(id);
-              alert("Ativo excluído.");
-              navigate('/assets'); 
-          } catch (error) {
-              alert("Erro ao excluir.");
-              setIsDeleting(false);
-          }
+          try { await deleteAsset(id); alert("Excluído."); navigate('/assets'); } 
+          catch (error) { alert("Erro."); setIsDeleting(false); }
       }
   };
 
-  // --- Helpers e Renderização ---
-  
+  // --- HELPER FUNCTIONS ---
   if (loading) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-shineray"></div></div>;
-  
-  // CORREÇÃO: Se não tiver ativo, retorna nulo ANTES de tentar acessar propriedades
   if (!asset) return null;
 
-  // --- DEFINIÇÕES SEGURAS (AGORA QUE TEMOS CERTEZA QUE ASSET EXISTE) ---
-  const derivedSector = asset.sector || "Adm/Op."; // Agora seguro
+  const derivedSector = asset.sector || "Adm/Op.";
   const isPromotional = asset.category === 'Promocional' || asset.internalId?.toUpperCase().includes('PRM') || (asset.vendedor && asset.vendedor.length > 0);
   const showImei = asset.type === 'Celular' || asset.type === 'PGT' || asset.imei1;
 
@@ -134,39 +124,30 @@ const AssetDetail = () => {
       if (!asset.purchaseDate || asset.purchaseDate.length < 10) return null;
       const purchase = new Date(asset.purchaseDate);
       const today = new Date();
-      const ageInYears = (today - purchase) / (1000 * 60 * 60 * 24 * 365);
       const expiration = new Date(purchase);
       expiration.setFullYear(purchase.getFullYear() + 1);
       const isWarrantyExpired = today > expiration;
-      const threshold = asset.type === 'Notebook' ? 3 : 4;
-      if (isWarrantyExpired && ageInYears >= threshold) return { status: 'critical', title: 'Recomendada Substituição', desc: `Equipamento com ${ageInYears.toFixed(1)} anos.`, color: 'bg-red-50 border-red-100 text-red-800', icon: <RefreshCcw className="text-red-600" size={20} /> };
+      
       if (isWarrantyExpired) return { status: 'warning', title: 'Monitorar (Garantia Vencida)', desc: 'Garantia expirada.', color: 'bg-orange-50 border-orange-100 text-orange-800', icon: <AlertTriangle className="text-orange-500" size={20} /> };
-      return { status: 'healthy', title: 'Ativo Saudável', desc: `Garantia vigente até ${expiration.toLocaleDateString('pt-BR')}.`, color: 'bg-green-50 border-green-100 text-green-800', icon: <CheckCircle className="text-green-600" size={20} /> };
+      return { status: 'healthy', title: 'Ativo Saudável', desc: `Garantia até ${expiration.toLocaleDateString('pt-BR')}.`, color: 'bg-green-50 border-green-100 text-green-800', icon: <CheckCircle className="text-green-600" size={20} /> };
   };
   
   const lifecycle = !isPromotional ? getLifecycleStatus() : null;
 
-  const handleQuickStatus = async (newStatus) => { if (confirm(`Mudar status para "${newStatus}"?`)) { try { await updateAsset(id, { status: newStatus, updatedAt: new Date() }); await loadData(); } catch (error) { alert("Erro ao atualizar."); } } };
-  const handleMoveConfirm = async (moveData) => { try { await moveAsset(id, asset, moveData); alert("Movimentado!"); await loadData(); } catch (error) { alert("Erro."); } };
-  const handleMaintenanceConfirm = async (maintData) => { try { await registerMaintenance(id, maintData); alert("Registrado!"); await loadData(); } catch (error) { alert("Erro."); } };
+  // Ações Rápidas (Não precisa chamar loadData(), o onSnapshot atualiza sozinho)
+  const handleQuickStatus = async (newStatus) => { if (confirm(`Mudar status para "${newStatus}"?`)) { try { await updateAsset(id, { status: newStatus }); } catch (error) { alert("Erro."); } } };
+  const handleMoveConfirm = async (moveData) => { try { await moveAsset(id, asset, moveData); alert("Movimentado!"); } catch (error) { alert("Erro."); } };
+  const handleMaintenanceConfirm = async (maintData) => { try { await registerMaintenance(id, maintData); alert("Registrado!"); } catch (error) { alert("Erro."); } };
   const handleSaveNotes = async () => { if (!id) return; setIsSavingNotes(true); try { await updateAsset(id, { notes: notes }); alert("Salvo!"); } catch (error) { console.error(error); } finally { setIsSavingNotes(false); } };
+  
   const expandLocation = (loc) => { if (!loc) return "Local não definido"; const t = loc.toUpperCase(); if (t.includes("BEL")) return "Matriz Adm. - Belém"; if (t.includes("CAS")) return "Filial Castanhal"; if (t.includes("ANA")) return "Filial Ananindeua"; if (t.includes("FAB")) return "CD / Fábrica"; return loc; };
   const formatDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : "N/A";
   const getBannerColor = () => { const s = asset.status.toLowerCase(); if (s === 'entregue') return 'bg-purple-600'; if (s.includes('transfer')) return 'bg-yellow-500'; if (s === 'manutenção') return 'bg-orange-600'; if (s === 'disponível') return 'bg-blue-600'; return 'bg-black'; };
-  
-  const TypeIcon = () => { 
-      switch(asset.type) { 
-          case 'Celular': return <Smartphone size={36} />; 
-          case 'PGT': return <CreditCard size={36} />; 
-          case 'Impressora': return <Network size={36} />; 
-          default: return <Monitor size={36} />; 
-      } 
-  };
+  const TypeIcon = () => { switch(asset.type) { case 'Celular': return <Smartphone size={36} />; case 'PGT': return <CreditCard size={36} />; case 'Impressora': return <Network size={36} />; default: return <Monitor size={36} />; } };
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24">
-      
-      {/* IMPRESSÕES OCULTAS (Mantidas) */}
+      {/* SEÇÃO OCULTA DE IMPRESSÃO (Mantida igual) */}
       <div style={{ display: 'none' }}>
         <div ref={termRef} className="print-term p-10 max-w-4xl mx-auto text-black bg-white font-sans relative">
             <div className="absolute top-8 right-8 flex flex-col items-center"><QRCodeSVG value={asset.internalId} size={70} level="H" /><span className="text-[10px] font-mono font-bold mt-1">{asset.internalId}</span></div>
@@ -181,7 +162,7 @@ const AssetDetail = () => {
         </div>
       </div>
 
-      {/* HEADER AÇÕES */}
+      {/* HEADER DE AÇÕES */}
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
         <button onClick={() => navigate('/assets')} className="flex items-center gap-2 text-gray-500 hover:text-shineray font-bold uppercase tracking-wide text-sm self-start md:self-auto"><ArrowLeft size={18} /> Voltar</button>
         <div className="flex flex-wrap gap-3 w-full md:w-auto justify-end">
