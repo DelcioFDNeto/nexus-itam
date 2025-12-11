@@ -254,7 +254,9 @@ const AssetForm = () => {
                                 <option value="Concórdia">Concórdia</option>
                                 <option value="Curuçá">Curuçá</option>
                                 <option value="Moju">Moju</option>
+                                <option value="Igarapé Mirim">Igarapé Mirim</option>
                                 <option value="São Miguel">São Miguel</option>
+                                <option value="Soure">Soure</option>
                                 <option value="Tailândia">Tailândia</option>
                                 <option value="Tomé-Açu">Tomé-Açu</option>
                             </optgroup>
