@@ -13,7 +13,7 @@ import {
   Smartphone, Monitor, Printer, Network, 
   MapPin, User, FileText, Laptop, Megaphone, CreditCard,
   Download, ArrowUpDown, CheckSquare, Square, 
-  Printer as PrinterIcon, RefreshCcw, X, Check
+  Printer as PrinterIcon, RefreshCcw, X, Check, ArrowDownAZ, ArrowUpAZ
 } from 'lucide-react';
 
 const AssetList = () => {
@@ -23,7 +23,10 @@ const AssetList = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('Todos');
-  const [sortOrder, setSortOrder] = useState('asc');
+  
+  // --- ESTADOS DE ORDENAÇÃO (ATUALIZADO) ---
+  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' ou 'desc'
+  const [sortBy, setSortBy] = useState('internalId'); // 'model' ou 'internalId' (Padrão: Patrimônio)
    
   // --- ESTADOS DE AÇÃO EM MASSA ---
   const [selectedIds, setSelectedIds] = useState([]);
@@ -57,7 +60,7 @@ const AssetList = () => {
     documentTitle: 'Etiquetas_Lote_Shineray',
   });
 
-  // --- HELPERS ---
+  // --- HELPER DE GARANTIA ---
   const getWarrantyStatus = (dateStr) => {
     if (!dateStr || dateStr.length < 10) return null;
     const purchase = new Date(dateStr);
@@ -72,15 +75,14 @@ const AssetList = () => {
     return <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 ml-2 shadow-sm" title="Garantia Vigente"></span>;
   };
 
-  // --- FILTRAGEM CORRIGIDA ---
+  // --- FILTRAGEM ---
   const filteredAssets = assets.filter(asset => {
-    // CORREÇÃO AQUI: Definimos o nome oficial (assignedTo ganha prioridade)
     const officialName = asset.assignedTo || asset.clientName || '';
 
     const matchesSearch = 
       asset.model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       asset.internalId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      officialName.toLowerCase().includes(searchTerm.toLowerCase()) || // Busca no nome certo
+      officialName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       asset.vendedor?.toLowerCase().includes(searchTerm.toLowerCase());
 
     let matchesType = true;
@@ -102,11 +104,18 @@ const AssetList = () => {
     return matchesSearch && matchesType;
   });
 
-  // --- ORDENAÇÃO ---
+  // --- ORDENAÇÃO (LÓGICA MELHORADA) ---
   const sortedAssets = [...filteredAssets].sort((a, b) => {
-      const valA = a.model?.toLowerCase() || '';
-      const valB = b.model?.toLowerCase() || '';
-      return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      // Pega o valor baseado no campo escolhido (sortBy)
+      const valA = (a[sortBy] || '').toString().toLowerCase();
+      const valB = (b[sortBy] || '').toString().toLowerCase();
+      
+      // Usa localeCompare com 'numeric: true' para ordenar "NTB-2" antes de "NTB-10"
+      if (sortOrder === 'asc') {
+          return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+      } else {
+          return valB.localeCompare(valA, undefined, { numeric: true, sensitivity: 'base' });
+      }
   });
 
   // --- LÓGICA DE SELEÇÃO ---
@@ -131,17 +140,15 @@ const AssetList = () => {
   // --- AÇÕES EM MASSA ---
   const handleBulkStatusChange = async (newStatus) => {
       if (!confirm(`Tem certeza que deseja mudar o status de ${selectedIds.length} ativos para "${newStatus}"?`)) return;
-      
       setBulkProcessing(true);
       try {
           const updates = selectedIds.map(id => updateAsset(id, { status: newStatus }));
           await Promise.all(updates);
-          
           alert("Status atualizados com sucesso!");
           setSelectedIds([]); 
           setIsStatusModalOpen(false); 
       } catch (error) {
-          console.error("Erro na atualização em massa:", error);
+          console.error("Erro:", error);
           alert("Erro ao atualizar alguns itens.");
       } finally {
           setBulkProcessing(false);
@@ -156,7 +163,7 @@ const AssetList = () => {
         'Tipo': asset.type,
         'Categoria': asset.category,
         'Status': asset.status,
-        'Responsável': asset.assignedTo || asset.clientName || '---', // CORREÇÃO NA EXPORTAÇÃO
+        'Responsável': asset.assignedTo || asset.clientName || '---',
         'Vendedor': asset.vendedor || '',
         'Localização': asset.location,
         'Serial': asset.serialNumber || '',
@@ -171,11 +178,9 @@ const AssetList = () => {
     XLSX.writeFile(workbook, `Inventario_Shineray_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
   };
 
-  // --- HELPER VISUAL CORRIGIDO ---
+  // --- HELPERS VISUAIS ---
   const getResponsiblePerson = (asset) => {
-    // CORREÇÃO CRUCIAL: Prioriza assignedTo (novo) sobre clientName (antigo)
     const officialName = asset.assignedTo || asset.clientName;
-
     if (asset.category === 'Promocional' || asset.internalId?.includes('PRM')) {
         return (
             <div className="flex flex-col">
@@ -184,7 +189,6 @@ const AssetList = () => {
             </div>
         );
     } 
-    
     return (!officialName || officialName === 'Não definido') 
         ? <span className="text-gray-400 italic">---</span> 
         : <span className="text-gray-900 font-medium capitalize">{officialName.toLowerCase()}</span>;
@@ -202,7 +206,7 @@ const AssetList = () => {
     }
   };
 
-  const toggleSort = () => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+  const toggleSortDirection = () => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
 
   const filters = [
     { label: 'Todos', value: 'Todos' },
@@ -214,9 +218,7 @@ const AssetList = () => {
     { label: 'Promocionais', value: 'Promocionais' }
   ];
 
-  const statusOptions = [
-      "Em Uso", "Disponível", "Em Transferência", "Manutenção", "Entregue", "Defeito", "Em Trânsito"
-  ];
+  const statusOptions = ["Em Uso", "Disponível", "Em Transferência", "Manutenção", "Entregue", "Defeito", "Em Trânsito"];
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto relative">
@@ -264,20 +266,8 @@ const AssetList = () => {
                 <span className="text-sm font-bold whitespace-nowrap">{selectedIds.length} selecionados</span>
                 <div className="h-4 w-px bg-gray-600 mx-2"></div>
                 
-                <button 
-                    onClick={() => setIsStatusModalOpen(true)}
-                    className="flex items-center gap-2 hover:text-shineray transition-colors text-sm font-bold uppercase"
-                >
-                    <RefreshCcw size={18} /> Alterar Status
-                </button>
-
-                <button 
-                    onClick={handleBulkPrint}
-                    className="flex items-center gap-2 hover:text-shineray transition-colors text-sm font-bold uppercase ml-4"
-                >
-                    <PrinterIcon size={18} /> Etiquetas
-                </button>
-
+                <button onClick={() => setIsStatusModalOpen(true)} className="flex items-center gap-2 hover:text-shineray transition-colors text-sm font-bold uppercase"><RefreshCcw size={18} /> Alterar Status</button>
+                <button onClick={handleBulkPrint} className="flex items-center gap-2 hover:text-shineray transition-colors text-sm font-bold uppercase ml-4"><PrinterIcon size={18} /> Etiquetas</button>
                 <button onClick={() => setSelectedIds([])} className="ml-4 text-xs text-gray-400 hover:text-white"><X size={18} /></button>
             </div>
         ) : (
@@ -295,9 +285,27 @@ const AssetList = () => {
                 <Search className="absolute left-3 top-3 text-gray-400" size={20} />
                 <input type="text" placeholder="Buscar..." className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-black" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
             </div>
-            <button onClick={toggleSort} className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 flex items-center gap-2 font-bold text-sm min-w-[140px] justify-center">
-                <ArrowUpDown size={16} /> {sortOrder === 'asc' ? 'A-Z (Nome)' : 'Z-A (Nome)'}
-            </button>
+            
+            {/* CONTROLES DE ORDENAÇÃO */}
+            <div className="flex gap-1 border border-gray-200 rounded-lg p-1 bg-white">
+                <select 
+                    value={sortBy} 
+                    onChange={(e) => setSortBy(e.target.value)} 
+                    className="pl-2 pr-8 py-1.5 text-sm bg-transparent outline-none font-bold text-gray-700 cursor-pointer"
+                >
+                    <option value="internalId">Por Patrimônio</option>
+                    <option value="model">Por Modelo</option>
+                    <option value="status">Por Status</option>
+                </select>
+                <button 
+                    onClick={toggleSortDirection}
+                    className="p-1.5 hover:bg-gray-100 rounded text-gray-600 transition-colors border-l border-gray-100"
+                    title={sortOrder === 'asc' ? "Crescente" : "Decrescente"}
+                >
+                    {sortOrder === 'asc' ? <ArrowDownAZ size={18} /> : <ArrowUpAZ size={18} />}
+                </button>
+            </div>
+
         </div>
         <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
             <Filter size={20} className="text-gray-400 shrink-0" />
@@ -324,8 +332,8 @@ const AssetList = () => {
                                     {selectedIds.length > 0 && selectedIds.length === sortedAssets.length ? <CheckSquare size={20}/> : <Square size={20}/>}
                                 </button>
                             </th>
-                            <th className="p-4">Ativo / Modelo</th>
-                            <th className="p-4">Patrimônio</th>
+                            <th className="p-4 cursor-pointer hover:text-black" onClick={() => {setSortBy('model'); toggleSortDirection()}}>Ativo / Modelo</th>
+                            <th className="p-4 cursor-pointer hover:text-black" onClick={() => {setSortBy('internalId'); toggleSortDirection()}}>Patrimônio</th>
                             <th className="p-4">Localização</th>
                             <th className="p-4"><div className="flex items-center gap-1"><User size={14} /> Usuário / Cliente</div></th>
                             <th className="p-4">Aquisição</th>
@@ -377,7 +385,6 @@ const AssetList = () => {
       </div>
       <div className="mt-4 text-center text-xs text-gray-400">Exibindo {sortedAssets.length} de {assets.length} ativos</div>
 
-      {/* --- MODAL DE ALTERAÇÃO DE STATUS EM MASSA --- */}
       {isStatusModalOpen && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
               <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in duration-200">
@@ -389,14 +396,8 @@ const AssetList = () => {
                       <p className="text-sm text-gray-600 mb-4">Selecione o novo status para os <strong>{selectedIds.length}</strong> itens selecionados:</p>
                       <div className="grid grid-cols-1 gap-2">
                           {statusOptions.map(status => (
-                              <button 
-                                key={status}
-                                onClick={() => handleBulkStatusChange(status)}
-                                disabled={bulkProcessing}
-                                className="w-full py-2 px-4 rounded border border-gray-200 hover:bg-black hover:text-white transition-colors font-medium text-sm text-left flex items-center justify-between group"
-                              >
-                                  {status}
-                                  <span className="opacity-0 group-hover:opacity-100"><Check size={16}/></span>
+                              <button key={status} onClick={() => handleBulkStatusChange(status)} disabled={bulkProcessing} className="w-full py-2 px-4 rounded border border-gray-200 hover:bg-black hover:text-white transition-colors font-medium text-sm text-left flex items-center justify-between group">
+                                  {status} <span className="opacity-0 group-hover:opacity-100"><Check size={16}/></span>
                               </button>
                           ))}
                       </div>
@@ -405,7 +406,6 @@ const AssetList = () => {
               </div>
           </div>
       )}
-
     </div>
   );
 };
