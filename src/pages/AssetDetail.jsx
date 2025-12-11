@@ -1,8 +1,7 @@
 // src/pages/AssetDetail.jsx
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-// REMOVIDO: import { useAssets } from '../hooks/useAssets';
-// ADICIONADO: Imports do Firestore direto
+// MUDANÇA 1: Imports do Firestore para Realtime
 import { db } from '../services/firebase';
 import { doc, onSnapshot, collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 
@@ -24,6 +23,7 @@ const AssetDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   
+  // Estado local
   const [asset, setAsset] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -39,12 +39,13 @@ const AssetDetail = () => {
   const [newLinkName, setNewLinkName] = useState('');
   const [isAddingLink, setIsAddingLink] = useState(false);
 
+  // Refs de Impressão
   const termRef = useRef(null);
   const handlePrintTerm = useReactToPrint({ contentRef: termRef, documentTitle: `Termo_${id}` });
   const labelRef = useRef(null);
   const handlePrintLabel = useReactToPrint({ contentRef: labelRef, documentTitle: `Etiqueta_${id}` });
 
-  // --- BUSCA DO HISTÓRICO (Função Auxiliar) ---
+  // --- MUDANÇA 2: Função para buscar histórico (separada) ---
   const fetchHistory = async () => {
     try {
         const q = query(collection(db, 'history'), where('assetId', '==', id), orderBy('date', 'desc'));
@@ -55,24 +56,24 @@ const AssetDetail = () => {
     }
   };
 
-  // --- EFEITO PRINCIPAL: ESCUTAR O ATIVO EM TEMPO REAL ---
+  // --- MUDANÇA 3: Efeito Realtime (onSnapshot) ---
   useEffect(() => {
     setLoading(true);
     const assetRef = doc(db, 'assets', id);
 
-    // O onSnapshot dispara sempre que o documento muda no banco
+    // Escuta mudanças no documento do ativo em tempo real
     const unsubscribe = onSnapshot(assetRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = { id: docSnap.id, ...docSnap.data() };
             setAsset(data);
             
-            // Atualiza notas apenas se for a primeira carga para não atrapalhar digitação
+            // Só atualiza o campo de notas se for a primeira carga (pra não atrapalhar quem digita)
             if (loading) setNotes(data.notes || '');
             
-            // Sempre que o ativo muda (ex: mudou status), recarregamos o histórico
+            // Atualiza o histórico sempre que o ativo mudar
             fetchHistory();
         } else {
-            navigate('/assets'); // Se apagaram o ativo, volta pra lista
+            navigate('/assets'); // Se apagarem o ativo, volta pra lista
         }
         setLoading(false);
     }, (error) => {
@@ -80,10 +81,10 @@ const AssetDetail = () => {
         setLoading(false);
     });
 
-    return () => unsubscribe(); // Limpa o ouvinte ao sair
-  }, [id, navigate]); // Dependências reduzidas
+    return () => unsubscribe(); // Limpeza
+  }, [id, navigate]);
 
-  // --- FUNÇÕES DE LINK ---
+  // --- FUNÇÕES DE AÇÃO (LINKS, DELETE, UPDATE) ---
   const handleAddLink = async () => {
       if (!newLinkUrl || !newLinkName) return alert("Preencha o nome e o link!");
       setIsAddingLink(true);
@@ -112,9 +113,12 @@ const AssetDetail = () => {
       }
   };
 
-  // --- HELPER FUNCTIONS ---
+  // --- HELPERS E RENDERIZAÇÃO ---
   if (loading) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-shineray"></div></div>;
   if (!asset) return null;
+
+  // CORREÇÃO DE NOME: Prioriza assignedTo (Novo) sobre clientName (Antigo)
+  const responsibleName = asset.assignedTo || asset.clientName || "Não atribuído";
 
   const derivedSector = asset.sector || "Adm/Op.";
   const isPromotional = asset.category === 'Promocional' || asset.internalId?.toUpperCase().includes('PRM') || (asset.vendedor && asset.vendedor.length > 0);
@@ -134,7 +138,7 @@ const AssetDetail = () => {
   
   const lifecycle = !isPromotional ? getLifecycleStatus() : null;
 
-  // Ações Rápidas (Não precisa chamar loadData(), o onSnapshot atualiza sozinho)
+  // Ações que atualizam o banco (o onSnapshot vai atualizar a tela sozinho)
   const handleQuickStatus = async (newStatus) => { if (confirm(`Mudar status para "${newStatus}"?`)) { try { await updateAsset(id, { status: newStatus }); } catch (error) { alert("Erro."); } } };
   const handleMoveConfirm = async (moveData) => { try { await moveAsset(id, asset, moveData); alert("Movimentado!"); } catch (error) { alert("Erro."); } };
   const handleMaintenanceConfirm = async (maintData) => { try { await registerMaintenance(id, maintData); alert("Registrado!"); } catch (error) { alert("Erro."); } };
@@ -147,14 +151,15 @@ const AssetDetail = () => {
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24">
-      {/* SEÇÃO OCULTA DE IMPRESSÃO (Mantida igual) */}
+      
+      {/* SEÇÃO OCULTA DE IMPRESSÃO (Mantida) */}
       <div style={{ display: 'none' }}>
         <div ref={termRef} className="print-term p-10 max-w-4xl mx-auto text-black bg-white font-sans relative">
             <div className="absolute top-8 right-8 flex flex-col items-center"><QRCodeSVG value={asset.internalId} size={70} level="H" /><span className="text-[10px] font-mono font-bold mt-1">{asset.internalId}</span></div>
             <div className="flex items-center justify-between border-b-2 border-black pb-4 mb-6 pr-24"><img src={logoShineray} alt="Shineray" className="h-12 object-contain" /><div className="text-right"><p className="text-xs font-bold text-gray-800 uppercase tracking-widest">TI & Infraestrutura</p><p className="text-[10px] text-gray-500 uppercase">Termo de Entrega</p></div></div>
             <h2 className="text-lg font-black text-center mb-8 uppercase decoration-2 underline underline-offset-4 decoration-red-600">Termo de Responsabilidade</h2>
-            <div className="text-justify space-y-4 text-xs leading-relaxed text-gray-800"><p>Eu, <strong className="uppercase text-sm">{asset.clientName || asset.assignedTo || "_______________________"}</strong>, declaro ter recebido da <strong>SHINERAY BY SABEL</strong>:</p><div className="my-6 border border-gray-800 p-4 bg-gray-50"><div className="grid grid-cols-2 gap-4"><div><span className="block text-[9px] font-bold text-gray-500 uppercase">Tipo/Modelo</span><span className="font-bold text-sm">{asset.type} - {asset.model}</span></div><div><span className="block text-[9px] font-bold text-gray-500 uppercase">Patrimônio</span><span className="font-bold text-sm bg-yellow-100 px-1">{asset.internalId}</span></div>{asset.imei1 ? (<div className="col-span-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">IMEI / Serial</span><span className="font-mono text-sm">{asset.imei1} {asset.serialNumber ? `/ ${asset.serialNumber}` : ''}</span></div>) : (<div className="col-span-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">Serial</span><span className="font-mono text-sm">{asset.serialNumber || "N/A"}</span></div>)}</div></div><div className="space-y-2"><p><strong>1. RESPONSABILIDADE:</strong> Comprometo-me a zelar pela guarda e conservação.</p><p><strong>2. DEVOLUÇÃO:</strong> Devolução imediata mediante solicitação.</p></div></div>
-            <div className="mt-16 space-y-10"><p className="text-right italic text-xs">Belém (PA), {new Date().toLocaleDateString('pt-BR')}.</p><div className="grid grid-cols-2 gap-12 items-end"><div className="text-center relative"><div className="absolute -top-8 left-0 right-0 flex justify-center"><span style={{ fontFamily: "'Brush Script MT', cursive" }} className="text-3xl text-blue-900 rotate-[-5deg] opacity-90">Délcio Farias</span></div><div className="border-t border-black w-full mb-1"></div><p className="font-bold uppercase text-[10px]">Shineray By Sabel</p></div><div className="text-center"><div className="border-t border-black w-full mb-1"></div><p className="font-bold uppercase text-[10px]">{asset.clientName || asset.assignedTo || "Colaborador"}</p></div></div></div>
+            <div className="text-justify space-y-4 text-xs leading-relaxed text-gray-800"><p>Eu, <strong className="uppercase text-sm">{responsibleName || "_______________________"}</strong>, declaro ter recebido da <strong>SHINERAY BY SABEL</strong>:</p><div className="my-6 border border-gray-800 p-4 bg-gray-50"><div className="grid grid-cols-2 gap-4"><div><span className="block text-[9px] font-bold text-gray-500 uppercase">Tipo/Modelo</span><span className="font-bold text-sm">{asset.type} - {asset.model}</span></div><div><span className="block text-[9px] font-bold text-gray-500 uppercase">Patrimônio</span><span className="font-bold text-sm bg-yellow-100 px-1">{asset.internalId}</span></div>{asset.imei1 ? (<div className="col-span-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">IMEI / Serial</span><span className="font-mono text-sm">{asset.imei1} {asset.serialNumber ? `/ ${asset.serialNumber}` : ''}</span></div>) : (<div className="col-span-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">Serial</span><span className="font-mono text-sm">{asset.serialNumber || "N/A"}</span></div>)}</div></div><div className="space-y-2"><p><strong>1. RESPONSABILIDADE:</strong> Comprometo-me a zelar pela guarda e conservação.</p><p><strong>2. DEVOLUÇÃO:</strong> Devolução imediata mediante solicitação.</p></div></div>
+            <div className="mt-16 space-y-10"><p className="text-right italic text-xs">Belém (PA), {new Date().toLocaleDateString('pt-BR')}.</p><div className="grid grid-cols-2 gap-12 items-end"><div className="text-center relative"><div className="absolute -top-8 left-0 right-0 flex justify-center"><span style={{ fontFamily: "'Brush Script MT', cursive" }} className="text-3xl text-blue-900 rotate-[-5deg] opacity-90">Délcio Farias</span></div><div className="border-t border-black w-full mb-1"></div><p className="font-bold uppercase text-[10px]">Shineray By Sabel</p></div><div className="text-center"><div className="border-t border-black w-full mb-1"></div><p className="font-bold uppercase text-[10px]">{responsibleName}</p></div></div></div>
         </div>
         <div ref={labelRef} className="print-label" style={{ width: '10cm', height: '5cm', padding: '10px', border: '2px solid black', borderRadius: '8px', display: 'flex', flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', gap: '15px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
             <div style={{ width: '110px', height: '110px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><QRCodeSVG value={asset.internalId} size={110} level="M" /></div>
@@ -217,7 +222,7 @@ const AssetDetail = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-8">
                         <div><p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Filial / Unidade</p><div className="flex items-start gap-2 text-gray-900 font-bold text-sm"><MapPin size={16} className="text-shineray mt-0.5" />{expandLocation(asset.location)}</div></div>
                         <div><p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Setor / Campanha</p><div className="flex items-center gap-2 text-gray-900 font-bold text-sm"><Building2 size={16} className="text-gray-400" />{derivedSector}</div></div>
-                        <div className="md:col-span-2 bg-white p-4 rounded-xl border border-gray-200 shadow-sm"><p className="text-[10px] text-gray-400 font-bold uppercase mb-2">{isPromotional ? "Cliente / Beneficiário" : "Responsável pelo Ativo"}</p><div className="flex items-center gap-4"><div className="bg-gray-100 p-3 rounded-full"><User size={24} className="text-gray-700" /></div><div><p className="text-xl font-black text-gray-900 leading-tight">{asset.clientName || asset.assignedTo || "Não atribuído"}</p>{asset.clientCpf && (<p className="text-xs text-gray-400 font-mono mt-1">CPF: {asset.clientCpf}</p>)}</div></div>{isPromotional && (<div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-3"><div className="p-1.5 bg-pink-100 rounded-full text-pink-600"><BadgeCheck size={16} /></div><div><p className="text-[10px] text-pink-700 font-bold uppercase">Vendedor Responsável</p><p className="text-sm font-bold text-gray-900">{asset.vendedor || "Não informado"}</p></div></div>)}</div>
+                        <div className="md:col-span-2 bg-white p-4 rounded-xl border border-gray-200 shadow-sm"><p className="text-[10px] text-gray-400 font-bold uppercase mb-2">{isPromotional ? "Cliente / Beneficiário" : "Responsável pelo Ativo"}</p><div className="flex items-center gap-4"><div className="bg-gray-100 p-3 rounded-full"><User size={24} className="text-gray-700" /></div><div><p className="text-xl font-black text-gray-900 leading-tight">{responsibleName}</p>{asset.clientCpf && (<p className="text-xs text-gray-400 font-mono mt-1">CPF: {asset.clientCpf}</p>)}</div></div>{isPromotional && (<div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-3"><div className="p-1.5 bg-pink-100 rounded-full text-pink-600"><BadgeCheck size={16} /></div><div><p className="text-[10px] text-pink-700 font-bold uppercase">Vendedor Responsável</p><p className="text-sm font-bold text-gray-900">{asset.vendedor || "Não informado"}</p></div></div>)}</div>
                     </div>
                 </div>
 
