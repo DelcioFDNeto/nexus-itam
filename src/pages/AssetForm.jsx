@@ -239,7 +239,7 @@ const AssetForm = () => {
                          <select name="location" value={formData.location} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none bg-white">
                             <optgroup label="Pará - Região Metropolitana">
                                 <option value="Matriz - Belém">Matriz - Belém</option>
-                                <option value="Fábrica / CD - Benfica">Fábrica / CD - Benfica</option>
+                                <option value="Fábrica / CD - Ananindeua">Fábrica / CD - Ananindeua</option>
                                 <option value="Filial Ananindeua">Filial Ananindeua</option>
                                 <option value="Filial Castanhal">Filial Castanhal</option>
                                 <option value="Icoaraci">Icoaraci</option>
