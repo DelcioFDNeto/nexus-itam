@@ -21,21 +21,23 @@ const AssetList = () => {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Estados de Filtro e Busca
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('Todos');
   
-  // --- ESTADOS DE ORDENAÇÃO (ATUALIZADO) ---
+  // Estados de Ordenação (Novo: sortBy)
   const [sortOrder, setSortOrder] = useState('asc'); // 'asc' ou 'desc'
-  const [sortBy, setSortBy] = useState('internalId'); // 'model' ou 'internalId' (Padrão: Patrimônio)
+  const [sortBy, setSortBy] = useState('internalId'); // Padrão: Ordenar por Patrimônio
    
-  // --- ESTADOS DE AÇÃO EM MASSA ---
+  // Estados de Ação em Massa
   const [selectedIds, setSelectedIds] = useState([]);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false); 
   const [bulkProcessing, setBulkProcessing] = useState(false); 
 
-  // --- LISTA EM TEMPO REAL ---
+  // --- 1. Sincronização em Tempo Real (Não Mexer) ---
   useEffect(() => {
     setLoading(true);
+    // Busca inicial ordenada por criação para garantir consistência
     const q = query(collection(db, 'assets'), orderBy('createdAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -53,64 +55,63 @@ const AssetList = () => {
     return () => unsubscribe();
   }, []);
 
-  // --- CONFIGURAÇÃO DE IMPRESSÃO ---
+  // --- 2. Configuração de Impressão ---
   const bulkPrintRef = useRef();
   const handleBulkPrint = useReactToPrint({
     contentRef: bulkPrintRef,
     documentTitle: 'Etiquetas_Lote_Shineray',
   });
 
-  // --- HELPER DE GARANTIA ---
-  const getWarrantyStatus = (dateStr) => {
-    if (!dateStr || dateStr.length < 10) return null;
-    const purchase = new Date(dateStr);
-    const today = new Date();
-    const expiration = new Date(purchase);
-    expiration.setFullYear(purchase.getFullYear() + 1);
-    const thirtyDays = new Date();
-    thirtyDays.setDate(today.getDate() + 30);
-
-    if (today > expiration) return <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 ml-2 shadow-sm" title="Garantia Vencida"></span>;
-    if (expiration < thirtyDays) return <span className="inline-block w-2.5 h-2.5 rounded-full bg-yellow-500 ml-2 shadow-sm" title="Vence em breve"></span>;
-    return <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 ml-2 shadow-sm" title="Garantia Vigente"></span>;
-  };
-
-  // --- FILTRAGEM ---
+  // --- 3. Lógica de Filtros (Proteção contra Promocionais) ---
   const filteredAssets = assets.filter(asset => {
+    // Define o nome oficial (Prioridade para o editado 'assignedTo')
     const officialName = asset.assignedTo || asset.clientName || '';
+    
+    // Flag para saber se é promocional
+    const isPromo = asset.category === 'Promocional' || asset.internalId?.includes('PRM');
 
+    // Busca Textual
     const matchesSearch = 
       asset.model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       asset.internalId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       officialName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       asset.vendedor?.toLowerCase().includes(searchTerm.toLowerCase());
 
+    // Filtro por Tipo (Abas)
     let matchesType = true;
-    if (filterType === 'Todos') matchesType = true;
-    else if (filterType === 'Promocionais') matchesType = asset.category === 'Promocional' || asset.internalId?.includes('PRM');
+
+    if (filterType === 'Todos') {
+        matchesType = true; 
+    } 
+    else if (filterType === 'Promocionais') {
+        matchesType = isPromo; // Só mostra promocionais aqui
+    } 
     else if (filterType === 'Notebook') {
         const isNotebookType = asset.type === 'Notebook';
         const isNotebookModel = asset.model?.toLowerCase().includes('notebook');
-        const isNotPromo = asset.category !== 'Promocional';
-        matchesType = (isNotebookType || isNotebookModel) && isNotPromo;
-    } else {
+        // É Notebook E NÃO é promocional
+        matchesType = (isNotebookType || isNotebookModel) && !isPromo;
+    } 
+    else {
         if (filterType === 'Computador') {
             const isNotebookModel = asset.model?.toLowerCase().includes('notebook');
-            matchesType = asset.type === 'Computador' && !isNotebookModel;
+            matchesType = asset.type === 'Computador' && !isNotebookModel && !isPromo;
         } else {
-            matchesType = asset.type === filterType;
+            // Outros tipos (Celular, Impressora...) E NÃO é promocional
+            matchesType = asset.type === filterType && !isPromo;
         }
     }
+    
     return matchesSearch && matchesType;
   });
 
-  // --- ORDENAÇÃO (LÓGICA MELHORADA) ---
+  // --- 4. Lógica de Ordenação (Numérica Inteligente) ---
   const sortedAssets = [...filteredAssets].sort((a, b) => {
-      // Pega o valor baseado no campo escolhido (sortBy)
+      // Pega o valor do campo selecionado (modelo ou id)
       const valA = (a[sortBy] || '').toString().toLowerCase();
       const valB = (b[sortBy] || '').toString().toLowerCase();
       
-      // Usa localeCompare com 'numeric: true' para ordenar "NTB-2" antes de "NTB-10"
+      // Usa 'numeric: true' para que "NTB-2" venha antes de "NTB-10"
       if (sortOrder === 'asc') {
           return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
       } else {
@@ -118,32 +119,29 @@ const AssetList = () => {
       }
   });
 
-  // --- LÓGICA DE SELEÇÃO ---
+  // --- 5. Ações de Seleção ---
   const toggleSelectAll = () => {
-      if (selectedIds.length === sortedAssets.length) {
-          setSelectedIds([]);
-      } else {
-          setSelectedIds(sortedAssets.map(a => a.id));
-      }
+      if (selectedIds.length === sortedAssets.length) setSelectedIds([]);
+      else setSelectedIds(sortedAssets.map(a => a.id));
   };
 
   const toggleSelectOne = (id) => {
-      if (selectedIds.includes(id)) {
-          setSelectedIds(selectedIds.filter(itemId => itemId !== id));
-      } else {
-          setSelectedIds([...selectedIds, id]);
-      }
+      if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(itemId => itemId !== id));
+      else setSelectedIds([...selectedIds, id]);
   };
 
+  // Dados dos itens selecionados (para impressão/exportação)
   const selectedAssetsData = assets.filter(a => selectedIds.includes(a.id));
 
-  // --- AÇÕES EM MASSA ---
+  // --- 6. Ação em Massa (Status) ---
   const handleBulkStatusChange = async (newStatus) => {
       if (!confirm(`Tem certeza que deseja mudar o status de ${selectedIds.length} ativos para "${newStatus}"?`)) return;
+      
       setBulkProcessing(true);
       try {
           const updates = selectedIds.map(id => updateAsset(id, { status: newStatus }));
           await Promise.all(updates);
+          
           alert("Status atualizados com sucesso!");
           setSelectedIds([]); 
           setIsStatusModalOpen(false); 
@@ -155,7 +153,7 @@ const AssetList = () => {
       }
   };
 
-  // --- EXPORTAÇÃO EXCEL ---
+  // --- 7. Exportação Excel ---
   const handleExportExcel = () => {
     const dataToExport = sortedAssets.map(asset => ({
         'Patrimônio': asset.internalId,
@@ -178,7 +176,21 @@ const AssetList = () => {
     XLSX.writeFile(workbook, `Inventario_Shineray_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
   };
 
-  // --- HELPERS VISUAIS ---
+  // --- Helpers Visuais ---
+  const getWarrantyStatus = (dateStr) => {
+    if (!dateStr || dateStr.length < 10) return null;
+    const purchase = new Date(dateStr);
+    const today = new Date();
+    const expiration = new Date(purchase);
+    expiration.setFullYear(purchase.getFullYear() + 1);
+    const thirtyDays = new Date();
+    thirtyDays.setDate(today.getDate() + 30);
+
+    if (today > expiration) return <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 ml-2 shadow-sm" title="Garantia Vencida"></span>;
+    if (expiration < thirtyDays) return <span className="inline-block w-2.5 h-2.5 rounded-full bg-yellow-500 ml-2 shadow-sm" title="Vence em breve"></span>;
+    return <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 ml-2 shadow-sm" title="Garantia Vigente"></span>;
+  };
+
   const getResponsiblePerson = (asset) => {
     const officialName = asset.assignedTo || asset.clientName;
     if (asset.category === 'Promocional' || asset.internalId?.includes('PRM')) {
@@ -206,6 +218,7 @@ const AssetList = () => {
     }
   };
 
+  // Botão de alternar direção da ordenação
   const toggleSortDirection = () => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
 
   const filters = [
@@ -226,14 +239,7 @@ const AssetList = () => {
       {/* IMPRESSÃO OCULTA */}
       <div style={{ display: 'none' }}>
         <div ref={bulkPrintRef} className="print-grid">
-            <style>{`
-                @media print {
-                    @page { size: A4; margin: 10mm; }
-                    body { -webkit-print-color-adjust: exact; }
-                    .print-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 100%; }
-                    .bulk-label { border: 2px solid black; border-radius: 8px; padding: 10px; height: 5cm; display: flex; align-items: center; gap: 15px; page-break-inside: avoid; }
-                }
-            `}</style>
+            <style>{`@media print { @page { size: A4; margin: 10mm; } body { -webkit-print-color-adjust: exact; } .print-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 100%; } .bulk-label { border: 2px solid black; border-radius: 8px; padding: 10px; height: 5cm; display: flex; align-items: center; gap: 15px; page-break-inside: avoid; } }`}</style>
             {selectedAssetsData.map(asset => (
                 <div key={asset.id} className="bulk-label">
                     <div style={{ width: '100px', height: '100px', flexShrink: 0 }}><QRCodeSVG value={asset.internalId} size={100} level="M" /></div>
@@ -265,7 +271,6 @@ const AssetList = () => {
             <div className="flex items-center gap-3 bg-black text-white px-4 py-2 rounded-lg animate-in slide-in-from-top-2 shadow-xl z-20">
                 <span className="text-sm font-bold whitespace-nowrap">{selectedIds.length} selecionados</span>
                 <div className="h-4 w-px bg-gray-600 mx-2"></div>
-                
                 <button onClick={() => setIsStatusModalOpen(true)} className="flex items-center gap-2 hover:text-shineray transition-colors text-sm font-bold uppercase"><RefreshCcw size={18} /> Alterar Status</button>
                 <button onClick={handleBulkPrint} className="flex items-center gap-2 hover:text-shineray transition-colors text-sm font-bold uppercase ml-4"><PrinterIcon size={18} /> Etiquetas</button>
                 <button onClick={() => setSelectedIds([])} className="ml-4 text-xs text-gray-400 hover:text-white"><X size={18} /></button>
@@ -286,8 +291,8 @@ const AssetList = () => {
                 <input type="text" placeholder="Buscar..." className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-black" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
             </div>
             
-            {/* CONTROLES DE ORDENAÇÃO */}
-            <div className="flex gap-1 border border-gray-200 rounded-lg p-1 bg-white">
+            {/* NOVO: SELETOR DE ORDENAÇÃO */}
+            <div className="flex gap-1 border border-gray-200 rounded-lg p-1 bg-white items-center">
                 <select 
                     value={sortBy} 
                     onChange={(e) => setSortBy(e.target.value)} 
@@ -299,7 +304,7 @@ const AssetList = () => {
                 </select>
                 <button 
                     onClick={toggleSortDirection}
-                    className="p-1.5 hover:bg-gray-100 rounded text-gray-600 transition-colors border-l border-gray-100"
+                    className="p-2 hover:bg-gray-100 rounded text-gray-600 transition-colors border-l border-gray-100 flex items-center justify-center"
                     title={sortOrder === 'asc' ? "Crescente" : "Decrescente"}
                 >
                     {sortOrder === 'asc' ? <ArrowDownAZ size={18} /> : <ArrowUpAZ size={18} />}
@@ -332,8 +337,9 @@ const AssetList = () => {
                                     {selectedIds.length > 0 && selectedIds.length === sortedAssets.length ? <CheckSquare size={20}/> : <Square size={20}/>}
                                 </button>
                             </th>
-                            <th className="p-4 cursor-pointer hover:text-black" onClick={() => {setSortBy('model'); toggleSortDirection()}}>Ativo / Modelo</th>
-                            <th className="p-4 cursor-pointer hover:text-black" onClick={() => {setSortBy('internalId'); toggleSortDirection()}}>Patrimônio</th>
+                            {/* Cabeçalhos clicáveis para ordenar rápido */}
+                            <th className="p-4 cursor-pointer hover:text-black transition-colors" onClick={() => {setSortBy('model'); toggleSortDirection()}}>Ativo / Modelo</th>
+                            <th className="p-4 cursor-pointer hover:text-black transition-colors" onClick={() => {setSortBy('internalId'); toggleSortDirection()}}>Patrimônio</th>
                             <th className="p-4">Localização</th>
                             <th className="p-4"><div className="flex items-center gap-1"><User size={14} /> Usuário / Cliente</div></th>
                             <th className="p-4">Aquisição</th>
