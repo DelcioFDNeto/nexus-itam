@@ -7,10 +7,10 @@ import {
   ClipboardCheck, 
   CheckSquare, 
   Users, 
-  FolderGit2,
+  FolderGit2, // <--- Ícone de Projetos (Importante estar aqui)
   LogOut 
 } from 'lucide-react';
-import logo from '../assets/logo-shineray.png'; // Certifique-se que o caminho está correto
+import logo from '../assets/logo-shineray.png'; 
 
 const Sidebar = () => {
   const location = useLocation();
@@ -51,7 +51,7 @@ const Sidebar = () => {
 
         <p className="px-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-6 mb-2">Gestão & Pessoas</p>
 
-        {/* --- NOVO MENU PROJETOS --- */}
+        {/* --- MENU PROJETOS (Certifique-se que este bloco está aqui) --- */}
         <Link to="/projects" className={`flex items-center gap-3 p-3 rounded-xl transition-all font-bold text-sm ${isActive('/projects')}`}>
           <FolderGit2 size={20} />
           Projetos
