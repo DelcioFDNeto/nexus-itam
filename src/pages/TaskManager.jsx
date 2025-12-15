@@ -1,235 +1,378 @@
 // src/pages/TaskManager.jsx
 import React, { useState, useEffect } from 'react';
-import { getTasks, createTask, updateTask, deleteTask } from '../services/taskService';
+import { useSearchParams } from 'react-router-dom';
+import { getTasks, addTask, updateTask, deleteTask } from '../services/taskService';
+import { getProjects } from '../services/projectService';
 import { 
-  CheckSquare, Plus, Trash2, Calendar, User, 
-  CheckCircle, Clock, AlertCircle, Layers, Menu 
+  Plus, Trash2, Calendar, Edit, Filter, 
+  FolderGit2, ListChecks, ChevronDown, ChevronRight, X
 } from 'lucide-react';
 
 const TaskManager = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Estados de Dados
   const [tasks, setTasks] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeSection, setActiveSection] = useState('A. Levantamento');
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Filtros
+  const [selectedProjectId, setSelectedProjectId] = useState(searchParams.get('projectId') || '');
+  const [statusFilter, setStatusFilter] = useState('Todos'); 
 
-  // As seções do Master ITAM
-  const sections = [
-    'A. Levantamento', 'B. Inventário', 'C. Contas e Serviços',
-    'D. Aquisição', 'E. Manutenção', 'F. Descarte',
-    'G. Segurança', 'H. Relatórios', 'I. Auditoria'
+  // Controle do Modal (Criação e Edição)
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState(null); // Se null = Criando, Se tiver ID = Editando
+
+  // Estado do Formulário
+  const initialFormState = { 
+    title: '', description: '', status: 'A Fazer', priority: 'Média', projectId: '', category: 'Geral' 
+  };
+  const [formData, setFormData] = useState(initialFormState);
+
+  // Categorias Fixas (Sessões)
+  const categories = [
+    { id: 'Levantamento', label: 'Levantamento & Análise', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+    { id: 'Inventário', label: 'Inventário Físico', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+    { id: 'Manutenção', label: 'Manutenção & Suporte', color: 'bg-orange-50 text-orange-700 border-orange-200' },
+    { id: 'Auditoria', label: 'Auditoria & Compliance', color: 'bg-red-50 text-red-700 border-red-200' },
+    { id: 'Geral', label: 'Outras Demandas', color: 'bg-gray-50 text-gray-700 border-gray-200' }
   ];
 
-  const [formData, setFormData] = useState({
-    description: '', responsible: 'TI', status: 'Pendente',
-    startDate: '', endDate: '', notes: '', section: 'A. Levantamento'
-  });
+  // Controle de Seções Expandidas
+  const [expandedSections, setExpandedSections] = useState(
+    categories.reduce((acc, cat) => ({...acc, [cat.id]: true}), {})
+  );
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
-    try {
-      const data = await getTasks();
-      setTasks(data);
-    } catch (error) { console.error(error); } finally { setLoading(false); }
+    const [tasksData, projectsData] = await Promise.all([getTasks(), getProjects()]);
+    setTasks(tasksData);
+    setProjects(projectsData);
+    setLoading(false);
   };
 
-  useEffect(() => { loadData(); }, []);
+  // Sincroniza URL
+  useEffect(() => {
+    const urlId = searchParams.get('projectId');
+    if (urlId) setSelectedProjectId(urlId);
+  }, [searchParams]);
 
-  // --- LÓGICA DO PROGRESSO ---
-  const currentTasks = tasks.filter(t => t.section === activeSection);
-  const completedTasks = currentTasks.filter(t => t.status === 'Concluído').length;
-  const totalTasks = currentTasks.length;
-  const progress = totalTasks === 0 ? 0 : Math.round((completedTasks / totalTasks) * 100);
+  const toggleSection = (catId) => {
+      setExpandedSections(prev => ({...prev, [catId]: !prev[catId]}));
+  };
 
-  // --- AÇÕES ---
-  const handleSubmit = async (e) => {
+  // --- CRUD LÓGICA ---
+
+  // Abrir Modal para Criar
+  const openCreateModal = () => {
+      setEditingTaskId(null);
+      setFormData(initialFormState);
+      // Se já tiver filtro de projeto, pré-seleciona
+      if(selectedProjectId) setFormData(prev => ({...prev, projectId: selectedProjectId}));
+      setIsModalOpen(true);
+  };
+
+  // Abrir Modal para Editar
+  const openEditModal = (task) => {
+      setEditingTaskId(task.id);
+      setFormData({
+          title: task.title,
+          description: task.description || '',
+          status: task.status,
+          priority: task.priority,
+          projectId: task.projectId || '',
+          category: task.category || 'Geral'
+      });
+      setIsModalOpen(true);
+  };
+
+  // Salvar (Criar ou Atualizar)
+  const handleSaveTask = async (e) => {
     e.preventDefault();
-    try {
-      await createTask({ ...formData, section: activeSection });
-      setIsModalOpen(false);
-      setFormData({ description: '', responsible: 'TI', status: 'Pendente', startDate: '', endDate: '', notes: '', section: activeSection });
-      loadData();
-    } catch (error) { alert("Erro ao salvar."); }
+    if (!formData.title) return;
+
+    if (editingTaskId) {
+        // EDITA
+        await updateTask(editingTaskId, formData);
+        setTasks(tasks.map(t => t.id === editingTaskId ? { ...t, ...formData } : t));
+    } else {
+        // CRIA
+        const newTaskData = {
+            ...formData,
+            // Garante categoria padrão se estiver vazia
+            category: formData.category || 'Geral' 
+        };
+        await addTask(newTaskData);
+        // Recarrega tudo para pegar o ID novo gerado
+        const updatedTasks = await getTasks();
+        setTasks(updatedTasks);
+    }
+    setIsModalOpen(false);
   };
 
-  const handleStatusChange = async (task, newStatus) => {
-    try { await updateTask(task.id, { status: newStatus }); loadData(); } catch (error) { alert("Erro ao atualizar."); }
+  // Mudar Status Direto na Lista
+  const handleStatusChange = async (id, newStatus) => {
+      setTasks(tasks.map(t => t.id === id ? { ...t, status: newStatus } : t));
+      await updateTask(id, { status: newStatus });
   };
 
   const handleDelete = async (id) => {
-    if(confirm("Excluir esta tarefa?")) { await deleteTask(id); loadData(); }
-  };
-
-  const getStatusColor = (status) => {
-    switch(status) {
-      case 'Concluído': return 'bg-green-100 text-green-700 border-green-200';
-      case 'Em andamento': return 'bg-blue-100 text-blue-700 border-blue-200';
-      default: return 'bg-gray-100 text-gray-600 border-gray-200';
+    if (confirm('Excluir tarefa permanentemente?')) {
+      await deleteTask(id);
+      setTasks(tasks.filter(t => t.id !== id));
     }
   };
 
+  // --- HELPERS VISUAIS ---
+  const getPriorityBadge = (p) => {
+    const colors = { 'Alta': 'bg-red-100 text-red-700', 'Média': 'bg-yellow-100 text-yellow-700', 'Baixa': 'bg-green-100 text-green-700' };
+    return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${colors[p] || colors['Média']}`}>{p}</span>;
+  };
+
+  const getStatusColor = (s) => {
+      switch(s) {
+          case 'Concluído': return 'text-green-600 bg-green-50 border-green-200';
+          case 'Em Progresso': return 'text-blue-600 bg-blue-50 border-blue-200';
+          default: return 'text-gray-600 bg-gray-50 border-gray-200';
+      }
+  };
+
   return (
-    <div className="flex flex-col md:flex-row h-full bg-gray-50 overflow-hidden">
+    <div className="p-4 md:p-8 max-w-[1600px] mx-auto pb-24">
       
-      {/* ÁREA DE NAVEGAÇÃO (HÍBRIDA) 
-          - Mobile: Barra Horizontal no Topo (overflow-x-auto)
-          - Desktop: Barra Lateral Fixa (w-72)
-      */}
-      <div className="w-full md:w-72 bg-white border-b md:border-b-0 md:border-r border-gray-200 flex flex-row md:flex-col shrink-0 z-10">
-        
-        {/* Título do Menu (Só Desktop) */}
-        <div className="hidden md:block p-6 border-b border-gray-100">
-            <h2 className="font-black text-lg flex items-center gap-2 text-gray-900">
-                <Layers className="text-shineray" /> Planejamento
-            </h2>
-            <p className="text-xs text-gray-400 mt-1">Master ITAM Shineray</p>
+      {/* HEADER Responsivo */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-black text-gray-900 flex items-center gap-3">
+            <ListChecks className="text-shineray" size={32} /> Gestão de Tarefas
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">Sessões Operacionais & Projetos</p>
         </div>
 
-        {/* Lista de Abas (Com Scroll Horizontal no Mobile) */}
-        <div className="flex flex-row md:flex-col overflow-x-auto md:overflow-y-auto p-2 space-x-2 md:space-x-0 md:space-y-1 w-full scrollbar-hide">
-            {sections.map(section => {
-                const secTasks = tasks.filter(t => t.section === section);
-                const secDone = secTasks.filter(t => t.status === 'Concluído').length;
-                const secProg = secTasks.length > 0 ? Math.round((secDone / secTasks.length) * 100) : 0;
-                const shortName = section.split('. ')[1]; // Remove "A. "
+        <div className="flex flex-col sm:flex-row w-full md:w-auto gap-3">
+          {/* Filtro de Projeto */}
+          <div className="relative group w-full sm:w-auto">
+            <div className="absolute left-3 top-3 text-gray-400"><FolderGit2 size={16}/></div>
+            <select 
+                value={selectedProjectId}
+                onChange={(e) => {
+                    setSelectedProjectId(e.target.value);
+                    setSearchParams(e.target.value ? { projectId: e.target.value } : {});
+                }}
+                className="w-full sm:w-auto pl-10 pr-8 py-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-black font-bold text-sm cursor-pointer hover:bg-gray-50"
+            >
+                <option value="">Todos os Projetos</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+
+          <button onClick={openCreateModal} className="bg-black text-white px-5 py-3 rounded-xl font-bold hover:bg-gray-800 flex items-center justify-center gap-2 shadow-lg w-full sm:w-auto">
+            <Plus size={20} /> <span className="md:hidden lg:inline">Nova Tarefa</span>
+          </button>
+        </div>
+      </div>
+
+      {/* FILTRO STATUS (ABAS - Scrollável no Mobile) */}
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide border-b border-gray-200">
+          {['Todos', 'A Fazer', 'Em Progresso', 'Concluído'].map(status => (
+              <button 
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={`px-4 py-2 rounded-t-lg font-bold text-sm whitespace-nowrap transition-all border-b-2 ${
+                    statusFilter === status ? 'border-black text-black bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                  {status}
+              </button>
+          ))}
+      </div>
+
+      {/* LISTA DE SESSÕES */}
+      <div className="space-y-6">
+        {loading ? (
+            <div className="text-center py-10 text-gray-400 animate-pulse">Carregando tarefas...</div>
+        ) : (
+            categories.map(category => {
+                // Filtra tarefas desta categoria E filtros globais
+                const categoryTasks = tasks.filter(t => {
+                    const matchCat = (t.category || 'Geral') === category.id;
+                    const matchProject = selectedProjectId ? t.projectId === selectedProjectId : true;
+                    const matchStatus = statusFilter === 'Todos' ? true : t.status === statusFilter;
+                    return matchCat && matchProject && matchStatus;
+                });
+
+                if (categoryTasks.length === 0 && statusFilter !== 'Todos') return null;
 
                 return (
-                    <button 
-                        key={section}
-                        onClick={() => setActiveSection(section)}
-                        className={`
-                            whitespace-nowrap flex-shrink-0 px-4 py-3 rounded-lg text-sm font-bold flex items-center justify-between transition-all
-                            ${activeSection === section 
-                                ? 'bg-black text-white shadow-md' 
-                                : 'text-gray-500 hover:bg-gray-100 bg-white border border-gray-100 md:border-0'}
-                        `}
-                    >
-                        <span className="mr-3">{shortName}</span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${activeSection === section ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>
-                            {secProg}%
-                        </span>
-                    </button>
-                )
-            })}
-        </div>
-      </div>
-
-      {/* ÁREA PRINCIPAL */}
-      <div className="flex-1 p-4 md:p-8 overflow-y-auto pb-24">
-        
-        {/* Header da Seção */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
-            <div className="w-full md:w-auto">
-                <h1 className="text-2xl md:text-3xl font-black text-gray-900 mb-2 truncate">{activeSection}</h1>
-                <div className="flex items-center gap-4 w-full md:w-96">
-                    <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-green-500 transition-all duration-500" style={{ width: `${progress}%` }}></div>
-                    </div>
-                    <span className="text-xs font-bold text-green-600 whitespace-nowrap">{progress}% Feito</span>
-                </div>
-            </div>
-            
-            {/* Botão Nova Tarefa (Fixo no rodapé em telas muito pequenas ou normal aqui) */}
-            <button 
-                onClick={() => setIsModalOpen(true)} 
-                className="w-full md:w-auto bg-shineray hover:bg-red-700 text-white px-4 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg transition-colors active:scale-95"
-            >
-                <Plus size={20} /> Nova Tarefa
-            </button>
-        </div>
-
-        {/* Lista de Tarefas */}
-        <div className="space-y-3">
-            {currentTasks.length === 0 ? (
-                <div className="text-center py-10 md:py-20 bg-white rounded-2xl border border-dashed border-gray-300 text-gray-400 mx-2">
-                    <CheckSquare size={48} className="mx-auto mb-2 opacity-20"/>
-                    <p className="text-sm">Nenhuma tarefa registrada nesta seção.</p>
-                </div>
-            ) : (
-                currentTasks.map(task => (
-                    <div key={task.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row gap-4">
+                    <div key={category.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                         
-                        {/* Linha Superior (Mobile): Checkbox + Texto */}
-                        <div className="flex items-start gap-3 flex-1">
-                            <button 
-                                onClick={() => handleStatusChange(task, task.status === 'Concluído' ? 'Pendente' : 'Concluído')}
-                                className={`mt-1 p-1 rounded-full shrink-0 transition-colors ${task.status === 'Concluído' ? 'text-green-500 bg-green-50' : 'text-gray-300 hover:text-gray-500'}`}
-                            >
-                                {task.status === 'Concluído' ? <CheckCircle size={24} className="fill-current"/> : <AlertCircle size={24}/>}
-                            </button>
-
-                            <div className="flex-1 min-w-0">
-                                <h3 className={`font-bold text-gray-900 text-sm md:text-base break-words ${task.status === 'Concluído' ? 'line-through text-gray-400' : ''}`}>
-                                    {task.description}
-                                </h3>
-                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
-                                    <span className="flex items-center gap-1"><User size={12}/> {task.responsible}</span>
-                                    {task.endDate && <span className="flex items-center gap-1 text-orange-600 font-medium"><Calendar size={12}/> {new Date(task.endDate).toLocaleDateString('pt-BR')}</span>}
-                                </div>
-                                {task.notes && <p className="mt-1 text-xs italic text-gray-400 break-words line-clamp-2 md:line-clamp-none">- {task.notes}</p>}
+                        {/* HEADER DA SESSÃO */}
+                        <button 
+                            onClick={() => toggleSection(category.id)}
+                            className={`w-full flex items-center justify-between p-4 ${category.color} transition-colors hover:opacity-90`}
+                        >
+                            <div className="flex items-center gap-2 font-black uppercase tracking-wide text-sm">
+                                {expandedSections[category.id] ? <ChevronDown size={18}/> : <ChevronRight size={18}/>}
+                                {category.label}
+                                <span className="ml-2 bg-white/60 px-2 py-0.5 rounded text-xs text-black/70">{categoryTasks.length}</span>
                             </div>
-                        </div>
+                        </button>
 
-                        {/* Linha Inferior (Mobile): Badge + Delete */}
-                        <div className="flex items-center justify-between md:justify-end gap-3 pl-10 md:pl-0 border-t md:border-0 border-gray-50 pt-2 md:pt-0">
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wide ${getStatusColor(task.status)}`}>
-                                {task.status}
-                            </span>
-                            <button onClick={() => handleDelete(task.id)} className="text-gray-300 hover:text-red-500 p-2 active:scale-95"><Trash2 size={18}/></button>
-                        </div>
+                        {/* LISTA DE TAREFAS (RESPONSIVA) */}
+                        {expandedSections[category.id] && (
+                            <div className="divide-y divide-gray-100">
+                                {categoryTasks.length === 0 ? (
+                                    <div className="p-8 text-center text-gray-400 text-sm italic">Nenhuma tarefa nesta sessão.</div>
+                                ) : (
+                                    categoryTasks.map(task => {
+                                        const taskProject = projects.find(p => p.id === task.projectId);
+                                        return (
+                                            <div key={task.id} className="p-4 hover:bg-gray-50 transition-colors group">
+                                                <div className="flex flex-col md:flex-row md:items-center gap-4">
+                                                    
+                                                    {/* 1. Status & Título (Mobile: Coluna, Desktop: Linha) */}
+                                                    <div className="flex-1 flex flex-col md:flex-row md:items-center gap-3">
+                                                        {/* Select Status */}
+                                                        <select 
+                                                            value={task.status}
+                                                            onChange={(e) => handleStatusChange(task.id, e.target.value)}
+                                                            className={`text-[10px] font-bold uppercase py-1.5 px-3 rounded border cursor-pointer outline-none appearance-none text-center w-full md:w-[120px] ${getStatusColor(task.status)}`}
+                                                        >
+                                                            <option>A Fazer</option>
+                                                            <option>Em Progresso</option>
+                                                            <option>Revisão</option>
+                                                            <option>Concluído</option>
+                                                        </select>
+
+                                                        {/* Textos */}
+                                                        <div className="flex-1">
+                                                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                                                                <span className="font-bold text-gray-900 text-sm md:text-base">{task.title}</span>
+                                                                {getPriorityBadge(task.priority)}
+                                                                {taskProject && (
+                                                                    <span className="flex items-center gap-1 text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">
+                                                                        <FolderGit2 size={10}/> {taskProject.name}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {task.description && <p className="text-xs text-gray-500 line-clamp-2">{task.description}</p>}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* 2. Meta e Ações */}
+                                                    <div className="flex items-center justify-between md:justify-end gap-4 border-t border-gray-100 md:border-0 pt-3 md:pt-0 mt-1 md:mt-0">
+                                                        <div className="flex items-center gap-1 text-xs text-gray-400 font-mono">
+                                                            <Calendar size={12}/> {new Date(task.createdAt?.seconds * 1000 || Date.now()).toLocaleDateString('pt-BR')}
+                                                        </div>
+                                                        
+                                                        <div className="flex gap-2">
+                                                            <button 
+                                                                onClick={() => openEditModal(task)}
+                                                                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                                                title="Editar / Mover"
+                                                            >
+                                                                <Edit size={16} />
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handleDelete(task.id)}
+                                                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                                title="Excluir"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        )}
                     </div>
-                ))
-            )}
-        </div>
+                );
+            })
+        )}
       </div>
 
-      {/* MODAL RESPONSIVO */}
+      {/* MODAL (CRIAÇÃO E EDIÇÃO) */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-            <div className="bg-black p-4 text-white flex justify-between items-center">
-              <h3 className="font-bold text-sm md:text-base truncate pr-4">Nova: {activeSection.split('. ')[1]}</h3>
-              <button onClick={() => setIsModalOpen(false)} className="p-1 hover:bg-white/20 rounded">✕</button>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">{editingTaskId ? 'Editar Tarefa' : 'Nova Tarefa'}</h2>
+                <button onClick={() => setIsModalOpen(false)} className="p-1 rounded-full hover:bg-gray-100"><X size={20}/></button>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-4 md:p-6 space-y-4 overflow-y-auto max-h-[80vh]">
-                <div>
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Descrição</label>
-                    <input required className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-black" placeholder="O que precisa ser feito?" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Responsável</label>
-                        <input className="w-full p-3 border rounded-xl outline-none" value={formData.responsible} onChange={e => setFormData({...formData, responsible: e.target.value})} />
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Status</label>
-                        <select className="w-full p-3 border rounded-xl bg-white" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
-                            <option>Pendente</option>
-                            <option>Em andamento</option>
-                            <option>Concluído</option>
-                            <option>Atrasado</option>
-                        </select>
-                    </div>
-                </div>
+            <form onSubmit={handleSaveTask} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Título</label>
+                <input autoFocus required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black font-bold" />
+              </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Início</label><input type="date" className="w-full p-3 border rounded-xl" value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} /></div>
-                    <div><label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Prazo</label><input type="date" className="w-full p-3 border rounded-xl" value={formData.endDate} onChange={e => setFormData({...formData, endDate: e.target.value})} /></div>
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* SELETOR DE CATEGORIA (PERMITE MOVER A TAREFA) */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sessão (Categoria)</label>
+                    <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black bg-white">
+                        {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                    </select>
+                  </div>
 
-                <div>
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Observações</label>
-                    <textarea className="w-full p-3 border rounded-xl" rows="2" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})}></textarea>
-                </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Projeto</label>
+                    <select 
+                        value={formData.projectId} 
+                        onChange={e => setFormData({...formData, projectId: e.target.value})} 
+                        className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black bg-white"
+                    >
+                        <option value="">Geral (Sem Projeto)</option>
+                        {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </div>
+              </div>
 
-                <button type="submit" className="w-full bg-shineray hover:bg-red-700 text-white font-bold py-4 rounded-xl transition-colors shadow-lg mt-2">
-                    Salvar Tarefa
+              <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Prioridade</label>
+                    <select value={formData.priority} onChange={e => setFormData({...formData, priority: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black bg-white">
+                        <option>Baixa</option>
+                        <option>Média</option>
+                        <option>Alta</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status</label>
+                    <select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black bg-white">
+                        <option>A Fazer</option>
+                        <option>Em Progresso</option>
+                        <option>Concluído</option>
+                    </select>
+                  </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Descrição</label>
+                <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black" rows="3"></textarea>
+              </div>
+
+              <div className="flex gap-3 pt-4 mt-2 border-t border-gray-50">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-white border border-gray-200 rounded-xl font-bold text-gray-600 hover:bg-gray-50">Cancelar</button>
+                <button type="submit" className="flex-1 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 shadow-lg">
+                    {editingTaskId ? 'Salvar Alterações' : 'Criar Tarefa'}
                 </button>
+              </div>
             </form>
           </div>
         </div>
       )}
+
     </div>
   );
 };

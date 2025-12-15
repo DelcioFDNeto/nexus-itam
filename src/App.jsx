@@ -20,7 +20,7 @@ import EmployeeManager from './pages/EmployeeManager';
 import AuditPage from './pages/AuditPage';
 import LicenseManager from './pages/LicenseManager';
 import TaskManager from './pages/TaskManager';
-import ProjectsPage from './pages/ProjectsPage';
+import ProjectsPage from './pages/ProjectsPage'; // Importado aqui
 import ServiceManager from './pages/ServiceManager';
 
 
@@ -55,6 +55,12 @@ function App() {
           } />
 
           {/* Ferramentas de Gestão */}
+          
+          {/* --- ROTA NOVA ADICIONADA AQUI --- */}
+          <Route path="/projects" element={
+            <PrivateRoute><Layout><ProjectsPage /></Layout></PrivateRoute>
+          } />
+
           <Route path="/tasks" element={
             <PrivateRoute><Layout><TaskManager /></Layout></PrivateRoute>
           } />
