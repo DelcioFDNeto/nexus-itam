@@ -1,85 +1,57 @@
 // src/App.jsx
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 
-// Contexto de Autenticação
-import { AuthProvider } from './contexts/AuthContext';
+// Componentes Fixos
+import Sidebar from './components/Sidebar';
 
-// Estrutura Base
-import Login from './pages/Login';
-import PrivateRoute from './components/PrivateRoute';
-import Layout from './components/Layout';
-
-// Páginas do Sistema
+// Páginas (Certifique-se que criou todos estes ficheiros)
 import Dashboard from './pages/Dashboard';
 import AssetList from './pages/AssetList';
 import AssetForm from './pages/AssetForm';
 import AssetDetail from './pages/AssetDetail';
-import ImportData from './pages/ImportData';
-import EmployeeManager from './pages/EmployeeManager';
 import AuditPage from './pages/AuditPage';
-import LicenseManager from './pages/LicenseManager';
-import TaskManager from './pages/TaskManager';
-import ServiceManager from './pages/ServiceManager'; // <--- Rota de Contratos
+import ProjectsPage from './pages/ProjectsPage'; // <--- Nova Página
+import TaskBoard from './pages/TaskBoard';       // Supondo que a sua página de tarefas se chama assim
+import EmployeeList from './pages/EmployeeList'; // Supondo que a sua página de equipa se chama assim
+import ImportPage from './pages/ImportPage';     // Página de importação Excel
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
+    <div className="flex bg-gray-50 min-h-screen font-sans text-gray-900">
+      
+      {/* Menu Lateral Fixo */}
+      <Sidebar />
+
+      {/* Área de Conteúdo Principal (Deslocada para a direita por causa do menu) */}
+      <main className="flex-1 ml-64 min-h-screen">
         <Routes>
+          {/* Dashboard */}
+          <Route path="/" element={<Dashboard />} />
+
+          {/* Ativos */}
+          <Route path="/assets" element={<AssetList />} />
+          <Route path="/assets/new" element={<AssetForm />} />
+          <Route path="/assets/edit/:id" element={<AssetForm />} />
+          <Route path="/assets/:id" element={<AssetDetail />} />
+          <Route path="/import" element={<ImportPage />} />
+
+          {/* Auditoria */}
+          <Route path="/audit" element={<AuditPage />} />
+
+          {/* Projetos & Tarefas */}
+          <Route path="/projects" element={<ProjectsPage />} /> {/* <--- Rota Nova */}
+          <Route path="/tasks" element={<TaskBoard />} />
+
+          {/* Pessoas */}
+          <Route path="/employees" element={<EmployeeList />} />
           
-          {/* Rota Pública (Login) */}
-          <Route path="/" element={<Login />} />
-
-          {/* --- ROTAS PROTEGIDAS --- */}
-          
-          {/* Dashboard Geral */}
-          <Route path="/dashboard" element={
-            <PrivateRoute><Layout><Dashboard /></Layout></PrivateRoute>
-          } />
-
-          {/* Gestão de Ativos (Hardware) */}
-          <Route path="/assets" element={
-            <PrivateRoute><Layout><AssetList /></Layout></PrivateRoute>
-          } />
-          <Route path="/assets/new" element={
-            <PrivateRoute><Layout><AssetForm /></Layout></PrivateRoute>
-          } />
-          <Route path="/assets/edit/:id" element={
-            <PrivateRoute><Layout><AssetForm /></Layout></PrivateRoute>
-          } />
-          <Route path="/assets/:id" element={
-            <PrivateRoute><Layout><AssetDetail /></Layout></PrivateRoute>
-          } />
-
-          {/* Ferramentas de Gestão */}
-          <Route path="/tasks" element={
-            <PrivateRoute><Layout><TaskManager /></Layout></PrivateRoute>
-          } />
-          
-          <Route path="/licenses" element={
-            <PrivateRoute><Layout><LicenseManager /></Layout></PrivateRoute>
-          } />
-
-          <Route path="/services" element={
-            <PrivateRoute><Layout><ServiceManager /></Layout></PrivateRoute>
-          } />
-
-          <Route path="/employees" element={
-            <PrivateRoute><Layout><EmployeeManager /></Layout></PrivateRoute>
-          } />
-
-          <Route path="/audit" element={
-            <PrivateRoute><Layout><AuditPage /></Layout></PrivateRoute>
-          } />
-
-          <Route path="/import" element={
-            <PrivateRoute><Layout><ImportData /></Layout></PrivateRoute>
-          } />
-
+          {/* Fallback para rota não encontrada */}
+          <Route path="*" element={<div className="p-10 text-center text-gray-500">Página não encontrada (404)</div>} />
         </Routes>
-      </Router>
-    </AuthProvider>
+      </main>
+      
+    </div>
   );
 }
 
