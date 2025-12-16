@@ -33,10 +33,19 @@ const AssetDetail = () => {
   const [newLinkName, setNewLinkName] = useState('');
   const [isAddingLink, setIsAddingLink] = useState(false);
 
+  // --- CONFIGURAÇÃO DE IMPRESSÃO ---
   const termRef = useRef(null);
-  const handlePrintTerm = useReactToPrint({ contentRef: termRef, documentTitle: `Termo_${id}` });
   const labelRef = useRef(null);
-  const handlePrintLabel = useReactToPrint({ contentRef: labelRef, documentTitle: `Etiqueta_${id}` });
+
+  const handlePrintTerm = useReactToPrint({ 
+      contentRef: termRef, 
+      documentTitle: `Termo_${id}` 
+  });
+  
+  const handlePrintLabel = useReactToPrint({ 
+      contentRef: labelRef, 
+      documentTitle: `Etiqueta_${id}` 
+  });
 
   const fetchHistory = async () => {
     try {
@@ -56,6 +65,9 @@ const AssetDetail = () => {
             if (loading) setNotes(data.notes || '');
             fetchHistory();
         } else { navigate('/assets'); }
+        setLoading(false);
+    }, (error) => {
+        console.error("Erro no realtime:", error);
         setLoading(false);
     });
     return () => unsubscribe();
@@ -127,8 +139,101 @@ const AssetDetail = () => {
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24">
-      {/* IMPRESSÃO OCULTA MANTIDA (Código omitido para brevidade, mas é o mesmo do anterior) */}
-      <div style={{ display: 'none' }}><div ref={termRef} className="print-term">...</div><div ref={labelRef} className="print-label">...</div></div>
+      
+      {/* --- ÁREA OCULTA DE IMPRESSÃO (RESTAURADA) --- */}
+      <div style={{ display: 'none' }}>
+        
+        {/* MODELO DO TERMO */}
+        <div ref={termRef} className="print-term p-10 max-w-4xl mx-auto text-black bg-white font-sans relative">
+            <div className="absolute top-8 right-8 flex flex-col items-center">
+                <QRCodeSVG value={asset.internalId} size={70} level="H" />
+                <span className="text-[10px] font-mono font-bold mt-1">{asset.internalId}</span>
+            </div>
+            <div className="flex items-center justify-between border-b-2 border-black pb-4 mb-6 pr-24">
+                <img src={logoShineray} alt="Shineray" className="h-12 object-contain" />
+                <div className="text-right">
+                    <p className="text-xs font-bold text-gray-800 uppercase tracking-widest">TI & Infraestrutura</p>
+                    <p className="text-[10px] text-gray-500 uppercase">Termo de Entrega</p>
+                </div>
+            </div>
+            
+            <h2 className="text-lg font-black text-center mb-8 uppercase decoration-2 underline underline-offset-4 decoration-red-600">
+                Termo de Responsabilidade
+            </h2>
+            
+            <div className="text-justify space-y-4 text-xs leading-relaxed text-gray-800">
+                <p>Eu, <strong className="uppercase text-sm">{responsibleName || "_______________________"}</strong>, declaro ter recebido da <strong>SHINERAY BY SABEL</strong> o equipamento descrito abaixo, em perfeito estado de funcionamento e conservação:</p>
+                
+                <div className="my-6 border border-gray-800 p-4 bg-gray-50">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div><span className="block text-[9px] font-bold text-gray-500 uppercase">Tipo/Modelo</span><span className="font-bold text-sm">{asset.type} - {asset.model}</span></div>
+                        <div><span className="block text-[9px] font-bold text-gray-500 uppercase">Patrimônio</span><span className="font-bold text-sm bg-yellow-100 px-1">{asset.internalId}</span></div>
+                        
+                        {asset.imei1 ? (
+                            <div className="col-span-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">IMEI / Serial</span><span className="font-mono text-sm">{asset.imei1} {asset.serialNumber ? `/ ${asset.serialNumber}` : ''}</span></div>
+                        ) : (
+                            <div className="col-span-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">Serial</span><span className="font-mono text-sm">{asset.serialNumber || "N/A"}</span></div>
+                        )}
+                        
+                        {/* Se tiver acessórios ou notes */}
+                        {(asset.notes || asset.specs) && (
+                            <div className="col-span-2 pt-2 border-t border-gray-200 mt-2">
+                                <span className="block text-[9px] font-bold text-gray-500 uppercase">Observações / Acessórios</span>
+                                <span className="text-xs">{asset.notes || "Carregador original incluso."}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="space-y-2 border-l-4 border-gray-300 pl-4">
+                    <p><strong>1. RESPONSABILIDADE:</strong> Comprometo-me a zelar pela guarda e conservação do equipamento, comunicando imediatamente ao departamento de TI qualquer defeito ou irregularidade.</p>
+                    <p><strong>2. USO:</strong> O equipamento destina-se exclusivamente ao desempenho das atividades profissionais.</p>
+                    <p><strong>3. DEVOLUÇÃO:</strong> Comprometo-me a devolver o equipamento nas mesmas condições em que o recebi (salvo desgaste natural) em caso de rescisão contratual, férias, licença ou quando solicitado.</p>
+                </div>
+            </div>
+
+            <div className="mt-16 space-y-10">
+                <p className="text-right italic text-xs">Belém (PA), {new Date().toLocaleDateString('pt-BR')}.</p>
+                <div className="grid grid-cols-2 gap-12 items-end">
+                    <div className="text-center relative">
+                        <div className="absolute -top-8 left-0 right-0 flex justify-center">
+                            <span style={{ fontFamily: "'Brush Script MT', cursive" }} className="text-3xl text-blue-900 rotate-[-5deg] opacity-90">Délcio Farias</span>
+                        </div>
+                        <div className="border-t border-black w-full mb-1"></div>
+                        <p className="font-bold uppercase text-[10px]">Shineray By Sabel</p>
+                        <p className="text-[9px] text-gray-500">Departamento de TI</p>
+                    </div>
+                    <div className="text-center">
+                        <div className="border-t border-black w-full mb-1"></div>
+                        <p className="font-bold uppercase text-[10px]">{responsibleName}</p>
+                        <p className="text-[9px] text-gray-500">Colaborador / Portador</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {/* MODELO DA ETIQUETA */}
+        <div ref={labelRef} className="print-label" style={{ width: '10cm', height: '5cm', padding: '10px', border: '2px solid black', borderRadius: '8px', display: 'flex', flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', gap: '15px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
+            <div style={{ width: '110px', height: '110px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <QRCodeSVG value={asset.internalId} size={110} level="M" />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between' }}>
+                <div style={{ height: '50px', display: 'flex', alignItems: 'center' }}>
+                    <img src={logoShineray} alt="Shineray" style={{ height: '100%', maxHeight: '45px', width: 'auto', objectFit: 'contain', display: 'block' }} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '10px', textTransform: 'uppercase', color: '#666', fontWeight: 'bold' }}>Patrimônio</span>
+                    <span style={{ fontSize: '28px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1', letterSpacing: '-1px' }}>{asset.internalId}</span>
+                    <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>{asset.model}</span>
+                </div>
+                <div style={{ borderTop: '2px solid #000', paddingTop: '4px', marginTop: 'auto' }}>
+                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#000' }}>Suporte TI:</p>
+                    <p style={{ margin: 0, fontSize: '12px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</p>
+                </div>
+            </div>
+        </div>
+
+      </div>
 
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
         <button onClick={() => navigate('/assets')} className="flex items-center gap-2 text-gray-500 hover:text-shineray font-bold uppercase tracking-wide text-sm self-start md:self-auto"><ArrowLeft size={18} /> Voltar</button>
@@ -144,8 +249,8 @@ const AssetDetail = () => {
                     <button onClick={() => setIsMoveModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg shadow-md font-bold uppercase text-sm"><ArrowRightLeft size={16} /> Transferir</button>
                 </>
             )}
-            <button onClick={handlePrintLabel} className="p-2 text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-300"><QrCode size={18} /></button>
-            <button onClick={handlePrintTerm} className="p-2 text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-300"><Printer size={18} /></button>
+            <button onClick={handlePrintLabel} className="p-2 text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-300" title="Imprimir Etiqueta"><QrCode size={18} /></button>
+            <button onClick={handlePrintTerm} className="p-2 text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-300" title="Imprimir Termo"><Printer size={18} /></button>
             <button onClick={() => navigate(`/assets/edit/${asset.id}`)} className="p-2 text-shineray bg-red-50 hover:bg-red-100 rounded-lg border border-red-100"><Edit size={18} /></button>
             <button onClick={handleDelete} disabled={isDeleting} className="p-2 text-red-500 hover:bg-red-50 rounded-lg border border-red-200 ml-2"><Trash2 size={18} /></button>
         </div>
