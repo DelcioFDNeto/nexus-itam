@@ -14,7 +14,7 @@ const AssetForm = () => {
   const [formData, setFormData] = useState({
     model: '',
     internalId: '',
-    type: 'Computador', // Valor padrão
+    type: 'Computador',
     category: 'Corporativo',
     status: 'Em Uso',
     location: 'Matriz - Belém',
@@ -29,7 +29,7 @@ const AssetForm = () => {
     imei2: '', 
     valor: '',
     notes: '', 
-    // Adicionamos pageCount aqui nas specs
+    // Specs dinâmicas
     specs: { ip: '', ram: '', storage: '', pageCount: '' }
   });
 
@@ -60,7 +60,6 @@ const AssetForm = () => {
                         imei2: data.imei2 || '', 
                         valor: data.valor || '',
                         notes: data.notes || '', 
-                        // Garante que pageCount exista
                         specs: { 
                             ip: data.specs?.ip || '', 
                             ram: data.specs?.ram || '', 
@@ -85,7 +84,6 @@ const AssetForm = () => {
     }
   };
 
-  // ... (Mantenha handleEmployeeSelect e handleSubmit iguais ao anterior) ...
   const handleEmployeeSelect = (e) => {
     const selectedName = e.target.value;
     if (!selectedName) { setFormData(prev => ({ ...prev, assignedTo: '', clientCpf: '', sector: '', employeeId: '' })); return; }
@@ -117,8 +115,6 @@ const AssetForm = () => {
   };
 
   const isPromotional = formData.category === 'Promocional';
-  
-  // --- VARIÁVEIS DE CONTROLE DE EXIBIÇÃO ---
   const isMobile = formData.type === 'Celular' || formData.type === 'PGT';
   const isPrinter = formData.type === 'Impressora';
   const isPC = formData.type === 'Computador' || formData.type === 'Notebook' || formData.type === 'Servidor';
@@ -136,7 +132,7 @@ const AssetForm = () => {
 
         <form onSubmit={handleSubmit} className="space-y-8 bg-white p-8 rounded-2xl shadow-sm border border-gray-200">
             
-            {/* Bloco 1: Identificação (Igual) */}
+            {/* Bloco 1: Identificação */}
             <div>
                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b pb-2">Identificação</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -152,7 +148,7 @@ const AssetForm = () => {
                 </div>
             </div>
 
-            {/* Bloco 2: Responsável (Igual) */}
+            {/* Bloco 2: Responsabilidade & Local */}
             <div>
                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b pb-2">Responsabilidade & Local</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -163,17 +159,56 @@ const AssetForm = () => {
                     </div>
                     {isPromotional && (<div className="md:col-span-2 bg-pink-50 p-4 rounded-lg border border-pink-100"><label className="block text-sm font-bold text-pink-700 mb-1">Vendedor Vinculado</label><input name="vendedor" value={formData.vendedor} onChange={handleChange} placeholder="Nome do Vendedor..." className="w-full p-2 border border-pink-200 rounded focus:ring-2 focus:ring-pink-500 outline-none"/></div>)}
                     <div><label className="block text-sm font-bold text-gray-700 mb-1">{isPromotional ? "Campanha" : "Setor"}</label><input name="sector" value={formData.sector} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded bg-gray-50" placeholder="Automático ou Digite" /></div>
-                    <div><label className="block text-sm font-bold text-gray-700 mb-1">Localização Física</label><select name="location" value={formData.location} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none bg-white"><optgroup label="Pará"><option value="Matriz - Belém">Matriz - Belém</option><option value="Fábrica / CD - Ananindeua">Fábrica / CD</option><option value="Filial Ananindeua">Filial Ananindeua</option><option value="Filial Castanhal">Filial Castanhal</option></optgroup><optgroup label="Outros"><option value="Home Office">Home Office</option></optgroup></select></div>
+                    
+                    {/* LISTA COMPLETA DE LOCAIS RESTAURADA AQUI */}
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-1">Localização Física</label>
+                        <select name="location" value={formData.location} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none bg-white">
+                            <optgroup label="Pará - Região Metropolitana">
+                                <option value="Matriz - Belém">Matriz - Belém</option>
+                                <option value="Fábrica / CD - Ananindeua">Fábrica / CD - Ananindeua</option>
+                                <option value="Filial Ananindeua">Filial Ananindeua</option>
+                                <option value="Filial Castanhal">Filial Castanhal</option>
+                                <option value="Icoaraci">Icoaraci</option>
+                                <option value="Barcarena">Barcarena</option>
+                            </optgroup>
+                            <optgroup label="Pará - Interior">
+                                <option value="Acará">Acará</option>
+                                <option value="Bragança">Bragança</option>
+                                <option value="Breves">Breves</option>
+                                <option value="Capanema">Capanema</option>
+                                <option value="Capitão Poço">Capitão Poço</option>
+                                <option value="Concórdia">Concórdia</option>
+                                <option value="Curuçá">Curuçá</option>
+                                <option value="Moju">Moju</option>
+                                <option value="Igarapé Mirim">Igarapé Mirim</option>
+                                <option value="São Miguel">São Miguel</option>
+                                <option value="Soure">Soure</option>
+                                <option value="Tailândia">Tailândia</option>
+                                <option value="Tomé-Açu">Tomé-Açu</option>
+                            </optgroup>
+                            <optgroup label="Ceará">
+                                <option value="Aldeota (CE)">Aldeota (CE)</option>
+                                <option value="Demócrito Rocha (CE)">Demócrito Rocha (CE)</option>
+                                <option value="Fortaleza (CE)">Fortaleza (CE)</option>
+                                <option value="Parangaba (CE)">Parangaba (CE)</option>
+
+                            </optgroup>
+                            <optgroup label="Outros">
+                                <option value="Home Office">Home Office</option>
+                                <option value="Em Trânsito">Em Trânsito</option>
+                            </optgroup>
+                        </select>
+                    </div>
+
                     <div><label className="block text-sm font-bold text-gray-700 mb-1">Status Atual</label><select name="status" value={formData.status} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none bg-white"><option>Em Uso</option><option>Disponível</option><option>Manutenção</option><option>Entregue</option><option>Defeito</option></select></div>
                 </div>
             </div>
 
-            {/* --- BLOCO 3: ESPECIFICAÇÕES TÉCNICAS (DINÂMICO) --- */}
+            {/* Bloco 3: Especificações Técnicas (Dinâmico) */}
             <div>
                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b pb-2">Especificações Técnicas</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    
-                    {/* Campos Comuns */}
                     <div><label className="block text-sm font-bold text-gray-700 mb-1">Serial Number</label><input name="serialNumber" value={formData.serialNumber} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none" /></div>
                     
                     {/* Campos Exclusivos CELULAR / PGT */}
@@ -208,7 +243,7 @@ const AssetForm = () => {
                 </div>
             </div>
 
-            {/* Bloco 4: Observações (Igual) */}
+            {/* Bloco 4: Observações */}
             <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">Observações</label>
                 <textarea name="notes" value={formData.notes} onChange={handleChange} rows="3" className="w-full p-2 border border-gray-300 rounded outline-none focus:ring-2 focus:ring-black" placeholder="Detalhes adicionais..." />
