@@ -6,10 +6,10 @@ import { db } from '../services/firebase';
 import { collection, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import { 
   UploadCloud, FileSpreadsheet, FileJson, AlertTriangle, Check, ArrowLeft, Save, 
-  Users, Server, Layers, FolderGit2, Download, Code, Database
+  Users, Server, Layers, FolderGit2, Download, Database, CheckCircle
 } from 'lucide-react';
 
-// --- SCHEMAS PARA IMPORTAÇÃO SIMPLES (EXCEL) ---
+// --- CONFIGURAÇÃO PADRÃO (EXCEL/CSV) ---
 const IMPORT_SCHEMAS = {
   assets: {
     label: 'Ativos (Hardware)',
@@ -73,21 +73,21 @@ const IMPORT_SCHEMAS = {
   }
 };
 
-// --- TRADUTORES INTELIGENTES (PT-BR / EN / MAPPING) ---
+// --- TRADUTORES INTELIGENTES ---
 const normalizeStatus = (status) => {
     if (!status) return 'Planejamento';
     const s = status.toLowerCase();
     
-    // Mapeamento Projetos
+    // Projetos
     if (s.includes('desenvolvimento') || s.includes('andamento') || s.includes('development') || s.includes('progress')) return 'Em Andamento';
     if (s.includes('concluído') || s.includes('concluido') || s.includes('completed') || s.includes('done') || s.includes('stable')) return 'Concluído';
-    if (s.includes('pausado') || s.includes('bloqueado') || s.includes('blocked')) return 'Pausado'; // Para projetos
+    if (s.includes('pausado') || s.includes('bloqueado') || s.includes('blocked')) return 'Pausado';
     
-    // Mapeamento Tarefas
+    // Tarefas
     if (s.includes('a fazer') || s.includes('todo') || s.includes('waiting')) return 'A Fazer';
-    if (s.includes('revisão') || s.includes('review') || s.includes('bloqueado')) return 'Revisão'; // Bloqueado em tarefa vira Revisão
+    if (s.includes('revisão') || s.includes('review')) return 'Revisão';
 
-    return 'Planejamento';
+    return 'Planejamento'; // Default seguro
 };
 
 const normalizePriority = (p) => {
@@ -115,7 +115,10 @@ const ImportData = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  
+  // Notificação Visual (Toast)
+  const [notification, setNotification] = useState(null); 
+  
   const [isMixedMode, setIsMixedMode] = useState(false);
 
   const currentSchema = IMPORT_SCHEMAS[selectedType];
@@ -129,20 +132,29 @@ const ImportData = () => {
     XLSX.writeFile(wb, `Modelo_${selectedType}.xlsx`);
   };
 
-  // --- PROCESSADOR DE JSON COMPLEXO (MIGRATION) ---
+  // --- PROCESSAMENTO JSON MISTO (MIGRATION) ---
   const processComplexJson = (json) => {
     const mixedData = [];
     const meta = json.meta || json.system_metadata || {}; 
 
-    // 1. PROJETOS (Aceita chaves em PT ou EN)
+    // 1. PROJETOS
     const rawProjects = json.projetos || json.projects || [];
     if (Array.isArray(rawProjects)) {
         rawProjects.forEach(p => {
-            // Normaliza arrays de strings (ex: lideres: ["A", "B"]) para string única
             const leaderStr = Array.isArray(p.lideres) ? p.lideres.join(', ') : (p.lideres || p.leader || meta.responsavel_importacao || '');
             
-            // Combina entregas e artefatos para o changelog
-            const changes = [...(p.entregas || []), ...(p.artefatos || []), ...(p.changelog || [])];
+            // Juntar todos os logs possíveis
+            const rawChanges = [...(p.entregas || []), ...(p.artefatos || []), ...(p.changelog || [])];
+            
+            // --- CORREÇÃO IMPORTANTE (EVITA TELA BRANCA) ---
+            // Garante que o changelog seja um array de STRINGS, não objetos.
+            const safeChangelog = rawChanges.map(item => {
+                if (typeof item === 'object') {
+                    // Se for objeto, tenta transformar em texto legível
+                    return item.version ? `v${item.version}: ${item.notes || ''}` : JSON.stringify(item);
+                }
+                return String(item);
+            });
 
             mixedData.push({
                 _collection: 'projects',
@@ -153,7 +165,7 @@ const ImportData = () => {
                 leader: leaderStr,
                 version: p.versao_atual || p.versao || p.version || '1.0',
                 deadline: p.data_conclusao || p.completion_date || '',
-                changelog: changes, // Salva o array de histórico
+                changelog: safeChangelog, // Array seguro de strings
                 progress: (p.status?.toLowerCase().includes('conclu') || p.status === 'Completed') ? 100 : 50,
                 createdAt: p.data_inicio ? new Date(p.data_inicio) : serverTimestamp()
             });
@@ -164,20 +176,17 @@ const ImportData = () => {
     const rawTasks = json.tarefas_recentes || json.recent_tasks || [];
     if (Array.isArray(rawTasks)) {
         rawTasks.forEach(t => {
-            // Se tiver ativo relacionado, adiciona na descrição
             let fullDesc = t.descricao || t.description || '';
-            if (t.ativo_relacionado || t.asset_id) {
-                fullDesc += `\n\n[Ativo Relacionado: ${t.ativo_relacionado || t.asset_id}]`;
-            }
+            if (t.ativo_relacionado || t.asset_id) fullDesc += `\n\n[Ativo: ${t.ativo_relacionado || t.asset_id}]`;
 
             mixedData.push({
                 _collection: 'tasks',
                 title: t.titulo || t.title || 'Tarefa',
                 description: fullDesc,
-                status: normalizeStatus(t.status), // "Bloqueado" vira "Revisão"
-                priority: 'Média', // JSON não tem prioridade na tarefa, assume média
+                status: normalizeStatus(t.status),
+                priority: 'Média',
                 category: normalizeCategory(t.tipo || t.category),
-                projectId: '', // Sem vínculo direto por enquanto
+                projectId: '',
                 createdAt: t.data_registro ? new Date(t.data_registro) : serverTimestamp()
             });
         });
@@ -186,7 +195,7 @@ const ImportData = () => {
     if (mixedData.length > 0) {
         setIsMixedMode(true);
         setData(mixedData);
-        setSuccess(`Arquivo de Migração Detectado! ${mixedData.length} registros encontrados.`);
+        setNotification({ type: 'info', message: `Migração detectada: ${mixedData.length} itens (Projetos/Tarefas).` });
     } else {
         setError("JSON não contém dados de 'projetos' ou 'tarefas_recentes'.");
     }
@@ -197,7 +206,7 @@ const ImportData = () => {
     if (!file) return;
 
     setError('');
-    setSuccess('');
+    setNotification(null);
     setData([]);
 
     const reader = new FileReader();
@@ -206,11 +215,10 @@ const ImportData = () => {
       reader.onload = (evt) => {
         try {
           const json = JSON.parse(evt.target.result);
-          // Detecta se é o formato de migração (tem chaves específicas)
+          // Detecção de formato
           if (!Array.isArray(json) && (json.projetos || json.projects || json.tarefas_recentes || json.meta)) {
               processComplexJson(json);
           } else if (Array.isArray(json)) {
-              // Array simples: trata como importação do tipo selecionado
               setIsMixedMode(false);
               const formattedData = json.map(row => currentSchema.transform(row));
               setData(formattedData);
@@ -222,9 +230,8 @@ const ImportData = () => {
         }
       };
       reader.readAsText(file);
-    } 
-    else {
-      // EXCEL (Mantido)
+    } else {
+      // EXCEL
       reader.onload = (evt) => {
         try {
           const bstr = evt.target.result;
@@ -232,15 +239,11 @@ const ImportData = () => {
           const wsname = wb.SheetNames[0];
           const ws = wb.Sheets[wsname];
           const rawData = XLSX.utils.sheet_to_json(ws);
-          
           if (rawData.length === 0) throw new Error("Vazio");
-          
           setIsMixedMode(false);
           const formattedData = rawData.map(row => currentSchema.transform(row));
           setData(formattedData);
-        } catch (err) {
-          setError("Erro ao ler Excel.");
-        }
+        } catch (err) { setError("Erro ao ler Excel."); }
       };
       reader.readAsBinaryString(file);
     }
@@ -254,17 +257,21 @@ const ImportData = () => {
       
       data.forEach(item => {
         const targetCollection = isMixedMode ? item._collection : currentSchema.collection;
-        // Remove a chave auxiliar antes de salvar
         const { _collection, ...itemToSave } = item;
-        
         const docRef = doc(collection(db, targetCollection)); 
         batch.set(docRef, itemToSave);
       });
 
       await batch.commit();
       
-      setSuccess("Importação concluída com sucesso!");
-      setTimeout(() => { setSuccess(''); setData([]); setIsMixedMode(false); }, 2500);
+      setNotification({ type: 'success', message: `${data.length} registros importados com sucesso!` });
+      
+      setTimeout(() => { 
+          setNotification(null); 
+          setData([]); 
+          setIsMixedMode(false); 
+      }, 4000);
+
     } catch (err) {
       console.error(err);
       setError("Erro ao gravar no banco de dados.");
@@ -274,79 +281,68 @@ const ImportData = () => {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 relative">
       
+      {/* --- TOAST NOTIFICATION --- */}
+      {notification && (
+          <div className={`fixed bottom-8 right-8 z-50 animate-in slide-in-from-right duration-300 flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl border-2 ${
+              notification.type === 'success' 
+              ? 'bg-green-600 border-green-400 text-white' 
+              : 'bg-blue-600 border-blue-400 text-white'
+          }`}>
+              {notification.type === 'success' ? <CheckCircle size={32} className="animate-bounce" /> : <Database size={32} />}
+              <div>
+                  <h4 className="font-black text-lg">{notification.type === 'success' ? 'Sucesso!' : 'Informação'}</h4>
+                  <p className="font-medium text-white/90">{notification.message}</p>
+              </div>
+          </div>
+      )}
+
+      {/* HEADER */}
       <div className="flex items-center gap-4 mb-8">
-        <button onClick={() => navigate('/')} className="p-2 bg-white rounded-full hover:bg-gray-100 shadow-sm border border-gray-200">
-            <ArrowLeft size={20} />
-        </button>
+        <button onClick={() => navigate('/')} className="p-2 bg-white rounded-full hover:bg-gray-100 shadow-sm border border-gray-200"><ArrowLeft size={20} /></button>
         <div>
-            <h1 className="text-xl md:text-2xl font-black text-gray-900 flex items-center gap-2">
-                <UploadCloud className="text-shineray" /> Importação de Dados
-            </h1>
-            <p className="text-sm text-gray-500">Suporta Excel, JSON Simples e JSON de Migração</p>
+            <h1 className="text-xl md:text-2xl font-black text-gray-900 flex items-center gap-2"><UploadCloud className="text-shineray" /> Importação de Dados</h1>
+            <p className="text-sm text-gray-500">Excel (.xlsx) ou Backup do Sistema (.json)</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
           {/* MENU LATERAL */}
           <div className={`lg:col-span-1 space-y-3 ${isMixedMode ? 'opacity-50 pointer-events-none' : ''}`}>
               <h3 className="font-bold text-gray-400 text-xs uppercase">Importação Manual</h3>
               {Object.entries(IMPORT_SCHEMAS).map(([key, schema]) => (
-                  <button
-                    key={key}
-                    onClick={() => { setSelectedType(key); setData([]); setError(''); }}
-                    className={`w-full p-4 rounded-xl border flex items-center gap-3 transition-all text-left ${
-                        selectedType === key 
-                        ? 'border-black bg-black text-white shadow-lg scale-105' 
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400'
-                    }`}
-                  >
-                      {schema.icon}
-                      <span className="font-bold text-sm">{schema.label}</span>
+                  <button key={key} onClick={() => { setSelectedType(key); setData([]); setError(''); }} className={`w-full p-4 rounded-xl border flex items-center gap-3 transition-all text-left ${selectedType === key ? 'border-black bg-black text-white shadow-lg' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400'}`}>
+                      {schema.icon} <span className="font-bold text-sm">{schema.label}</span>
                   </button>
               ))}
-              <button onClick={handleDownloadTemplate} className="w-full py-2 mt-4 text-xs font-bold text-blue-600 flex items-center justify-center gap-2 border border-dashed border-blue-300 rounded-lg hover:bg-blue-50">
-                  <Download size={14}/> Template Excel
-              </button>
+              <button onClick={handleDownloadTemplate} className="w-full py-2 mt-4 text-xs font-bold text-blue-600 flex items-center justify-center gap-2 border border-dashed border-blue-300 rounded-lg hover:bg-blue-50"><Download size={14}/> Template Excel</button>
           </div>
 
-          {/* ÁREA DE UPLOAD */}
+          {/* UPLOAD AREA */}
           <div className="lg:col-span-2">
-              <h3 className="font-bold text-gray-400 text-xs uppercase mb-3">Arquivo</h3>
-              
+              <h3 className="font-bold text-gray-400 text-xs uppercase mb-3">Upload</h3>
               <div className="bg-white border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:bg-gray-50 transition-colors relative flex flex-col items-center justify-center min-h-[200px]">
-                    <input 
-                        type="file" 
-                        accept=".xlsx, .xls, .csv, .json" 
-                        onChange={handleFileUpload} 
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
+                    <input type="file" accept=".xlsx, .xls, .csv, .json" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/>
                     <div className="pointer-events-none space-y-2">
                         <div className="flex justify-center gap-2 text-gray-300">
                            {isMixedMode ? <Database size={40} className="text-blue-500 animate-bounce"/> : <FileSpreadsheet size={40} />}
                            <FileJson size={40} />
                         </div>
-                        <p className="font-bold text-gray-600">Arraste seu arquivo aqui</p>
-                        <p className="text-xs text-gray-400">
-                            {isMixedMode 
-                             ? <span className="text-blue-600 font-bold bg-blue-50 px-2 py-1 rounded">MIGRAÇÃO DETECTADA</span> 
-                             : <>Destino: <span className="font-bold text-black uppercase">{currentSchema.collection}</span></>}
-                        </p>
+                        <p className="font-bold text-gray-600">Arraste Excel ou JSON aqui</p>
+                        <p className="text-xs text-gray-400">{isMixedMode ? <span className="text-blue-600 font-bold bg-blue-50 px-2 py-1 rounded">MIGRAÇÃO DETECTADA</span> : <>Destino: <span className="font-bold text-black uppercase">{currentSchema.collection}</span></>}</p>
                     </div>
               </div>
 
-              {error && <div className="mt-4 p-4 bg-red-50 text-red-600 rounded-xl text-sm flex items-center gap-2 animate-in slide-in-from-top-2"><AlertTriangle size={18}/> {error}</div>}
-              {success && <div className="mt-4 p-4 bg-green-50 text-green-700 rounded-xl text-sm flex items-center gap-2 animate-in slide-in-from-top-2 border border-green-200"><Check size={18}/> {success}</div>}
-
-              {/* PREVIEW DA TABELA */}
+              {error && <div className="mt-4 p-4 bg-red-50 text-red-600 rounded-xl text-sm flex items-center gap-2"><AlertTriangle size={18}/> {error}</div>}
+              
+              {/* PREVIEW TABLE */}
               {data.length > 0 && (
                   <div className="mt-6 animate-in slide-in-from-bottom-2">
                       <div className="flex justify-between items-center mb-3">
                           <h3 className="font-bold text-gray-700 text-sm">Preview ({data.length})</h3>
                           <button onClick={handleImport} disabled={loading} className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-green-700 shadow-md flex items-center gap-2">
-                              {loading ? 'Processando...' : <><Save size={16}/> Confirmar Importação</>}
+                              {loading ? 'Salvando...' : <><Save size={16}/> Confirmar Importação</>}
                           </button>
                       </div>
                       <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto max-h-[350px] custom-scrollbar">
@@ -354,24 +350,15 @@ const ImportData = () => {
                               <thead className="bg-gray-50 text-gray-500 font-bold uppercase sticky top-0">
                                   <tr>
                                       {isMixedMode && <th className="p-3 bg-blue-50 text-blue-800 border-b border-blue-100">Tipo</th>}
-                                      {/* Mostra as primeiras 4 chaves dinamicamente */}
-                                      {Object.keys(data[0]).filter(k => k !== '_collection' && k !== 'changelog').slice(0, 4).map(k => (
-                                          <th key={k} className="p-3 border-b border-gray-200">{k}</th>
-                                      ))}
+                                      {Object.keys(data[0]).filter(k => k !== '_collection' && k !== 'changelog').slice(0, 4).map(k => <th key={k} className="p-3 border-b border-gray-200">{k}</th>)}
                                   </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-100 font-mono text-gray-600">
                                   {data.map((row, idx) => (
                                       <tr key={idx} className="hover:bg-gray-50">
-                                          {isMixedMode && (
-                                              <td className="p-3 font-bold text-blue-600 border-r border-blue-50">
-                                                  {row._collection === 'projects' ? 'PROJETO' : 'TAREFA'}
-                                              </td>
-                                          )}
+                                          {isMixedMode && <td className="p-3 font-bold text-blue-600 border-r border-blue-50">{row._collection === 'projects' ? 'PROJETO' : 'TAREFA'}</td>}
                                           {Object.entries(row).filter(([k]) => k !== '_collection' && k !== 'changelog').slice(0, 4).map(([k, v], i) => (
-                                              <td key={i} className="p-3 whitespace-nowrap">
-                                                  {typeof v === 'object' ? '[Detalhes...]' : String(v).substring(0, 35)}
-                                              </td>
+                                              <td key={i} className="p-3 whitespace-nowrap">{typeof v === 'object' ? '...' : String(v).substring(0, 35)}</td>
                                           ))}
                                       </tr>
                                   ))}

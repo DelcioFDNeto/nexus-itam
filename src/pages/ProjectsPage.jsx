@@ -1,6 +1,5 @@
 // src/pages/ProjectsPage.jsx
 import React, { useState, useEffect } from 'react';
-// Certifique-se de ter importado updateProject aqui
 import { getProjects, createProject, deleteProject, updateProject } from '../services/projectService';
 import { 
   FolderGit2, Plus, Calendar, Trash2, ArrowRight, 
@@ -18,7 +17,7 @@ const ProjectsPage = () => {
 
   // Controle do Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null); // Null = Criando, ID = Editando
+  const [editingId, setEditingId] = useState(null); 
 
   // Form State
   const initialFormState = {
@@ -29,14 +28,19 @@ const ProjectsPage = () => {
 
   const loadProjects = async () => {
     setLoading(true);
-    const data = await getProjects();
-    setProjects(data);
-    setLoading(false);
+    try {
+        const data = await getProjects();
+        setProjects(data);
+    } catch (error) {
+        console.error("Erro ao carregar projetos:", error);
+    } finally {
+        setLoading(false);
+    }
   };
 
   useEffect(() => { loadProjects(); }, []);
 
-  // --- SELEÇÃO MÚLTIPLA ---
+  // --- SELEÇÃO ---
   const toggleSelect = (id) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
@@ -45,16 +49,13 @@ const ProjectsPage = () => {
     setSelectedIds(selectedIds.length === projects.length ? [] : projects.map(p => p.id));
   };
 
-  // --- CRUD LÓGICA ---
-
-  // Abrir Modal para CRIAR
+  // --- CRUD ---
   const openNewProject = () => {
       setEditingId(null);
       setFormData(initialFormState);
       setIsModalOpen(true);
   };
 
-  // Abrir Modal para EDITAR/INSPECIONAR
   const openEditProject = (project) => {
       setEditingId(project.id);
       setFormData({
@@ -65,12 +66,11 @@ const ProjectsPage = () => {
           leader: project.leader || '',
           deadline: project.deadline || '',
           version: project.version || '1.0',
-          newLog: '' // Campo limpo para adicionar novo histórico
+          newLog: '' 
       });
       setIsModalOpen(true);
   };
 
-  // SALVAR (Serve para Criar e Editar)
   const handleSave = async (e) => {
     e.preventDefault();
     if (!formData.name) return;
@@ -78,13 +78,12 @@ const ProjectsPage = () => {
     setLoading(true);
 
     if (editingId) {
-        // --- MODO EDIÇÃO ---
         const projectToUpdate = projects.find(p => p.id === editingId);
         
-        // Se o usuário digitou algo no "O que mudou", adiciona ao changelog existente
         let updatedChangelog = projectToUpdate.changelog || [];
         if (formData.newLog.trim()) {
             const timestamp = new Date().toLocaleDateString('pt-BR');
+            // Salvamos como string simples para evitar erros futuros
             const entry = `v${formData.version}: ${formData.newLog} (${timestamp})`;
             updatedChangelog = [...updatedChangelog, entry];
         }
@@ -98,23 +97,19 @@ const ProjectsPage = () => {
             deadline: formData.deadline,
             version: formData.version,
             changelog: updatedChangelog,
-            // Recalcula progresso se mudou status
             progress: formData.status === 'Concluído' ? 100 : (formData.status === 'Em Andamento' ? 50 : projectToUpdate.progress)
         };
 
         await updateProject(editingId, dataToUpdate);
 
     } else {
-        // --- MODO CRIAÇÃO ---
         const enrichedData = {
             ...formData,
             coverImage: `https://ui-avatars.com/api/?name=${formData.name}&background=random&size=128`, 
             changelog: [`v${formData.version}: Projeto criado.`],
             progress: 0
         };
-        // Remove o campo temporário newLog antes de salvar
         delete enrichedData.newLog;
-        
         await createProject(enrichedData);
     }
 
@@ -141,7 +136,18 @@ const ProjectsPage = () => {
     }
   };
 
-  // Helpers Visuais
+  // --- RENDERIZAÇÃO SEGURA DO LOG (CORREÇÃO DO ERRO #31) ---
+  const renderLogItem = (log) => {
+    if (typeof log === 'string') return log;
+    if (typeof log === 'object' && log !== null) {
+        // Tenta extrair campos comuns ou converte para texto
+        const v = log.version || log.versao || '';
+        const n = log.notes || log.notas || log.descricao || JSON.stringify(log);
+        return v ? `v${v}: ${n}` : n;
+    }
+    return String(log);
+  };
+
   const getStatusColor = (s) => {
     switch(s) {
       case 'Em Andamento': return 'bg-blue-100 text-blue-700 border-blue-200';
@@ -236,15 +242,12 @@ const ProjectsPage = () => {
                 
                 {/* Checkbox Overlay */}
                 <div className="absolute top-4 right-4 z-10 flex gap-2">
-                     {/* Botão de Edição Rápida */}
                     <button 
                         onClick={(e) => { e.stopPropagation(); openEditProject(project); }}
                         className="p-1 rounded-lg bg-white/90 text-gray-400 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 backdrop-blur-sm"
-                        title="Inspecionar e Editar"
                     >
                         <Edit size={20} />
                     </button>
-                    {/* Botão de Seleção */}
                     <button 
                         onClick={(e) => { e.stopPropagation(); toggleSelect(project.id); }}
                         className={`p-1 rounded-lg transition-colors ${isSelected ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-300 hover:text-gray-500 border border-gray-200'}`}
@@ -273,7 +276,11 @@ const ProjectsPage = () => {
                       <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 mb-4">
                           <p className="text-[10px] font-bold text-gray-400 uppercase mb-1 flex items-center gap-1"><FileText size={10}/> Últimas Alterações</p>
                           <ul className="text-xs text-gray-600 space-y-1 list-disc pl-3">
-                              {project.changelog.slice(-2).map((log, i) => <li key={i} className="line-clamp-1">{log}</li>)}
+                              {project.changelog.slice(-2).map((log, i) => (
+                                  // --- AQUI ESTAVA O ERRO ---
+                                  // Agora usamos renderLogItem para garantir que seja string
+                                  <li key={i} className="line-clamp-1">{renderLogItem(log)}</li>
+                              ))}
                           </ul>
                       </div>
                   )}
@@ -305,7 +312,7 @@ const ProjectsPage = () => {
         </div>
       )}
 
-      {/* MODAL DE CRIAÇÃO / EDIÇÃO */}
+      {/* MODAL MANTIDO IGUAL */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
@@ -326,25 +333,15 @@ const ProjectsPage = () => {
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Prioridade</label>
                     <select value={formData.priority} onChange={e => setFormData({...formData, priority: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black bg-white text-sm">
-                        <option>Baixa</option>
-                        <option>Média</option>
-                        <option>Alta</option>
-                        <option>Crítica</option>
+                        <option>Baixa</option><option>Média</option><option>Alta</option><option>Crítica</option>
                     </select>
                   </div>
               </div>
 
-              {/* CAMPO ESPECIAL PARA CHANGELOG (Só aparece na edição) */}
               {editingId && (
                   <div className="bg-blue-50 p-3 rounded-xl border border-blue-100">
                       <label className="block text-xs font-bold text-blue-700 uppercase mb-1 flex items-center gap-1"><FileText size={12}/> O que mudou nesta versão?</label>
-                      <input 
-                        value={formData.newLog} 
-                        onChange={e => setFormData({...formData, newLog: e.target.value})} 
-                        className="w-full p-2 border border-blue-200 rounded-lg outline-none focus:border-blue-500 text-sm bg-white" 
-                        placeholder="Ex: Adicionado módulo de relatórios..." 
-                      />
-                      <p className="text-[10px] text-blue-500 mt-1">* Será adicionado ao histórico ao salvar.</p>
+                      <input value={formData.newLog} onChange={e => setFormData({...formData, newLog: e.target.value})} className="w-full p-2 border border-blue-200 rounded-lg outline-none focus:border-blue-500 text-sm bg-white" placeholder="Ex: Adicionado módulo de relatórios..." />
                   </div>
               )}
 
@@ -361,19 +358,14 @@ const ProjectsPage = () => {
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status</label>
                     <select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black bg-white text-sm">
-                        <option>Planejamento</option>
-                        <option>Em Andamento</option>
-                        <option>Pausado</option>
-                        <option>Concluído</option>
+                        <option>Planejamento</option><option>Em Andamento</option><option>Pausado</option><option>Concluído</option>
                     </select>
                 </div>
               </div>
 
               <div className="flex gap-3 pt-4 border-t border-gray-50">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-white border border-gray-200 rounded-xl font-bold text-gray-600 hover:bg-gray-50">Cancelar</button>
-                <button type="submit" className="flex-1 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 shadow-lg flex justify-center items-center gap-2">
-                    <Save size={18}/> Salvar
-                </button>
+                <button type="submit" className="flex-1 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 shadow-lg flex justify-center items-center gap-2"><Save size={18}/> Salvar</button>
               </div>
             </form>
           </div>
