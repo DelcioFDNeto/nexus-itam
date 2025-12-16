@@ -20,17 +20,17 @@ const TaskManager = () => {
   const [selectedProjectId, setSelectedProjectId] = useState(searchParams.get('projectId') || '');
   const [statusFilter, setStatusFilter] = useState('Todos'); 
 
-  // Controle do Modal (Criação e Edição)
+  // Controle do Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTaskId, setEditingTaskId] = useState(null); // Se null = Criando, Se tiver ID = Editando
+  const [editingTaskId, setEditingTaskId] = useState(null);
 
-  // Estado do Formulário
+  // Formulário Seguro
   const initialFormState = { 
     title: '', description: '', status: 'A Fazer', priority: 'Média', projectId: '', category: 'Geral' 
   };
   const [formData, setFormData] = useState(initialFormState);
 
-  // Categorias Fixas (Sessões)
+  // Categorias
   const categories = [
     { id: 'Levantamento', label: 'Levantamento & Análise', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
     { id: 'Inventário', label: 'Inventário Físico', color: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -39,7 +39,6 @@ const TaskManager = () => {
     { id: 'Geral', label: 'Outras Demandas', color: 'bg-gray-50 text-gray-700 border-gray-200' }
   ];
 
-  // Controle de Seções Expandidas
   const [expandedSections, setExpandedSections] = useState(
     categories.reduce((acc, cat) => ({...acc, [cat.id]: true}), {})
   );
@@ -50,13 +49,17 @@ const TaskManager = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [tasksData, projectsData] = await Promise.all([getTasks(), getProjects()]);
-    setTasks(tasksData);
-    setProjects(projectsData);
-    setLoading(false);
+    try {
+      const [tasksData, projectsData] = await Promise.all([getTasks(), getProjects()]);
+      setTasks(tasksData);
+      setProjects(projectsData);
+    } catch (error) {
+      console.error("Erro ao carregar dados:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Sincroniza URL
   useEffect(() => {
     const urlId = searchParams.get('projectId');
     if (urlId) setSelectedProjectId(urlId);
@@ -66,66 +69,70 @@ const TaskManager = () => {
       setExpandedSections(prev => ({...prev, [catId]: !prev[catId]}));
   };
 
-  // --- CRUD LÓGICA ---
+  // --- FUNÇÕES DE CRUD CORRIGIDAS ---
 
-  // Abrir Modal para Criar
   const openCreateModal = () => {
       setEditingTaskId(null);
-      setFormData(initialFormState);
-      // Se já tiver filtro de projeto, pré-seleciona
-      if(selectedProjectId) setFormData(prev => ({...prev, projectId: selectedProjectId}));
+      // Reseta form. Se tiver filtro de projeto, já preenche.
+      setFormData({
+          ...initialFormState,
+          projectId: selectedProjectId || ''
+      });
       setIsModalOpen(true);
   };
 
-  // Abrir Modal para Editar
   const openEditModal = (task) => {
       setEditingTaskId(task.id);
+      // Popula form com dados existentes OU valores padrão seguros
       setFormData({
-          title: task.title,
+          title: task.title || '',
           description: task.description || '',
-          status: task.status,
-          priority: task.priority,
+          status: task.status || 'A Fazer',
+          priority: task.priority || 'Média',
           projectId: task.projectId || '',
           category: task.category || 'Geral'
       });
       setIsModalOpen(true);
   };
 
-  // Salvar (Criar ou Atualizar)
   const handleSaveTask = async (e) => {
     e.preventDefault();
     if (!formData.title) return;
 
-    if (editingTaskId) {
-        // EDITA
-        await updateTask(editingTaskId, formData);
-        setTasks(tasks.map(t => t.id === editingTaskId ? { ...t, ...formData } : t));
-    } else {
-        // CRIA
-        const newTaskData = {
-            ...formData,
-            // Garante categoria padrão se estiver vazia
-            category: formData.category || 'Geral' 
-        };
-        await addTask(newTaskData);
-        // Recarrega tudo para pegar o ID novo gerado
-        const updatedTasks = await getTasks();
-        setTasks(updatedTasks);
+    try {
+        if (editingTaskId) {
+            // EDITAR
+            await updateTask(editingTaskId, formData);
+            // Atualiza estado local
+            setTasks(prev => prev.map(t => t.id === editingTaskId ? { ...t, ...formData } : t));
+        } else {
+            // CRIAR
+            const newTaskPayload = {
+                ...formData,
+                category: formData.category || 'Geral'
+            };
+            await addTask(newTaskPayload);
+            // Recarrega para pegar ID
+            const updated = await getTasks();
+            setTasks(updated);
+        }
+        setIsModalOpen(false);
+    } catch (error) {
+        console.error("Erro ao salvar:", error);
+        alert("Erro ao salvar tarefa. Verifique o console.");
     }
-    setIsModalOpen(false);
-  };
-
-  // Mudar Status Direto na Lista
-  const handleStatusChange = async (id, newStatus) => {
-      setTasks(tasks.map(t => t.id === id ? { ...t, status: newStatus } : t));
-      await updateTask(id, { status: newStatus });
   };
 
   const handleDelete = async (id) => {
     if (confirm('Excluir tarefa permanentemente?')) {
       await deleteTask(id);
-      setTasks(tasks.filter(t => t.id !== id));
+      setTasks(prev => prev.filter(t => t.id !== id));
     }
+  };
+
+  const handleStatusChange = async (id, newStatus) => {
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
+      await updateTask(id, { status: newStatus });
   };
 
   // --- HELPERS VISUAIS ---
@@ -145,17 +152,16 @@ const TaskManager = () => {
   return (
     <div className="p-4 md:p-8 max-w-[1600px] mx-auto pb-24">
       
-      {/* HEADER Responsivo */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         <div>
           <h1 className="text-2xl md:text-3xl font-black text-gray-900 flex items-center gap-3">
             <ListChecks className="text-shineray" size={32} /> Gestão de Tarefas
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Sessões Operacionais & Projetos</p>
+          <p className="text-sm text-gray-500 mt-1">Controle Operacional</p>
         </div>
 
         <div className="flex flex-col sm:flex-row w-full md:w-auto gap-3">
-          {/* Filtro de Projeto */}
           <div className="relative group w-full sm:w-auto">
             <div className="absolute left-3 top-3 text-gray-400"><FolderGit2 size={16}/></div>
             <select 
@@ -177,7 +183,7 @@ const TaskManager = () => {
         </div>
       </div>
 
-      {/* FILTRO STATUS (ABAS - Scrollável no Mobile) */}
+      {/* ABAS STATUS */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide border-b border-gray-200">
           {['Todos', 'A Fazer', 'Em Progresso', 'Concluído'].map(status => (
               <button 
@@ -192,13 +198,12 @@ const TaskManager = () => {
           ))}
       </div>
 
-      {/* LISTA DE SESSÕES */}
+      {/* LISTAS POR SESSÃO */}
       <div className="space-y-6">
         {loading ? (
-            <div className="text-center py-10 text-gray-400 animate-pulse">Carregando tarefas...</div>
+            <div className="text-center py-10 text-gray-400 animate-pulse">Carregando...</div>
         ) : (
             categories.map(category => {
-                // Filtra tarefas desta categoria E filtros globais
                 const categoryTasks = tasks.filter(t => {
                     const matchCat = (t.category || 'Geral') === category.id;
                     const matchProject = selectedProjectId ? t.projectId === selectedProjectId : true;
@@ -210,8 +215,6 @@ const TaskManager = () => {
 
                 return (
                     <div key={category.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                        
-                        {/* HEADER DA SESSÃO */}
                         <button 
                             onClick={() => toggleSection(category.id)}
                             className={`w-full flex items-center justify-between p-4 ${category.color} transition-colors hover:opacity-90`}
@@ -223,7 +226,6 @@ const TaskManager = () => {
                             </div>
                         </button>
 
-                        {/* LISTA DE TAREFAS (RESPONSIVA) */}
                         {expandedSections[category.id] && (
                             <div className="divide-y divide-gray-100">
                                 {categoryTasks.length === 0 ? (
@@ -234,10 +236,8 @@ const TaskManager = () => {
                                         return (
                                             <div key={task.id} className="p-4 hover:bg-gray-50 transition-colors group">
                                                 <div className="flex flex-col md:flex-row md:items-center gap-4">
-                                                    
-                                                    {/* 1. Status & Título (Mobile: Coluna, Desktop: Linha) */}
+                                                    {/* Controls Status */}
                                                     <div className="flex-1 flex flex-col md:flex-row md:items-center gap-3">
-                                                        {/* Select Status */}
                                                         <select 
                                                             value={task.status}
                                                             onChange={(e) => handleStatusChange(task.id, e.target.value)}
@@ -249,7 +249,6 @@ const TaskManager = () => {
                                                             <option>Concluído</option>
                                                         </select>
 
-                                                        {/* Textos */}
                                                         <div className="flex-1">
                                                             <div className="flex flex-wrap items-center gap-2 mb-1">
                                                                 <span className="font-bold text-gray-900 text-sm md:text-base">{task.title}</span>
@@ -264,17 +263,16 @@ const TaskManager = () => {
                                                         </div>
                                                     </div>
 
-                                                    {/* 2. Meta e Ações */}
-                                                    <div className="flex items-center justify-between md:justify-end gap-4 border-t border-gray-100 md:border-0 pt-3 md:pt-0 mt-1 md:mt-0">
+                                                    {/* Actions */}
+                                                    <div className="flex items-center justify-between md:justify-end gap-3 border-t border-gray-100 md:border-0 pt-3 md:pt-0">
                                                         <div className="flex items-center gap-1 text-xs text-gray-400 font-mono">
                                                             <Calendar size={12}/> {new Date(task.createdAt?.seconds * 1000 || Date.now()).toLocaleDateString('pt-BR')}
                                                         </div>
-                                                        
                                                         <div className="flex gap-2">
                                                             <button 
                                                                 onClick={() => openEditModal(task)}
                                                                 className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                                                                title="Editar / Mover"
+                                                                title="Editar"
                                                             >
                                                                 <Edit size={16} />
                                                             </button>
@@ -287,7 +285,6 @@ const TaskManager = () => {
                                                             </button>
                                                         </div>
                                                     </div>
-
                                                 </div>
                                             </div>
                                         );
@@ -301,10 +298,10 @@ const TaskManager = () => {
         )}
       </div>
 
-      {/* MODAL (CRIAÇÃO E EDIÇÃO) */}
+      {/* MODAL UNIFICADO */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold">{editingTaskId ? 'Editar Tarefa' : 'Nova Tarefa'}</h2>
                 <button onClick={() => setIsModalOpen(false)} className="p-1 rounded-full hover:bg-gray-100"><X size={20}/></button>
@@ -317,21 +314,15 @@ const TaskManager = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* SELETOR DE CATEGORIA (PERMITE MOVER A TAREFA) */}
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sessão (Categoria)</label>
                     <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black bg-white">
                         {categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                     </select>
                   </div>
-
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Projeto</label>
-                    <select 
-                        value={formData.projectId} 
-                        onChange={e => setFormData({...formData, projectId: e.target.value})} 
-                        className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black bg-white"
-                    >
+                    <select value={formData.projectId} onChange={e => setFormData({...formData, projectId: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black bg-white">
                         <option value="">Geral (Sem Projeto)</option>
                         {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
@@ -362,10 +353,10 @@ const TaskManager = () => {
                 <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black" rows="3"></textarea>
               </div>
 
-              <div className="flex gap-3 pt-4 mt-2 border-t border-gray-50">
+              <div className="flex gap-3 pt-4 border-t border-gray-50 mt-2">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-white border border-gray-200 rounded-xl font-bold text-gray-600 hover:bg-gray-50">Cancelar</button>
                 <button type="submit" className="flex-1 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 shadow-lg">
-                    {editingTaskId ? 'Salvar Alterações' : 'Criar Tarefa'}
+                    {editingTaskId ? 'Salvar' : 'Criar'}
                 </button>
               </div>
             </form>
