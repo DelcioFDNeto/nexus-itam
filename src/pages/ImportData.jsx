@@ -9,7 +9,7 @@ import {
   Users, Server, Layers, FolderGit2, Download, Database, CheckCircle
 } from 'lucide-react';
 
-// --- CONFIGURAÇÃO PADRÃO (EXCEL/CSV) ---
+// --- SCHEMAS PARA IMPORTAÇÃO SIMPLES (EXCEL) ---
 const IMPORT_SCHEMAS = {
   assets: {
     label: 'Ativos (Hardware)',
@@ -103,9 +103,9 @@ const normalizeCategory = (cat) => {
     if (!cat) return 'Geral';
     const s = cat.toLowerCase();
     if (s.includes('manutenção') || s.includes('maintenance') || s.includes('upgrade')) return 'Manutenção';
-    if (s.includes('logística') || s.includes('logistics') || s.includes('inventário')) return 'Inventário';
+    if (s.includes('logística') || s.includes('logistics') || s.includes('inventário') || s.includes('inventory')) return 'Inventário';
     if (s.includes('auditoria') || s.includes('audit')) return 'Auditoria';
-    if (s.includes('levantamento')) return 'Levantamento';
+    if (s.includes('levantamento') || s.includes('survey')) return 'Levantamento';
     return 'Geral';
 };
 
@@ -132,27 +132,21 @@ const ImportData = () => {
     XLSX.writeFile(wb, `Modelo_${selectedType}.xlsx`);
   };
 
-  // --- PROCESSAMENTO JSON MISTO (MIGRATION) ---
+  // --- PROCESSAMENTO INTELIGENTE (MISTO) ---
   const processComplexJson = (json) => {
     const mixedData = [];
-    const meta = json.meta || json.system_metadata || {}; 
+    const meta = json.meta || json.system_metadata || json.import_metadata || {}; 
 
-    // 1. PROJETOS
+    // 1. DETECÇÃO DE PROJETOS (Migration JSON)
     const rawProjects = json.projetos || json.projects || [];
     if (Array.isArray(rawProjects)) {
         rawProjects.forEach(p => {
             const leaderStr = Array.isArray(p.lideres) ? p.lideres.join(', ') : (p.lideres || p.leader || meta.responsavel_importacao || '');
-            
-            // Juntar todos os logs possíveis
             const rawChanges = [...(p.entregas || []), ...(p.artefatos || []), ...(p.changelog || [])];
             
-            // --- CORREÇÃO IMPORTANTE (EVITA TELA BRANCA) ---
-            // Garante que o changelog seja um array de STRINGS, não objetos.
+            // Sanitiza Changelog para evitar erro de objeto
             const safeChangelog = rawChanges.map(item => {
-                if (typeof item === 'object') {
-                    // Se for objeto, tenta transformar em texto legível
-                    return item.version ? `v${item.version}: ${item.notes || ''}` : JSON.stringify(item);
-                }
+                if (typeof item === 'object') return item.version ? `v${item.version}: ${item.notes || ''}` : JSON.stringify(item);
                 return String(item);
             });
 
@@ -165,29 +159,40 @@ const ImportData = () => {
                 leader: leaderStr,
                 version: p.versao_atual || p.versao || p.version || '1.0',
                 deadline: p.data_conclusao || p.completion_date || '',
-                changelog: safeChangelog, // Array seguro de strings
+                changelog: safeChangelog,
                 progress: (p.status?.toLowerCase().includes('conclu') || p.status === 'Completed') ? 100 : 50,
                 createdAt: p.data_inicio ? new Date(p.data_inicio) : serverTimestamp()
             });
         });
     }
 
-    // 2. TAREFAS
-    const rawTasks = json.tarefas_recentes || json.recent_tasks || [];
+    // 2. DETECÇÃO DE TAREFAS (Migration JSON + Legacy Tasks JSON)
+    // Aceita 'tarefas_recentes', 'recent_tasks' OU 'tasks' (seu novo arquivo)
+    const rawTasks = json.tarefas_recentes || json.recent_tasks || json.tasks || [];
+    
     if (Array.isArray(rawTasks)) {
         rawTasks.forEach(t => {
-            let fullDesc = t.descricao || t.description || '';
-            if (t.ativo_relacionado || t.asset_id) fullDesc += `\n\n[Ativo: ${t.ativo_relacionado || t.asset_id}]`;
+            // Concatena informações úteis na descrição para não perder dados do Excel antigo
+            let fullDesc = t.descricao || t.description || t.notes || ''; // 'notes' do seu novo arquivo
+            const extras = [];
+            
+            if (t.ativo_relacionado || t.asset_id) extras.push(`Ativo: ${t.ativo_relacionado || t.asset_id}`);
+            if (t.id) extras.push(`ID Legado: ${t.id}`);
+            if (t.responsible) extras.push(`Responsável Origem: ${t.responsible}`);
+            
+            if (extras.length > 0) fullDesc += `\n\n[${extras.join(' | ')}]`;
 
             mixedData.push({
                 _collection: 'tasks',
-                title: t.titulo || t.title || 'Tarefa',
+                title: t.titulo || t.title || 'Tarefa Importada',
                 description: fullDesc,
                 status: normalizeStatus(t.status),
                 priority: 'Média',
-                category: normalizeCategory(t.tipo || t.category),
+                // Mapeia 'section' (do novo arquivo) ou 'tipo'/'category' para nossas categorias
+                category: normalizeCategory(t.section || t.tipo || t.category),
                 projectId: '',
-                createdAt: t.data_registro ? new Date(t.data_registro) : serverTimestamp()
+                // Mapeia 'start_date' (do novo arquivo) ou 'data_registro'
+                createdAt: (t.start_date || t.data_registro) ? new Date(t.start_date || t.data_registro) : serverTimestamp()
             });
         });
     }
@@ -195,9 +200,9 @@ const ImportData = () => {
     if (mixedData.length > 0) {
         setIsMixedMode(true);
         setData(mixedData);
-        setNotification({ type: 'info', message: `Migração detectada: ${mixedData.length} itens (Projetos/Tarefas).` });
+        setNotification({ type: 'info', message: `Arquivo reconhecido! ${mixedData.length} registros (Projetos/Tarefas).` });
     } else {
-        setError("JSON não contém dados de 'projetos' ou 'tarefas_recentes'.");
+        setError("O arquivo JSON não contém chaves de dados conhecidas (projects, tasks, etc).");
     }
   };
 
@@ -215,8 +220,15 @@ const ImportData = () => {
       reader.onload = (evt) => {
         try {
           const json = JSON.parse(evt.target.result);
-          // Detecção de formato
-          if (!Array.isArray(json) && (json.projetos || json.projects || json.tarefas_recentes || json.meta)) {
+          // Verifica se é Array puro ou Objeto Complexo
+          const hasComplexKeys = !Array.isArray(json) && (
+              json.projetos || json.projects || 
+              json.tarefas_recentes || json.recent_tasks || 
+              json.tasks || // <--- Suporte ao seu novo arquivo
+              json.meta || json.import_metadata
+          );
+
+          if (hasComplexKeys) {
               processComplexJson(json);
           } else if (Array.isArray(json)) {
               setIsMixedMode(false);
@@ -283,7 +295,7 @@ const ImportData = () => {
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 relative">
       
-      {/* --- TOAST NOTIFICATION --- */}
+      {/* TOAST NOTIFICATION */}
       {notification && (
           <div className={`fixed bottom-8 right-8 z-50 animate-in slide-in-from-right duration-300 flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl border-2 ${
               notification.type === 'success' 
@@ -292,7 +304,7 @@ const ImportData = () => {
           }`}>
               {notification.type === 'success' ? <CheckCircle size={32} className="animate-bounce" /> : <Database size={32} />}
               <div>
-                  <h4 className="font-black text-lg">{notification.type === 'success' ? 'Sucesso!' : 'Informação'}</h4>
+                  <h4 className="font-black text-lg">{notification.type === 'success' ? 'Sucesso!' : 'Análise'}</h4>
                   <p className="font-medium text-white/90">{notification.message}</p>
               </div>
           </div>
@@ -303,7 +315,7 @@ const ImportData = () => {
         <button onClick={() => navigate('/')} className="p-2 bg-white rounded-full hover:bg-gray-100 shadow-sm border border-gray-200"><ArrowLeft size={20} /></button>
         <div>
             <h1 className="text-xl md:text-2xl font-black text-gray-900 flex items-center gap-2"><UploadCloud className="text-shineray" /> Importação de Dados</h1>
-            <p className="text-sm text-gray-500">Excel (.xlsx) ou Backup do Sistema (.json)</p>
+            <p className="text-sm text-gray-500">Excel (.xlsx) ou JSON (Migration/Legacy)</p>
         </div>
       </div>
 
@@ -330,7 +342,7 @@ const ImportData = () => {
                            <FileJson size={40} />
                         </div>
                         <p className="font-bold text-gray-600">Arraste Excel ou JSON aqui</p>
-                        <p className="text-xs text-gray-400">{isMixedMode ? <span className="text-blue-600 font-bold bg-blue-50 px-2 py-1 rounded">MIGRAÇÃO DETECTADA</span> : <>Destino: <span className="font-bold text-black uppercase">{currentSchema.collection}</span></>}</p>
+                        <p className="text-xs text-gray-400">{isMixedMode ? <span className="text-blue-600 font-bold bg-blue-50 px-2 py-1 rounded">MIGRAÇÃO / LEGADO DETECTADO</span> : <>Destino: <span className="font-bold text-black uppercase">{currentSchema.collection}</span></>}</p>
                     </div>
               </div>
 
