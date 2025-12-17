@@ -176,26 +176,81 @@ const AssetList = () => {
   return (
     <div className="p-4 md:p-8 max-w-[1600px] mx-auto relative pb-24">
       
-      {/* IMPRESSÃO OCULTA */}
+     {/* IMPRESSÃO OCULTA (PADRÃO COMPACTO 7x3.5cm) */}
       <div style={{ display: 'none' }}>
         <div ref={bulkPrintRef} className="print-grid">
-            <style>{`@media print { @page { size: A4; margin: 10mm; } body { -webkit-print-color-adjust: exact; } .print-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 100%; } .bulk-label { border: 2px solid black; border-radius: 8px; padding: 10px; height: 5cm; display: flex; align-items: center; gap: 15px; page-break-inside: avoid; } }`}</style>
+            <style>{`
+                @media print { 
+                    @page { 
+                        size: A4; 
+                        margin: 5mm; 
+                    } 
+                    body { 
+                        -webkit-print-color-adjust: exact; 
+                    } 
+                    .print-grid { 
+                        display: grid; 
+                        grid-template-columns: repeat(3, 1fr); /* 3 Etiquetas por linha para economizar folha */
+                        gap: 5mm; 
+                        justify-items: center; 
+                        width: 100%;
+                    } 
+                    .bulk-label { 
+                        width: 7cm; 
+                        height: 3.5cm; 
+                        padding: 5px; 
+                        border: 1.5px solid black; 
+                        border-radius: 4px; 
+                        display: flex; 
+                        flex-direction: row;
+                        align-items: center; 
+                        gap: 8px; 
+                        background-color: white;
+                        font-family: Arial, sans-serif;
+                        box-sizing: border-box;
+                        page-break-inside: avoid; 
+                        overflow: hidden;
+                    } 
+                }
+            `}</style>
+            
             {selectedAssetsData.map(asset => (
                 <div key={asset.id} className="bulk-label">
-                    <div style={{ width: '100px', height: '100px', flexShrink: 0 }}><QRCodeSVG value={asset.internalId} size={100} level="M" /></div>
+                    
+                    {/* ESQUERDA: QR CODE */}
+                    <div style={{ width: '65px', height: '65px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <QRCodeSVG value={asset.internalId} size={65} level="M" />
+                    </div>
+
+                    {/* DIREITA: DADOS */}
                     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
-                        <div style={{ height: '40px' }}><img src={logoShineray} alt="Shineray" style={{ height: '100%', maxHeight: '35px', objectFit: 'contain' }} /></div>
-                        <div>
-                            <span style={{ fontSize: '9px', textTransform: 'uppercase', color: '#666', fontWeight: 'bold' }}>Patrimônio</span>
-                            <span style={{ fontSize: '24px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1', display: 'block' }}>{asset.internalId}</span>
-                            <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{asset.model?.substring(0, 25)}</span>
+                        
+                        {/* Logo */}
+                        <div style={{ height: '20px', display: 'flex', alignItems: 'center' }}>
+                            <img src={logoShineray} alt="Shineray" style={{ height: '100%', maxHeight: '18px', width: 'auto', objectFit: 'contain' }} />
+                        </div>
+
+                        {/* Patrimônio e Modelo */}
+                        <div style={{ display: 'flex', flexDirection: 'column', marginTop: '-2px' }}>
+                            <span style={{ fontSize: '18px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1', letterSpacing: '-0.5px' }}>
+                                {asset.internalId}
+                            </span>
+                            <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#444', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>
+                                {asset.model}
+                            </span>
+                        </div>
+
+                        {/* Rodapé Suporte */}
+                        <div style={{ borderTop: '1px solid #000', paddingTop: '2px', marginTop: 'auto' }}>
+                            <p style={{ margin: 0, fontSize: '6px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase' }}>Suporte TI:</p>
+                            <p style={{ margin: 0, fontSize: '8px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</p>
                         </div>
                     </div>
                 </div>
             ))}
         </div>
       </div>
-
+      
       {/* HEADER E AÇÕES */}
       <div className="flex flex-col gap-4 mb-6">
         <div className="flex justify-between items-end">

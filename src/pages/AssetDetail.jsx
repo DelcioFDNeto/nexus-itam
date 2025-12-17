@@ -2,7 +2,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../services/firebase';
-// Adicionado 'getDoc' para buscar as configurações
 import { doc, onSnapshot, collection, query, where, orderBy, getDocs, getDoc } from 'firebase/firestore';
 import { moveAsset, registerMaintenance, updateAsset, deleteAsset } from '../services/assetService'; 
 import MoveAssetModal from '../components/MoveAssetModal';
@@ -22,42 +21,32 @@ const AssetDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   
-  // --- ESTADOS ---
   const [asset, setAsset] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [notes, setNotes] = useState(''); 
   const [isSavingNotes, setIsSavingNotes] = useState(false);
-  
-  // Modais
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const [isMaintModalOpen, setIsMaintModalOpen] = useState(false);
-  
-  // Links
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [newLinkName, setNewLinkName] = useState('');
   const [isAddingLink, setIsAddingLink] = useState(false);
 
-  // --- CONFIGURAÇÕES DO SISTEMA (Para Impressão) ---
+  // --- CONFIGURAÇÕES DO SISTEMA ---
   const [config, setConfig] = useState({
     companyName: 'Shineray By Sabel',
     itManager: 'Délcio Farias',
     termTitle: 'Termo de Responsabilidade'
   });
 
-  // Carregar Configurações ao Iniciar
   useEffect(() => {
     const loadConfig = async () => {
         try {
             const settingsRef = doc(db, 'settings', 'general');
             const snap = await getDoc(settingsRef);
-            if (snap.exists()) {
-                setConfig(prev => ({ ...prev, ...snap.data() }));
-            }
-        } catch (error) {
-            console.error("Erro ao carregar configurações de impressão:", error);
-        }
+            if (snap.exists()) setConfig(prev => ({ ...prev, ...snap.data() }));
+        } catch (error) { console.error(error); }
     };
     loadConfig();
   }, []);
@@ -66,17 +55,9 @@ const AssetDetail = () => {
   const termRef = useRef(null);
   const labelRef = useRef(null);
 
-  const handlePrintTerm = useReactToPrint({ 
-      contentRef: termRef, 
-      documentTitle: `Termo_${id}` 
-  });
-  
-  const handlePrintLabel = useReactToPrint({ 
-      contentRef: labelRef, 
-      documentTitle: `Etiqueta_${id}` 
-  });
+  const handlePrintTerm = useReactToPrint({ contentRef: termRef, documentTitle: `Termo_${id}` });
+  const handlePrintLabel = useReactToPrint({ contentRef: labelRef, documentTitle: `Etiqueta_${id}` });
 
-  // --- DATA FETCHING ---
   const fetchHistory = async () => {
     try {
         const q = query(collection(db, 'history'), where('assetId', '==', id), orderBy('date', 'desc'));
@@ -96,14 +77,10 @@ const AssetDetail = () => {
             fetchHistory();
         } else { navigate('/assets'); }
         setLoading(false);
-    }, (error) => {
-        console.error("Erro no realtime:", error);
-        setLoading(false);
-    });
+    }, (error) => { setLoading(false); });
     return () => unsubscribe();
   }, [id, navigate]);
 
-  // --- HANDLERS ---
   const handleAddLink = async () => {
       if (!newLinkUrl || !newLinkName) return alert("Preencha o nome e o link!");
       setIsAddingLink(true);
@@ -139,7 +116,6 @@ const AssetDetail = () => {
   const derivedSector = asset.sector || "Adm/Op.";
   const isPromotional = asset.category === 'Promocional' || asset.internalId?.toUpperCase().includes('PRM');
   
-  // --- LÓGICA DE EXIBIÇÃO DE CAMPOS ---
   const showImei = asset.type === 'Celular' || asset.type === 'PGT';
   const showPrinterInfo = asset.type === 'Impressora';
   const showIp = (asset.type === 'Computador' || asset.type === 'Notebook' || asset.type === 'Rede' || showPrinterInfo) && asset.specs?.ip;
@@ -171,96 +147,62 @@ const AssetDetail = () => {
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24">
       
-      {/* --- ÁREA OCULTA DE IMPRESSÃO --- */}
+      {/* --- ÁREA DE IMPRESSÃO (OCULTA) --- */}
       <div style={{ display: 'none' }}>
         
-        {/* MODELO DO TERMO (Dinâmico com Configurações) */}
+        {/* TERMO A4 (Topo) */}
         <div ref={termRef} className="print-term p-10 max-w-4xl mx-auto text-black bg-white font-sans relative">
-            <div className="absolute top-8 right-8 flex flex-col items-center">
-                <QRCodeSVG value={asset.internalId} size={70} level="H" />
-                <span className="text-[10px] font-mono font-bold mt-1">{asset.internalId}</span>
-            </div>
-            <div className="flex items-center justify-between border-b-2 border-black pb-4 mb-6 pr-24">
-                <img src={logoShineray} alt="Shineray" className="h-12 object-contain" />
-                <div className="text-right">
-                    <p className="text-xs font-bold text-gray-800 uppercase tracking-widest">TI & Infraestrutura</p>
-                    <p className="text-[10px] text-gray-500 uppercase">Documento Oficial</p>
-                </div>
-            </div>
-            
-            <h2 className="text-lg font-black text-center mb-8 uppercase decoration-2 underline underline-offset-4 decoration-red-600">
-                {config.termTitle}
-            </h2>
-            
-            <div className="text-justify space-y-4 text-xs leading-relaxed text-gray-800">
-                <p>Eu, <strong className="uppercase text-sm">{responsibleName || "_______________________"}</strong>, declaro ter recebido da <strong>{config.companyName.toUpperCase()}</strong> o equipamento descrito abaixo, em perfeito estado de funcionamento e conservação:</p>
-                
-                <div className="my-6 border border-gray-800 p-4 bg-gray-50">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div><span className="block text-[9px] font-bold text-gray-500 uppercase">Tipo/Modelo</span><span className="font-bold text-sm">{asset.type} - {asset.model}</span></div>
-                        <div><span className="block text-[9px] font-bold text-gray-500 uppercase">Patrimônio</span><span className="font-bold text-sm bg-yellow-100 px-1">{asset.internalId}</span></div>
-                        
-                        {asset.imei1 ? (
-                            <div className="col-span-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">IMEI / Serial</span><span className="font-mono text-sm">{asset.imei1} {asset.serialNumber ? `/ ${asset.serialNumber}` : ''}</span></div>
-                        ) : (
-                            <div className="col-span-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">Serial</span><span className="font-mono text-sm">{asset.serialNumber || "N/A"}</span></div>
-                        )}
-                        
-                        {(asset.notes || asset.specs) && (
-                            <div className="col-span-2 pt-2 border-t border-gray-200 mt-2">
-                                <span className="block text-[9px] font-bold text-gray-500 uppercase">Observações / Acessórios</span>
-                                <span className="text-xs">{asset.notes || "Carregador original incluso."}</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                <div className="space-y-2 border-l-4 border-gray-300 pl-4">
-                    <p><strong>1. RESPONSABILIDADE:</strong> Comprometo-me a zelar pela guarda e conservação do equipamento, comunicando imediatamente ao departamento de TI qualquer defeito ou irregularidade.</p>
-                    <p><strong>2. USO:</strong> O equipamento destina-se exclusivamente ao desempenho das atividades profissionais.</p>
-                    <p><strong>3. DEVOLUÇÃO:</strong> Comprometo-me a devolver o equipamento nas mesmas condições em que o recebi (salvo desgaste natural) em caso de rescisão contratual, férias, licença ou quando solicitado.</p>
-                </div>
-            </div>
-
-            <div className="mt-16 space-y-10">
-                <p className="text-right italic text-xs">Belém (PA), {new Date().toLocaleDateString('pt-BR')}.</p>
-                <div className="grid grid-cols-2 gap-12 items-end">
-                    <div className="text-center relative">
-                        <div className="absolute -top-8 left-0 right-0 flex justify-center">
-                            <span style={{ fontFamily: "'Brush Script MT', cursive" }} className="text-3xl text-blue-900 rotate-[-5deg] opacity-90">
-                                {config.itManager}
-                            </span>
-                        </div>
-                        <div className="border-t border-black w-full mb-1"></div>
-                        <p className="font-bold uppercase text-[10px]">{config.companyName}</p>
-                        <p className="text-[9px] text-gray-500">Departamento de TI</p>
-                    </div>
-                    <div className="text-center">
-                        <div className="border-t border-black w-full mb-1"></div>
-                        <p className="font-bold uppercase text-[10px]">{responsibleName}</p>
-                        <p className="text-[9px] text-gray-500">Colaborador / Portador</p>
-                    </div>
-                </div>
-            </div>
+            <div className="absolute top-8 right-8 flex flex-col items-center"><QRCodeSVG value={asset.internalId} size={70} level="H" /><span className="text-[10px] font-mono font-bold mt-1">{asset.internalId}</span></div>
+            <div className="flex items-center justify-between border-b-2 border-black pb-4 mb-6 pr-24"><img src={logoShineray} alt="Shineray" className="h-12 object-contain" /><div className="text-right"><p className="text-xs font-bold text-gray-800 uppercase tracking-widest">TI & Infraestrutura</p><p className="text-[10px] text-gray-500 uppercase">Documento Oficial</p></div></div>
+            <h2 className="text-lg font-black text-center mb-8 uppercase decoration-2 underline underline-offset-4 decoration-red-600">{config.termTitle}</h2>
+            <div className="text-justify space-y-4 text-xs leading-relaxed text-gray-800"><p>Eu, <strong className="uppercase text-sm">{responsibleName || "_______________________"}</strong>, declaro ter recebido da <strong>{config.companyName.toUpperCase()}</strong>:</p><div className="my-6 border border-gray-800 p-4 bg-gray-50"><div className="grid grid-cols-2 gap-4"><div><span className="block text-[9px] font-bold text-gray-500 uppercase">Tipo/Modelo</span><span className="font-bold text-sm">{asset.type} - {asset.model}</span></div><div><span className="block text-[9px] font-bold text-gray-500 uppercase">Patrimônio</span><span className="font-bold text-sm bg-yellow-100 px-1">{asset.internalId}</span></div>{asset.imei1 ? (<div className="col-span-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">IMEI / Serial</span><span className="font-mono text-sm">{asset.imei1} {asset.serialNumber ? `/ ${asset.serialNumber}` : ''}</span></div>) : (<div className="col-span-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">Serial</span><span className="font-mono text-sm">{asset.serialNumber || "N/A"}</span></div>)}{(asset.notes || asset.specs) && (<div className="col-span-2 pt-2 border-t border-gray-200 mt-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">Observações</span><span className="text-xs">{asset.notes || "Item entregue conforme padrão."}</span></div>)}</div></div><div className="space-y-2"><p><strong>1. RESPONSABILIDADE:</strong> Comprometo-me a zelar pela guarda e conservação.</p><p><strong>2. DEVOLUÇÃO:</strong> Devolução imediata mediante solicitação.</p></div></div>
+            <div className="mt-16 space-y-10"><p className="text-right italic text-xs">Belém (PA), {new Date().toLocaleDateString('pt-BR')}.</p><div className="grid grid-cols-2 gap-12 items-end"><div className="text-center relative"><div className="absolute -top-8 left-0 right-0 flex justify-center"><span style={{ fontFamily: "'Brush Script MT', cursive" }} className="text-3xl text-blue-900 rotate-[-5deg] opacity-90">{config.itManager}</span></div><div className="border-t border-black w-full mb-1"></div><p className="font-bold uppercase text-[10px]">{config.companyName}</p></div><div className="text-center"><div className="border-t border-black w-full mb-1"></div><p className="font-bold uppercase text-[10px]">{responsibleName}</p></div></div></div>
         </div>
 
-        {/* MODELO DA ETIQUETA */}
-        <div ref={labelRef} className="print-label" style={{ width: '10cm', height: '5cm', padding: '10px', border: '2px solid black', borderRadius: '8px', display: 'flex', flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', gap: '15px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
-            <div style={{ width: '110px', height: '110px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <QRCodeSVG value={asset.internalId} size={110} level="M" />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between' }}>
-                <div style={{ height: '50px', display: 'flex', alignItems: 'center' }}>
-                    <img src={logoShineray} alt="Shineray" style={{ height: '100%', maxHeight: '45px', width: 'auto', objectFit: 'contain', display: 'block' }} />
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', color: '#666', fontWeight: 'bold' }}>Patrimônio</span>
-                    <span style={{ fontSize: '28px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1', letterSpacing: '-1px' }}>{asset.internalId}</span>
-                    <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>{asset.model}</span>
-                </div>
-                <div style={{ borderTop: '2px solid #000', paddingTop: '4px', marginTop: 'auto' }}>
-                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#000' }}>Suporte TI:</p>
-                    <p style={{ margin: 0, fontSize: '12px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</p>
+        {/* ETIQUETA CENTRALIZADA (Correção Aqui) */}
+        <div style={{ display: 'none' }}>
+            <div ref={labelRef} style={{ width: '100%', height: '100vh', position: 'relative' }}>
+                <style>{`
+                    @media print {
+                        @page { size: auto; margin: 0mm; }
+                        body { margin: 0; }
+                    }
+                `}</style>
+                <div className="print-label" style={{ 
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)', // Centraliza perfeitamente
+                    width: '7cm', 
+                    height: '3.5cm', 
+                    padding: '5px', 
+                    border: '1.5px solid black', 
+                    borderRadius: '4px', 
+                    display: 'flex', 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    backgroundColor: 'white', 
+                    gap: '8px', 
+                    fontFamily: 'Arial, sans-serif', 
+                    boxSizing: 'border-box',
+                    overflow: 'hidden'
+                }}>
+                    <div style={{ width: '65px', height: '65px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <QRCodeSVG value={asset.internalId} size={65} level="M" />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
+                        <div style={{ height: '20px', display: 'flex', alignItems: 'center' }}>
+                            <img src={logoShineray} alt="Shineray" style={{ height: '100%', maxHeight: '18px', width: 'auto', objectFit: 'contain' }} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', marginTop: '-2px' }}>
+                            <span style={{ fontSize: '18px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1', letterSpacing: '-0.5px' }}>{asset.internalId}</span>
+                            <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#444', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>{asset.model}</span>
+                        </div>
+                        <div style={{ borderTop: '1px solid #000', paddingTop: '2px', marginTop: 'auto' }}>
+                            <p style={{ margin: 0, fontSize: '6px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase' }}>Suporte TI:</p>
+                            <p style={{ margin: 0, fontSize: '8px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -345,30 +287,10 @@ const AssetDetail = () => {
                      <h3 className="font-bold text-gray-400 uppercase tracking-widest text-xs mb-4">Especificações</h3>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {isPromotional && (<div className="col-span-2 bg-purple-50 p-2 rounded border border-purple-100"><span className="block text-[10px] font-bold text-purple-700 uppercase">Item Promocional</span></div>)}
-                        
                         <div><span className="block text-[10px] font-bold text-gray-400 uppercase">Serial Number</span><span className="font-mono font-bold text-gray-900 text-sm">{asset.serialNumber || "---"}</span></div>
-                        
-                        {/* CONDICIONAL: IMEI */}
-                        {showImei && (
-                            <>
-                                <div><span className="block text-[10px] font-bold text-gray-400 uppercase">IMEI 1</span><span className="font-mono font-bold text-gray-900 text-sm">{asset.imei1 || "---"}</span></div>
-                                {asset.imei2 && (<div><span className="block text-[10px] font-bold text-gray-400 uppercase">IMEI 2</span><span className="font-mono font-bold text-gray-900 text-sm">{asset.imei2}</span></div>)}
-                            </>
-                        )}
-
-                        {/* CONDICIONAL: PÁGINAS IMPRESSAS */}
-                        {showPrinterInfo && (
-                            <div className="col-span-2 bg-blue-50 p-3 rounded-lg border border-blue-100">
-                                <span className="block text-[10px] font-bold text-blue-600 uppercase flex items-center gap-1"><FileText size={12}/> Páginas Impressas</span>
-                                <span className="font-mono font-black text-2xl text-blue-900">{asset.specs?.pageCount ? Number(asset.specs.pageCount).toLocaleString('pt-BR') : '0'}</span>
-                            </div>
-                        )}
-
-                        {/* CONDICIONAL: IP */}
-                        {showIp && (
-                            <div><span className="block text-[10px] font-bold text-gray-400 uppercase">IP Address</span><span className="font-mono font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded text-sm w-fit">{asset.specs?.ip}</span></div>
-                        )}
-
+                        {showImei && (<><div><span className="block text-[10px] font-bold text-gray-400 uppercase">IMEI 1</span><span className="font-mono font-bold text-gray-900 text-sm">{asset.imei1 || "---"}</span></div>{asset.imei2 && (<div><span className="block text-[10px] font-bold text-gray-400 uppercase">IMEI 2</span><span className="font-mono font-bold text-gray-900 text-sm">{asset.imei2}</span></div>)}</>)}
+                        {showIp && (<div><span className="block text-[10px] font-bold text-gray-400 uppercase">IP Address</span><span className="font-mono font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded text-sm w-fit">{asset.specs?.ip}</span></div>)}
+                        {showPrinterInfo && (<div className="col-span-2 bg-blue-50 p-3 rounded-lg border border-blue-100"><span className="block text-[10px] font-bold text-blue-600 uppercase flex items-center gap-1"><FileText size={12}/> Páginas Impressas</span><span className="font-mono font-black text-2xl text-blue-900">{asset.specs?.pageCount ? Number(asset.specs.pageCount).toLocaleString('pt-BR') : '0'}</span></div>)}
                         <div><span className="block text-[10px] font-bold text-gray-400 uppercase">Data Aquisição</span><span className="font-bold text-gray-900 text-sm">{formatDate(asset.purchaseDate)}</span></div>
                      </div>
                 </div>
