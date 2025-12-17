@@ -7,24 +7,24 @@ import {
   doc, 
   addDoc, 
   updateDoc, 
-  deleteDoc, // <--- Importante para a exclusão
+  deleteDoc, 
   query, 
   orderBy, 
+  where,
   serverTimestamp 
 } from 'firebase/firestore';
 
 const assetsCollection = collection(db, 'assets');
+const historyCollection = collection(db, 'history'); // Coleção Global de Histórico
 
 // --- LEITURA (READ) ---
 
-// Busca todos os ativos ordenados por criação
 export const getAllAssets = async () => {
   const q = query(assetsCollection, orderBy('createdAt', 'desc')); 
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-// Busca um ativo específico pelo ID do documento
 export const getAssetById = async (id) => {
   const docRef = doc(db, 'assets', id);
   const docSnap = await getDoc(docRef);
@@ -32,96 +32,130 @@ export const getAssetById = async (id) => {
   throw new Error("Ativo não encontrado");
 };
 
-// Busca o histórico de um ativo
+// Busca histórico na coleção global filtrando pelo ID do ativo
 export const getAssetHistory = async (assetId) => {
-  const historyRef = collection(db, 'assets', assetId, 'history');
-  const q = query(historyRef, orderBy('timestamp', 'desc'));
+  const q = query(
+    historyCollection, 
+    where('assetId', '==', assetId), 
+    orderBy('date', 'desc')
+  );
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
 // --- ESCRITA (CREATE / UPDATE / DELETE) ---
 
-// Cria um novo ativo
+// Cria um novo ativo e registra na timeline
 export const createAsset = async (assetData) => {
-  return await addDoc(assetsCollection, {
+  const docRef = await addDoc(assetsCollection, {
     ...assetData,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
+
+  // Log de Criação
+  await addDoc(historyCollection, {
+    assetId: docRef.id,
+    type: 'creation',
+    action: 'Ativo Criado',
+    date: serverTimestamp(),
+    user: 'Sistema',
+    details: 'Cadastro inicial no sistema.'
+  });
+
+  return docRef;
 };
 
-// Atualiza dados gerais de um ativo (usado para editar, salvar notas, etc.)
+// Atualiza dados e registra na timeline que houve edição
 export const updateAsset = async (id, assetData) => {
   const docRef = doc(db, 'assets', id);
+  
   await updateDoc(docRef, {
     ...assetData,
     updatedAt: serverTimestamp()
   });
+
+  // Log de Edição (Se não for uma atualização automática de sistema)
+  // Filtramos para não poluir a timeline se for apenas update interno
+  await addDoc(historyCollection, {
+    assetId: id,
+    type: 'update',
+    action: 'Dados Editados',
+    date: serverTimestamp(),
+    user: 'Admin TI',
+    details: 'Informações ou especificações atualizadas.'
+  });
 };
 
-// Exclui um ativo permanentemente
 export const deleteAsset = async (id) => {
   const assetRef = doc(db, 'assets', id);
   await deleteDoc(assetRef);
+  // Opcional: Apagar histórico associado (geralmente mantemos para auditoria)
   return true;
 };
 
-// --- AÇÕES ESPECÍFICAS (LÓGICA DE NEGÓCIO) ---
+// --- AÇÕES ESPECÍFICAS (TIMELINE RICA) ---
 
-// Realiza a movimentação (atualiza ativo + cria log de histórico)
+// Realiza a movimentação
 export const moveAsset = async (assetId, currentData, moveData) => {
   const assetRef = doc(db, 'assets', assetId);
-  const historyRef = collection(db, 'assets', assetId, 'history');
 
+  // 1. Atualiza o Ativo
   const updateData = {
-    assignedTo: moveData.newHolderName,
-    clientCpf: moveData.newHolderCpf || '',
-    sector: moveData.newSector || '',
+    assignedTo: moveData.newResponsible || '', // Garante string vazia se undefined
     location: moveData.newLocation,
-    status: moveData.newStatus,
+    status: 'Em Uso', // Assume 'Em Uso' ao transferir, ou mantenha o status anterior se preferir
     updatedAt: serverTimestamp()
   };
 
+  await updateDoc(assetRef, updateData);
+
+  // 2. Grava na Timeline Global
   const historyLog = {
+    assetId: assetId,
     type: 'movimentacao',
-    date: new Date(),
-    timestamp: serverTimestamp(),
-    previousHolder: currentData.assignedTo || 'Estoque/Indefinido',
-    previousLocation: currentData.location || 'Indefinido',
-    newHolder: moveData.newHolderName,
+    action: 'Transferência',
+    date: serverTimestamp(),
+    
+    // Dados para exibição no card
+    previousLocation: currentData.location || 'N/A',
     newLocation: moveData.newLocation,
-    reason: moveData.reason || 'Movimentação via Sistema',
+    previousHolder: currentData.assignedTo || 'N/A',
+    newHolder: moveData.newResponsible || 'Sem responsável',
+    
+    reason: moveData.reason || 'Movimentação de rotina',
     user: 'Admin TI' 
   };
 
-  await updateDoc(assetRef, updateData);
-  await addDoc(historyRef, historyLog);
+  await addDoc(historyCollection, historyLog);
   return true;
 };
 
-// Registra manutenção (atualiza status + cria log financeiro)
+// Registra manutenção
 export const registerMaintenance = async (assetId, maintenanceData) => {
   const assetRef = doc(db, 'assets', assetId);
-  const historyRef = collection(db, 'assets', assetId, 'history');
 
-  const updateData = {
+  // 1. Atualiza status do ativo
+  await updateDoc(assetRef, {
     status: 'Manutenção',
     updatedAt: serverTimestamp()
-  };
+  });
 
+  // 2. Grava na Timeline Global
   const historyLog = {
+    assetId: assetId,
     type: 'manutencao',
-    date: new Date(),
-    timestamp: serverTimestamp(),
+    action: 'Manutenção Iniciada',
+    date: serverTimestamp(),
+    
     cost: maintenanceData.cost || '0,00',
     provider: maintenanceData.provider || 'Interno',
-    defect: maintenanceData.defect,
-    description: maintenanceData.description,
+    defect: maintenanceData.defect || 'Não informado',
+    description: maintenanceData.description || '',
+    
     user: 'Admin TI'
   };
 
-  await updateDoc(assetRef, updateData);
-  await addDoc(historyRef, historyLog);
+  await addDoc(historyCollection, historyLog);
   return true;
 };

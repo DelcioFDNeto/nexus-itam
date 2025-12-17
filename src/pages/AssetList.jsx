@@ -12,8 +12,9 @@ import {
   Search, Plus, Filter, MoreHorizontal, 
   Smartphone, Monitor, Printer, Network, 
   MapPin, User, FileText, Laptop, Megaphone, CreditCard,
-  Download, ArrowUpDown, CheckSquare, Square, 
-  Printer as PrinterIcon, RefreshCcw, X, Check, ArrowDownAZ, ArrowUpAZ
+  Download, CheckSquare, Square, 
+  Printer as PrinterIcon, RefreshCcw, X, Check, ArrowDownAZ, ArrowUpAZ,
+  LayoutGrid, PackageCheck, Wrench, AlertCircle
 } from 'lucide-react';
 
 const AssetList = () => {
@@ -25,19 +26,18 @@ const AssetList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('Todos');
   
-  // Estados de Ordenação (Novo: sortBy)
-  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' ou 'desc'
-  const [sortBy, setSortBy] = useState('internalId'); // Padrão: Ordenar por Patrimônio
+  // Estados de Ordenação
+  const [sortOrder, setSortOrder] = useState('asc'); 
+  const [sortBy, setSortBy] = useState('internalId');
    
   // Estados de Ação em Massa
   const [selectedIds, setSelectedIds] = useState([]);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false); 
   const [bulkProcessing, setBulkProcessing] = useState(false); 
 
-  // --- 1. Sincronização em Tempo Real (Não Mexer) ---
+  // --- 1. Sincronização em Tempo Real ---
   useEffect(() => {
     setLoading(true);
-    // Busca inicial ordenada por criação para garantir consistência
     const q = query(collection(db, 'assets'), orderBy('createdAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -62,34 +62,23 @@ const AssetList = () => {
     documentTitle: 'Etiquetas_Lote_Shineray',
   });
 
-  // --- 3. Lógica de Filtros (Proteção contra Promocionais) ---
+  // --- 3. Lógica de Filtros ---
   const filteredAssets = assets.filter(asset => {
-    // Define o nome oficial (Prioridade para o editado 'assignedTo')
     const officialName = asset.assignedTo || asset.clientName || '';
-    
-    // Flag para saber se é promocional
     const isPromo = asset.category === 'Promocional' || asset.internalId?.includes('PRM');
 
-    // Busca Textual
     const matchesSearch = 
       asset.model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       asset.internalId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       officialName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       asset.vendedor?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    // Filtro por Tipo (Abas)
     let matchesType = true;
-
-    if (filterType === 'Todos') {
-        matchesType = true; 
-    } 
-    else if (filterType === 'Promocionais') {
-        matchesType = isPromo; // Só mostra promocionais aqui
-    } 
+    if (filterType === 'Todos') matchesType = true; 
+    else if (filterType === 'Promocionais') matchesType = isPromo;
     else if (filterType === 'Notebook') {
         const isNotebookType = asset.type === 'Notebook';
         const isNotebookModel = asset.model?.toLowerCase().includes('notebook');
-        // É Notebook E NÃO é promocional
         matchesType = (isNotebookType || isNotebookModel) && !isPromo;
     } 
     else {
@@ -97,7 +86,6 @@ const AssetList = () => {
             const isNotebookModel = asset.model?.toLowerCase().includes('notebook');
             matchesType = asset.type === 'Computador' && !isNotebookModel && !isPromo;
         } else {
-            // Outros tipos (Celular, Impressora...) E NÃO é promocional
             matchesType = asset.type === filterType && !isPromo;
         }
     }
@@ -105,18 +93,12 @@ const AssetList = () => {
     return matchesSearch && matchesType;
   });
 
-  // --- 4. Lógica de Ordenação (Numérica Inteligente) ---
+  // --- 4. Ordenação ---
   const sortedAssets = [...filteredAssets].sort((a, b) => {
-      // Pega o valor do campo selecionado (modelo ou id)
       const valA = (a[sortBy] || '').toString().toLowerCase();
       const valB = (b[sortBy] || '').toString().toLowerCase();
-      
-      // Usa 'numeric: true' para que "NTB-2" venha antes de "NTB-10"
-      if (sortOrder === 'asc') {
-          return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
-      } else {
-          return valB.localeCompare(valA, undefined, { numeric: true, sensitivity: 'base' });
-      }
+      if (sortOrder === 'asc') return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+      else return valB.localeCompare(valA, undefined, { numeric: true, sensitivity: 'base' });
   });
 
   // --- 5. Ações de Seleção ---
@@ -130,30 +112,21 @@ const AssetList = () => {
       else setSelectedIds([...selectedIds, id]);
   };
 
-  // Dados dos itens selecionados (para impressão/exportação)
   const selectedAssetsData = assets.filter(a => selectedIds.includes(a.id));
 
-  // --- 6. Ação em Massa (Status) ---
+  // --- 6. Ação em Massa ---
   const handleBulkStatusChange = async (newStatus) => {
       if (!confirm(`Tem certeza que deseja mudar o status de ${selectedIds.length} ativos para "${newStatus}"?`)) return;
-      
       setBulkProcessing(true);
       try {
           const updates = selectedIds.map(id => updateAsset(id, { status: newStatus }));
           await Promise.all(updates);
-          
           alert("Status atualizados com sucesso!");
           setSelectedIds([]); 
           setIsStatusModalOpen(false); 
-      } catch (error) {
-          console.error("Erro:", error);
-          alert("Erro ao atualizar alguns itens.");
-      } finally {
-          setBulkProcessing(false);
-      }
+      } catch (error) { alert("Erro ao atualizar alguns itens."); } finally { setBulkProcessing(false); }
   };
 
-  // --- 7. Exportação Excel ---
   const handleExportExcel = () => {
     const dataToExport = sortedAssets.map(asset => ({
         'Patrimônio': asset.internalId,
@@ -162,79 +135,52 @@ const AssetList = () => {
         'Categoria': asset.category,
         'Status': asset.status,
         'Responsável': asset.assignedTo || asset.clientName || '---',
-        'Vendedor': asset.vendedor || '',
         'Localização': asset.location,
         'Serial': asset.serialNumber || '',
-        'IMEI 1': asset.imei1 || '',
-        'Valor': asset.valor || '',
-        'Data Aquisição': asset.purchaseDate ? new Date(asset.purchaseDate).toLocaleDateString('pt-BR') : ''
     }));
-
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Ativos");
-    XLSX.writeFile(workbook, `Inventario_Shineray_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
+    XLSX.writeFile(workbook, `Inventario_Shineray.xlsx`);
   };
 
-  // --- Helpers Visuais ---
-  const getWarrantyStatus = (dateStr) => {
-    if (!dateStr || dateStr.length < 10) return null;
-    const purchase = new Date(dateStr);
-    const today = new Date();
-    const expiration = new Date(purchase);
-    expiration.setFullYear(purchase.getFullYear() + 1);
-    const thirtyDays = new Date();
-    thirtyDays.setDate(today.getDate() + 30);
-
-    if (today > expiration) return <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 ml-2 shadow-sm" title="Garantia Vencida"></span>;
-    if (expiration < thirtyDays) return <span className="inline-block w-2.5 h-2.5 rounded-full bg-yellow-500 ml-2 shadow-sm" title="Vence em breve"></span>;
-    return <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 ml-2 shadow-sm" title="Garantia Vigente"></span>;
-  };
-
-  const getResponsiblePerson = (asset) => {
-    const officialName = asset.assignedTo || asset.clientName;
-    if (asset.category === 'Promocional' || asset.internalId?.includes('PRM')) {
-        return (
-            <div className="flex flex-col">
-                <span className="text-purple-700 font-bold text-xs">{officialName || "Cliente Final"}</span>
-                {asset.vendedor && <span className="text-[10px] text-gray-400">Vend: {asset.vendedor}</span>}
-            </div>
-        );
-    } 
-    return (!officialName || officialName === 'Não definido') 
-        ? <span className="text-gray-400 italic">---</span> 
-        : <span className="text-gray-900 font-medium capitalize">{officialName.toLowerCase()}</span>;
-  };
-
+  // --- HELPERS VISUAIS ---
   const getTypeIcon = (asset) => {
-    if (asset.category === 'Promocional' || asset.internalId?.includes('PRM')) return <Megaphone size={18} className="text-pink-500" />;
-    if (asset.model?.toLowerCase().includes('notebook')) return <Laptop size={18} className="text-blue-600" />;
+    if (asset.category === 'Promocional' || asset.internalId?.includes('PRM')) return <Megaphone size={20} className="text-pink-500" />;
+    if (asset.model?.toLowerCase().includes('notebook')) return <Laptop size={20} className="text-blue-600" />;
     switch (asset.type) {
-      case 'Celular': return <Smartphone size={18} className="text-blue-500" />;
-      case 'Impressora': return <Printer size={18} className="text-orange-500" />;
-      case 'PGT': return <CreditCard size={18} className="text-yellow-600" />;
-      case 'Computador': return <Monitor size={18} className="text-purple-500" />;
-      default: return <Network size={18} className="text-gray-500" />;
+      case 'Celular': return <Smartphone size={20} className="text-blue-500" />;
+      case 'Impressora': return <Printer size={20} className="text-orange-500" />;
+      case 'PGT': return <CreditCard size={20} className="text-yellow-600" />;
+      case 'Computador': return <Monitor size={20} className="text-purple-500" />;
+      default: return <Network size={20} className="text-gray-500" />;
     }
   };
 
-  // Botão de alternar direção da ordenação
   const toggleSortDirection = () => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
 
   const filters = [
-    { label: 'Todos', value: 'Todos' },
-    { label: 'Notebooks', value: 'Notebook' },
-    { label: 'Computadores', value: 'Computador' },
-    { label: 'Celulares', value: 'Celular' },
-    { label: 'Maquininhas', value: 'PGT' },
-    { label: 'Impressoras', value: 'Impressora' },
-    { label: 'Promocionais', value: 'Promocionais' }
+    { label: 'Todos', value: 'Todos', icon: <LayoutGrid size={16}/> },
+    { label: 'Notebooks', value: 'Notebook', icon: <Laptop size={16}/> },
+    { label: 'Computadores', value: 'Computador', icon: <Monitor size={16}/> },
+    { label: 'Celulares', value: 'Celular', icon: <Smartphone size={16}/> },
+    { label: 'Maquininhas', value: 'PGT', icon: <CreditCard size={16}/> },
+    { label: 'Impressoras', value: 'Impressora', icon: <Printer size={16}/> },
+    { label: 'Promocionais', value: 'Promocionais', icon: <Megaphone size={16}/> }
   ];
 
   const statusOptions = ["Em Uso", "Disponível", "Em Transferência", "Manutenção", "Entregue", "Defeito", "Em Trânsito"];
 
+  // KPI STATS (Calculados em tempo real)
+  const stats = {
+      total: assets.length,
+      inUse: assets.filter(a => a.status === 'Em Uso' || a.status === 'Entregue').length,
+      available: assets.filter(a => a.status === 'Disponível').length,
+      maintenance: assets.filter(a => a.status === 'Manutenção' || a.status === 'Defeito').length
+  };
+
   return (
-    <div className="p-8 max-w-[1600px] mx-auto relative">
+    <div className="p-4 md:p-8 max-w-[1600px] mx-auto relative pb-24">
       
       {/* IMPRESSÃO OCULTA */}
       <div style={{ display: 'none' }}>
@@ -250,164 +196,194 @@ const AssetList = () => {
                             <span style={{ fontSize: '24px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1', display: 'block' }}>{asset.internalId}</span>
                             <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{asset.model?.substring(0, 25)}</span>
                         </div>
-                        <div style={{ borderTop: '2px solid #000', paddingTop: '2px', marginTop: 'auto' }}>
-                            <p style={{ margin: 0, fontSize: '9px', fontWeight: 'bold' }}>Suporte TI:</p>
-                            <p style={{ margin: 0, fontSize: '11px', fontWeight: '900' }}>shiadmti@gmail.com</p>
-                        </div>
                     </div>
                 </div>
             ))}
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Inventário de Ativos</h1>
-          <p className="text-gray-500 text-sm">Gerencie todos os equipamentos da Shineray</p>
-        </div>
-        
-        {/* BARRA DE AÇÕES EM MASSA */}
+      {/* --- DASHBOARD KPIs ---  */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
+              <div><p className="text-xs font-bold text-gray-400 uppercase">Total Ativos</p><p className="text-3xl font-black text-gray-900">{stats.total}</p></div>
+              <div className="p-3 bg-gray-100 rounded-xl text-gray-600"><LayoutGrid size={24}/></div>
+          </div>
+          <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
+              <div><p className="text-xs font-bold text-green-600 uppercase">Em Uso / Entregue</p><p className="text-3xl font-black text-gray-900">{stats.inUse}</p></div>
+              <div className="p-3 bg-green-50 rounded-xl text-green-600"><Check size={24}/></div>
+          </div>
+          <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
+              <div><p className="text-xs font-bold text-blue-600 uppercase">Disponível</p><p className="text-3xl font-black text-gray-900">{stats.available}</p></div>
+              <div className="p-3 bg-blue-50 rounded-xl text-blue-600"><PackageCheck size={24}/></div>
+          </div>
+          <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
+              <div><p className="text-xs font-bold text-orange-600 uppercase">Manutenção</p><p className="text-3xl font-black text-gray-900">{stats.maintenance}</p></div>
+              <div className="p-3 bg-orange-50 rounded-xl text-orange-600"><Wrench size={24}/></div>
+          </div>
+      </div>
+
+      {/* HEADER E AÇÕES */}
+      <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
         {selectedIds.length > 0 ? (
-            <div className="flex items-center gap-3 bg-black text-white px-4 py-2 rounded-lg animate-in slide-in-from-top-2 shadow-xl z-20">
+            <div className="flex items-center gap-3 bg-black text-white px-6 py-3 rounded-xl animate-in slide-in-from-top-2 shadow-xl z-20 w-full md:w-auto">
                 <span className="text-sm font-bold whitespace-nowrap">{selectedIds.length} selecionados</span>
                 <div className="h-4 w-px bg-gray-600 mx-2"></div>
-                <button onClick={() => setIsStatusModalOpen(true)} className="flex items-center gap-2 hover:text-shineray transition-colors text-sm font-bold uppercase"><RefreshCcw size={18} /> Alterar Status</button>
+                <button onClick={() => setIsStatusModalOpen(true)} className="flex items-center gap-2 hover:text-shineray transition-colors text-sm font-bold uppercase"><RefreshCcw size={18} /> Status</button>
                 <button onClick={handleBulkPrint} className="flex items-center gap-2 hover:text-shineray transition-colors text-sm font-bold uppercase ml-4"><PrinterIcon size={18} /> Etiquetas</button>
                 <button onClick={() => setSelectedIds([])} className="ml-4 text-xs text-gray-400 hover:text-white"><X size={18} /></button>
             </div>
         ) : (
-            <div className="flex gap-3 w-full md:w-auto">
-                <button onClick={handleExportExcel} className="px-4 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 flex items-center gap-2 shadow-sm border border-green-700"><Download size={18} /> Excel</button>
-                <Link to="/import" className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 font-bold hover:bg-gray-50 flex items-center gap-2"><FileText size={18} /> Importar</Link>
-                <Link to="/assets/new" className="px-4 py-2 bg-black text-white rounded-lg font-bold hover:bg-gray-800 flex items-center gap-2"><Plus size={18} /> Novo Ativo</Link>
+            <div className="flex-1 w-full flex flex-col md:flex-row gap-4 justify-between items-center">
+                {/* FILTROS (ABAS) */}
+                <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 w-full md:w-auto scrollbar-hide">
+                    {filters.map(f => (
+                        <button key={f.value} onClick={() => setFilterType(f.value)} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all border ${filterType === f.value ? 'bg-black text-white border-black shadow-md' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+                            {f.icon} {f.label}
+                        </button>
+                    ))}
+                </div>
+                
+                {/* BOTÕES AÇÃO */}
+                <div className="flex gap-2 shrink-0">
+                    <button onClick={handleExportExcel} className="p-3 bg-white border border-gray-200 rounded-xl text-green-600 hover:bg-green-50 shadow-sm" title="Exportar Excel"><Download size={20}/></button>
+                    <Link to="/import" className="p-3 bg-white border border-gray-200 rounded-xl text-blue-600 hover:bg-blue-50 shadow-sm" title="Importar"><FileText size={20}/></Link>
+                    <Link to="/assets/new" className="px-5 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 flex items-center gap-2 shadow-lg hover:scale-105 transition-transform"><Plus size={20} /> Novo Ativo</Link>
+                </div>
             </div>
         )}
       </div>
 
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row gap-4 items-center">
-        <div className="relative flex-1 w-full flex gap-2">
-            <div className="relative flex-1">
-                <Search className="absolute left-3 top-3 text-gray-400" size={20} />
-                <input type="text" placeholder="Buscar..." className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-black" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
-            </div>
-            
-            {/* NOVO: SELETOR DE ORDENAÇÃO */}
-            <div className="flex gap-1 border border-gray-200 rounded-lg p-1 bg-white items-center">
-                <select 
-                    value={sortBy} 
-                    onChange={(e) => setSortBy(e.target.value)} 
-                    className="pl-2 pr-8 py-1.5 text-sm bg-transparent outline-none font-bold text-gray-700 cursor-pointer"
-                >
-                    <option value="internalId">Por Patrimônio</option>
-                    <option value="model">Por Modelo</option>
-                    <option value="status">Por Status</option>
-                </select>
-                <button 
-                    onClick={toggleSortDirection}
-                    className="p-2 hover:bg-gray-100 rounded text-gray-600 transition-colors border-l border-gray-100 flex items-center justify-center"
-                    title={sortOrder === 'asc' ? "Crescente" : "Decrescente"}
-                >
-                    {sortOrder === 'asc' ? <ArrowDownAZ size={18} /> : <ArrowUpAZ size={18} />}
-                </button>
-            </div>
-
-        </div>
-        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-            <Filter size={20} className="text-gray-400 shrink-0" />
-            {filters.map(f => (
-                <button key={f.value} onClick={() => setFilterType(f.value)} className={`px-3 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${filterType === f.value ? 'bg-black text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                    {f.label}
-                </button>
-            ))}
+      {/* BARRA DE BUSCA E ORDENAÇÃO */}
+      <div className="bg-white p-2 pl-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex items-center gap-4">
+        <Search className="text-gray-400" size={20} />
+        <input type="text" placeholder="Buscar por modelo, patrimônio, usuário..." className="flex-1 py-2 bg-transparent outline-none font-medium text-gray-700 placeholder-gray-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
+        
+        <div className="h-8 w-px bg-gray-200"></div>
+        
+        <div className="flex items-center gap-2 pr-2">
+            <span className="text-xs font-bold text-gray-400 uppercase hidden md:inline">Ordenar:</span>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="bg-transparent text-sm font-bold text-gray-700 outline-none cursor-pointer">
+                <option value="internalId">Patrimônio</option>
+                <option value="model">Modelo</option>
+                <option value="status">Status</option>
+            </select>
+            <button onClick={toggleSortDirection} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">{sortOrder === 'asc' ? <ArrowDownAZ size={18} /> : <ArrowUpAZ size={18} />}</button>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      {/* TABELA MODERNA */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         {loading ? (
-            <div className="p-10 text-center text-gray-500 flex flex-col items-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mb-2"></div>Carregando...</div>
+            <div className="p-20 text-center text-gray-400 animate-pulse flex flex-col items-center"><div className="w-12 h-12 border-4 border-gray-200 border-t-black rounded-full animate-spin mb-4"></div>Carregando inventário...</div>
         ) : sortedAssets.length === 0 ? (
-            <div className="p-10 text-center text-gray-500">Nenhum ativo encontrado.</div>
+            <div className="p-20 text-center text-gray-400 flex flex-col items-center"><AlertCircle size={48} className="mb-4 opacity-20"/><p>Nenhum ativo encontrado com este filtro.</p></div>
         ) : (
             <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                     <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200 text-xs uppercase text-gray-500 font-bold tracking-wider">
-                            <th className="p-4 w-10">
-                                <button onClick={toggleSelectAll} className="text-gray-500 hover:text-black">
-                                    {selectedIds.length > 0 && selectedIds.length === sortedAssets.length ? <CheckSquare size={20}/> : <Square size={20}/>}
+                        <tr className="bg-gray-50 border-b border-gray-100 text-xs uppercase text-gray-400 font-bold tracking-wider">
+                            <th className="p-5 w-14 text-center">
+                                <button onClick={toggleSelectAll} className="hover:text-black transition-colors">
+                                    {selectedIds.length > 0 && selectedIds.length === sortedAssets.length ? <CheckSquare size={20} className="text-black"/> : <Square size={20}/>}
                                 </button>
                             </th>
-                            {/* Cabeçalhos clicáveis para ordenar rápido */}
-                            <th className="p-4 cursor-pointer hover:text-black transition-colors" onClick={() => {setSortBy('model'); toggleSortDirection()}}>Ativo / Modelo</th>
-                            <th className="p-4 cursor-pointer hover:text-black transition-colors" onClick={() => {setSortBy('internalId'); toggleSortDirection()}}>Patrimônio</th>
-                            <th className="p-4">Localização</th>
-                            <th className="p-4"><div className="flex items-center gap-1"><User size={14} /> Usuário / Cliente</div></th>
-                            <th className="p-4">Aquisição</th>
-                            <th className="p-4">Status</th>
-                            <th className="p-4 text-center">Ações</th>
+                            <th className="p-5">Ativo / Detalhes</th>
+                            <th className="p-5">Identificação</th>
+                            <th className="p-5">Responsável / Local</th>
+                            <th className="p-5">Status</th>
+                            <th className="p-5 text-center">Ações</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 text-sm">
-                        {sortedAssets.map((asset) => (
-                            <tr key={asset.id} className={`hover:bg-gray-50 transition-colors group ${selectedIds.includes(asset.id) ? 'bg-gray-50' : ''}`}>
-                                <td className="p-4">
-                                    <button onClick={() => toggleSelectOne(asset.id)} className="text-gray-400 hover:text-shineray">
-                                        {selectedIds.includes(asset.id) ? <CheckSquare size={20} className="text-black"/> : <Square size={20}/>}
-                                    </button>
-                                </td>
-                                <td className="p-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-gray-100 rounded-lg text-gray-600 shadow-sm">{getTypeIcon(asset)}</div>
-                                        <div>
-                                            <p className="font-bold text-gray-900">{asset.model}</p>
-                                            <p className="text-xs text-gray-500 flex gap-1 items-center">
-                                                {(asset.category === 'Promocional' || asset.internalId?.includes('PRM')) ? <span className="text-pink-600 font-bold bg-pink-50 px-1 rounded">PROMOCIONAL</span> : asset.type}
-                                            </p>
+                    <tbody className="divide-y divide-gray-50">
+                        {sortedAssets.map((asset) => {
+                            const responsibleName = asset.assignedTo || asset.clientName || '---';
+                            return (
+                                <tr key={asset.id} className={`hover:bg-gray-50/80 transition-colors group ${selectedIds.includes(asset.id) ? 'bg-blue-50/30' : ''}`}>
+                                    <td className="p-5 text-center">
+                                        <button onClick={() => toggleSelectOne(asset.id)} className="text-gray-300 hover:text-black">
+                                            {selectedIds.includes(asset.id) ? <CheckSquare size={20} className="text-blue-600"/> : <Square size={20}/>}
+                                        </button>
+                                    </td>
+                                    <td className="p-5">
+                                        <div className="flex items-center gap-4">
+                                            <div className="p-3 bg-gray-100 rounded-xl text-gray-600 group-hover:bg-white group-hover:shadow-md transition-all">{getTypeIcon(asset)}</div>
+                                            <div>
+                                                <p className="font-bold text-gray-900 text-sm">{asset.model}</p>
+                                                <div className="flex gap-2 mt-1">
+                                                    <span className="text-[10px] font-bold uppercase bg-gray-100 text-gray-500 px-2 py-0.5 rounded">{asset.type}</span>
+                                                    {(asset.category === 'Promocional' || asset.internalId?.includes('PRM')) && <span className="text-[10px] font-bold uppercase bg-pink-100 text-pink-600 px-2 py-0.5 rounded">Promo</span>}
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                </td>
-                                <td className="p-4 font-mono font-medium text-gray-600">{asset.internalId}</td>
-                                <td className="p-4 text-gray-600"><div className="flex items-center gap-2"><MapPin size={14} className="text-gray-400" />{asset.location || "Não def."}</div></td>
-                                <td className="p-4">{getResponsiblePerson(asset)}</td>
-                                <td className="p-4 text-gray-600 font-mono text-xs">{asset.purchaseDate ? (<div className="flex items-center">{new Date(asset.purchaseDate).toLocaleDateString('pt-BR')}{asset.category !== 'Promocional' && !asset.internalId?.includes('PRM') && getWarrantyStatus(asset.purchaseDate)}</div>) : '-'}</td>
-                                <td className="p-4">
-                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
-                                        asset.status === 'Em Uso' ? 'bg-green-100 text-green-700' :
-                                        asset.status === 'Disponível' ? 'bg-blue-100 text-blue-700' :
-                                        asset.status === 'Entregue' ? 'bg-purple-100 text-purple-700' : 
-                                        asset.status === 'Manutenção' ? 'bg-orange-100 text-orange-700' :
-                                        asset.status?.includes('Transfer') ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'
-                                    }`}>{asset.status}</span>
-                                </td>
-                                <td className="p-4 text-center">
-                                    <Link to={`/assets/${asset.id}`} className="inline-flex p-2 text-gray-400 hover:text-black hover:bg-gray-200 rounded-full transition-colors"><MoreHorizontal size={20} /></Link>
-                                </td>
-                            </tr>
-                        ))}
+                                    </td>
+                                    <td className="p-5">
+                                        <p className="font-mono font-bold text-sm text-gray-700 bg-gray-50 px-2 py-1 rounded w-fit border border-gray-200">{asset.internalId}</p>
+                                        <p className="text-xs text-gray-400 mt-1 font-mono">{asset.serialNumber || 'SN: ---'}</p>
+                                    </td>
+                                    <td className="p-5">
+                                        <div className="flex items-center gap-3">
+                                            {responsibleName !== '---' && (
+                                                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 uppercase border border-white shadow-sm">
+                                                    {responsibleName.substring(0,2)}
+                                                </div>
+                                            )}
+                                            <div>
+                                                <p className="text-sm font-bold text-gray-800">{responsibleName}</p>
+                                                <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5"><MapPin size={10}/> {asset.location || "Local n/d"}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="p-5">
+                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${
+                                            asset.status === 'Em Uso' ? 'bg-green-100 text-green-700' :
+                                            asset.status === 'Disponível' ? 'bg-blue-100 text-blue-700' :
+                                            asset.status === 'Entregue' ? 'bg-purple-100 text-purple-700' : 
+                                            asset.status === 'Manutenção' ? 'bg-orange-100 text-orange-700' :
+                                            'bg-gray-100 text-gray-600'
+                                        }`}>
+                                            <span className={`w-1.5 h-1.5 rounded-full mr-2 ${
+                                                asset.status === 'Em Uso' ? 'bg-green-500' :
+                                                asset.status === 'Disponível' ? 'bg-blue-500' :
+                                                asset.status === 'Entregue' ? 'bg-purple-500' : 
+                                                asset.status === 'Manutenção' ? 'bg-orange-500' :
+                                                'bg-gray-500'
+                                            }`}></span>
+                                            {asset.status}
+                                        </span>
+                                    </td>
+                                    <td className="p-5 text-center">
+                                        <Link to={`/assets/${asset.id}`} className="p-2 text-gray-400 hover:text-black hover:bg-gray-100 rounded-lg transition-all inline-flex">
+                                            <MoreHorizontal size={20} />
+                                        </Link>
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
         )}
       </div>
-      <div className="mt-4 text-center text-xs text-gray-400">Exibindo {sortedAssets.length} de {assets.length} ativos</div>
+      <div className="mt-4 text-center text-xs text-gray-400 font-medium">Exibindo {sortedAssets.length} de {assets.length} ativos cadastrados</div>
 
+      {/* MODAL DE STATUS EM MASSA */}
       {isStatusModalOpen && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in duration-200">
-                  <div className="bg-black p-4 text-white flex justify-between items-center">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in duration-200">
+                  <div className="bg-black p-5 text-white flex justify-between items-center">
                       <h3 className="font-bold flex items-center gap-2"><RefreshCcw size={18} /> Novo Status</h3>
-                      <button onClick={() => setIsStatusModalOpen(false)} className="hover:bg-gray-700 p-1 rounded"><X size={18}/></button>
+                      <button onClick={() => setIsStatusModalOpen(false)} className="hover:bg-gray-700 p-1 rounded transition-colors"><X size={18}/></button>
                   </div>
                   <div className="p-6">
-                      <p className="text-sm text-gray-600 mb-4">Selecione o novo status para os <strong>{selectedIds.length}</strong> itens selecionados:</p>
-                      <div className="grid grid-cols-1 gap-2">
+                      <p className="text-sm text-gray-600 mb-4 font-medium">Aplicar status para <strong>{selectedIds.length}</strong> itens:</p>
+                      <div className="flex flex-col gap-2">
                           {statusOptions.map(status => (
-                              <button key={status} onClick={() => handleBulkStatusChange(status)} disabled={bulkProcessing} className="w-full py-2 px-4 rounded border border-gray-200 hover:bg-black hover:text-white transition-colors font-medium text-sm text-left flex items-center justify-between group">
-                                  {status} <span className="opacity-0 group-hover:opacity-100"><Check size={16}/></span>
+                              <button key={status} onClick={() => handleBulkStatusChange(status)} disabled={bulkProcessing} className="w-full py-3 px-4 rounded-xl border border-gray-100 bg-gray-50 hover:bg-black hover:text-white transition-all font-bold text-sm text-left flex items-center justify-between group">
+                                  {status} <span className="opacity-0 group-hover:opacity-100 transition-opacity"><Check size={16}/></span>
                               </button>
                           ))}
                       </div>
-                      {bulkProcessing && <p className="text-center text-xs text-gray-500 mt-4 animate-pulse">Atualizando...</p>}
+                      {bulkProcessing && <p className="text-center text-xs text-gray-500 mt-4 animate-pulse font-bold">Processando...</p>}
                   </div>
               </div>
           </div>

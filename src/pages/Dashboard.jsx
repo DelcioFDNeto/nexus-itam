@@ -4,13 +4,11 @@ import { db } from '../services/firebase';
 import { collection, query, getDocs, orderBy, limit } from 'firebase/firestore';
 import { 
   TrendingUp, Users, Server, AlertTriangle, 
-  PieChart, DollarSign, Activity, CheckCircle, Smartphone 
+  PieChart, DollarSign, Activity, CheckCircle, Smartphone,
+  Plus, ClipboardCheck, ArrowRightLeft, ExternalLink, History
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-
-// --- CORREÇÃO DO ERRO ---
 import { Bar, Doughnut } from 'react-chartjs-2';
-// Usamos o 'chart.js/auto' para registrar tudo automaticamente e evitar o "Illegal constructor"
 import 'chart.js/auto'; 
 
 const Dashboard = () => {
@@ -25,20 +23,17 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1. Buscar Ativos
         const assetsRef = collection(db, 'assets');
         const assetsSnap = await getDocs(assetsRef);
         const assetsData = assetsSnap.docs.map(d => d.data());
         setAssets(assetsData);
 
-        // 2. Buscar Funcionários (Apenas contagem)
         const empRef = collection(db, 'employees');
         const empSnap = await getDocs(empRef);
         setTotalEmployees(empSnap.size);
 
-        // 3. Buscar Histórico Recente (Últimos 5)
         const histRef = collection(db, 'history');
-        const qHist = query(histRef, orderBy('date', 'desc'), limit(5));
+        const qHist = query(histRef, orderBy('date', 'desc'), limit(6)); // Aumentei para 6
         const histSnap = await getDocs(qHist);
         setRecentActivity(histSnap.docs.map(d => d.data()));
 
@@ -52,180 +47,205 @@ const Dashboard = () => {
     fetchData();
   }, []);
 
-  // --- CÁLCULOS E MÉTRICAS ---
-
-  // 1. Valor Patrimonial (COM FILTRO PROMOCIONAL)
+  // --- CÁLCULOS ---
   const totalValue = assets.reduce((acc, asset) => {
-      // Verifica se é promocional
       const isPromo = asset.category === 'Promocional' || asset.internalId?.includes('PRM');
-      
-      // Se for promocional, IGNORA no cálculo financeiro
       if (isPromo) return acc;
-
-      // Soma apenas corporativos
       const val = parseFloat(asset.valor) || 0;
       return acc + val;
   }, 0);
 
-  // 2. Contagens por Status
   const statusCounts = {
       disponivel: assets.filter(a => a.status === 'Disponível').length,
-      emUso: assets.filter(a => a.status === 'Em Uso').length,
+      emUso: assets.filter(a => a.status === 'Em Uso' || a.status === 'Entregue').length,
       manutencao: assets.filter(a => a.status === 'Manutenção').length,
       descarte: assets.filter(a => a.status === 'Descarte' || a.status === 'Baixado').length,
   };
 
-  // 3. Contagens por Tipo
   const typeCounts = assets.reduce((acc, curr) => {
-      const type = curr.type || 'Outros';
+      // Agrupar tipos menos comuns em "Outros" para limpar o gráfico
+      const type = ['Notebook', 'Computador', 'Celular', 'Impressora', 'PGT'].includes(curr.type) ? curr.type : 'Outros';
       acc[type] = (acc[type] || 0) + 1;
       return acc;
   }, {});
 
-  // --- DADOS DOS GRÁFICOS ---
+  // --- GRÁFICOS CONFIG ---
   const barData = {
     labels: Object.keys(typeCounts),
     datasets: [{
-      label: 'Quantidade',
+      label: 'Qtd',
       data: Object.values(typeCounts),
-      backgroundColor: '#D60000', // Vermelho Shineray
-      borderRadius: 4,
+      backgroundColor: ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#6B7280'],
+      borderRadius: 6,
+      barThickness: 30,
     }],
+  };
+
+  const barOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+          y: { grid: { borderDash: [4, 4], color: '#f3f4f6' }, beginAtZero: true },
+          x: { grid: { display: false } }
+      }
   };
 
   const doughnutData = {
-    labels: ['Em Uso', 'Disponível', 'Manutenção', 'Descarte'],
+    labels: ['Em Uso', 'Disponível', 'Manutenção'],
     datasets: [{
-      data: [statusCounts.emUso, statusCounts.disponivel, statusCounts.manutencao, statusCounts.descarte],
-      backgroundColor: ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'],
+      data: [statusCounts.emUso, statusCounts.disponivel, statusCounts.manutencao],
+      backgroundColor: ['#10B981', '#3B82F6', '#F59E0B'],
       borderWidth: 0,
+      hoverOffset: 4
     }],
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-black"></div></div>;
+  // --- HELPER DE ÍCONE DE HISTÓRICO ---
+  const getActivityIcon = (action) => {
+      const act = action.toLowerCase();
+      if (act.includes('criado') || act.includes('novo')) return <div className="p-2 bg-green-100 text-green-600 rounded-lg"><Plus size={16}/></div>;
+      if (act.includes('mov') || act.includes('transf')) return <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><ArrowRightLeft size={16}/></div>;
+      if (act.includes('manut') || act.includes('edit')) return <div className="p-2 bg-orange-100 text-orange-600 rounded-lg"><Activity size={16}/></div>;
+      return <div className="p-2 bg-gray-100 text-gray-600 rounded-lg"><History size={16}/></div>;
+  };
+
+  if (loading) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-shineray"></div></div>;
 
   return (
-    <div className="p-8 max-w-[1600px] mx-auto space-y-8 pb-24">
+    <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8 pb-24">
       
-      <div className="flex justify-between items-center">
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
-            <h1 className="text-3xl font-black text-gray-900 tracking-tight">Dashboard TI</h1>
-            <p className="text-gray-500 font-medium">Visão geral da infraestrutura</p>
+            <h1 className="text-3xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+                Dashboard <span className="text-shineray">Shineray</span>
+            </h1>
+            <p className="text-gray-500 font-medium">Visão geral operacional e patrimonial.</p>
         </div>
-        <p className="text-xs font-mono text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
-            Atualizado: {new Date().toLocaleTimeString()}
-        </p>
+        
+        {/* AÇÕES RÁPIDAS (NOVO) */}
+        <div className="flex gap-2">
+            <button onClick={() => navigate('/assets/new')} className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all shadow-lg active:scale-95 text-sm">
+                <Plus size={18}/> Ativo
+            </button>
+            <button onClick={() => navigate('/audit')} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-all text-sm">
+                <ClipboardCheck size={18}/> Auditoria
+            </button>
+        </div>
       </div>
 
-      {/* --- CARDS DE KPI --- */}
+      {/* --- KPI CARDS (Clicáveis) --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         
-        {/* Total Ativos */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-shadow">
+        <div onClick={() => navigate('/assets')} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all cursor-pointer group">
             <div>
-                <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">Total Ativos</p>
+                <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest group-hover:text-black transition-colors">Total Ativos</p>
                 <h3 className="text-3xl font-black text-gray-900 mt-1">{assets.length}</h3>
-                <span className="text-xs text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded-full">100% Registrado</span>
+                <span className="text-[10px] font-bold text-gray-400">Base total registrada</span>
             </div>
-            <div className="p-4 bg-gray-50 rounded-xl text-gray-800"><Server size={24}/></div>
+            <div className="p-4 bg-gray-50 rounded-xl text-gray-800 group-hover:bg-black group-hover:text-white transition-colors"><Server size={24}/></div>
         </div>
 
-        {/* Valor Patrimonial (FILTRADO) */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-shadow">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-shadow group">
             <div>
-                <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">Valor Corporativo</p>
-                <h3 className="text-3xl font-black text-gray-900 mt-1">
-                    R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Valor Patrimonial</p>
+                <h3 className="text-3xl font-black text-gray-900 mt-1 tracking-tight">
+                    R$ {(totalValue / 1000).toFixed(0)}k
                 </h3>
-                <span className="text-[10px] text-gray-400 font-bold bg-gray-100 px-2 py-0.5 rounded-full">Exclui Promocionais</span>
+                <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Exclui Promocionais</span>
             </div>
             <div className="p-4 bg-green-50 rounded-xl text-green-700"><DollarSign size={24}/></div>
         </div>
 
-        {/* Disponíveis */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-shadow">
+        <div onClick={() => navigate('/employees')} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all cursor-pointer group">
             <div>
-                <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">Estoque Disponível</p>
-                <h3 className="text-3xl font-black text-gray-900 mt-1">{statusCounts.disponivel}</h3>
-                <span className="text-xs text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-full">Prontos para uso</span>
+                <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest group-hover:text-blue-600 transition-colors">Colaboradores</p>
+                <h3 className="text-3xl font-black text-gray-900 mt-1">{totalEmployees}</h3>
+                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Equipe Ativa</span>
             </div>
-            <div className="p-4 bg-blue-50 rounded-xl text-blue-700"><CheckCircle size={24}/></div>
+            <div className="p-4 bg-blue-50 rounded-xl text-blue-700"><Users size={24}/></div>
         </div>
 
-        {/* Manutenção */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-shadow">
             <div>
-                <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">Em Manutenção</p>
+                <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Manutenção</p>
                 <h3 className="text-3xl font-black text-gray-900 mt-1">{statusCounts.manutencao}</h3>
-                <span className="text-xs text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded-full">Aguardando reparo</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusCounts.manutencao > 0 ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-400'}`}>
+                    {statusCounts.manutencao > 0 ? "Atenção necessária" : "Tudo operante"}
+                </span>
             </div>
-            <div className="p-4 bg-orange-50 rounded-xl text-orange-700"><AlertTriangle size={24}/></div>
+            <div className={`p-4 rounded-xl ${statusCounts.manutencao > 0 ? 'bg-orange-50 text-orange-600' : 'bg-gray-50 text-gray-400'}`}><AlertTriangle size={24}/></div>
         </div>
       </div>
 
-      {/* --- GRÁFICOS --- */}
+      {/* --- SECÇÃO DE DADOS --- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* Gráfico de Barras (Tipos) */}
-          <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-              <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
-                  <TrendingUp size={18} className="text-shineray"/> Distribuição por Tipo
-              </h3>
-              <div className="h-64">
-                  <Bar data={barData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }} />
+          {/* GRÁFICO DE BARRAS (Principal) */}
+          <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col">
+              <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-black text-gray-800 flex items-center gap-2">
+                      <TrendingUp size={20} className="text-shineray"/> Distribuição por Categoria
+                  </h3>
+                  <button onClick={() => navigate('/assets')} className="text-xs font-bold text-gray-400 hover:text-black flex items-center gap-1">
+                      Ver Relatório <ExternalLink size={12}/>
+                  </button>
+              </div>
+              <div className="flex-1 min-h-[300px]">
+                  <Bar data={barData} options={barOptions} />
               </div>
           </div>
 
-          {/* Gráfico de Rosca (Status) */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-              <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
-                  <Activity size={18} className="text-shineray"/> Status Geral
-              </h3>
-              <div className="h-64 relative flex justify-center">
-                  <Doughnut data={doughnutData} options={{ responsive: true, maintainAspectRatio: false, cutout: '70%' }} />
-                  <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
-                      <span className="text-3xl font-black text-gray-900">{assets.length}</span>
-                      <span className="text-xs text-gray-400 uppercase">Total</span>
+          {/* COLUNA LATERAL (Rosca + Lista) */}
+          <div className="flex flex-col gap-8">
+              
+              {/* STATUS (Rosca) */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                  <h3 className="font-black text-gray-800 mb-2">Status da Frota</h3>
+                  <p className="text-xs text-gray-400 mb-6">Proporção de uso vs. estoque</p>
+                  <div className="h-48 relative flex justify-center">
+                      <Doughnut data={doughnutData} options={{ responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { display: false } } }} />
+                      <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
+                          <span className="text-3xl font-black text-gray-900">{statusCounts.emUso}</span>
+                          <span className="text-[10px] font-bold text-green-600 uppercase">Em Uso</span>
+                      </div>
+                  </div>
+                  {/* Legenda Customizada */}
+                  <div className="flex justify-center gap-4 mt-6">
+                      <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-xs font-bold text-gray-600">Em Uso</span></div>
+                      <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-xs font-bold text-gray-600">Disp.</span></div>
+                      <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-orange-500"></div><span className="text-xs font-bold text-gray-600">Manut.</span></div>
                   </div>
               </div>
+
+              {/* HISTÓRICO RECENTE (Melhorado) */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex-1">
+                  <h3 className="font-black text-gray-800 mb-4 flex items-center gap-2">
+                      <Activity size={18} className="text-shineray"/> Timeline
+                  </h3>
+                  <div className="space-y-4">
+                      {recentActivity.length === 0 ? (
+                          <div className="text-center py-8 text-gray-400 text-xs">Nenhuma atividade recente.</div>
+                      ) : (
+                          recentActivity.map((act, index) => (
+                              <div key={index} className="flex gap-3 group">
+                                  {getActivityIcon(act.action)}
+                                  <div className="flex-1 border-b border-gray-50 pb-3 group-last:border-0 group-last:pb-0">
+                                      <p className="text-xs font-bold text-gray-900">{act.action}</p>
+                                      <p className="text-[10px] text-gray-500 line-clamp-1">{act.details || "Sem detalhes"}</p>
+                                      <p className="text-[9px] text-gray-300 mt-0.5 font-mono">{new Date(act.date?.seconds * 1000).toLocaleString('pt-BR')}</p>
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                  </div>
+              </div>
+
           </div>
       </div>
-
-      {/* --- ÚLTIMAS ATIVIDADES --- */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <HistorySectionHeader />
-          </h3>
-          <div className="space-y-4">
-              {recentActivity.length === 0 ? (
-                  <p className="text-gray-400 text-sm">Nenhuma atividade registrada.</p>
-              ) : (
-                  recentActivity.map((act, index) => (
-                      <div key={index} className="flex items-start gap-4 pb-4 border-b border-gray-50 last:border-0 last:pb-0">
-                          <div className="mt-1 p-2 bg-gray-50 rounded-lg text-gray-500">
-                              <Activity size={16} />
-                          </div>
-                          <div>
-                              <p className="text-sm font-bold text-gray-900">{act.action}</p>
-                              <p className="text-xs text-gray-500">{new Date(act.date?.seconds * 1000).toLocaleString('pt-BR')}</p>
-                              {act.details && <p className="text-xs text-gray-400 mt-1 italic">{act.details}</p>}
-                          </div>
-                      </div>
-                  ))
-              )}
-          </div>
-      </div>
-
     </div>
   );
 };
-
-// Componente simples para o título (para evitar repetição de ícone)
-const HistorySectionHeader = () => (
-  <div className="flex items-center gap-2">
-    <Activity size={18} className="text-shineray" /> 
-    Atividades Recentes
-  </div>
-);
 
 export default Dashboard;
