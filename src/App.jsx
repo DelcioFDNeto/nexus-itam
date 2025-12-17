@@ -22,6 +22,7 @@ import LicenseManager from './pages/LicenseManager';
 import TaskManager from './pages/TaskManager';
 import ProjectsPage from './pages/ProjectsPage'; // Importado aqui
 import ServiceManager from './pages/ServiceManager';
+import SettingsPage from './pages/SettingsPage';
 
 
 function App() {
@@ -83,6 +84,10 @@ function App() {
 
           <Route path="/import" element={
             <PrivateRoute><Layout><ImportData /></Layout></PrivateRoute>
+          } />
+
+          <Route path="/settings" element={
+            <PrivateRoute><Layout><SettingsPage /></Layout></PrivateRoute>
           } />
 
         </Routes>

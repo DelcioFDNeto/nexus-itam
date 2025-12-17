@@ -2,7 +2,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../services/firebase';
-import { doc, onSnapshot, collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+// Adicionado 'getDoc' para buscar as configurações
+import { doc, onSnapshot, collection, query, where, orderBy, getDocs, getDoc } from 'firebase/firestore';
 import { moveAsset, registerMaintenance, updateAsset, deleteAsset } from '../services/assetService'; 
 import MoveAssetModal from '../components/MoveAssetModal';
 import MaintenanceModal from '../components/MaintenanceModal';
@@ -21,17 +22,45 @@ const AssetDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   
+  // --- ESTADOS ---
   const [asset, setAsset] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [notes, setNotes] = useState(''); 
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+  
+  // Modais
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const [isMaintModalOpen, setIsMaintModalOpen] = useState(false);
+  
+  // Links
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [newLinkName, setNewLinkName] = useState('');
   const [isAddingLink, setIsAddingLink] = useState(false);
+
+  // --- CONFIGURAÇÕES DO SISTEMA (Para Impressão) ---
+  const [config, setConfig] = useState({
+    companyName: 'Shineray By Sabel',
+    itManager: 'Délcio Farias',
+    termTitle: 'Termo de Responsabilidade'
+  });
+
+  // Carregar Configurações ao Iniciar
+  useEffect(() => {
+    const loadConfig = async () => {
+        try {
+            const settingsRef = doc(db, 'settings', 'general');
+            const snap = await getDoc(settingsRef);
+            if (snap.exists()) {
+                setConfig(prev => ({ ...prev, ...snap.data() }));
+            }
+        } catch (error) {
+            console.error("Erro ao carregar configurações de impressão:", error);
+        }
+    };
+    loadConfig();
+  }, []);
 
   // --- CONFIGURAÇÃO DE IMPRESSÃO ---
   const termRef = useRef(null);
@@ -47,6 +76,7 @@ const AssetDetail = () => {
       documentTitle: `Etiqueta_${id}` 
   });
 
+  // --- DATA FETCHING ---
   const fetchHistory = async () => {
     try {
         const q = query(collection(db, 'history'), where('assetId', '==', id), orderBy('date', 'desc'));
@@ -73,6 +103,7 @@ const AssetDetail = () => {
     return () => unsubscribe();
   }, [id, navigate]);
 
+  // --- HANDLERS ---
   const handleAddLink = async () => {
       if (!newLinkUrl || !newLinkName) return alert("Preencha o nome e o link!");
       setIsAddingLink(true);
@@ -140,10 +171,10 @@ const AssetDetail = () => {
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24">
       
-      {/* --- ÁREA OCULTA DE IMPRESSÃO (RESTAURADA) --- */}
+      {/* --- ÁREA OCULTA DE IMPRESSÃO --- */}
       <div style={{ display: 'none' }}>
         
-        {/* MODELO DO TERMO */}
+        {/* MODELO DO TERMO (Dinâmico com Configurações) */}
         <div ref={termRef} className="print-term p-10 max-w-4xl mx-auto text-black bg-white font-sans relative">
             <div className="absolute top-8 right-8 flex flex-col items-center">
                 <QRCodeSVG value={asset.internalId} size={70} level="H" />
@@ -153,16 +184,16 @@ const AssetDetail = () => {
                 <img src={logoShineray} alt="Shineray" className="h-12 object-contain" />
                 <div className="text-right">
                     <p className="text-xs font-bold text-gray-800 uppercase tracking-widest">TI & Infraestrutura</p>
-                    <p className="text-[10px] text-gray-500 uppercase">Termo de Entrega</p>
+                    <p className="text-[10px] text-gray-500 uppercase">Documento Oficial</p>
                 </div>
             </div>
             
             <h2 className="text-lg font-black text-center mb-8 uppercase decoration-2 underline underline-offset-4 decoration-red-600">
-                Termo de Responsabilidade
+                {config.termTitle}
             </h2>
             
             <div className="text-justify space-y-4 text-xs leading-relaxed text-gray-800">
-                <p>Eu, <strong className="uppercase text-sm">{responsibleName || "_______________________"}</strong>, declaro ter recebido da <strong>SHINERAY BY SABEL</strong> o equipamento descrito abaixo, em perfeito estado de funcionamento e conservação:</p>
+                <p>Eu, <strong className="uppercase text-sm">{responsibleName || "_______________________"}</strong>, declaro ter recebido da <strong>{config.companyName.toUpperCase()}</strong> o equipamento descrito abaixo, em perfeito estado de funcionamento e conservação:</p>
                 
                 <div className="my-6 border border-gray-800 p-4 bg-gray-50">
                     <div className="grid grid-cols-2 gap-4">
@@ -175,7 +206,6 @@ const AssetDetail = () => {
                             <div className="col-span-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">Serial</span><span className="font-mono text-sm">{asset.serialNumber || "N/A"}</span></div>
                         )}
                         
-                        {/* Se tiver acessórios ou notes */}
                         {(asset.notes || asset.specs) && (
                             <div className="col-span-2 pt-2 border-t border-gray-200 mt-2">
                                 <span className="block text-[9px] font-bold text-gray-500 uppercase">Observações / Acessórios</span>
@@ -197,10 +227,12 @@ const AssetDetail = () => {
                 <div className="grid grid-cols-2 gap-12 items-end">
                     <div className="text-center relative">
                         <div className="absolute -top-8 left-0 right-0 flex justify-center">
-                            <span style={{ fontFamily: "'Brush Script MT', cursive" }} className="text-3xl text-blue-900 rotate-[-5deg] opacity-90">Délcio Farias</span>
+                            <span style={{ fontFamily: "'Brush Script MT', cursive" }} className="text-3xl text-blue-900 rotate-[-5deg] opacity-90">
+                                {config.itManager}
+                            </span>
                         </div>
                         <div className="border-t border-black w-full mb-1"></div>
-                        <p className="font-bold uppercase text-[10px]">Shineray By Sabel</p>
+                        <p className="font-bold uppercase text-[10px]">{config.companyName}</p>
                         <p className="text-[9px] text-gray-500">Departamento de TI</p>
                     </div>
                     <div className="text-center">
