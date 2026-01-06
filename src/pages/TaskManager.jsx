@@ -1,318 +1,129 @@
 // src/pages/TaskManager.jsx
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { getTasks, addTask, updateTask, deleteTask } from '../services/taskService';
-import { getProjects } from '../services/projectService';
 import { 
-  Plus, Trash2, Calendar, Edit, Filter, 
-  FolderGit2, ListChecks, ChevronDown, ChevronRight, X, Square, CheckSquare
+  CheckSquare, Plus, Trash2, Calendar, MoreHorizontal, Square
 } from 'lucide-react';
 
 const TaskManager = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
   const [tasks, setTasks] = useState([]);
-  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  
-  // Filtros
-  const [selectedProjectId, setSelectedProjectId] = useState(searchParams.get('projectId') || '');
-  const [statusFilter, setStatusFilter] = useState('Todos'); 
-
-  // --- SELEÇÃO MÚLTIPLA ---
-  const [selectedIds, setSelectedIds] = useState([]);
-
-  // Modal e Formulário
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTaskId, setEditingTaskId] = useState(null);
-  const initialFormState = { title: '', description: '', status: 'A Fazer', priority: 'Média', projectId: '', category: 'Geral' };
-  const [formData, setFormData] = useState(initialFormState);
-
-  const categories = [
-    { id: 'Levantamento', label: 'Levantamento & Análise', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-    { id: 'Inventário', label: 'Inventário Físico', color: 'bg-blue-50 text-blue-700 border-blue-200' },
-    { id: 'Manutenção', label: 'Manutenção & Suporte', color: 'bg-orange-50 text-orange-700 border-orange-200' },
-    { id: 'Auditoria', label: 'Auditoria & Compliance', color: 'bg-red-50 text-red-700 border-red-200' },
-    { id: 'Geral', label: 'Outras Demandas', color: 'bg-gray-50 text-gray-700 border-gray-200' }
-  ];
-
-  const [expandedSections, setExpandedSections] = useState(
-    categories.reduce((acc, cat) => ({...acc, [cat.id]: true}), {})
-  );
-
-  useEffect(() => { loadData(); }, []);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [tasksData, projectsData] = await Promise.all([getTasks(), getProjects()]);
-      setTasks(tasksData);
-      setProjects(projectsData);
-    } catch (error) { console.error("Erro:", error); } finally { setLoading(false); }
-  };
+  const [newTaskTitle, setNewTaskTitle] = useState(''); // Input rápido
 
   useEffect(() => {
-    const urlId = searchParams.get('projectId');
-    if (urlId) setSelectedProjectId(urlId);
-  }, [searchParams]);
+    const load = async () => {
+      const data = await getTasks();
+      setTasks(data);
+      setLoading(false);
+    };
+    load();
+  }, []);
 
-  const toggleSection = (catId) => setExpandedSections(prev => ({...prev, [catId]: !prev[catId]}));
-
-  // --- LÓGICA DE SELEÇÃO ---
-  const toggleSelect = (id) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
-
-  const handleBatchDelete = async () => {
-    if (selectedIds.length === 0) return;
-    if(confirm(`Tem certeza que deseja apagar ${selectedIds.length} tarefas?`)) {
-        setLoading(true);
-        try {
-            await Promise.all(selectedIds.map(id => deleteTask(id)));
-            // Remove localmente
-            setTasks(prev => prev.filter(t => !selectedIds.includes(t.id)));
-            setSelectedIds([]);
-        } catch (error) {
-            alert("Erro ao excluir tarefas.");
-        } finally {
-            setLoading(false);
-        }
-    }
-  };
-
-  // --- CRUD ---
-  const openCreateModal = () => {
-      setEditingTaskId(null);
-      setFormData({...initialFormState, projectId: selectedProjectId || ''});
-      setIsModalOpen(true);
-  };
-
-  const openEditModal = (task) => {
-      setEditingTaskId(task.id);
-      setFormData({
-          title: task.title || '',
-          description: task.description || '',
-          status: task.status || 'A Fazer',
-          priority: task.priority || 'Média',
-          projectId: task.projectId || '',
-          category: task.category || 'Geral'
-      });
-      setIsModalOpen(true);
-  };
-
-  const handleSaveTask = async (e) => {
+  const handleQuickAdd = async (e) => {
     e.preventDefault();
-    if (!formData.title) return;
+    if (!newTaskTitle.trim()) return;
+    
+    await addTask({
+        title: newTaskTitle,
+        status: 'A Fazer',
+        priority: 'Média',
+        category: 'Geral',
+        createdAt: new Date()
+    });
+    
+    setNewTaskTitle('');
+    const data = await getTasks();
+    setTasks(data);
+  };
 
-    try {
-        if (editingTaskId) {
-            await updateTask(editingTaskId, formData);
-            setTasks(prev => prev.map(t => t.id === editingTaskId ? { ...t, ...formData } : t));
-        } else {
-            const newTaskPayload = { ...formData, category: formData.category || 'Geral' };
-            await addTask(newTaskPayload);
-            const updated = await getTasks();
-            setTasks(updated);
-        }
-        setIsModalOpen(false);
-    } catch (error) { alert("Erro ao salvar."); }
+  const toggleStatus = async (task) => {
+      const newStatus = task.status === 'Concluído' ? 'A Fazer' : 'Concluído';
+      // Atualiza visualmente instantâneo (Optimistic UI)
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
+      await updateTask(task.id, { status: newStatus });
   };
 
   const handleDelete = async (id) => {
-    if (confirm('Excluir tarefa?')) {
-      await deleteTask(id);
-      setTasks(prev => prev.filter(t => t.id !== id));
-      if(selectedIds.includes(id)) toggleSelect(id);
-    }
-  };
-
-  const handleStatusChange = async (id, newStatus) => {
-      setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
-      await updateTask(id, { status: newStatus });
-  };
-
-  const getPriorityBadge = (p) => {
-    const colors = { 'Alta': 'bg-red-100 text-red-700', 'Média': 'bg-yellow-100 text-yellow-700', 'Baixa': 'bg-green-100 text-green-700' };
-    return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${colors[p] || colors['Média']}`}>{p}</span>;
-  };
-
-  const getStatusColor = (s) => {
-      switch(s) {
-          case 'Concluído': return 'text-green-600 bg-green-50 border-green-200';
-          case 'Em Progresso': return 'text-blue-600 bg-blue-50 border-blue-200';
-          default: return 'text-gray-600 bg-gray-50 border-gray-200';
+      if(confirm("Excluir tarefa?")) {
+          await deleteTask(id);
+          setTasks(prev => prev.filter(t => t.id !== id));
       }
   };
 
+  // Agrupar tarefas
+  const pendingTasks = tasks.filter(t => t.status !== 'Concluído');
+  const completedTasks = tasks.filter(t => t.status === 'Concluído');
+
   return (
-    <div className="p-4 md:p-8 max-w-[1600px] mx-auto pb-24">
+    <div className="p-4 md:p-8 max-w-4xl mx-auto pb-24">
       
-      {/* HEADER DINÂMICO */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-black text-gray-900 flex items-center gap-3">
-            <ListChecks className="text-shineray" size={32} /> Gestão de Tarefas
+      <div className="mb-8">
+          <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+              <CheckSquare className="text-shineray"/> Tarefas do Expediente
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
-             {selectedIds.length > 0 ? <span className="text-red-600 font-bold">{selectedIds.length} tarefa(s) selecionada(s)</span> : "Controle Operacional"}
-          </p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row w-full md:w-auto gap-3">
-          
-          {selectedIds.length > 0 ? (
-              // MODO SELEÇÃO
-              <>
-                <button onClick={() => setSelectedIds([])} className="bg-white text-gray-500 border border-gray-200 px-5 py-3 rounded-xl font-bold hover:bg-gray-50 flex items-center justify-center gap-2 w-full sm:w-auto">
-                    <X size={20} /> Cancelar
-                </button>
-                <button onClick={handleBatchDelete} className="bg-red-600 text-white px-5 py-3 rounded-xl font-bold hover:bg-red-700 flex items-center justify-center gap-2 shadow-lg w-full sm:w-auto animate-in zoom-in-95">
-                    <Trash2 size={20} /> Excluir ({selectedIds.length})
-                </button>
-              </>
-          ) : (
-              // MODO PADRÃO
-              <>
-                <div className="relative group w-full sm:w-auto">
-                    <div className="absolute left-3 top-3 text-gray-400"><FolderGit2 size={16}/></div>
-                    <select 
-                        value={selectedProjectId}
-                        onChange={(e) => { setSelectedProjectId(e.target.value); setSearchParams(e.target.value ? { projectId: e.target.value } : {}); }}
-                        className="w-full sm:w-auto pl-10 pr-8 py-3 bg-white border border-gray-300 rounded-xl outline-none focus:border-black font-bold text-sm cursor-pointer hover:bg-gray-50"
-                    >
-                        <option value="">Todos os Projetos</option>
-                        {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                </div>
-                <button onClick={openCreateModal} className="bg-black text-white px-5 py-3 rounded-xl font-bold hover:bg-gray-800 flex items-center justify-center gap-2 shadow-lg w-full sm:w-auto">
-                    <Plus size={20} /> <span className="md:hidden lg:inline">Nova Tarefa</span>
-                </button>
-              </>
-          )}
-        </div>
+          <p className="text-gray-500 text-sm">Lista operacional diária e demandas rápidas.</p>
       </div>
 
-      {/* ABAS STATUS */}
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide border-b border-gray-200">
-          {['Todos', 'A Fazer', 'Em Progresso', 'Concluído'].map(status => (
-              <button key={status} onClick={() => setStatusFilter(status)} className={`px-4 py-2 rounded-t-lg font-bold text-sm whitespace-nowrap transition-all border-b-2 ${statusFilter === status ? 'border-black text-black bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
-                  {status}
-              </button>
+      {/* INPUT RÁPIDO (Estilo Todoist) */}
+      <form onSubmit={handleQuickAdd} className="mb-8 relative">
+          <input 
+            value={newTaskTitle}
+            onChange={e => setNewTaskTitle(e.target.value)}
+            placeholder="Adicionar nova tarefa..." 
+            className="w-full p-4 pl-12 bg-white border-2 border-gray-200 rounded-2xl outline-none focus:border-black font-medium shadow-sm transition-all"
+          />
+          <Plus className="absolute left-4 top-4.5 text-gray-400" size={24}/>
+          <button type="submit" className="absolute right-3 top-3 bg-black text-white px-4 py-1.5 rounded-lg font-bold text-sm hover:bg-gray-800">
+              Adicionar
+          </button>
+      </form>
+
+      {/* LISTA PENDENTES */}
+      <div className="space-y-3">
+          {loading ? <p className="text-center text-gray-400">Carregando...</p> : 
+           pendingTasks.map(task => (
+              <div key={task.id} className="group flex items-center gap-3 bg-white p-4 rounded-xl border border-gray-200 hover:border-blue-400 transition-all shadow-sm">
+                  <button onClick={() => toggleStatus(task)} className="text-gray-300 hover:text-blue-500 transition-colors">
+                      <Square size={24} strokeWidth={2.5}/>
+                  </button>
+                  <div className="flex-1">
+                      <p className="font-bold text-gray-800 text-sm md:text-base">{task.title}</p>
+                      <div className="flex gap-2 text-xs text-gray-400 mt-0.5">
+                          <span>{task.category || 'Geral'}</span>
+                          <span>•</span>
+                          <span>{new Date(task.createdAt?.seconds * 1000 || Date.now()).toLocaleDateString('pt-BR')}</span>
+                      </div>
+                  </div>
+                  <button onClick={() => handleDelete(task.id)} className="opacity-0 group-hover:opacity-100 p-2 text-gray-300 hover:text-red-500 transition-all">
+                      <Trash2 size={18}/>
+                  </button>
+              </div>
           ))}
+          {pendingTasks.length === 0 && !loading && (
+              <div className="text-center py-10 text-gray-400">
+                  <p>Tudo limpo por aqui! 🎉</p>
+              </div>
+          )}
       </div>
 
-      {/* LISTA */}
-      <div className="space-y-6">
-        {loading ? ( <div className="text-center py-10 text-gray-400 animate-pulse">Carregando...</div> ) : (
-            categories.map(category => {
-                const categoryTasks = tasks.filter(t => {
-                    const matchCat = (t.category || 'Geral') === category.id;
-                    const matchProject = selectedProjectId ? t.projectId === selectedProjectId : true;
-                    const matchStatus = statusFilter === 'Todos' ? true : t.status === statusFilter;
-                    return matchCat && matchProject && matchStatus;
-                });
-
-                if (categoryTasks.length === 0 && statusFilter !== 'Todos') return null;
-
-                return (
-                    <div key={category.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                        <button onClick={() => toggleSection(category.id)} className={`w-full flex items-center justify-between p-4 ${category.color} transition-colors hover:opacity-90`}>
-                            <div className="flex items-center gap-2 font-black uppercase tracking-wide text-sm">
-                                {expandedSections[category.id] ? <ChevronDown size={18}/> : <ChevronRight size={18}/>}
-                                {category.label}
-                                <span className="ml-2 bg-white/60 px-2 py-0.5 rounded text-xs text-black/70">{categoryTasks.length}</span>
-                            </div>
-                        </button>
-
-                        {expandedSections[category.id] && (
-                            <div className="divide-y divide-gray-100">
-                                {categoryTasks.length === 0 ? (
-                                    <div className="p-8 text-center text-gray-400 text-sm italic">Nenhuma tarefa.</div>
-                                ) : (
-                                    categoryTasks.map(task => {
-                                        const taskProject = projects.find(p => p.id === task.projectId);
-                                        const isSelected = selectedIds.includes(task.id);
-                                        return (
-                                            <div key={task.id} className={`p-4 transition-colors group flex items-start gap-4 ${isSelected ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
-                                                
-                                                {/* CHECKBOX */}
-                                                <button 
-                                                    onClick={() => toggleSelect(task.id)} 
-                                                    className={`mt-1 text-gray-400 hover:text-gray-600 ${isSelected ? 'text-red-600' : ''}`}
-                                                >
-                                                    {isSelected ? <CheckSquare size={24} /> : <Square size={24} />}
-                                                </button>
-
-                                                <div className="flex-1 flex flex-col md:flex-row md:items-center gap-4">
-                                                    <div className="flex-1 flex flex-col md:flex-row md:items-center gap-3">
-                                                        <select 
-                                                            value={task.status}
-                                                            onChange={(e) => handleStatusChange(task.id, e.target.value)}
-                                                            className={`text-[10px] font-bold uppercase py-1.5 px-3 rounded border cursor-pointer outline-none appearance-none text-center w-full md:w-[120px] ${getStatusColor(task.status)}`}
-                                                        >
-                                                            <option>A Fazer</option><option>Em Progresso</option><option>Revisão</option><option>Concluído</option>
-                                                        </select>
-
-                                                        <div className="flex-1">
-                                                            <div className="flex flex-wrap items-center gap-2 mb-1">
-                                                                <span className="font-bold text-gray-900 text-sm md:text-base">{task.title}</span>
-                                                                {getPriorityBadge(task.priority)}
-                                                                {taskProject && (
-                                                                    <span className="flex items-center gap-1 text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">
-                                                                        <FolderGit2 size={10}/> {taskProject.name}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            {task.description && <p className="text-xs text-gray-500 line-clamp-2">{task.description}</p>}
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="flex items-center justify-between md:justify-end gap-3 border-t border-gray-100 md:border-0 pt-3 md:pt-0 w-full md:w-auto">
-                                                        <div className="flex items-center gap-1 text-xs text-gray-400 font-mono">
-                                                            <Calendar size={12}/> {new Date(task.createdAt?.seconds * 1000 || Date.now()).toLocaleDateString('pt-BR')}
-                                                        </div>
-                                                        <div className="flex gap-2">
-                                                            <button onClick={() => openEditModal(task)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><Edit size={16} /></button>
-                                                            <button onClick={() => handleDelete(task.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={16} /></button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })
-                                )}
-                            </div>
-                        )}
-                    </div>
-                );
-            })
-        )}
-      </div>
-
-      {/* MODAL (MANTIDO IGUAL) */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">{editingTaskId ? 'Editar Tarefa' : 'Nova Tarefa'}</h2>
-                <button onClick={() => setIsModalOpen(false)} className="p-1 rounded-full hover:bg-gray-100"><X size={20}/></button>
-            </div>
-            
-            <form onSubmit={handleSaveTask} className="space-y-4">
-              <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Título</label><input autoFocus required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black font-bold" /></div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sessão</label><select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black bg-white">{categories.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></div>
-                  <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Projeto</label><select value={formData.projectId} onChange={e => setFormData({...formData, projectId: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black bg-white"><option value="">Geral</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+      {/* LISTA CONCLUÍDAS (Accordion simples) */}
+      {completedTasks.length > 0 && (
+          <div className="mt-8">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Concluídas ({completedTasks.length})</h3>
+              <div className="space-y-2 opacity-60">
+                  {completedTasks.map(task => (
+                      <div key={task.id} className="flex items-center gap-3 p-3 rounded-lg border border-transparent hover:bg-gray-50">
+                          <button onClick={() => toggleStatus(task)} className="text-green-500">
+                              <CheckSquare size={20}/>
+                          </button>
+                          <span className="text-sm line-through text-gray-500 flex-1">{task.title}</span>
+                          <button onClick={() => handleDelete(task.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={14}/></button>
+                      </div>
+                  ))}
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Prioridade</label><select value={formData.priority} onChange={e => setFormData({...formData, priority: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black bg-white"><option>Baixa</option><option>Média</option><option>Alta</option></select></div>
-                  <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status</label><select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black bg-white"><option>A Fazer</option><option>Em Progresso</option><option>Concluído</option></select></div>
-              </div>
-              <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Descrição</label><textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-3 border-2 border-gray-100 rounded-xl outline-none focus:border-black" rows="3"></textarea></div>
-              <div className="flex gap-3 pt-4 border-t border-gray-50 mt-2"><button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-white border border-gray-200 rounded-xl font-bold text-gray-600 hover:bg-gray-50">Cancelar</button><button type="submit" className="flex-1 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 shadow-lg">{editingTaskId ? 'Salvar' : 'Criar'}</button></div>
-            </form>
           </div>
-        </div>
       )}
+
     </div>
   );
 };

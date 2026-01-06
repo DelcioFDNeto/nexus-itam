@@ -20,7 +20,8 @@ import EmployeeManager from './pages/EmployeeManager';
 import AuditPage from './pages/AuditPage';
 import LicenseManager from './pages/LicenseManager';
 import TaskManager from './pages/TaskManager';
-import ProjectsPage from './pages/ProjectsPage'; // Importado aqui
+import ProjectsPage from './pages/ProjectsPage';
+import ProjectDetails from './pages/ProjectDetails';
 import ServiceManager from './pages/ServiceManager';
 import SettingsPage from './pages/SettingsPage';
 
@@ -60,6 +61,10 @@ function App() {
           {/* --- ROTA NOVA ADICIONADA AQUI --- */}
           <Route path="/projects" element={
             <PrivateRoute><Layout><ProjectsPage /></Layout></PrivateRoute>
+          } />
+
+          <Route path="/projects/:id" element={
+            <PrivateRoute><Layout><ProjectDetails /></Layout></PrivateRoute>
           } />
 
           <Route path="/tasks" element={
