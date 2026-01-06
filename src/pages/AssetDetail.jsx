@@ -147,19 +147,7 @@ const AssetDetail = () => {
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24">
       
-      {/* --- ÁREA DE IMPRESSÃO (OCULTA) --- */}
-      <div style={{ display: 'none' }}>
-        
-        {/* TERMO A4 (Topo) */}
-        <div ref={termRef} className="print-term p-10 max-w-4xl mx-auto text-black bg-white font-sans relative">
-            <div className="absolute top-8 right-8 flex flex-col items-center"><QRCodeSVG value={asset.internalId} size={70} level="H" /><span className="text-[10px] font-mono font-bold mt-1">{asset.internalId}</span></div>
-            <div className="flex items-center justify-between border-b-2 border-black pb-4 mb-6 pr-24"><img src={logoShineray} alt="Shineray" className="h-12 object-contain" /><div className="text-right"><p className="text-xs font-bold text-gray-800 uppercase tracking-widest">TI & Infraestrutura</p><p className="text-[10px] text-gray-500 uppercase">Documento Oficial</p></div></div>
-            <h2 className="text-lg font-black text-center mb-8 uppercase decoration-2 underline underline-offset-4 decoration-red-600">{config.termTitle}</h2>
-            <div className="text-justify space-y-4 text-xs leading-relaxed text-gray-800"><p>Eu, <strong className="uppercase text-sm">{responsibleName || "_______________________"}</strong>, declaro ter recebido da <strong>{config.companyName.toUpperCase()}</strong>:</p><div className="my-6 border border-gray-800 p-4 bg-gray-50"><div className="grid grid-cols-2 gap-4"><div><span className="block text-[9px] font-bold text-gray-500 uppercase">Tipo/Modelo</span><span className="font-bold text-sm">{asset.type} - {asset.model}</span></div><div><span className="block text-[9px] font-bold text-gray-500 uppercase">Patrimônio</span><span className="font-bold text-sm bg-yellow-100 px-1">{asset.internalId}</span></div>{asset.imei1 ? (<div className="col-span-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">IMEI / Serial</span><span className="font-mono text-sm">{asset.imei1} {asset.serialNumber ? `/ ${asset.serialNumber}` : ''}</span></div>) : (<div className="col-span-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">Serial</span><span className="font-mono text-sm">{asset.serialNumber || "N/A"}</span></div>)}{(asset.notes || asset.specs) && (<div className="col-span-2 pt-2 border-t border-gray-200 mt-2"><span className="block text-[9px] font-bold text-gray-500 uppercase">Observações</span><span className="text-xs">{asset.notes || "Item entregue conforme padrão."}</span></div>)}</div></div><div className="space-y-2"><p><strong>1. RESPONSABILIDADE:</strong> Comprometo-me a zelar pela guarda e conservação.</p><p><strong>2. DEVOLUÇÃO:</strong> Devolução imediata mediante solicitação.</p></div></div>
-            <div className="mt-16 space-y-10"><p className="text-right italic text-xs">Belém (PA), {new Date().toLocaleDateString('pt-BR')}.</p><div className="grid grid-cols-2 gap-12 items-end"><div className="text-center relative"><div className="absolute -top-8 left-0 right-0 flex justify-center"><span style={{ fontFamily: "'Brush Script MT', cursive" }} className="text-3xl text-blue-900 rotate-[-5deg] opacity-90">{config.itManager}</span></div><div className="border-t border-black w-full mb-1"></div><p className="font-bold uppercase text-[10px]">{config.companyName}</p></div><div className="text-center"><div className="border-t border-black w-full mb-1"></div><p className="font-bold uppercase text-[10px]">{responsibleName}</p></div></div></div>
-        </div>
-
-        {/* ETIQUETA CENTRALIZADA (Correção Aqui) */}
+{/* MODELO DA ETIQUETA (DEFINITIVA - LOGO GRANDE) */}
         <div style={{ display: 'none' }}>
             <div ref={labelRef} style={{ width: '100%', height: '100vh', position: 'relative' }}>
                 <style>{`
@@ -172,42 +160,58 @@ const AssetDetail = () => {
                     position: 'absolute',
                     top: '50%',
                     left: '50%',
-                    transform: 'translate(-50%, -50%)', // Centraliza perfeitamente
+                    transform: 'translate(-50%, -50%)',
                     width: '7cm', 
                     height: '3.5cm', 
-                    padding: '5px', 
-                    border: '1.5px solid black', 
-                    borderRadius: '4px', 
+                    padding: '4px', 
+                    border: '2px solid black', 
+                    borderRadius: '6px', 
                     display: 'flex', 
                     flexDirection: 'row', 
                     alignItems: 'center', 
                     backgroundColor: 'white', 
-                    gap: '8px', 
+                    gap: '6px', 
                     fontFamily: 'Arial, sans-serif', 
                     boxSizing: 'border-box',
                     overflow: 'hidden'
                 }}>
-                    <div style={{ width: '65px', height: '65px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <QRCodeSVG value={asset.internalId} size={65} level="M" />
+                    {/* ESQUERDA: QR CODE */}
+                    <div style={{ width: '68px', height: '68px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <QRCodeSVG value={asset.internalId} size={68} level="M" />
                     </div>
+
+                    {/* DIREITA: INFO */}
                     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
-                        <div style={{ height: '20px', display: 'flex', alignItems: 'center' }}>
-                            <img src={logoShineray} alt="Shineray" style={{ height: '100%', maxHeight: '18px', width: 'auto', objectFit: 'contain' }} />
+                        
+                        {/* 1. LOGO DESTAQUE */}
+                        <div style={{ height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', borderBottom: '1px solid #eee', paddingBottom: '2px' }}>
+                            <img 
+                                src={logoShineray} 
+                                alt="Shineray" 
+                                style={{ height: '100%', maxHeight: '28px', width: 'auto', objectFit: 'contain' }} 
+                            />
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', marginTop: '-2px' }}>
-                            <span style={{ fontSize: '18px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1', letterSpacing: '-0.5px' }}>{asset.internalId}</span>
-                            <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#444', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>{asset.model}</span>
+
+                        {/* 2. DADOS PRINCIPAIS */}
+                        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            <span style={{ fontSize: '7px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', lineHeight: '1' }}>Patrimônio</span>
+                            <span style={{ fontSize: '18px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1.1', letterSpacing: '-0.5px' }}>
+                                {asset.internalId}
+                            </span>
+                            <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '125px' }}>
+                                {asset.model}
+                            </span>
                         </div>
-                        <div style={{ borderTop: '1px solid #000', paddingTop: '2px', marginTop: 'auto' }}>
-                            <p style={{ margin: 0, fontSize: '6px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase' }}>Suporte TI:</p>
-                            <p style={{ margin: 0, fontSize: '8px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</p>
+
+                        {/* 3. RODAPÉ SUPORTE */}
+                        <div style={{ borderTop: '1.5px solid #000', paddingTop: '1px', marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '6px', fontWeight: 'bold', color: '#444', textTransform: 'uppercase' }}>SUPORTE TI</span>
+                            <span style={{ fontSize: '8px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</span>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-
-      </div>
 
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
         <button onClick={() => navigate('/assets')} className="flex items-center gap-2 text-gray-500 hover:text-shineray font-bold uppercase tracking-wide text-sm self-start md:self-auto"><ArrowLeft size={18} /> Voltar</button>

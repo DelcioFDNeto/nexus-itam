@@ -176,7 +176,7 @@ const AssetList = () => {
   return (
     <div className="p-4 md:p-8 max-w-[1600px] mx-auto relative pb-24">
       
-     {/* IMPRESSÃO OCULTA (PADRÃO COMPACTO 7x3.5cm) */}
+{/* IMPRESSÃO OCULTA (DEFINITIVA - LOGO GRANDE) */}
       <div style={{ display: 'none' }}>
         <div ref={bulkPrintRef} className="print-grid">
             <style>{`
@@ -190,7 +190,7 @@ const AssetList = () => {
                     } 
                     .print-grid { 
                         display: grid; 
-                        grid-template-columns: repeat(3, 1fr); /* 3 Etiquetas por linha para economizar folha */
+                        grid-template-columns: repeat(3, 1fr); 
                         gap: 5mm; 
                         justify-items: center; 
                         width: 100%;
@@ -198,13 +198,13 @@ const AssetList = () => {
                     .bulk-label { 
                         width: 7cm; 
                         height: 3.5cm; 
-                        padding: 5px; 
-                        border: 1.5px solid black; 
-                        border-radius: 4px; 
+                        padding: 4px; /* Padding reduzido para a logo crescer */
+                        border: 2px solid black; 
+                        border-radius: 6px; 
                         display: flex; 
                         flex-direction: row;
                         align-items: center; 
-                        gap: 8px; 
+                        gap: 6px; 
                         background-color: white;
                         font-family: Arial, sans-serif;
                         box-sizing: border-box;
@@ -218,32 +218,37 @@ const AssetList = () => {
                 <div key={asset.id} className="bulk-label">
                     
                     {/* ESQUERDA: QR CODE */}
-                    <div style={{ width: '65px', height: '65px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <QRCodeSVG value={asset.internalId} size={65} level="M" />
+                    <div style={{ width: '68px', height: '68px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <QRCodeSVG value={asset.internalId} size={68} level="M" />
                     </div>
 
-                    {/* DIREITA: DADOS */}
+                    {/* DIREITA: INFO */}
                     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
                         
-                        {/* Logo */}
-                        <div style={{ height: '20px', display: 'flex', alignItems: 'center' }}>
-                            <img src={logoShineray} alt="Shineray" style={{ height: '100%', maxHeight: '18px', width: 'auto', objectFit: 'contain' }} />
+                        {/* 1. LOGO DESTAQUE */}
+                        <div style={{ height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', borderBottom: '1px solid #eee', paddingBottom: '2px' }}>
+                            <img 
+                                src={logoShineray} 
+                                alt="Shineray" 
+                                style={{ height: '100%', maxHeight: '28px', width: 'auto', objectFit: 'contain' }} 
+                            />
                         </div>
 
-                        {/* Patrimônio e Modelo */}
-                        <div style={{ display: 'flex', flexDirection: 'column', marginTop: '-2px' }}>
-                            <span style={{ fontSize: '18px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1', letterSpacing: '-0.5px' }}>
+                        {/* 2. DADOS PRINCIPAIS */}
+                        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            <span style={{ fontSize: '7px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', lineHeight: '1' }}>Patrimônio</span>
+                            <span style={{ fontSize: '18px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1.1', letterSpacing: '-0.5px' }}>
                                 {asset.internalId}
                             </span>
-                            <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#444', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>
+                            <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '125px' }}>
                                 {asset.model}
                             </span>
                         </div>
 
-                        {/* Rodapé Suporte */}
-                        <div style={{ borderTop: '1px solid #000', paddingTop: '2px', marginTop: 'auto' }}>
-                            <p style={{ margin: 0, fontSize: '6px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase' }}>Suporte TI:</p>
-                            <p style={{ margin: 0, fontSize: '8px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</p>
+                        {/* 3. RODAPÉ SUPORTE */}
+                        <div style={{ borderTop: '1.5px solid #000', paddingTop: '1px', marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '6px', fontWeight: 'bold', color: '#444', textTransform: 'uppercase' }}>SUPORTE TI</span>
+                            <span style={{ fontSize: '8px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</span>
                         </div>
                     </div>
                 </div>
