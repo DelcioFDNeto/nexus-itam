@@ -213,6 +213,112 @@ const AssetDetail = () => {
             </div>
         </div>
 
+        {/* --- ÁREA DE IMPRESSÃO (OCULTA NA TELA, VISÍVEL NA IMPRESSORA) --- */}
+      <div style={{ display: 'none' }}>
+        
+        {/* 1. TERMO DE RESPONSABILIDADE */}
+        <div ref={termRef}>
+            <style>{`
+                @media print {
+                    @page { size: A4; margin: 15mm; }
+                    body { font-family: 'Times New Roman', Times, serif; color: #000; line-height: 1.4; }
+                    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+                    .title { text-align: center; font-weight: bold; font-size: 16px; text-transform: uppercase; margin: 20px 0; text-decoration: underline; }
+                    .content { font-size: 12px; text-align: justify; }
+                    .box { border: 1px solid #000; padding: 10px; margin: 15px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; }
+                    .label { font-weight: bold; text-transform: uppercase; font-size: 9px; color: #333; display: block; }
+                    .value { font-weight: bold; font-size: 12px; }
+                    .clause { margin-bottom: 10px; }
+                    .signatures { display: flex; justify-content: space-between; margin-top: 60px; text-align: center; }
+                    .sign-line { border-top: 1px solid #000; width: 220px; margin: 5px auto; }
+                    .footer-text { font-size: 10px; font-style: italic; text-align: center; margin-top: 30px; }
+                }
+            `}</style>
+            
+            <div className="header">
+                <img src={logoShineray} alt="Shineray" style={{ height: '45px', objectFit: 'contain' }} />
+                <div style={{ textAlign: 'right' }}>
+                    <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{config.companyName}</p>
+                    <p style={{ margin: 0, fontSize: '10px' }}>Departamento de Tecnologia da Informação</p>
+                    <p style={{ margin: 0, fontSize: '10px' }}>Controle de Ativos: {new Date().getFullYear()}/{id.slice(0,4)}</p>
+                </div>
+            </div>
+
+            <div className="title">{config.termTitle}</div>
+
+            <div className="content">
+                <p>
+                    Pelo presente instrumento, a empresa <strong>{config.companyName.toUpperCase()}</strong>, cede ao colaborador(a) identificado(a) abaixo, a título de empréstimo para uso exclusivo profissional, o equipamento descrito a seguir:
+                </p>
+
+                <div className="box">
+                    <div><span className="label">Colaborador / Responsável</span><span className="value">{responsibleName}</span></div>
+                    <div><span className="label">Departamento / Local</span><span className="value">{asset.location}</span></div>
+                    
+                    <div style={{ gridColumn: 'span 2', borderTop: '1px dashed #ccc', margin: '5px 0' }}></div>
+
+                    <div><span className="label">Tipo de Equipamento</span><span className="value">{asset.type}</span></div>
+                    <div><span className="label">Marca / Modelo</span><span className="value">{asset.model}</span></div>
+                    <div><span className="label">Patrimônio (ID)</span><span className="value">{asset.internalId}</span></div>
+                    <div><span className="label">Nº de Série / Service Tag</span><span className="value">{asset.serialNumber || 'N/A'}</span></div>
+                    
+                    {asset.imei1 && (
+                         <div style={{ gridColumn: 'span 2' }}>
+                            <span className="label">Identificação Móvel (IMEI)</span>
+                            <span className="value">IMEI 1: {asset.imei1} {asset.imei2 ? `| IMEI 2: ${asset.imei2}` : ''}</span>
+                         </div>
+                    )}
+                    
+                    {(asset.notes || asset.specs) && (
+                        <div style={{ gridColumn: 'span 2' }}>
+                            <span className="label">Observações / Acessórios Inclusos</span>
+                            <span className="value" style={{ fontWeight: 'normal' }}>{asset.notes || "Equipamento entregue formatado e com acessórios padrão (carregador/mouse)."}</span>
+                        </div>
+                    )}
+                </div>
+
+                <p style={{ fontWeight: 'bold', marginBottom: '5px' }}>CLÁUSULAS E CONDIÇÕES DE USO:</p>
+                
+                <ol style={{ paddingLeft: '15px' }}>
+                    <li className="clause"><strong>Responsabilidade:</strong> O(A) colaborador(a) declara receber o equipamento em perfeito estado de funcionamento e assume total responsabilidade pela sua guarda e conservação.</li>
+                    <li className="clause"><strong>Uso Profissional:</strong> O equipamento destina-se estritamente às atividades profissionais da empresa, sendo vedada a instalação de softwares não autorizados ou uso para fins pessoais que violem a política de segurança da informação.</li>
+                    <li className="clause"><strong>Danos e Extravio:</strong> Em caso de dano, roubo, furto ou extravio por negligência, imprudência ou imperícia, a empresa poderá realizar o desconto do valor correspondente ao reparo ou reposição, conforme previsto no Art. 462, §1º da CLT.</li>
+                    <li className="clause"><strong>Segurança:</strong> O usuário compromete-se a não compartilhar senhas de acesso e a reportar imediatamente ao departamento de TI qualquer incidente de segurança ou mau funcionamento.</li>
+                    <li className="clause"><strong>Devolução:</strong> O equipamento deverá ser devolvido imediatamente quando solicitado pela empresa ou no ato de desligamento do colaborador, nas mesmas condições em que foi recebido, ressalvado o desgaste natural pelo uso.</li>
+                </ol>
+
+                <p style={{ marginTop: '20px' }}>
+                    E por estar de acordo com os termos acima descritos, assino o presente em duas vias de igual teor.
+                </p>
+
+                <p style={{ textAlign: 'right', marginTop: '30px' }}>
+                    Belém (PA), {new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}.
+                </p>
+
+                <div className="signatures">
+                    <div>
+                        {/* Se quiser usar assinatura digital do gestor: */}
+                        <div style={{ height: '30px', fontFamily: "'Brush Script MT', cursive", fontSize: '20px', color: '#003366' }}>{config.itManager}</div> 
+                        <div className="sign-line"></div>
+                        <strong>{config.companyName}</strong><br/>
+                        Gestão de Ativos de TI
+                    </div>
+                    <div>
+                        <div style={{ height: '30px' }}></div>
+                        <div className="sign-line"></div>
+                        <strong>{responsibleName}</strong><br/>
+                        Colaborador / Portador
+                    </div>
+                </div>
+
+                <div className="footer-text">
+                    Documento gerado eletronicamente pelo sistema Shineray ITAM.
+                </div>
+            </div>
+        </div>
+
+      </div>
+
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
         <button onClick={() => navigate('/assets')} className="flex items-center gap-2 text-gray-500 hover:text-shineray font-bold uppercase tracking-wide text-sm self-start md:self-auto"><ArrowLeft size={18} /> Voltar</button>
         <div className="flex flex-wrap gap-3 w-full md:w-auto justify-end">
