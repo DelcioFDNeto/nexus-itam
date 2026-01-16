@@ -176,6 +176,7 @@ const AssetForm = () => {
                                 <option value="Acará">Acará</option>
                                 <option value="Bragança">Bragança</option>
                                 <option value="Breves">Breves</option>
+                                <option value="Cametá">Cametá</option>
                                 <option value="Capanema">Capanema</option>
                                 <option value="Capitão Poço">Capitão Poço</option>
                                 <option value="Concórdia">Concórdia</option>
