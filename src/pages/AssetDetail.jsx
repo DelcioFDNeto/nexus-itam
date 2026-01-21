@@ -8,10 +8,11 @@ import MoveAssetModal from '../components/MoveAssetModal';
 import MaintenanceModal from '../components/MaintenanceModal';
 import { QRCodeSVG } from 'qrcode.react'; 
 import { 
-  ArrowLeft, Edit, MapPin, User, Tag, Smartphone, Monitor, History, Network, 
+  ArrowLeft, Edit, MapPin, User, Tag, Smartphone, Monitor, History, 
   Building2, ArrowRightLeft, QrCode, Wrench, StickyNote, Save, 
   Gift, PackageCheck, CreditCard, BadgeCheck, AlertTriangle, 
-  CheckCircle, Trash2, Link as LinkIcon, ExternalLink, Plus, Printer, FileText
+  CheckCircle, Trash2, Link as LinkIcon, ExternalLink, Plus, Printer, FileText,
+  MousePointer2, Plug 
 } from 'lucide-react';
 import AssetTimeline from '../components/AssetTimeline';
 import { useReactToPrint } from 'react-to-print';
@@ -21,6 +22,7 @@ const AssetDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   
+  // --- ESTADOS ---
   const [asset, setAsset] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,15 +31,22 @@ const AssetDetail = () => {
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const [isMaintModalOpen, setIsMaintModalOpen] = useState(false);
+  
+  // Links
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [newLinkName, setNewLinkName] = useState('');
   const [isAddingLink, setIsAddingLink] = useState(false);
 
-  // --- CONFIGURAÇÕES DO SISTEMA ---
+  // Periféricos
+  const [newPeripheral, setNewPeripheral] = useState('');
+  const [isAddingPeripheral, setIsAddingPeripheral] = useState(false);
+  const [peripheralToPrint, setPeripheralToPrint] = useState(null);
+
+  // --- CONFIGURAÇÕES ---
   const [config, setConfig] = useState({
-    companyName: 'Shineray By Sabel',
+    companyName: 'Shineray do Brasil',
     itManager: 'Délcio Farias',
-    termTitle: 'Termo de Responsabilidade'
+    termTitle: 'TERMO DE ENTREGA E RESPONSABILIDADE'
   });
 
   useEffect(() => {
@@ -51,13 +60,23 @@ const AssetDetail = () => {
     loadConfig();
   }, []);
 
-  // --- CONFIGURAÇÃO DE IMPRESSÃO ---
+  // --- IMPRESSÃO ---
   const termRef = useRef(null);
   const labelRef = useRef(null);
+  const peripheralLabelRef = useRef(null);
 
   const handlePrintTerm = useReactToPrint({ contentRef: termRef, documentTitle: `Termo_${id}` });
   const handlePrintLabel = useReactToPrint({ contentRef: labelRef, documentTitle: `Etiqueta_${id}` });
+  const triggerPeripheralPrint = useReactToPrint({ contentRef: peripheralLabelRef, documentTitle: `Acessorio_${id}` });
 
+  useEffect(() => {
+    if (peripheralToPrint) {
+        triggerPeripheralPrint();
+        setTimeout(() => setPeripheralToPrint(null), 1000);
+    }
+  }, [peripheralToPrint]);
+
+  // --- DATA ---
   const fetchHistory = async () => {
     try {
         const q = query(collection(db, 'history'), where('assetId', '==', id), orderBy('date', 'desc'));
@@ -81,6 +100,31 @@ const AssetDetail = () => {
     return () => unsubscribe();
   }, [id, navigate]);
 
+  // --- HANDLERS ---
+  
+  // 1. Handlers de Ações Rápidas (Estes estavam faltando)
+  const handleQuickStatus = async (newStatus) => { 
+      if (confirm(`Mudar status para "${newStatus}"?`)) { 
+          await updateAsset(id, { status: newStatus }); 
+      } 
+  };
+  
+  const handleMoveConfirm = async (moveData) => { 
+      await moveAsset(id, asset, moveData); 
+  };
+  
+  const handleMaintenanceConfirm = async (maintData) => { 
+      await registerMaintenance(id, maintData); 
+  };
+  
+  const handleSaveNotes = async () => { 
+      setIsSavingNotes(true); 
+      await updateAsset(id, { notes: notes }); 
+      setIsSavingNotes(false); 
+      alert("Notas salvas!"); 
+  };
+
+  // 2. Handlers de Links
   const handleAddLink = async () => {
       if (!newLinkUrl || !newLinkName) return alert("Preencha o nome e o link!");
       setIsAddingLink(true);
@@ -101,44 +145,47 @@ const AssetDetail = () => {
       } catch (error) { alert("Erro ao remover."); }
   };
 
+  // 3. Handlers de Periféricos
+  const handleAddPeripheral = async () => {
+      if (!newPeripheral) return alert("Digite o nome do periférico (ex: Carregador)");
+      setIsAddingPeripheral(true);
+      try {
+          const currentPeripherals = asset.peripherals || [];
+          const newItem = { name: newPeripheral, addedAt: new Date() };
+          await updateAsset(id, { peripherals: [...currentPeripherals, newItem] });
+          setNewPeripheral('');
+      } catch (error) { alert("Erro ao salvar periférico."); } finally { setIsAddingPeripheral(false); }
+  };
+
+  const handleDeletePeripheral = async (itemToDelete) => {
+      if(!confirm(`Remover ${itemToDelete.name}?`)) return;
+      try {
+          const currentPeripherals = asset.peripherals || [];
+          const newPeripherals = currentPeripherals.filter(p => p.name !== itemToDelete.name);
+          await updateAsset(id, { peripherals: newPeripherals });
+      } catch (error) { alert("Erro ao remover."); }
+  };
+
+  // 4. Handler de Exclusão
   const handleDelete = async () => {
-      if (window.confirm("TEM CERTEZA que deseja excluir este ativo?")) {
+      if (window.confirm("TEM CERTEZA?")) {
           setIsDeleting(true);
           try { await deleteAsset(id); alert("Excluído."); navigate('/assets'); } 
           catch (error) { alert("Erro."); setIsDeleting(false); }
       }
   };
 
+  // --- RENDER ---
   if (loading) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-shineray"></div></div>;
   if (!asset) return null;
 
-  const responsibleName = asset.assignedTo || asset.clientName || "Não atribuído";
+  const responsibleName = asset.assignedTo || asset.clientName || "__________________________";
   const derivedSector = asset.sector || "Adm/Op.";
   const isPromotional = asset.category === 'Promocional' || asset.internalId?.toUpperCase().includes('PRM');
-  
   const showImei = asset.type === 'Celular' || asset.type === 'PGT';
   const showPrinterInfo = asset.type === 'Impressora';
   const showIp = (asset.type === 'Computador' || asset.type === 'Notebook' || asset.type === 'Rede' || showPrinterInfo) && asset.specs?.ip;
-
-  const getLifecycleStatus = () => {
-      if (!asset.purchaseDate || asset.purchaseDate.length < 10) return null;
-      const purchase = new Date(asset.purchaseDate);
-      const today = new Date();
-      const expiration = new Date(purchase);
-      expiration.setFullYear(purchase.getFullYear() + 1);
-      const isWarrantyExpired = today > expiration;
-      
-      if (isWarrantyExpired) return { status: 'warning', title: 'Monitorar (Garantia Vencida)', desc: 'Garantia expirada.', color: 'bg-orange-50 border-orange-100 text-orange-800', icon: <AlertTriangle className="text-orange-500" size={20} /> };
-      return { status: 'healthy', title: 'Ativo Saudável', desc: `Garantia até ${expiration.toLocaleDateString('pt-BR')}.`, color: 'bg-green-50 border-green-100 text-green-800', icon: <CheckCircle className="text-green-600" size={20} /> };
-  };
-  
-  const lifecycle = !isPromotional ? getLifecycleStatus() : null;
-
-  const handleQuickStatus = async (newStatus) => { if (confirm(`Mudar status para "${newStatus}"?`)) { await updateAsset(id, { status: newStatus }); } };
-  const handleMoveConfirm = async (moveData) => { await moveAsset(id, asset, moveData); };
-  const handleMaintenanceConfirm = async (maintData) => { await registerMaintenance(id, maintData); };
-  const handleSaveNotes = async () => { setIsSavingNotes(true); await updateAsset(id, { notes: notes }); setIsSavingNotes(false); alert("Salvo!"); };
-  
+  const lifecycle = !isPromotional ? ({ status: 'healthy', title: 'Ativo', desc: 'Em operação', color: 'bg-green-50 text-green-800', icon: <CheckCircle size={20} /> }) : null;
   const expandLocation = (loc) => loc || "Local não definido";
   const formatDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : "N/A";
   const getBannerColor = () => { const s = asset.status.toLowerCase(); if (s === 'entregue') return 'bg-purple-600'; if (s.includes('transfer')) return 'bg-yellow-500'; if (s === 'manutenção') return 'bg-orange-600'; if (s === 'disponível') return 'bg-blue-600'; return 'bg-black'; };
@@ -147,76 +194,10 @@ const AssetDetail = () => {
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24">
       
-{/* MODELO DA ETIQUETA (DEFINITIVA - LOGO GRANDE) */}
-        <div style={{ display: 'none' }}>
-            <div ref={labelRef} style={{ width: '100%', height: '100vh', position: 'relative' }}>
-                <style>{`
-                    @media print {
-                        @page { size: auto; margin: 0mm; }
-                        body { margin: 0; }
-                    }
-                `}</style>
-                <div className="print-label" style={{ 
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    width: '7cm', 
-                    height: '3.5cm', 
-                    padding: '4px', 
-                    border: '2px solid black', 
-                    borderRadius: '6px', 
-                    display: 'flex', 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
-                    backgroundColor: 'white', 
-                    gap: '6px', 
-                    fontFamily: 'Arial, sans-serif', 
-                    boxSizing: 'border-box',
-                    overflow: 'hidden'
-                }}>
-                    {/* ESQUERDA: QR CODE */}
-                    <div style={{ width: '68px', height: '68px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <QRCodeSVG value={asset.internalId} size={68} level="M" />
-                    </div>
-
-                    {/* DIREITA: INFO */}
-                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
-                        
-                        {/* 1. LOGO DESTAQUE */}
-                        <div style={{ height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', borderBottom: '1px solid #eee', paddingBottom: '2px' }}>
-                            <img 
-                                src={logoShineray} 
-                                alt="Shineray" 
-                                style={{ height: '100%', maxHeight: '28px', width: 'auto', objectFit: 'contain' }} 
-                            />
-                        </div>
-
-                        {/* 2. DADOS PRINCIPAIS */}
-                        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                            <span style={{ fontSize: '7px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', lineHeight: '1' }}>Patrimônio</span>
-                            <span style={{ fontSize: '18px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1.1', letterSpacing: '-0.5px' }}>
-                                {asset.internalId}
-                            </span>
-                            <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '125px' }}>
-                                {asset.model}
-                            </span>
-                        </div>
-
-                        {/* 3. RODAPÉ SUPORTE */}
-                        <div style={{ borderTop: '1.5px solid #000', paddingTop: '1px', marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '6px', fontWeight: 'bold', color: '#444', textTransform: 'uppercase' }}>SUPORTE TI</span>
-                            <span style={{ fontSize: '8px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {/* --- ÁREA DE IMPRESSÃO (OCULTA NA TELA, VISÍVEL NA IMPRESSORA) --- */}
+      {/* ÁREA OCULTA DE IMPRESSÃO */}
       <div style={{ display: 'none' }}>
         
-        {/* 1. TERMO DE RESPONSABILIDADE */}
+        {/* 1. TERMO JURÍDICO OFICIAL */}
         <div ref={termRef}>
             <style>{`
                 @media print {
@@ -297,7 +278,6 @@ const AssetDetail = () => {
 
                 <div className="signatures">
                     <div>
-                        {/* Se quiser usar assinatura digital do gestor: */}
                         <div style={{ height: '30px', fontFamily: "'Brush Script MT', cursive", fontSize: '20px', color: '#003366' }}>{config.itManager}</div> 
                         <div className="sign-line"></div>
                         <strong>{config.companyName}</strong><br/>
@@ -317,8 +297,74 @@ const AssetDetail = () => {
             </div>
         </div>
 
+        {/* 2. ETIQUETA PRINCIPAL (Ativo) */}
+        <div style={{ display: 'none' }}>
+            <div ref={labelRef} style={{ width: '100%', height: '100vh', position: 'relative' }}>
+                <style>{` @media print { @page { size: auto; margin: 0mm; } body { margin: 0; } } `}</style>
+                <div className="print-label" style={{ 
+                    position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                    width: '7cm', height: '3.5cm', padding: '2px', border: '1.5px solid black', borderRadius: '4px', 
+                    display: 'flex', flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', gap: '2px', 
+                    fontFamily: 'Arial, sans-serif', boxSizing: 'border-box', overflow: 'hidden'
+                }}>
+                    <div style={{ width: '65px', height: '65px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <QRCodeSVG value={asset.internalId} size={65} level="M" />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
+                        <div style={{ height: '62px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '0.5px solid #ccc', marginBottom: '0px', paddingBottom: '0px', overflow: 'hidden' }}>
+                            <img src={logoShineray} alt="Shineray" style={{ height: '100%', width: '100%', objectFit: 'contain', objectPosition: 'center bottom' }} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', marginTop: '0px', lineHeight: 0.9 }}>
+                            <span style={{ fontSize: '15px', fontWeight: '900', color: 'black', fontFamily: 'monospace', letterSpacing: '-0.5px' }}>{asset.internalId}</span>
+                            <span style={{ fontSize: '7px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '125px' }}>{asset.model}</span>
+                        </div>
+                        <div style={{ borderTop: '1px solid #000', paddingTop: '1px', marginTop: 'auto', lineHeight: 0.8 }}>
+                            <p style={{ margin: 0, fontSize: '5px', fontWeight: 'bold', color: '#000', textTransform: 'uppercase' }}>Suporte TI:</p>
+                            <p style={{ margin: 0, fontSize: '7px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {/* 3. ETIQUETA DE PERIFÉRICO (Vinculado ao Pai) */}
+        <div style={{ display: 'none' }}>
+            <div ref={peripheralLabelRef} style={{ width: '100%', height: '100vh', position: 'relative' }}>
+                <style>{` @media print { @page { size: auto; margin: 0mm; } body { margin: 0; } } `}</style>
+                <div className="print-label" style={{ 
+                    position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                    width: '7cm', height: '3.5cm', padding: '2px', border: '1.5px solid black', borderRadius: '4px', 
+                    display: 'flex', flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', gap: '2px', 
+                    fontFamily: 'Arial, sans-serif', boxSizing: 'border-box', overflow: 'hidden'
+                }}>
+                    <div style={{ width: '65px', height: '65px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <QRCodeSVG value={asset.internalId} size={65} level="M" />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
+                        <div style={{ height: '62px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '0.5px solid #ccc', marginBottom: '0px', paddingBottom: '0px', overflow: 'hidden' }}>
+                            <img src={logoShineray} alt="Shineray" style={{ height: '100%', width: '100%', objectFit: 'contain', objectPosition: 'center bottom' }} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', marginTop: '0px', lineHeight: 0.9 }}>
+                            <span style={{ fontSize: '15px', fontWeight: '900', color: 'black', fontFamily: 'monospace', letterSpacing: '-0.5px' }}>{asset.internalId}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                <span style={{ fontSize: '5px', fontWeight: 'bold', color: '#fff', backgroundColor: '#000', padding: '0 2px', borderRadius: '2px', textTransform: 'uppercase' }}>ACESSÓRIO</span>
+                                <span style={{ fontSize: '7px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '85px' }}>
+                                    {peripheralToPrint ? peripheralToPrint.name : 'PERIFÉRICO'}
+                                </span>
+                            </div>
+                        </div>
+                        <div style={{ borderTop: '1px solid #000', paddingTop: '1px', marginTop: 'auto', lineHeight: 0.8 }}>
+                            <p style={{ margin: 0, fontSize: '5px', fontWeight: 'bold', color: '#000', textTransform: 'uppercase' }}>Suporte TI:</p>
+                            <p style={{ margin: 0, fontSize: '7px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
       </div>
 
+      {/* HEADER DE AÇÕES */}
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
         <button onClick={() => navigate('/assets')} className="flex items-center gap-2 text-gray-500 hover:text-shineray font-bold uppercase tracking-wide text-sm self-start md:self-auto"><ArrowLeft size={18} /> Voltar</button>
         <div className="flex flex-wrap gap-3 w-full md:w-auto justify-end">
@@ -333,13 +379,14 @@ const AssetDetail = () => {
                     <button onClick={() => setIsMoveModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg shadow-md font-bold uppercase text-sm"><ArrowRightLeft size={16} /> Transferir</button>
                 </>
             )}
-            <button onClick={handlePrintLabel} className="p-2 text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-300" title="Imprimir Etiqueta"><QrCode size={18} /></button>
+            <button onClick={handlePrintLabel} className="p-2 text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-300" title="Imprimir Etiqueta Principal"><QrCode size={18} /></button>
             <button onClick={handlePrintTerm} className="p-2 text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-300" title="Imprimir Termo"><Printer size={18} /></button>
             <button onClick={() => navigate(`/assets/edit/${asset.id}`)} className="p-2 text-shineray bg-red-50 hover:bg-red-100 rounded-lg border border-red-100"><Edit size={18} /></button>
             <button onClick={handleDelete} disabled={isDeleting} className="p-2 text-red-500 hover:bg-red-50 rounded-lg border border-red-200 ml-2"><Trash2 size={18} /></button>
         </div>
       </div>
 
+      {/* PAINEL PRINCIPAL */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div className={`p-8 border-b border-gray-800 flex flex-col md:flex-row justify-between md:items-center gap-6 ${getBannerColor()}`}>
             <div className="flex items-center gap-5">
@@ -383,6 +430,55 @@ const AssetDetail = () => {
                         ))}
                     </div>
                     <div className="flex gap-2 items-end"><div className="flex-1"><label className="text-[10px] font-bold text-gray-400 uppercase">Nome</label><input value={newLinkName} onChange={(e) => setNewLinkName(e.target.value)} className="w-full p-2 border border-gray-200 rounded text-sm outline-none focus:border-black"/></div><div className="flex-[2]"><label className="text-[10px] font-bold text-gray-400 uppercase">Link</label><input value={newLinkUrl} onChange={(e) => setNewLinkUrl(e.target.value)} className="w-full p-2 border border-gray-200 rounded text-sm outline-none focus:border-black"/></div><button onClick={handleAddLink} disabled={isAddingLink} className="p-2 bg-black text-white rounded hover:bg-gray-800 disabled:opacity-50"><Plus size={20}/></button></div>
+                </div>
+
+                {/* SEÇÃO DE PERIFÉRICOS */}
+                <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl space-y-4">
+                    <h3 className="font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2 uppercase tracking-wider text-sm">
+                        <Plug size={18} className="text-shineray" /> Periféricos & Acessórios Vinculados
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {asset.peripherals?.map((item, index) => (
+                            <div key={index} className="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-200 hover:border-black transition-colors group shadow-sm">
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                    <div className="p-2 bg-gray-100 rounded shadow-sm text-gray-600">
+                                        {item.name.toLowerCase().includes('mouse') ? <MousePointer2 size={16}/> : <Plug size={16}/>}
+                                    </div>
+                                    <div className="truncate">
+                                        <p className="text-xs font-bold text-gray-800 truncate max-w-[150px] uppercase">{item.name}</p>
+                                        <p className="text-[9px] text-gray-400">Vinculado em {new Date(item.addedAt?.seconds ? item.addedAt.seconds * 1000 : item.addedAt).toLocaleDateString()}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <button 
+                                        onClick={() => setPeripheralToPrint(item)} 
+                                        className="text-gray-400 hover:text-black p-1.5 hover:bg-gray-100 rounded transition-colors"
+                                        title="Imprimir Etiqueta do Acessório"
+                                    >
+                                        <QrCode size={16} />
+                                    </button>
+                                    <button onClick={() => handleDeletePeripheral(item)} className="text-gray-300 hover:text-red-500 p-1.5 hover:bg-red-50 rounded transition-colors"><Trash2 size={16} /></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="flex gap-2 items-end mt-2">
+                        <div className="flex-1">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase">Adicionar Periférico (Ex: Carregador, Mouse)</label>
+                            <input 
+                                value={newPeripheral} 
+                                onChange={(e) => setNewPeripheral(e.target.value)} 
+                                className="w-full p-2 border border-gray-300 rounded text-sm outline-none focus:border-black focus:ring-1 focus:ring-black"
+                                placeholder="Nome do acessório..."
+                                onKeyDown={(e) => e.key === 'Enter' && handleAddPeripheral()}
+                            />
+                        </div>
+                        <button onClick={handleAddPeripheral} disabled={isAddingPeripheral} className="p-2 bg-black text-white rounded hover:bg-gray-800 disabled:opacity-50 h-[38px] w-[38px] flex items-center justify-center">
+                            <Plus size={20}/>
+                        </button>
+                    </div>
                 </div>
 
                 {!isPromotional && (
