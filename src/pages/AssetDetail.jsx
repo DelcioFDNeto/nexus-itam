@@ -102,7 +102,6 @@ const AssetDetail = () => {
 
   // --- HANDLERS ---
   
-  // 1. Handlers de Ações Rápidas (Estes estavam faltando)
   const handleQuickStatus = async (newStatus) => { 
       if (confirm(`Mudar status para "${newStatus}"?`)) { 
           await updateAsset(id, { status: newStatus }); 
@@ -124,7 +123,6 @@ const AssetDetail = () => {
       alert("Notas salvas!"); 
   };
 
-  // 2. Handlers de Links
   const handleAddLink = async () => {
       if (!newLinkUrl || !newLinkName) return alert("Preencha o nome e o link!");
       setIsAddingLink(true);
@@ -145,7 +143,6 @@ const AssetDetail = () => {
       } catch (error) { alert("Erro ao remover."); }
   };
 
-  // 3. Handlers de Periféricos
   const handleAddPeripheral = async () => {
       if (!newPeripheral) return alert("Digite o nome do periférico (ex: Carregador)");
       setIsAddingPeripheral(true);
@@ -166,7 +163,6 @@ const AssetDetail = () => {
       } catch (error) { alert("Erro ao remover."); }
   };
 
-  // 4. Handler de Exclusão
   const handleDelete = async () => {
       if (window.confirm("TEM CERTEZA?")) {
           setIsDeleting(true);
@@ -194,10 +190,12 @@ const AssetDetail = () => {
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24">
       
-      {/* ÁREA OCULTA DE IMPRESSÃO */}
+      {/* ======================================================================= */}
+      {/* ÁREA DE IMPRESSÃO OCULTA                                                 */}
+      {/* ======================================================================= */}
       <div style={{ display: 'none' }}>
         
-        {/* 1. TERMO JURÍDICO OFICIAL */}
+        {/* 1. TERMO JURÍDICO OFICIAL (A4) */}
         <div ref={termRef}>
             <style>{`
                 @media print {
@@ -297,30 +295,41 @@ const AssetDetail = () => {
             </div>
         </div>
 
-        {/* 2. ETIQUETA PRINCIPAL (Ativo) */}
+        {/* 2. ETIQUETA PRINCIPAL (7cm x 3.5cm - PADRÃO DEFINITIVO) */}
         <div style={{ display: 'none' }}>
             <div ref={labelRef} style={{ width: '100%', height: '100vh', position: 'relative' }}>
-                <style>{` @media print { @page { size: auto; margin: 0mm; } body { margin: 0; } } `}</style>
+                <style>{` 
+                    @media print { 
+                        @page { size: auto; margin: 0mm; } 
+                        body { margin: 0; } 
+                    } 
+                `}</style>
                 <div className="print-label" style={{ 
                     position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                    width: '7cm', height: '3.5cm', padding: '2px', border: '1.5px solid black', borderRadius: '4px', 
-                    display: 'flex', flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', gap: '2px', 
+                    width: '7cm', height: '3.5cm', padding: '4px', border: '2px solid black', borderRadius: '6px', 
+                    display: 'flex', flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', gap: '6px', 
                     fontFamily: 'Arial, sans-serif', boxSizing: 'border-box', overflow: 'hidden'
                 }}>
-                    <div style={{ width: '65px', height: '65px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <QRCodeSVG value={asset.internalId} size={65} level="M" />
+                    {/* ESQUERDA: QR CODE (68px) */}
+                    <div style={{ width: '68px', height: '68px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <QRCodeSVG value={asset.internalId} size={68} level="M" />
                     </div>
+                    {/* DIREITA: DADOS */}
                     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
-                        <div style={{ height: '62px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '0.5px solid #ccc', marginBottom: '0px', paddingBottom: '0px', overflow: 'hidden' }}>
-                            <img src={logoShineray} alt="Shineray" style={{ height: '100%', width: '100%', objectFit: 'contain', objectPosition: 'center bottom' }} />
+                        {/* Logo 32px */}
+                        <div style={{ height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', borderBottom: '1px solid #eee', paddingBottom: '2px' }}>
+                            <img src={logoShineray} alt="Shineray" style={{ height: '100%', maxHeight: '28px', width: 'auto', objectFit: 'contain' }} />
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', marginTop: '0px', lineHeight: 0.9 }}>
-                            <span style={{ fontSize: '15px', fontWeight: '900', color: 'black', fontFamily: 'monospace', letterSpacing: '-0.5px' }}>{asset.internalId}</span>
-                            <span style={{ fontSize: '7px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '125px' }}>{asset.model}</span>
+                        {/* Infos */}
+                        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            <span style={{ fontSize: '7px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', lineHeight: '1' }}>Patrimônio</span>
+                            <span style={{ fontSize: '18px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1.1', letterSpacing: '-0.5px' }}>{asset.internalId}</span>
+                            <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '125px' }}>{asset.model}</span>
                         </div>
-                        <div style={{ borderTop: '1px solid #000', paddingTop: '1px', marginTop: 'auto', lineHeight: 0.8 }}>
-                            <p style={{ margin: 0, fontSize: '5px', fontWeight: 'bold', color: '#000', textTransform: 'uppercase' }}>Suporte TI:</p>
-                            <p style={{ margin: 0, fontSize: '7px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</p>
+                        {/* Footer */}
+                        <div style={{ borderTop: '1.5px solid #000', paddingTop: '1px', marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '6px', fontWeight: 'bold', color: '#444', textTransform: 'uppercase' }}>SUPORTE TI</span>
+                            <span style={{ fontSize: '8px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</span>
                         </div>
                     </div>
                 </div>
@@ -330,65 +339,28 @@ const AssetDetail = () => {
         {/* 3. ETIQUETA DE PERIFÉRICO (MINI - 5cm x 2.5cm) */}
         <div style={{ display: 'none' }}>
             <div ref={peripheralLabelRef} style={{ width: '100%', height: '100vh', position: 'relative' }}>
-                <style>{` 
-                    @media print { 
-                        @page { size: auto; margin: 0mm; } 
-                        body { margin: 0; } 
-                    } 
-                `}</style>
-                
+                <style>{` @media print { @page { size: auto; margin: 0mm; } body { margin: 0; } } `}</style>
                 <div className="print-label" style={{ 
                     position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                    width: '5cm',       /* BEM MENOR */
-                    height: '2.5cm',    /* BEM MENOR */
-                    padding: '2px', 
-                    border: '1px solid black', 
-                    borderRadius: '4px', 
-                    display: 'flex', 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
-                    backgroundColor: 'white', 
-                    gap: '4px', 
-                    fontFamily: 'Arial, sans-serif', 
-                    boxSizing: 'border-box',
-                    overflow: 'hidden'
+                    width: '5cm', height: '2.5cm', padding: '2px', border: '1px solid black', borderRadius: '4px', 
+                    display: 'flex', flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', gap: '4px', 
+                    fontFamily: 'Arial, sans-serif', boxSizing: 'border-box', overflow: 'hidden'
                 }}>
-                    {/* LADO ESQUERDO: QR CODE (Reduzido) */}
                     <div style={{ width: '45px', height: '45px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <QRCodeSVG value={asset.internalId} size={42} level="M" />
                     </div>
-
-                    {/* LADO DIREITO: DADOS COMPACTOS */}
                     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
-                        
-                        {/* Logo (Proporcional ao tamanho mini) */}
-                        <div style={{ 
-                            height: '22px', 
-                            width: '100%', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            borderBottom: '0.5px solid #ccc', 
-                            marginBottom: '1px', 
-                            paddingBottom: '1px' 
-                        }}>
+                        <div style={{ height: '22px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '0.5px solid #ccc', marginBottom: '1px', paddingBottom: '1px' }}>
                             <img src={logoShineray} alt="Shineray" style={{ height: '100%', width: '100%', objectFit: 'contain' }} />
                         </div>
-
-                        {/* ID Pai + Nome Acessório */}
                         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 0.9 }}>
-                            <span style={{ fontSize: '11px', fontWeight: '900', color: 'black', fontFamily: 'monospace' }}>
-                                {asset.internalId}
-                            </span>
-                            
+                            <span style={{ fontSize: '11px', fontWeight: '900', color: 'black', fontFamily: 'monospace' }}>{asset.internalId}</span>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '2px', marginTop: '1px' }}>
                                 <span style={{ fontSize: '6px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80px' }}>
                                     {peripheralToPrint ? peripheralToPrint.name : 'ACESSÓRIO'}
                                 </span>
                             </div>
                         </div>
-
-                        {/* Rodapé Minimalista */}
                         <div style={{ borderTop: '0.5px solid #000', paddingTop: '1px', marginTop: 'auto' }}>
                             <p style={{ margin: 0, fontSize: '5px', fontWeight: '900', color: '#000', textAlign: 'right' }}>TI SHINERAY</p>
                         </div>
