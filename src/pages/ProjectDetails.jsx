@@ -5,7 +5,7 @@ import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { 
   ArrowLeft, Calendar, User, GitBranch, CheckCircle, 
   FileText, Plus, Save, Clock, Target, Edit3, X, 
-  BarChart3, DollarSign, Users, ImageIcon
+  BarChart3, DollarSign, Users, ImageIcon, Trash2 // <--- Adicionado Trash2
 } from 'lucide-react';
 
 const ProjectDetails = () => {
@@ -64,6 +64,31 @@ const ProjectDetails = () => {
     }
   };
 
+  // --- NOVA FUNÇÃO DE EXCLUIR LOG ---
+  const handleDeleteLog = async (logToDelete) => {
+    if (!confirm("Tem certeza que deseja excluir este registro?")) return;
+
+    try {
+        // Filtra removendo o item selecionado
+        const newChangelog = project.changelog.filter(log => log !== logToDelete);
+
+        // Atualiza no Firebase (sobrescreve o array antigo pelo novo sem o item)
+        await updateDoc(doc(db, 'projects', id), {
+            changelog: newChangelog
+        });
+
+        // Atualiza estado local
+        setProject(prev => ({
+            ...prev,
+            changelog: newChangelog
+        }));
+
+    } catch (error) {
+        console.error(error);
+        alert("Erro ao excluir log.");
+    }
+  };
+
   const handleSaveChanges = async (e) => {
       e.preventDefault();
       try {
@@ -91,22 +116,19 @@ const ProjectDetails = () => {
       setIsEditModalOpen(true);
   };
 
-  // --- HELPERS SEGUROS (CORREÇÃO DO BUG) ---
+  // --- HELPERS SEGUROS ---
   
-  // Extrai nome do líder com segurança (evita crash se for null ou objeto)
   const getLeaderName = (leader) => {
       if (typeof leader === 'string') return leader.split(' ')[0];
       return "Indefinido";
   };
 
-  // Renderiza o log com segurança (trata String e Objetos antigos)
   const safeRenderLog = (log) => {
       let version = '';
       let content = '';
       let date = '';
 
       if (typeof log === 'string') {
-          // Formato novo: "v1.0: Texto (Data)"
           const parts = log.split(':');
           if (parts[0].includes('v')) {
               version = parts[0];
@@ -115,7 +137,6 @@ const ProjectDetails = () => {
               content = log;
           }
       } else if (typeof log === 'object' && log !== null) {
-          // Formato antigo/objeto: { version: '1.0', notes: '...' }
           version = log.version ? `v${log.version}` : '';
           content = log.notes || log.descricao || JSON.stringify(log);
           date = log.date || '';
@@ -151,14 +172,12 @@ const ProjectDetails = () => {
       
       {/* BANNER PRINCIPAL */}
       <div className="bg-white rounded-3xl border border-gray-200 shadow-sm mb-8 overflow-hidden relative">
-          {/* Capa de Fundo (Blur) */}
           <div 
             className="h-32 w-full bg-cover bg-center absolute top-0 left-0 opacity-10"
             style={{ backgroundImage: `url(${project.coverImage || 'https://ui-avatars.com/api/?background=random'})` }}
           ></div>
 
           <div className="relative z-10 p-8 pt-12 flex flex-col md:flex-row gap-8 items-start">
-              {/* Logo do Projeto */}
               <img 
                 src={project.coverImage || `https://ui-avatars.com/api/?name=${project.name}&background=random`} 
                 className="w-24 h-24 rounded-2xl object-cover shadow-lg border-4 border-white bg-white" 
@@ -186,7 +205,6 @@ const ProjectDetails = () => {
                   </div>
               </div>
 
-              {/* KPI BOX */}
               <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm min-w-[160px] text-center hidden md:block">
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Progresso Global</p>
                   <div className="flex justify-center items-end gap-1">
@@ -201,9 +219,7 @@ const ProjectDetails = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* COLUNA ESQUERDA: INFORMAÇÕES */}
           <div className="lg:col-span-1 space-y-6">
-              
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
                   <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide">
                       <Target size={18} className="text-shineray"/> Escopo do Projeto
@@ -236,7 +252,6 @@ const ProjectDetails = () => {
                       <Users size={18} className="text-shineray"/> Equipe Envolvida
                   </h3>
                   <div className="flex -space-x-2 overflow-hidden mb-2">
-                      {/* Avatar Placeholder para equipe (Visual) */}
                       <div className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600">{getLeaderName(project.leader).substring(0,2)}</div>
                       <div className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-gray-800 flex items-center justify-center text-xs font-bold text-white">+</div>
                   </div>
@@ -244,7 +259,6 @@ const ProjectDetails = () => {
               </div>
           </div>
 
-          {/* COLUNA DIREITA: CHANGELOG */}
           <div className="lg:col-span-2">
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col h-full min-h-[500px]">
                   <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
@@ -285,21 +299,31 @@ const ProjectDetails = () => {
                               <p className="text-sm">Nenhum histórico registrado.</p>
                           </div>
                       ) : (
-                          // Inverte a ordem para mostrar o mais recente
                           [...project.changelog].reverse().map((log, index) => {
                               const { version, content, date } = safeRenderLog(log);
 
                               return (
-                                  <div key={index} className="flex gap-5 group">
+                                  <div key={index} className="flex gap-5 group/item"> {/* Adicionei group/item para o hover */}
                                       <div className="flex flex-col items-center">
-                                          <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-gray-100 group-hover:border-blue-500 group-hover:text-blue-600 text-gray-300 transition-colors shadow-sm z-10">
+                                          <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-gray-100 group-hover/item:border-blue-500 group-hover/item:text-blue-600 text-gray-300 transition-colors shadow-sm z-10">
                                               <CheckCircle size={18} />
                                           </div>
-                                          {index !== project.changelog.length - 1 && <div className="w-0.5 h-full bg-gray-100 -my-2 group-hover:bg-blue-50 transition-colors"></div>}
+                                          {index !== project.changelog.length - 1 && <div className="w-0.5 h-full bg-gray-100 -my-2 group-hover/item:bg-blue-50 transition-colors"></div>}
                                       </div>
                                       <div className="pb-2 flex-1">
-                                          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 group-hover:border-blue-200 group-hover:shadow-md transition-all">
-                                              <div className="flex justify-between items-start mb-2">
+                                          {/* Adicionei 'relative' aqui para posicionar o botão de exclusão */}
+                                          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 group-hover/item:border-blue-200 group-hover/item:shadow-md transition-all relative">
+                                              
+                                              {/* BOTÃO DE EXCLUIR LOG */}
+                                              <button 
+                                                  onClick={() => handleDeleteLog(log)}
+                                                  className="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover/item:opacity-100 transition-all z-20"
+                                                  title="Excluir Registro"
+                                              >
+                                                  <Trash2 size={14}/>
+                                              </button>
+
+                                              <div className="flex justify-between items-start mb-2 pr-6"> {/* pr-6 para não bater no botão */}
                                                   {version && <span className="text-[10px] font-black bg-black text-white px-2 py-1 rounded shadow-sm">{version}</span>}
                                                   <span className="text-[10px] text-gray-400 font-mono flex items-center gap-1"><Clock size={10}/> Histórico</span>
                                               </div>
@@ -316,7 +340,6 @@ const ProjectDetails = () => {
           </div>
       </div>
 
-      {/* MODAL DE EDIÇÃO */}
       {isEditModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
