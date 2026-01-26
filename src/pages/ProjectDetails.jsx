@@ -6,7 +6,7 @@ import {
   ArrowLeft, Calendar, User, GitBranch, CheckCircle, 
   FileText, Plus, Save, Clock, Target, Edit3, X, 
   BarChart3, DollarSign, Users, ImageIcon, Trash2, 
-  ChevronDown, ChevronUp // <--- Novos ícones
+  ChevronDown, ChevronUp
 } from 'lucide-react';
 
 const ProjectDetails = () => {
@@ -63,7 +63,7 @@ const ProjectDetails = () => {
       }));
       setNewLog('');
       setIsAddingLog(false);
-      setShowAllLogs(true); // Expande automaticamente ao adicionar para ver o novo
+      setShowAllLogs(true); 
     } catch (error) {
       alert("Erro ao salvar log.");
     }
@@ -155,20 +155,21 @@ const ProjectDetails = () => {
     }
   };
 
-  // Lógica de Visualização dos Logs (Limitado vs Completo)
+  // --- RENDER CHECKS (CRUCIAL: ISTO DEVE VIR ANTES DE ACESSAR project.*) ---
+  
+  if (loading) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-black"></div></div>;
+  if (!project) return null;
+
+  // --- LOGIC EXECUTION (AGORA É SEGURO ACESSAR O PROJECT) ---
+
   const renderLogs = () => {
       if (!project.changelog || project.changelog.length === 0) return [];
-      
       const allLogs = [...project.changelog].reverse();
-      // Se showAllLogs for false, pega só os 3 primeiros, senão pega todos
       return showAllLogs ? allLogs : allLogs.slice(0, 3);
   };
 
   const visibleLogs = renderLogs();
-  const totalLogs = project?.changelog?.length || 0;
-
-  if (loading) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-black"></div></div>;
-  if (!project) return null;
+  const totalLogs = project.changelog?.length || 0;
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24">
