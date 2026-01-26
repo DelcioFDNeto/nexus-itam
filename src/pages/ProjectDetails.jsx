@@ -5,7 +5,8 @@ import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { 
   ArrowLeft, Calendar, User, GitBranch, CheckCircle, 
   FileText, Plus, Save, Clock, Target, Edit3, X, 
-  BarChart3, DollarSign, Users, ImageIcon, Trash2
+  BarChart3, DollarSign, Users, ImageIcon, Trash2, 
+  ChevronDown, ChevronUp // <--- Novos ícones
 } from 'lucide-react';
 
 const ProjectDetails = () => {
@@ -18,6 +19,9 @@ const ProjectDetails = () => {
   const [isAddingLog, setIsAddingLog] = useState(false);
   const [newLog, setNewLog] = useState('');
   
+  // Estado para controlar a expansão dos logs
+  const [showAllLogs, setShowAllLogs] = useState(false); 
+
   // Modal de Edição Geral
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editFormData, setEditFormData] = useState({});
@@ -59,12 +63,12 @@ const ProjectDetails = () => {
       }));
       setNewLog('');
       setIsAddingLog(false);
+      setShowAllLogs(true); // Expande automaticamente ao adicionar para ver o novo
     } catch (error) {
       alert("Erro ao salvar log.");
     }
   };
 
-  // --- NOVA FUNÇÃO DE EXCLUIR LOG ---
   const handleDeleteLog = async (logToDelete) => {
     if (!confirm("Tem certeza que deseja excluir este registro?")) return;
 
@@ -113,7 +117,7 @@ const ProjectDetails = () => {
       setIsEditModalOpen(true);
   };
 
-  // --- HELPERS SEGUROS ---
+  // --- HELPERS ---
   
   const getLeaderName = (leader) => {
       if (typeof leader === 'string') return leader.split(' ')[0];
@@ -151,13 +155,25 @@ const ProjectDetails = () => {
     }
   };
 
+  // Lógica de Visualização dos Logs (Limitado vs Completo)
+  const renderLogs = () => {
+      if (!project.changelog || project.changelog.length === 0) return [];
+      
+      const allLogs = [...project.changelog].reverse();
+      // Se showAllLogs for false, pega só os 3 primeiros, senão pega todos
+      return showAllLogs ? allLogs : allLogs.slice(0, 3);
+  };
+
+  const visibleLogs = renderLogs();
+  const totalLogs = project?.changelog?.length || 0;
+
   if (loading) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-black"></div></div>;
   if (!project) return null;
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24">
       
-      {/* HEADER DE NAVEGAÇÃO */}
+      {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
         <button onClick={() => navigate('/projects')} className="flex items-center gap-2 text-gray-500 hover:text-black font-bold text-sm transition-colors">
             <ArrowLeft size={18}/> Voltar
@@ -167,88 +183,49 @@ const ProjectDetails = () => {
         </button>
       </div>
       
-      {/* BANNER PRINCIPAL */}
+      {/* BANNER */}
       <div className="bg-white rounded-3xl border border-gray-200 shadow-sm mb-8 overflow-hidden relative">
-          <div 
-            className="h-32 w-full bg-cover bg-center absolute top-0 left-0 opacity-10"
-            style={{ backgroundImage: `url(${project.coverImage || 'https://ui-avatars.com/api/?background=random'})` }}
-          ></div>
-
+          <div className="h-32 w-full bg-cover bg-center absolute top-0 left-0 opacity-10" style={{ backgroundImage: `url(${project.coverImage || 'https://ui-avatars.com/api/?background=random'})` }}></div>
           <div className="relative z-10 p-8 pt-12 flex flex-col md:flex-row gap-8 items-start">
-              <img 
-                src={project.coverImage || `https://ui-avatars.com/api/?name=${project.name}&background=random`} 
-                className="w-24 h-24 rounded-2xl object-cover shadow-lg border-4 border-white bg-white" 
-                alt="Logo"
-              />
-              
+              <img src={project.coverImage || `https://ui-avatars.com/api/?name=${project.name}&background=random`} className="w-24 h-24 rounded-2xl object-cover shadow-lg border-4 border-white bg-white" alt="Logo"/>
               <div className="flex-1 space-y-3 mt-2">
                   <div className="flex flex-wrap items-center gap-3">
                       <h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight leading-none">{project.name}</h1>
                       <span className="px-3 py-1 bg-black text-white text-xs font-mono font-bold rounded-lg shadow-sm">v{project.version || '1.0'}</span>
                   </div>
-                  
                   <div className="flex flex-wrap gap-3 text-sm text-gray-600">
-                      <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase border ${getStatusColor(project.status)}`}>
-                          {project.status}
-                      </span>
-                      <div className="flex items-center gap-2 bg-gray-50 px-3 py-1 rounded-lg border border-gray-100">
-                          <User size={14} className="text-gray-400"/>
-                          <span className="font-bold">{getLeaderName(project.leader)}</span>
-                      </div>
-                      <div className="flex items-center gap-2 bg-gray-50 px-3 py-1 rounded-lg border border-gray-100">
-                          <Calendar size={14} className="text-gray-400"/>
-                          <span className="font-bold">{project.deadline ? new Date(project.deadline).toLocaleDateString('pt-BR') : "Sem prazo"}</span>
-                      </div>
+                      <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase border ${getStatusColor(project.status)}`}>{project.status}</span>
+                      <div className="flex items-center gap-2 bg-gray-50 px-3 py-1 rounded-lg border border-gray-100"><User size={14} className="text-gray-400"/><span className="font-bold">{getLeaderName(project.leader)}</span></div>
+                      <div className="flex items-center gap-2 bg-gray-50 px-3 py-1 rounded-lg border border-gray-100"><Calendar size={14} className="text-gray-400"/><span className="font-bold">{project.deadline ? new Date(project.deadline).toLocaleDateString('pt-BR') : "Sem prazo"}</span></div>
                   </div>
               </div>
-
               <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm min-w-[160px] text-center hidden md:block">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Progresso Global</p>
-                  <div className="flex justify-center items-end gap-1">
-                      <span className={`text-4xl font-black ${project.progress === 100 ? 'text-green-600' : 'text-blue-600'}`}>{project.progress || 0}%</span>
-                  </div>
-                  <div className="w-full bg-gray-100 h-1.5 rounded-full mt-2 overflow-hidden">
-                      <div className={`h-full ${project.progress === 100 ? 'bg-green-500' : 'bg-blue-600'}`} style={{ width: `${project.progress || 0}%` }}></div>
-                  </div>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Progresso</p>
+                  <div className="flex justify-center items-end gap-1"><span className={`text-4xl font-black ${project.progress === 100 ? 'text-green-600' : 'text-blue-600'}`}>{project.progress || 0}%</span></div>
+                  <div className="w-full bg-gray-100 h-1.5 rounded-full mt-2 overflow-hidden"><div className={`h-full ${project.progress === 100 ? 'bg-green-500' : 'bg-blue-600'}`} style={{ width: `${project.progress || 0}%` }}></div></div>
               </div>
           </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* COLUNA ESQUERDA: INFORMAÇÕES */}
           <div className="lg:col-span-1 space-y-6">
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-                  <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide">
-                      <Target size={18} className="text-shineray"/> Escopo do Projeto
-                  </h3>
-                  <p className="text-sm text-gray-600 leading-relaxed text-justify">
-                      {project.description || "Nenhuma descrição detalhada fornecida para este projeto."}
-                  </p>
+                  <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"><Target size={18} className="text-shineray"/> Escopo</h3>
+                  <p className="text-sm text-gray-600 leading-relaxed text-justify">{project.description || "Nenhuma descrição."}</p>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                   <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100">
-                      <div className="flex items-center gap-2 mb-2 text-blue-800">
-                          <DollarSign size={18}/>
-                          <span className="text-xs font-bold uppercase">Orçamento</span>
-                      </div>
+                      <div className="flex items-center gap-2 mb-2 text-blue-800"><DollarSign size={18}/><span className="text-xs font-bold uppercase">Orçamento</span></div>
                       <p className="text-lg font-black text-blue-900">{project.budget ? `R$ ${project.budget}` : '--'}</p>
                   </div>
-                  
                   <div className={`p-5 rounded-2xl border ${project.priority === 'Crítica' ? 'bg-red-50 border-red-100 text-red-900' : 'bg-green-50 border-green-100 text-green-900'}`}>
-                      <div className="flex items-center gap-2 mb-2">
-                          <BarChart3 size={18}/>
-                          <span className="text-xs font-bold uppercase">Prioridade</span>
-                      </div>
+                      <div className="flex items-center gap-2 mb-2"><BarChart3 size={18}/><span className="text-xs font-bold uppercase">Prioridade</span></div>
                       <p className="text-lg font-black">{project.priority || 'Média'}</p>
                   </div>
               </div>
-
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-                  <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide">
-                      <Users size={18} className="text-shineray"/> Equipe Envolvida
-                  </h3>
+                  <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"><Users size={18} className="text-shineray"/> Equipe</h3>
                   <div className="flex -space-x-2 overflow-hidden mb-2">
                       <div className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600">{getLeaderName(project.leader).substring(0,2)}</div>
                       <div className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-gray-800 flex items-center justify-center text-xs font-bold text-white">+</div>
@@ -257,12 +234,12 @@ const ProjectDetails = () => {
               </div>
           </div>
 
-          {/* COLUNA DIREITA: CHANGELOG */}
           <div className="lg:col-span-2">
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col h-full min-h-[500px]">
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+                  
                   <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                       <h3 className="font-black text-gray-900 flex items-center gap-2">
-                          <FileText size={20} className="text-shineray"/> Changelog / Diário
+                          <FileText size={20} className="text-shineray"/> Diário de Bordo
                       </h3>
                       {!isAddingLog && (
                           <button onClick={() => setIsAddingLog(true)} className="bg-black text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-gray-800 flex items-center gap-2 shadow-lg transition-all">
@@ -280,7 +257,7 @@ const ProjectDetails = () => {
                               onChange={e => setNewLog(e.target.value)}
                               className="w-full p-4 border-2 border-yellow-200 rounded-xl text-sm focus:outline-none focus:border-yellow-500 bg-white shadow-sm"
                               rows="5"
-                              placeholder="O que foi realizado hoje?"
+                              placeholder="Status:&#10;O que foi feito:"
                           />
                           <div className="flex justify-end gap-3 mt-3">
                               <button onClick={() => setIsAddingLog(false)} className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-black">Cancelar</button>
@@ -291,32 +268,28 @@ const ProjectDetails = () => {
                       </div>
                   )}
 
-                  <div className="p-6 space-y-8 flex-1 overflow-y-auto custom-scrollbar">
-                      {(!project.changelog || project.changelog.length === 0) ? (
+                  {/* LISTA DE LOGS */}
+                  <div className="p-6 space-y-8">
+                      {totalLogs === 0 ? (
                           <div className="text-center py-12 text-gray-400">
                               <BarChart3 size={48} className="mx-auto mb-3 opacity-20"/>
                               <p className="text-sm">Nenhum histórico registrado.</p>
                           </div>
                       ) : (
-                          // Mapeamento dos Logs com formatação corrigida
-                          [...project.changelog].reverse().map((log, index) => {
+                          visibleLogs.map((log, index) => {
                               const { version, content, date } = safeRenderLog(log);
-
                               return (
                                   <div key={index} className="flex gap-5 group/item">
-                                      {/* Linha do Tempo Visual */}
                                       <div className="flex flex-col items-center">
                                           <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-gray-100 group-hover/item:border-blue-500 group-hover/item:text-blue-600 text-gray-300 transition-colors shadow-sm z-10">
                                               <CheckCircle size={18} />
                                           </div>
-                                          {index !== project.changelog.length - 1 && <div className="w-0.5 h-full bg-gray-100 -my-2 group-hover/item:bg-blue-50 transition-colors"></div>}
+                                          {/* Linha conectora: Só mostra se NÃO for o último item visualizado */}
+                                          {(index !== visibleLogs.length - 1) && <div className="w-0.5 h-full bg-gray-100 -my-2 group-hover/item:bg-blue-50 transition-colors"></div>}
                                       </div>
 
-                                      {/* Conteúdo do Log */}
                                       <div className="pb-8 flex-1 min-w-0">
                                           <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 group-hover/item:border-blue-200 group-hover/item:shadow-md transition-all relative">
-                                              
-                                              {/* Botão de Excluir (Hover) */}
                                               <button 
                                                   onClick={() => handleDeleteLog(log)}
                                                   className="absolute top-4 right-4 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover/item:opacity-100 transition-all z-20"
@@ -325,7 +298,6 @@ const ProjectDetails = () => {
                                                   <Trash2 size={14}/>
                                               </button>
 
-                                              {/* Cabeçalho do Card (Versão e Data) */}
                                               <div className="flex flex-wrap justify-between items-center mb-3 pb-3 border-b border-gray-200 pr-8">
                                                   <div className="flex items-center gap-2">
                                                       {version && <span className="text-[10px] font-black bg-black text-white px-2 py-1 rounded shadow-sm">{version}</span>}
@@ -335,7 +307,6 @@ const ProjectDetails = () => {
                                                   </div>
                                               </div>
 
-                                              {/* Texto do Log - AQUI ESTÁ A CORREÇÃO DE FORMATAÇÃO */}
                                               <div className="text-sm text-gray-700 font-medium leading-relaxed whitespace-pre-wrap font-sans">
                                                   {content}
                                               </div>
@@ -346,11 +317,26 @@ const ProjectDetails = () => {
                           })
                       )}
                   </div>
+
+                  {/* BOTÃO VER MAIS / VER MENOS */}
+                  {totalLogs > 3 && (
+                      <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-center">
+                          <button 
+                              onClick={() => setShowAllLogs(!showAllLogs)}
+                              className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-black bg-white px-4 py-2 rounded-full border border-gray-200 shadow-sm hover:shadow-md transition-all"
+                          >
+                              {showAllLogs ? (
+                                  <><ChevronUp size={14}/> Recolher Histórico ({totalLogs})</>
+                              ) : (
+                                  <><ChevronDown size={14}/> Ver histórico completo ({totalLogs})</>
+                              )}
+                          </button>
+                      </div>
+                  )}
               </div>
           </div>
       </div>
 
-      {/* MODAL DE EDIÇÃO */}
       {isEditModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
@@ -364,7 +350,6 @@ const ProjectDetails = () => {
                   <label className="text-xs font-bold text-gray-500 uppercase">Nome do Projeto</label>
                   <input required value={editFormData.name} onChange={e => setEditFormData({...editFormData, name: e.target.value})} className="w-full p-3 border rounded-xl font-bold mt-1 outline-none focus:border-black" />
               </div>
-              
               <div>
                   <label className="text-xs font-bold text-gray-500 uppercase">URL da Capa (Logo)</label>
                   <div className="flex gap-2">
@@ -372,7 +357,6 @@ const ProjectDetails = () => {
                       <div className="p-3 bg-gray-100 rounded-xl mt-1 border border-gray-200"><ImageIcon size={20} className="text-gray-400"/></div>
                   </div>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                   <div>
                       <label className="text-xs font-bold text-gray-500 uppercase">Versão Atual</label>
@@ -383,7 +367,6 @@ const ProjectDetails = () => {
                       <input type="number" value={editFormData.progress} onChange={e => setEditFormData({...editFormData, progress: e.target.value})} className="w-full p-3 border rounded-xl mt-1 text-sm" />
                   </div>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                   <div>
                       <label className="text-xs font-bold text-gray-500 uppercase">Líder</label>
@@ -394,7 +377,6 @@ const ProjectDetails = () => {
                       <input value={editFormData.budget} onChange={e => setEditFormData({...editFormData, budget: e.target.value})} className="w-full p-3 border rounded-xl mt-1 text-sm" placeholder="0,00" />
                   </div>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                   <div>
                       <label className="text-xs font-bold text-gray-500 uppercase">Status</label>
@@ -415,12 +397,10 @@ const ProjectDetails = () => {
                       </select>
                   </div>
               </div>
-
               <div>
                   <label className="text-xs font-bold text-gray-500 uppercase">Descrição</label>
                   <textarea value={editFormData.description} onChange={e => setEditFormData({...editFormData, description: e.target.value})} className="w-full p-3 border rounded-xl mt-1 text-sm" rows="3"></textarea>
               </div>
-
               <div className="pt-2">
                   <button type="submit" className="w-full bg-black text-white py-3 rounded-xl font-bold hover:bg-gray-800 shadow-lg">Salvar Alterações</button>
               </div>
@@ -428,7 +408,6 @@ const ProjectDetails = () => {
           </div>
         </div>
       )}
-
     </div>
   );
 };
