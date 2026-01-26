@@ -5,7 +5,7 @@ import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { 
   ArrowLeft, Calendar, User, GitBranch, CheckCircle, 
   FileText, Plus, Save, Clock, Target, Edit3, X, 
-  BarChart3, DollarSign, Users, ImageIcon, Trash2 // <--- Adicionado Trash2
+  BarChart3, DollarSign, Users, ImageIcon, Trash2
 } from 'lucide-react';
 
 const ProjectDetails = () => {
@@ -69,15 +69,12 @@ const ProjectDetails = () => {
     if (!confirm("Tem certeza que deseja excluir este registro?")) return;
 
     try {
-        // Filtra removendo o item selecionado
         const newChangelog = project.changelog.filter(log => log !== logToDelete);
 
-        // Atualiza no Firebase (sobrescreve o array antigo pelo novo sem o item)
         await updateDoc(doc(db, 'projects', id), {
             changelog: newChangelog
         });
 
-        // Atualiza estado local
         setProject(prev => ({
             ...prev,
             changelog: newChangelog
@@ -219,6 +216,7 @@ const ProjectDetails = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
+          {/* COLUNA ESQUERDA: INFORMAÇÕES */}
           <div className="lg:col-span-1 space-y-6">
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
                   <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide">
@@ -259,6 +257,7 @@ const ProjectDetails = () => {
               </div>
           </div>
 
+          {/* COLUNA DIREITA: CHANGELOG */}
           <div className="lg:col-span-2">
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col h-full min-h-[500px]">
                   <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
@@ -280,7 +279,7 @@ const ProjectDetails = () => {
                               value={newLog}
                               onChange={e => setNewLog(e.target.value)}
                               className="w-full p-4 border-2 border-yellow-200 rounded-xl text-sm focus:outline-none focus:border-yellow-500 bg-white shadow-sm"
-                              rows="3"
+                              rows="5"
                               placeholder="O que foi realizado hoje?"
                           />
                           <div className="flex justify-end gap-3 mt-3">
@@ -299,36 +298,47 @@ const ProjectDetails = () => {
                               <p className="text-sm">Nenhum histórico registrado.</p>
                           </div>
                       ) : (
+                          // Mapeamento dos Logs com formatação corrigida
                           [...project.changelog].reverse().map((log, index) => {
                               const { version, content, date } = safeRenderLog(log);
 
                               return (
-                                  <div key={index} className="flex gap-5 group/item"> {/* Adicionei group/item para o hover */}
+                                  <div key={index} className="flex gap-5 group/item">
+                                      {/* Linha do Tempo Visual */}
                                       <div className="flex flex-col items-center">
                                           <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-gray-100 group-hover/item:border-blue-500 group-hover/item:text-blue-600 text-gray-300 transition-colors shadow-sm z-10">
                                               <CheckCircle size={18} />
                                           </div>
                                           {index !== project.changelog.length - 1 && <div className="w-0.5 h-full bg-gray-100 -my-2 group-hover/item:bg-blue-50 transition-colors"></div>}
                                       </div>
-                                      <div className="pb-2 flex-1">
-                                          {/* Adicionei 'relative' aqui para posicionar o botão de exclusão */}
-                                          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 group-hover/item:border-blue-200 group-hover/item:shadow-md transition-all relative">
+
+                                      {/* Conteúdo do Log */}
+                                      <div className="pb-8 flex-1 min-w-0">
+                                          <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 group-hover/item:border-blue-200 group-hover/item:shadow-md transition-all relative">
                                               
-                                              {/* BOTÃO DE EXCLUIR LOG */}
+                                              {/* Botão de Excluir (Hover) */}
                                               <button 
                                                   onClick={() => handleDeleteLog(log)}
-                                                  className="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover/item:opacity-100 transition-all z-20"
+                                                  className="absolute top-4 right-4 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover/item:opacity-100 transition-all z-20"
                                                   title="Excluir Registro"
                                               >
                                                   <Trash2 size={14}/>
                                               </button>
 
-                                              <div className="flex justify-between items-start mb-2 pr-6"> {/* pr-6 para não bater no botão */}
-                                                  {version && <span className="text-[10px] font-black bg-black text-white px-2 py-1 rounded shadow-sm">{version}</span>}
-                                                  <span className="text-[10px] text-gray-400 font-mono flex items-center gap-1"><Clock size={10}/> Histórico</span>
+                                              {/* Cabeçalho do Card (Versão e Data) */}
+                                              <div className="flex flex-wrap justify-between items-center mb-3 pb-3 border-b border-gray-200 pr-8">
+                                                  <div className="flex items-center gap-2">
+                                                      {version && <span className="text-[10px] font-black bg-black text-white px-2 py-1 rounded shadow-sm">{version}</span>}
+                                                      <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider flex items-center gap-1">
+                                                          <Clock size={12}/> {date || "Data desconhecida"}
+                                                      </span>
+                                                  </div>
                                               </div>
-                                              <p className="text-sm text-gray-700 font-medium leading-relaxed">{content}</p>
-                                              {date && <p className="text-[10px] text-gray-400 mt-1 italic">{date}</p>}
+
+                                              {/* Texto do Log - AQUI ESTÁ A CORREÇÃO DE FORMATAÇÃO */}
+                                              <div className="text-sm text-gray-700 font-medium leading-relaxed whitespace-pre-wrap font-sans">
+                                                  {content}
+                                              </div>
                                           </div>
                                       </div>
                                   </div>
@@ -340,6 +350,7 @@ const ProjectDetails = () => {
           </div>
       </div>
 
+      {/* MODAL DE EDIÇÃO */}
       {isEditModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
