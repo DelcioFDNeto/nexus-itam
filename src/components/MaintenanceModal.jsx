@@ -1,6 +1,7 @@
 // src/components/MaintenanceModal.jsx
 import React, { useState } from 'react';
 import { X, Wrench, DollarSign, AlertTriangle, Save } from 'lucide-react';
+import AssetIcon from '../components/AssetIcon';
 
 const MaintenanceModal = ({ isOpen, onClose, asset, onConfirm }) => {
   const [loading, setLoading] = useState(false);
@@ -47,7 +48,7 @@ const MaintenanceModal = ({ isOpen, onClose, asset, onConfirm }) => {
           <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 flex gap-3">
              <AlertTriangle className="text-orange-500 shrink-0" size={20} />
              <p className="text-xs text-orange-800">
-                Ao confirmar, o status do ativo <strong>{asset.internalId}</strong> mudará automaticamente para <strong>EM MANUTENÇÃO</strong>.
+                Ao confirmar, o status do ativo <span className="inline-flex items-center gap-1 mx-1 align-bottom rounded bg-white px-1 border border-orange-200"><AssetIcon type={asset.type} category={asset.category} model={asset.model} internalId={asset.internalId} size={14} /> <strong>{asset.internalId}</strong></span> mudará automaticamente para <strong>EM MANUTENÇÃO</strong>.
              </p>
           </div>
 

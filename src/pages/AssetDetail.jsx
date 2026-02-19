@@ -8,15 +8,12 @@ import MoveAssetModal from '../components/MoveAssetModal';
 import MaintenanceModal from '../components/MaintenanceModal';
 import { QRCodeSVG } from 'qrcode.react'; 
 import { 
-  ArrowLeft, Edit, MapPin, User, Tag, Smartphone, Monitor, History, 
-  Building2, ArrowRightLeft, QrCode, Wrench, StickyNote, Save, 
-  Gift, PackageCheck, CreditCard, BadgeCheck, AlertTriangle, 
-  CheckCircle, Trash2, Link as LinkIcon, ExternalLink, Plus, Printer, FileText,
-  MousePointer2, Plug 
+  ArrowLeft, MapPin, User, Tag, Monitor, History, 
+  Building2, ArrowRightLeft, Wrench, StickyNote, Save, 
+  Plus, Printer, FileText, Trash2, Link as LinkIcon, X, Edit3, Plug, Clock, Copy
 } from 'lucide-react';
-import AssetTimeline from '../components/AssetTimeline';
 import { useReactToPrint } from 'react-to-print';
-import logoShineray from '../assets/logo-shineray.png'; 
+import AssetIcon from '../components/AssetIcon'; 
 
 const AssetDetail = () => {
   const { id } = useParams();
@@ -31,6 +28,7 @@ const AssetDetail = () => {
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const [isMaintModalOpen, setIsMaintModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('details'); // 'details' | 'history' (Mobile)
   
   // Links
   const [newLinkUrl, setNewLinkUrl] = useState('');
@@ -44,8 +42,9 @@ const AssetDetail = () => {
 
   // --- CONFIGURAÇÕES ---
   const [config, setConfig] = useState({
-    companyName: 'Shineray do Brasil',
-    itManager: 'Délcio Farias',
+    companyName: 'Shineray By Sabel',
+    cnpj: '00.000.000/0001-00', // Placeholder
+    itManager: 'SISTEMA ITAM',
     termTitle: 'TERMO DE ENTREGA E RESPONSABILIDADE'
   });
 
@@ -54,7 +53,7 @@ const AssetDetail = () => {
         try {
             const settingsRef = doc(db, 'settings', 'general');
             const snap = await getDoc(settingsRef);
-            if (snap.exists()) setConfig(prev => ({ ...prev, ...snap.data() }));
+            if (snap.exists()) setConfig(prev => ({ ...prev, ...snap.data(), companyName: 'Shineray By Sabel' }));
         } catch (error) { console.error(error); }
     };
     loadConfig();
@@ -102,12 +101,6 @@ const AssetDetail = () => {
 
   // --- HANDLERS ---
   
-  const handleQuickStatus = async (newStatus) => { 
-      if (confirm(`Mudar status para "${newStatus}"?`)) { 
-          await updateAsset(id, { status: newStatus }); 
-      } 
-  };
-  
   const handleMoveConfirm = async (moveData) => { 
       await moveAsset(id, asset, moveData); 
   };
@@ -118,7 +111,11 @@ const AssetDetail = () => {
   
   const handleSaveNotes = async () => { 
       setIsSavingNotes(true); 
-      await updateAsset(id, { notes: notes }); 
+      await updateAsset(id, { notes: notes }, {
+          action: 'Nota Técnica',
+          details: 'Observações técnicas atualizadas.',
+          type: 'update'
+      }); 
       setIsSavingNotes(false); 
       alert("Notas salvas!"); 
   };
@@ -129,7 +126,10 @@ const AssetDetail = () => {
       try {
           const currentLinks = asset.attachments || [];
           const newLink = { name: newLinkName, url: newLinkUrl, type: 'link', addedAt: new Date() };
-          await updateAsset(id, { attachments: [...currentLinks, newLink] });
+          await updateAsset(id, { attachments: [...currentLinks, newLink] }, {
+              action: 'Novo Anexo',
+              details: `Adicionado link/documento: ${newLinkName}`
+          });
           setNewLinkUrl(''); setNewLinkName('');
       } catch (error) { alert("Erro ao salvar link."); } finally { setIsAddingLink(false); }
   };
@@ -139,7 +139,10 @@ const AssetDetail = () => {
       try {
           const currentLinks = asset.attachments || [];
           const newLinks = currentLinks.filter(l => l.url !== linkToDelete.url);
-          await updateAsset(id, { attachments: newLinks });
+          await updateAsset(id, { attachments: newLinks }, {
+              action: 'Anexo Removido',
+              details: `Removido link/documento: ${linkToDelete.name}`
+          });
       } catch (error) { alert("Erro ao remover."); }
   };
 
@@ -149,7 +152,10 @@ const AssetDetail = () => {
       try {
           const currentPeripherals = asset.peripherals || [];
           const newItem = { name: newPeripheral, addedAt: new Date() };
-          await updateAsset(id, { peripherals: [...currentPeripherals, newItem] });
+          await updateAsset(id, { peripherals: [...currentPeripherals, newItem] }, {
+              action: 'Periférico Vinculado',
+              details: `Acessório adicionado: ${newPeripheral}`
+          });
           setNewPeripheral('');
       } catch (error) { alert("Erro ao salvar periférico."); } finally { setIsAddingPeripheral(false); }
   };
@@ -159,12 +165,15 @@ const AssetDetail = () => {
       try {
           const currentPeripherals = asset.peripherals || [];
           const newPeripherals = currentPeripherals.filter(p => p.name !== itemToDelete.name);
-          await updateAsset(id, { peripherals: newPeripherals });
+          await updateAsset(id, { peripherals: newPeripherals }, {
+              action: 'Periférico Removido',
+              details: `Acessório desvinculado: ${itemToDelete.name}`
+          });
       } catch (error) { alert("Erro ao remover."); }
   };
 
   const handleDelete = async () => {
-      if (window.confirm("TEM CERTEZA?")) {
+      if (window.confirm(" TEM CERTEZA? A exclusão é irreversível.")) {
           setIsDeleting(true);
           try { await deleteAsset(id); alert("Excluído."); navigate('/assets'); } 
           catch (error) { alert("Erro."); setIsDeleting(false); }
@@ -172,359 +181,418 @@ const AssetDetail = () => {
   };
 
   // --- RENDER ---
-  if (loading) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-shineray"></div></div>;
+  if (loading) return <div className="flex h-screen items-center justify-center bg-[#F4F4F5]"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-black"></div></div>;
   if (!asset) return null;
 
   const responsibleName = asset.assignedTo || asset.clientName || "__________________________";
   const derivedSector = asset.sector || "Adm/Op.";
-  const isPromotional = asset.category === 'Promocional' || asset.internalId?.toUpperCase().includes('PRM');
   const showImei = asset.type === 'Celular' || asset.type === 'PGT';
   const showPrinterInfo = asset.type === 'Impressora';
   const showIp = (asset.type === 'Computador' || asset.type === 'Notebook' || asset.type === 'Rede' || showPrinterInfo) && asset.specs?.ip;
-  const lifecycle = !isPromotional ? ({ status: 'healthy', title: 'Ativo', desc: 'Em operação', color: 'bg-green-50 text-green-800', icon: <CheckCircle size={20} /> }) : null;
   const expandLocation = (loc) => loc || "Local não definido";
   const formatDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : "N/A";
   const getBannerColor = () => { const s = asset.status.toLowerCase(); if (s === 'entregue') return 'bg-purple-600'; if (s.includes('transfer')) return 'bg-yellow-500'; if (s === 'manutenção') return 'bg-orange-600'; if (s === 'disponível') return 'bg-blue-600'; return 'bg-black'; };
-  const TypeIcon = () => { switch(asset.type) { case 'Celular': return <Smartphone size={36} />; case 'PGT': return <CreditCard size={36} />; case 'Impressora': return <Printer size={36} />; default: return <Monitor size={36} />; } };
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24">
+    <div className="max-w-[1920px] mx-auto pb-24 animate-fade-in relative min-h-screen">
       
       {/* ======================================================================= */}
       {/* ÁREA DE IMPRESSÃO OCULTA                                                 */}
       {/* ======================================================================= */}
       <div style={{ display: 'none' }}>
         
-        {/* 1. TERMO JURÍDICO OFICIAL (A4) */}
+        {/* 1. TERMO JURÍDICO OFICIAL (A4) - REVISADO (CLT/CIVIL) */}
         <div ref={termRef}>
             <style>{`
                 @media print {
                     @page { size: A4; margin: 15mm; }
-                    body { font-family: 'Times New Roman', Times, serif; color: #000; line-height: 1.4; }
-                    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-                    .title { text-align: center; font-weight: bold; font-size: 16px; text-transform: uppercase; margin: 20px 0; text-decoration: underline; }
-                    .content { font-size: 12px; text-align: justify; }
-                    .box { border: 1px solid #000; padding: 10px; margin: 15px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; }
-                    .label { font-weight: bold; text-transform: uppercase; font-size: 9px; color: #333; display: block; }
-                    .value { font-weight: bold; font-size: 12px; }
-                    .clause { margin-bottom: 10px; }
-                    .signatures { display: flex; justify-content: space-between; margin-top: 60px; text-align: center; }
-                    .sign-line { border-top: 1px solid #000; width: 220px; margin: 5px auto; }
-                    .footer-text { font-size: 10px; font-style: italic; text-align: center; margin-top: 30px; }
+                    body { font-family: 'Times New Roman', Times, serif; color: #000; line-height: 1.5; }
+                    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 20px; }
+                    .header-left { display: flex; align-items: center; gap: 15px; }
+                    .logo-img { height: 45px; object-fit: contain; }
+                    .title { text-align: center; font-weight: bold; font-size: 16px; text-transform: uppercase; margin: 20px 0; }
+                    .content { font-size: 11px; text-align: justify; margin-bottom: 10px; }
+                    .box { border: 1px solid #000; padding: 10px; margin: 15px 0; background-color: #f9f9f9; }
+                    .box-title { font-weight: bold; font-size: 12px; margin-bottom: 5px; text-decoration: underline; }
+                    .grid-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; }
+                    .label { font-weight: bold; text-transform: uppercase; font-size: 9px; color: #333; }
+                    .value { font-weight: bold; font-size: 11px; margin-left: 4px; }
+                    .clauses { padding-left: 15px; }
+                    .clause-item { margin-bottom: 8px; font-size: 11px; }
+                    .signatures { display: flex; justify-content: space-between; margin-top: 50px; text-align: center; }
+                    .line { border-top: 1px solid #000; width: 220px; margin-bottom: 5px; }
+                    .footer { margin-top: 30px; font-size: 9px; text-align: center; border-top: 1px solid #ccc; padding-top: 5px; }
                 }
             `}</style>
-            
             <div className="header">
-                <img src={logoShineray} alt="Shineray" style={{ height: '45px', objectFit: 'contain' }} />
-                <div style={{ textAlign: 'right' }}>
-                    <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{config.companyName}</p>
-                    <p style={{ margin: 0, fontSize: '10px' }}>Departamento de Tecnologia da Informação</p>
-                    <p style={{ margin: 0, fontSize: '10px' }}>Controle de Ativos: {new Date().getFullYear()}/{id.slice(0,4)}</p>
+                <div className="header-left">
+                    <img src="/logo.png" alt="Shineray" className="logo-img" />
+                    <div>
+                        <h1 style={{fontSize: '20px', margin: 0, fontWeight: '900'}}>{config.companyName.toUpperCase()}</h1>
+                        <p style={{margin:0, fontSize:'10px'}}>Departamento de Tecnologia da Informação</p>
+                    </div>
+                </div>
+                <div style={{textAlign: 'right'}}><p style={{margin:0, fontSize:'10px'}}>Emitido em: {new Date().toLocaleDateString()}</p></div>
+            </div>
+            
+            <h2 className="title">{config.termTitle}</h2>
+            
+            <p className="content">
+                Pelo presente instrumento particular, de um lado a empregadora <strong>{config.companyName}</strong>, e de outro lado o(a) colaborador(a) abaixo qualificado(a), 
+                celebram o presente termo de responsabilidade, regido pelas cláusulas e condições seguintes, em conformidade com o Art. 462 da CLT e legislação civil pertinente.
+            </p>
+
+            <div className="box">
+                <div className="box-title">1. DADOS DO COLABORADOR(A) / RESPONSÁVEL</div>
+                <div className="grid-info">
+                    <div><span className="label">Nome:</span> <span className="value">{responsibleName.toUpperCase()}</span></div>
+                    <div><span className="label">Departamento/Setor:</span> <span className="value">{derivedSector.toUpperCase()}</span></div>
+                    {asset.cpf && <div><span className="label">CPF:</span> <span className="value">{asset.cpf}</span></div>}
+                    <div><span className="label">Local de Trabalho:</span> <span className="value">{expandLocation(asset.location).toUpperCase()}</span></div>
                 </div>
             </div>
 
-            <div className="title">{config.termTitle}</div>
+            <div className="box">
+                <div className="box-title">2. OBJETO (EQUIPAMENTO EM COMODATO)</div>
+                <div style={{fontSize: '11px', marginBottom: '8px'}}>A empresa cede ao colaborador, a título de comodato gratuito, para uso EXCLUSIVO no desempenho de suas funções laborais, o(s) seguinte(s) bem(ns):</div>
+                <div className="grid-info">
+                    <div><span className="label">Equipamento:</span> <span className="value">{asset.model}</span></div>
+                    <div><span className="label">Tipo:</span> <span className="value">{asset.type.toUpperCase()}</span></div>
+                    <div><span className="label">Patrimônio (ID):</span> <span className="value">{asset.internalId}</span></div>
+                    <div><span className="label">Número de Série:</span> <span className="value">{asset.serialNumber || 'N/A'}</span></div>
+                    {asset.accessories && <div><span className="label">Acessórios/Periféricos:</span> <span className="value">{Array.isArray(asset.accessories) ? asset.accessories.join(', ') : asset.accessories}</span></div>}
+                    {asset.peripherals && asset.peripherals.length > 0 && <div><span className="label">Itens Adicionais:</span> <span className="value">{asset.peripherals.map(p => p.name).join(', ')}</span></div>}
+                </div>
+            </div>
 
             <div className="content">
-                <p>
-                    Pelo presente instrumento, a empresa <strong>{config.companyName.toUpperCase()}</strong>, cede ao colaborador(a) identificado(a) abaixo, a título de empréstimo para uso exclusivo profissional, o equipamento descrito a seguir:
-                </p>
-
-                <div className="box">
-                    <div><span className="label">Colaborador / Responsável</span><span className="value">{responsibleName}</span></div>
-                    <div><span className="label">Departamento / Local</span><span className="value">{asset.location}</span></div>
+                <p style={{fontWeight: 'bold', marginBottom:'5px'}}>CLÁUSULAS CONTRATUAIS:</p>
+                <ol className="clauses">
+                    <li className="clause-item"><strong>DO USO E FINALIDADE:</strong> O Colaborador declara ter recebido o equipamento acima descrito em perfeito estado de conservação e funcionamento. Compromete-se a utilizá-lo estrita e exclusivamente para fins profissionais, sendo vedado o uso para fins pessoais, empréstimo a terceiros ou instalação de softwares não autorizados pela TI.</li>
                     
-                    <div style={{ gridColumn: 'span 2', borderTop: '1px dashed #ccc', margin: '5px 0' }}></div>
-
-                    <div><span className="label">Tipo de Equipamento</span><span className="value">{asset.type}</span></div>
-                    <div><span className="label">Marca / Modelo</span><span className="value">{asset.model}</span></div>
-                    <div><span className="label">Patrimônio (ID)</span><span className="value">{asset.internalId}</span></div>
-                    <div><span className="label">Nº de Série / Service Tag</span><span className="value">{asset.serialNumber || 'N/A'}</span></div>
+                    <li className="clause-item"><strong>DA GUARDA E CONSERVAÇÃO:</strong> É responsabilidade do Colaborador zelar pela guarda, segurança e conservação do equipamento. O mau uso, negligência, imprudência ou imperícia que resultar em danos ao equipamento sujeitará o Colaborador às sanções disciplinares previstas em lei.</li>
                     
-                    {asset.imei1 && (
-                         <div style={{ gridColumn: 'span 2' }}>
-                            <span className="label">Identificação Móvel (IMEI)</span>
-                            <span className="value">IMEI 1: {asset.imei1} {asset.imei2 ? `| IMEI 2: ${asset.imei2}` : ''}</span>
-                         </div>
-                    )}
+                    <li className="clause-item"><strong>DA RESTITUIÇÃO:</strong> O equipamento deverá ser devolvido imediatamente à Empresa, em perfeito estado (salvo desgaste natural), nas seguintes hipóteses: a) Rescisão do contrato de trabalho; b) Mudança de cargo ou função; c) Solicitação expressa da Empresa a qualquer tempo.</li>
                     
-                    {(asset.notes || asset.specs) && (
-                        <div style={{ gridColumn: 'span 2' }}>
-                            <span className="label">Observações / Acessórios Inclusos</span>
-                            <span className="value" style={{ fontWeight: 'normal' }}>{asset.notes || "Equipamento entregue formatado e com acessórios padrão (carregador/mouse)."}</span>
-                        </div>
-                    )}
-                </div>
-
-                <p style={{ fontWeight: 'bold', marginBottom: '5px' }}>CLÁUSULAS E CONDIÇÕES DE USO:</p>
-                
-                <ol style={{ paddingLeft: '15px' }}>
-                    <li className="clause"><strong>Responsabilidade:</strong> O(A) colaborador(a) declara receber o equipamento em perfeito estado de funcionamento e assume total responsabilidade pela sua guarda e conservação.</li>
-                    <li className="clause"><strong>Uso Profissional:</strong> O equipamento destina-se estritamente às atividades profissionais da empresa, sendo vedada a instalação de softwares não autorizados ou uso para fins pessoais que violem a política de segurança da informação.</li>
-                    <li className="clause"><strong>Danos e Extravio:</strong> Em caso de dano, roubo, furto ou extravio por negligência, imprudência ou imperícia, a empresa poderá realizar o desconto do valor correspondente ao reparo ou reposição, conforme previsto no Art. 462, §1º da CLT.</li>
-                    <li className="clause"><strong>Segurança:</strong> O usuário compromete-se a não compartilhar senhas de acesso e a reportar imediatamente ao departamento de TI qualquer incidente de segurança ou mau funcionamento.</li>
-                    <li className="clause"><strong>Devolução:</strong> O equipamento deverá ser devolvido imediatamente quando solicitado pela empresa ou no ato de desligamento do colaborador, nas mesmas condições em que foi recebido, ressalvado o desgaste natural pelo uso.</li>
+                    <li className="clause-item"><strong>DO EXTRAVIO, DANO OU FURTO (ART. 462, §1º CLT):</strong> Em conformidade com o Art. 462, §1º da CLT e Art. 186 do Código Civil, o Colaborador <strong>AUTORIZA EXPRESSAMENTE</strong> o desconto em sua folha de pagamento ou verbas rescisórias dos valores correspondentes ao reparo ou reposição do equipamento, caso seja comprovado que os danos ou o extravio decorreram de <strong>DOLO</strong> (intenção), <strong>NEGLIGÊNCIA</strong> (falta de cuidado) ou uso em desconformidade com as normas da empresa (mau uso).</li>
+                    
+                    <li className="clause-item"><strong>DA SEGURANÇA DA INFORMAÇÃO:</strong> O Colaborador está ciente de que o equipamento é monitorado e que não deve armazenar dados pessoais sensíveis, responsabilizando-se pelo sigilo de suas senhas e cumprimento das normas de LGPD da empresa.</li>
                 </ol>
+            </div>
 
-                <p style={{ marginTop: '20px' }}>
-                    E por estar de acordo com os termos acima descritos, assino o presente em duas vias de igual teor.
-                </p>
+            <div style={{marginTop: '30px', fontSize: '11px'}}>
+                <p>Li, compreendi e aceito integralmente os termos acima descritos.</p>
+                <p>_______________________, _____ de _______________________ de _________.</p>
+            </div>
 
-                <p style={{ textAlign: 'right', marginTop: '30px' }}>
-                    Belém (PA), {new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}.
-                </p>
-
-                <div className="signatures">
-                    <div>
-                        <div style={{ height: '30px', fontFamily: "'Brush Script MT', cursive", fontSize: '20px', color: '#003366' }}>{config.itManager}</div> 
-                        <div className="sign-line"></div>
-                        <strong>{config.companyName}</strong><br/>
-                        Gestão de Ativos de TI
-                    </div>
-                    <div>
-                        <div style={{ height: '30px' }}></div>
-                        <div className="sign-line"></div>
-                        <strong>{responsibleName}</strong><br/>
-                        Colaborador / Portador
-                    </div>
-                </div>
-
-                <div className="footer-text">
-                    Documento gerado eletronicamente pelo sistema Shineray ITAM.
-                </div>
+            <div className="signatures">
+                <div><div className="line"></div><span>{responsibleName}</span><br/><small>COLABORADOR(A)</small></div>
+                <div><div className="line"></div><span>{config.itManager}</span><br/><small>GESTOR DE TI</small></div>
+            </div>
+            
+            <div className="footer">
+                Documento gerado eletronicamente pelo sistema BySabel ITAM Asset Management. ID: {id}
             </div>
         </div>
 
-        {/* 2. ETIQUETA PRINCIPAL (7cm x 3.5cm - PADRÃO DEFINITIVO) */}
-        <div style={{ display: 'none' }}>
-            <div ref={labelRef} style={{ width: '100%', height: '100vh', position: 'relative' }}>
-                <style>{` 
-                    @media print { 
-                        @page { size: auto; margin: 0mm; } 
-                        body { margin: 0; } 
-                    } 
-                `}</style>
-                <div className="print-label" style={{ 
-                    position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                    width: '7cm', height: '3.5cm', padding: '4px', border: '2px solid black', borderRadius: '6px', 
-                    display: 'flex', flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', gap: '6px', 
-                    fontFamily: 'Arial, sans-serif', boxSizing: 'border-box', overflow: 'hidden'
-                }}>
-                    {/* ESQUERDA: QR CODE (68px) */}
-                    <div style={{ width: '68px', height: '68px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <QRCodeSVG value={asset.internalId} size={68} level="M" />
-                    </div>
-                    {/* DIREITA: DADOS */}
-                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
-                        {/* Logo 32px */}
-                        <div style={{ height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', borderBottom: '1px solid #eee', paddingBottom: '2px' }}>
-                            <img src={logoShineray} alt="Shineray" style={{ height: '100%', maxHeight: '28px', width: 'auto', objectFit: 'contain' }} />
-                        </div>
-                        {/* Infos */}
-                        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                            <span style={{ fontSize: '7px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', lineHeight: '1' }}>Patrimônio</span>
-                            <span style={{ fontSize: '18px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1.1', letterSpacing: '-0.5px' }}>{asset.internalId}</span>
-                            <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '125px' }}>{asset.model}</span>
-                        </div>
-                        {/* Footer */}
-                        <div style={{ borderTop: '1.5px solid #000', paddingTop: '1px', marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '6px', fontWeight: 'bold', color: '#444', textTransform: 'uppercase' }}>SUPORTE TI</span>
-                            <span style={{ fontSize: '8px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</span>
-                        </div>
-                    </div>
+        {/* 2. ETIQUETA QR PEQUENA (Térmica) */}
+        <div ref={labelRef} style={{ width: '7cm', height: '3.5cm', padding: '4px', border: '2px solid black', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: 'white', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box', overflow: 'hidden' }}>
+            <div style={{ width: '68px', height: '68px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <QRCodeSVG value={asset.internalId} size={68} level="M" />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
+                <div style={{ height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', borderBottom: '1px solid #eee', paddingBottom: '2px' }}>
+                    <img src="/logo.png" alt="BySabel" style={{ height: '100%', maxHeight: '28px' }} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '7px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', lineHeight: '1' }}>Patrimônio</span>
+                    <span style={{ fontSize: '18px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1.1', letterSpacing: '-0.5px' }}>{asset.internalId}</span>
+                    <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', maxWidth: '125px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{asset.model}</span>
+                </div>
+                <div style={{ borderTop: '1.5px solid #000', paddingTop: '1px', marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '6px', fontWeight: 'bold', color: '#444' }}>SUPORTE TI</span>
+                    <span style={{ fontSize: '8px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</span>
                 </div>
             </div>
-        </div>
-
-        {/* 3. ETIQUETA DE PERIFÉRICO (MINI - 5cm x 2.5cm) */}
-        <div style={{ display: 'none' }}>
-            <div ref={peripheralLabelRef} style={{ width: '100%', height: '100vh', position: 'relative' }}>
-                <style>{` @media print { @page { size: auto; margin: 0mm; } body { margin: 0; } } `}</style>
-                <div className="print-label" style={{ 
-                    position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                    width: '5cm', height: '2.5cm', padding: '2px', border: '1px solid black', borderRadius: '4px', 
-                    display: 'flex', flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', gap: '4px', 
-                    fontFamily: 'Arial, sans-serif', boxSizing: 'border-box', overflow: 'hidden'
-                }}>
-                    <div style={{ width: '45px', height: '45px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <QRCodeSVG value={asset.internalId} size={42} level="M" />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
-                        <div style={{ height: '22px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '0.5px solid #ccc', marginBottom: '1px', paddingBottom: '1px' }}>
-                            <img src={logoShineray} alt="Shineray" style={{ height: '100%', width: '100%', objectFit: 'contain' }} />
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 0.9 }}>
-                            <span style={{ fontSize: '11px', fontWeight: '900', color: 'black', fontFamily: 'monospace' }}>{asset.internalId}</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', marginTop: '1px' }}>
-                                <span style={{ fontSize: '6px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80px' }}>
-                                    {peripheralToPrint ? peripheralToPrint.name : 'ACESSÓRIO'}
-                                </span>
-                            </div>
-                        </div>
-                        <div style={{ borderTop: '0.5px solid #000', paddingTop: '1px', marginTop: 'auto' }}>
-                            <p style={{ margin: 0, fontSize: '5px', fontWeight: '900', color: '#000', textAlign: 'right' }}>TI SHINERAY</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-      </div>
-
-      {/* HEADER DE AÇÕES */}
-      <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-        <button onClick={() => navigate('/assets')} className="flex items-center gap-2 text-gray-500 hover:text-shineray font-bold uppercase tracking-wide text-sm self-start md:self-auto"><ArrowLeft size={18} /> Voltar</button>
-        <div className="flex flex-wrap gap-3 w-full md:w-auto justify-end">
-            {isPromotional ? (
-                <>
-                    <button onClick={() => handleQuickStatus('Disponível')} className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg font-bold text-xs uppercase"><PackageCheck size={16} /> Estoque</button>
-                    <button onClick={() => setIsMoveModalOpen(true)} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg"><ArrowRightLeft size={18} /></button>
-                </>
-            ) : (
-                <>
-                    <button onClick={() => setIsMaintModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white hover:bg-orange-600 rounded-lg shadow-md font-bold uppercase text-sm border border-orange-600"><Wrench size={16} /> Manutenção</button>
-                    <button onClick={() => setIsMoveModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg shadow-md font-bold uppercase text-sm"><ArrowRightLeft size={16} /> Transferir</button>
-                </>
-            )}
-            <button onClick={handlePrintLabel} className="p-2 text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-300" title="Imprimir Etiqueta Principal"><QrCode size={18} /></button>
-            <button onClick={handlePrintTerm} className="p-2 text-gray-700 hover:bg-gray-100 rounded-lg border border-gray-300" title="Imprimir Termo"><Printer size={18} /></button>
-            <button onClick={() => navigate(`/assets/edit/${asset.id}`)} className="p-2 text-shineray bg-red-50 hover:bg-red-100 rounded-lg border border-red-100"><Edit size={18} /></button>
-            <button onClick={handleDelete} disabled={isDeleting} className="p-2 text-red-500 hover:bg-red-50 rounded-lg border border-red-200 ml-2"><Trash2 size={18} /></button>
-        </div>
-      </div>
-
-      {/* PAINEL PRINCIPAL */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className={`p-8 border-b border-gray-800 flex flex-col md:flex-row justify-between md:items-center gap-6 ${getBannerColor()}`}>
-            <div className="flex items-center gap-5">
-                <div className="p-4 rounded-2xl bg-white text-black shadow-lg">
-                    {asset.status === 'Entregue' ? <Gift size={36} className="text-purple-600"/> : asset.status === 'Manutenção' ? <Wrench size={36} className="text-orange-600"/> : <TypeIcon />}
-                </div>
-                <div>
-                    <h1 className="text-3xl font-black text-white uppercase tracking-tight italic">{asset.model}</h1>
-                    <p className="text-gray-200 font-mono text-sm mt-1 flex items-center gap-2"><Tag size={14} /> {asset.internalId}</p>
-                </div>
-            </div>
-            <div className="px-6 py-2 rounded-lg font-black uppercase tracking-wider text-sm bg-white text-black">{asset.status}</div>
-        </div>
-
-        <div className="p-8 grid grid-cols-1 lg:grid-cols-3 gap-10">
-             <div className="lg:col-span-2 space-y-8">
-                {lifecycle && (
-                    <div className={`p-4 rounded-xl border flex items-center gap-4 ${lifecycle.color}`}>
-                        <div className="p-2 bg-white rounded-full shadow-sm">{lifecycle.icon}</div>
-                        <div><h4 className="font-bold uppercase text-xs tracking-wider">{lifecycle.title}</h4><p className="text-sm font-medium opacity-90">{lifecycle.desc}</p></div>
-                    </div>
-                )}
-
-                <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 relative">
-                    <h3 className="font-bold text-gray-400 uppercase tracking-widest text-xs mb-6 flex items-center gap-2 border-b border-gray-200 pb-2"><Building2 size={16} /> Administração & Posse</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-8">
-                        <div><p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Filial / Unidade</p><div className="flex items-start gap-2 text-gray-900 font-bold text-sm"><MapPin size={16} className="text-shineray mt-0.5" />{expandLocation(asset.location)}</div></div>
-                        <div><p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Setor / Campanha</p><div className="flex items-center gap-2 text-gray-900 font-bold text-sm"><Building2 size={16} className="text-gray-400" />{derivedSector}</div></div>
-                        <div className="md:col-span-2 bg-white p-4 rounded-xl border border-gray-200 shadow-sm"><p className="text-[10px] text-gray-400 font-bold uppercase mb-2">{isPromotional ? "Cliente / Beneficiário" : "Responsável pelo Ativo"}</p><div className="flex items-center gap-4"><div className="bg-gray-100 p-3 rounded-full"><User size={24} className="text-gray-700" /></div><div><p className="text-xl font-black text-gray-900 leading-tight">{responsibleName}</p>{asset.clientCpf && (<p className="text-xs text-gray-400 font-mono mt-1">CPF: {asset.clientCpf}</p>)}</div></div>{isPromotional && (<div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-3"><div className="p-1.5 bg-pink-100 rounded-full text-pink-600"><BadgeCheck size={16} /></div><div><p className="text-[10px] text-pink-700 font-bold uppercase">Vendedor Responsável</p><p className="text-sm font-bold text-gray-900">{asset.vendedor || "Não informado"}</p></div></div>)}</div>
-                    </div>
-                </div>
-
-                <div className="bg-white border border-gray-200 p-5 rounded-xl space-y-4">
-                    <h3 className="font-bold text-gray-900 border-b border-gray-100 pb-2 flex items-center gap-2 uppercase tracking-wider text-sm"><LinkIcon size={18} className="text-shineray" /> Documentos & Links</h3>
-                    <div className="space-y-2">
-                        {asset.attachments?.map((link, index) => (
-                            <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100 hover:bg-gray-100 transition-colors group">
-                                <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 overflow-hidden"><div className="p-2 bg-white rounded shadow-sm text-blue-600"><ExternalLink size={16}/></div><div className="truncate"><p className="text-xs font-bold text-gray-700 truncate max-w-[200px]">{link.name}</p><p className="text-[9px] text-gray-400">{new Date(link.addedAt?.seconds ? link.addedAt.seconds * 1000 : link.addedAt).toLocaleDateString()}</p></div></a>
-                                <button onClick={() => handleDeleteLink(link)} className="text-gray-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14} /></button>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="flex gap-2 items-end"><div className="flex-1"><label className="text-[10px] font-bold text-gray-400 uppercase">Nome</label><input value={newLinkName} onChange={(e) => setNewLinkName(e.target.value)} className="w-full p-2 border border-gray-200 rounded text-sm outline-none focus:border-black"/></div><div className="flex-[2]"><label className="text-[10px] font-bold text-gray-400 uppercase">Link</label><input value={newLinkUrl} onChange={(e) => setNewLinkUrl(e.target.value)} className="w-full p-2 border border-gray-200 rounded text-sm outline-none focus:border-black"/></div><button onClick={handleAddLink} disabled={isAddingLink} className="p-2 bg-black text-white rounded hover:bg-gray-800 disabled:opacity-50"><Plus size={20}/></button></div>
-                </div>
-
-                {/* SEÇÃO DE PERIFÉRICOS */}
-                <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl space-y-4">
-                    <h3 className="font-bold text-gray-900 border-b border-gray-200 pb-2 flex items-center gap-2 uppercase tracking-wider text-sm">
-                        <Plug size={18} className="text-shineray" /> Periféricos & Acessórios Vinculados
-                    </h3>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {asset.peripherals?.map((item, index) => (
-                            <div key={index} className="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-200 hover:border-black transition-colors group shadow-sm">
-                                <div className="flex items-center gap-3 overflow-hidden">
-                                    <div className="p-2 bg-gray-100 rounded shadow-sm text-gray-600">
-                                        {item.name.toLowerCase().includes('mouse') ? <MousePointer2 size={16}/> : <Plug size={16}/>}
-                                    </div>
-                                    <div className="truncate">
-                                        <p className="text-xs font-bold text-gray-800 truncate max-w-[150px] uppercase">{item.name}</p>
-                                        <p className="text-[9px] text-gray-400">Vinculado em {new Date(item.addedAt?.seconds ? item.addedAt.seconds * 1000 : item.addedAt).toLocaleDateString()}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <button 
-                                        onClick={() => setPeripheralToPrint(item)} 
-                                        className="text-gray-400 hover:text-black p-1.5 hover:bg-gray-100 rounded transition-colors"
-                                        title="Imprimir Etiqueta do Acessório"
-                                    >
-                                        <QrCode size={16} />
-                                    </button>
-                                    <button onClick={() => handleDeletePeripheral(item)} className="text-gray-300 hover:text-red-500 p-1.5 hover:bg-red-50 rounded transition-colors"><Trash2 size={16} /></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="flex gap-2 items-end mt-2">
-                        <div className="flex-1">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">Adicionar Periférico (Ex: Carregador, Mouse)</label>
-                            <input 
-                                value={newPeripheral} 
-                                onChange={(e) => setNewPeripheral(e.target.value)} 
-                                className="w-full p-2 border border-gray-300 rounded text-sm outline-none focus:border-black focus:ring-1 focus:ring-black"
-                                placeholder="Nome do acessório..."
-                                onKeyDown={(e) => e.key === 'Enter' && handleAddPeripheral()}
-                            />
-                        </div>
-                        <button onClick={handleAddPeripheral} disabled={isAddingPeripheral} className="p-2 bg-black text-white rounded hover:bg-gray-800 disabled:opacity-50 h-[38px] w-[38px] flex items-center justify-center">
-                            <Plus size={20}/>
-                        </button>
-                    </div>
-                </div>
-
-                {!isPromotional && (
-                    <div className="bg-yellow-50 border border-yellow-200 p-5 rounded-xl space-y-3">
-                        <h3 className="font-bold text-yellow-700 uppercase tracking-widest text-xs mb-2 flex items-center gap-2"><StickyNote size={16} /> Notas Técnicas</h3>
-                        <textarea className="w-full h-32 p-3 text-sm bg-white border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-500 outline-none text-gray-800" value={notes} onChange={(e) => setNotes(e.target.value)}></textarea>
-                        <div className="flex justify-end"><button onClick={handleSaveNotes} disabled={isSavingNotes} className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white font-bold rounded-lg hover:bg-yellow-700 text-xs uppercase">{isSavingNotes ? "Salvando..." : <><Save size={14} /> Salvar</>}</button></div>
-                    </div>
-                )}
-
-                <div className="bg-white border border-gray-200 p-5 rounded-xl space-y-3">
-                     <h3 className="font-bold text-gray-400 uppercase tracking-widest text-xs mb-4">Especificações</h3>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {isPromotional && (<div className="col-span-2 bg-purple-50 p-2 rounded border border-purple-100"><span className="block text-[10px] font-bold text-purple-700 uppercase">Item Promocional</span></div>)}
-                        <div><span className="block text-[10px] font-bold text-gray-400 uppercase">Serial Number</span><span className="font-mono font-bold text-gray-900 text-sm">{asset.serialNumber || "---"}</span></div>
-                        {showImei && (<><div><span className="block text-[10px] font-bold text-gray-400 uppercase">IMEI 1</span><span className="font-mono font-bold text-gray-900 text-sm">{asset.imei1 || "---"}</span></div>{asset.imei2 && (<div><span className="block text-[10px] font-bold text-gray-400 uppercase">IMEI 2</span><span className="font-mono font-bold text-gray-900 text-sm">{asset.imei2}</span></div>)}</>)}
-                        {showIp && (<div><span className="block text-[10px] font-bold text-gray-400 uppercase">IP Address</span><span className="font-mono font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded text-sm w-fit">{asset.specs?.ip}</span></div>)}
-                        {showPrinterInfo && (<div className="col-span-2 bg-blue-50 p-3 rounded-lg border border-blue-100"><span className="block text-[10px] font-bold text-blue-600 uppercase flex items-center gap-1"><FileText size={12}/> Páginas Impressas</span><span className="font-mono font-black text-2xl text-blue-900">{asset.specs?.pageCount ? Number(asset.specs.pageCount).toLocaleString('pt-BR') : '0'}</span></div>)}
-                        <div><span className="block text-[10px] font-bold text-gray-400 uppercase">Data Aquisição</span><span className="font-bold text-gray-900 text-sm">{formatDate(asset.purchaseDate)}</span></div>
-                     </div>
-                </div>
-             </div>
-
-             <div className="border-l border-gray-100 pl-0 lg:pl-8">
-                <h3 className="font-bold text-gray-900 border-b border-gray-100 pb-2 flex items-center gap-2 uppercase tracking-wider text-sm mb-6"><History size={18} className="text-shineray" /> Linha do Tempo</h3>
-                <div className="max-h-[500px] overflow-y-auto custom-scrollbar pr-2"><AssetTimeline history={history} /></div>
-             </div>
         </div>
         
-        <div className="p-6 bg-gray-50 border-t border-gray-200 flex flex-col items-center justify-center gap-2">
-            <div className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm"><QRCodeSVG value={asset.internalId} size={100} /></div>
-            <p className="text-xs font-mono text-gray-500 font-bold tracking-widest">{asset.internalId}</p>
+        {/* 3. ETIQUETA PERIFÉRICO */}
+        <div ref={peripheralLabelRef} style={{ width: '5cm', height: '2.5cm', padding: '2px', border: '1px solid black', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '3px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box', pageBreakInside: 'avoid', overflow: 'hidden' }}>
+             <div style={{ width: '45px', height: '45px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><QRCodeSVG value={asset.internalId} size={42} level="M" /></div>
+             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between' }}>
+                <div style={{ height: '22px', borderBottom: '0.5px solid #ccc', marginBottom: '1px', display: 'flex', justifyContent:'center' }}><img src="/logo.png" style={{ height: '100%' }} alt="Logo"/></div>
+                <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 0.9 }}>
+                    <span style={{ fontSize: '10px', fontWeight: '900', fontFamily: 'monospace' }}>{asset.internalId}</span>
+                    <span style={{ fontSize: '6px', fontWeight: 'bold', textTransform: 'uppercase', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{peripheralToPrint?.name || 'Acessório'}</span>
+                </div>
+                <div style={{ borderTop: '0.5px solid #000', paddingTop: '1px', marginTop: 'auto' }}><p style={{ margin: 0, fontSize: '5px', fontWeight: '900', textAlign: 'right' }}>TI BYSABEL</p></div>
+             </div>
         </div>
+
       </div>
 
-      <MoveAssetModal isOpen={isMoveModalOpen} onClose={() => setIsMoveModalOpen(false)} asset={asset} onConfirm={handleMoveConfirm} />
-      <MaintenanceModal isOpen={isMaintModalOpen} onClose={() => setIsMaintModalOpen(false)} asset={asset} onConfirm={handleMaintenanceConfirm} />
+      {/* ======================================================================= */}
+      {/* HEADER / NAVIGATION                                                     */}
+      {/* ======================================================================= */}
+      <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <button onClick={() => navigate('/assets')} className="group flex items-center text-gray-500 hover:text-black transition-colors font-bold text-sm">
+              <div className="p-2 rounded-full group-hover:bg-gray-100 transition-all mr-2"><ArrowLeft size={20} /></div>
+              Voltar para Lista
+          </button>
+          
+          <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+             <button onClick={() => navigate(`/assets/edit/${id}`)} className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl font-bold text-sm shadow-lg hover:bg-gray-800 transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                 <Edit3 size={16} /> <span className="hidden sm:inline">Editar Ativo</span>
+             </button>
+             <button onClick={() => setIsMoveModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                 <ArrowRightLeft size={16} /> <span className="hidden sm:inline">Movimentar</span>
+             </button>
+             <button onClick={() => setIsMaintModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all whitespace-nowrap">
+                 <Wrench size={16} /> <span className="hidden sm:inline">Manutenção</span>
+             </button>
+             <button onClick={handlePrintTerm} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all whitespace-nowrap">
+                 <FileText size={16} /> <span className="hidden sm:inline">Termo</span>
+             </button>
+             <button onClick={handlePrintLabel} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all whitespace-nowrap">
+                 <Printer size={16} /> <span className="hidden sm:inline">Etiqueta</span>
+             </button>
+              <button onClick={handleDelete} className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 transition-all ml-auto hover:scale-105">
+                 <Trash2 size={16} />
+             </button>
+          </div>
+      </div>
+
+      {/* ======================================================================= */}
+      {/* HERO SECTION                                                            */}
+      {/* ======================================================================= */}
+      <div className="bg-white rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100 relative overflow-hidden mb-8 group">
+          <div className={`absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-gray-50 to-gray-100 rounded-bl-full -mr-16 -mt-16 opacity-50 pointer-events-none transition-all duration-700 group-hover:scale-110`}></div>
+          
+          <div className="flex flex-col md:flex-row gap-8 relative z-10">
+              <div className="flex-shrink-0">
+                  <div className="w-24 h-24 md:w-32 md:h-32 bg-gray-50 rounded-3xl flex items-center justify-center text-gray-900 shadow-inner border border-gray-100">
+                      <AssetIcon type={asset.type} category={asset.category} model={asset.model} internalId={asset.internalId} size={48} />
+                  </div>
+              </div>
+              
+              <div className="flex-grow pt-2">
+                  <div className="flex flex-col md:flex-row md:items-center gap-4 mb-2">
+                      <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${getBannerColor()} text-white shadow-md`}>
+                        {asset.status}
+                      </div>
+                      <span className="text-sm font-mono text-gray-400 font-bold">{asset.category}</span>
+                  </div>
+                  
+                  <h1 className="text-3xl md:text-5xl font-black text-gray-900 tracking-tight mb-2 leading-tight">{asset.model}</h1>
+                  
+                  <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-sm font-medium text-gray-500">
+                      <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                          <Tag size={16} className="text-black" /> 
+                          <span className="font-mono font-bold text-gray-900">{asset.internalId}</span>
+                      </div>
+                      {asset.serialNumber && (
+                        <div className="flex items-center gap-2 px-2 py-1.5">
+                            <BarcodeIcon className="text-gray-400" />
+                            <span className="font-mono">SN: {asset.serialNumber}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 px-2 py-1.5">
+                           <Clock size={16} className="text-gray-400" />
+                           <span>Atualizado: {formatDate(asset.updatedAt)}</span>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      </div>
+
+      {/* ======================================================================= */}
+      {/* MOBILE TABS                                                             */}
+      {/* ======================================================================= */}
+      <div className="md:hidden flex mb-6 bg-gray-100 p-1 rounded-xl">
+          <button onClick={() => setActiveTab('details')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'details' ? 'bg-white shadow-sm text-black' : 'text-gray-500'}`}>Detalhes</button>
+          <button onClick={() => setActiveTab('history')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'history' ? 'bg-white shadow-sm text-black' : 'text-gray-500'}`}>Histórico</button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* ======================== LEFT COLUMN (DETAILS) ======================== */}
+          <div className={`lg:col-span-2 space-y-8 ${activeTab === 'history' ? 'hidden lg:block' : ''}`}>
+              
+              {/* CARD: RESPONSABILIDADE */}
+              <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm relative overflow-hidden">
+                   <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2"><User size={20}/> Responsabilidade e Localização</h3>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                       <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100">
+                           <p className="text-xs font-bold text-gray-400 uppercase mb-1">Responsável Atual</p>
+                           <p className="font-bold text-gray-900 text-lg">{responsibleName}</p>
+                           <div className="flex items-center gap-2 mt-2 text-xs font-medium text-gray-500">
+                               <Building2 size={12}/> {derivedSector}
+                           </div>
+                       </div>
+                       <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100">
+                           <p className="text-xs font-bold text-gray-400 uppercase mb-1">Localização Física</p>
+                           <p className="font-bold text-gray-900 text-lg">{expandLocation(asset.location)}</p>
+                           <div className="flex items-center gap-2 mt-2 text-xs font-medium text-gray-500">
+                               <MapPin size={12}/> {asset.locationDetails || 'Sem detalhes de sala/mesa'}
+                           </div>
+                       </div>
+                   </div>
+              </div>
+
+              {/* CARD: ESPECIFICAÇÕES TÉCNICAS */}
+              <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm">
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><Monitor size={20}/> Especificações</h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-4">
+                      <SpecItem label="Tipo" value={asset.type} />
+                      <SpecItem label="Marca" value={asset.brand || 'Genérico'} />
+                      <SpecItem label="Modelo" value={asset.model} />
+                      
+                      {asset.specs?.processor && <SpecItem label="Processador" value={asset.specs.processor} />}
+                      {asset.specs?.ram && <SpecItem label="Memória RAM" value={asset.specs.ram} />}
+                      {asset.specs?.storage && <SpecItem label="Armazenamento" value={asset.specs.storage} />}
+                      
+                      {showImei && (
+                          <>
+                            <SpecItem label="IMEI 1" value={asset.imei1 || '-'} copyable />
+                            <SpecItem label="IMEI 2" value={asset.imei2 || '-'} copyable />
+                          </>
+                      )}
+                      
+                      {showIp && <SpecItem label="Endereço IP" value={asset.specs.ip} fontMono copyable />}
+                      {asset.macAddress && <SpecItem label="MAC Address" value={asset.macAddress} fontMono copyable />}
+                      
+                      <SpecItem label="Data de Aquisição" value={formatDate(asset.acquisitionDate)} />
+                      <SpecItem label="Valor Estimado" value={asset.value ? `R$ ${parseFloat(asset.value).toFixed(2)}` : '-'} />
+                      {asset.invoiceNumber && <SpecItem label="Nota Fiscal" value={asset.invoiceNumber} />}
+                  </div>
+              </div>
+
+              {/* CARD: PERIFÉRICOS & ACESSÓRIOS */}
+              <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm">
+                  <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2"><Plug size={20}/> Periféricos & Acessórios</h3>
+                  
+                  <div className="flex flex-wrap gap-2 mb-6">
+                       {asset.peripherals && asset.peripherals.length > 0 ? (
+                           asset.peripherals.map((item, idx) => (
+                               <div key={idx} className="group flex items-center gap-2 bg-gray-50 border border-gray-100 pl-3 pr-2 py-2 rounded-xl transition-all hover:border-gray-300 hover:bg-white hover:shadow-sm">
+                                   <span className="text-sm font-medium text-gray-700">{item.name}</span>
+                                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                                       <button onClick={() => setPeripheralToPrint(item)} className="p-1 hover:bg-blue-50 text-blue-600 rounded"><Printer size={12}/></button>
+                                       <button onClick={() => handleDeletePeripheral(item)} className="p-1 hover:bg-red-50 text-red-600 rounded"><X size={12}/></button>
+                                   </div>
+                               </div>
+                           ))
+                       ) : (
+                           <span className="text-sm text-gray-400 italic">Nenhum periférico vinculado.</span>
+                       )}
+                  </div>
+
+                  <div className="bg-gray-50 rounded-2xl p-2 flex gap-2">
+                      <input 
+                          type="text" 
+                          placeholder="Adicionar (ex: Mouse Logitech, Base Dell...)" 
+                          className="flex-1 bg-transparent px-4 text-sm font-medium outline-none"
+                          value={newPeripheral}
+                          onChange={(e) => setNewPeripheral(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleAddPeripheral()}
+                      />
+                      <button onClick={handleAddPeripheral} disabled={isAddingPeripheral} className="bg-black text-white p-2 rounded-xl hover:bg-gray-800 disabled:opacity-50">
+                          <Plus size={18}/>
+                      </button>
+                  </div>
+              </div>
+              
+              {/* CARD: NOTES & LINKS */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Notes */}
+                  <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm flex flex-col">
+                      <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2"><StickyNote size={20}/> Notas</h3>
+                          <button onClick={handleSaveNotes} disabled={isSavingNotes} className="text-xs font-bold bg-green-50 text-green-700 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                              {isSavingNotes ? 'Salvando...' : <><Save size={12}/> Salvar</>}
+                          </button>
+                      </div>
+                      <textarea 
+                          className="w-full flex-1 bg-yellow-50/50 border border-yellow-100 rounded-xl p-4 text-sm text-gray-700 leading-relaxed focus:bg-white focus:border-yellow-300 focus:ring-4 focus:ring-yellow-50 outline-none transition-all resize-none min-h-[150px]"
+                          placeholder="Digite observações importantes sobre o ativo..."
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
+                      ></textarea>
+                  </div>
+
+                  {/* Links */}
+                  <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm flex flex-col">
+                      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2"><LinkIcon size={20}/> Anexos & Links</h3>
+                      
+                      <div className="flex-1 space-y-2 mb-4 overflow-y-auto max-h-[150px] custom-scrollbar">
+                          {asset.attachments?.map((link, i) => (
+                              <div key={i} className="flex justify-between items-center p-3 rounded-xl bg-gray-50 border border-gray-100 hover:border-blue-200 transition-colors group">
+                                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-sm font-medium text-blue-600 hover:underline truncate">
+                                      <FileText size={14} className="text-gray-400"/> {link.name}
+                                  </a>
+                                  <button onClick={() => handleDeleteLink(link)} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all ml-2"><Trash2 size={14}/></button>
+                              </div>
+                          ))}
+                          {(!asset.attachments || asset.attachments.length === 0) && <p className="text-sm text-gray-400 italic text-center py-4">Nenhum link adicionado.</p>}
+                      </div>
+
+                      <div className="flex flex-col gap-2 bg-gray-50 p-3 rounded-2xl">
+                          <input type="text" placeholder="Nome (ex: Manual PDF)" className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-black" value={newLinkName} onChange={(e) => setNewLinkName(e.target.value)} />
+                          <div className="flex gap-2">
+                              <input type="url" placeholder="https://..." className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-black" value={newLinkUrl} onChange={(e) => setNewLinkUrl(e.target.value)} />
+                              <button onClick={handleAddLink} disabled={isAddingLink} className="bg-black text-white p-2 rounded-lg hover:bg-gray-800 disabled:opacity-50"><Plus size={16}/></button>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+
+          </div>
+
+          {/* ======================== RIGHT COLUMN (HISTORY) ======================== */}
+          <div className={`lg:col-span-1 space-y-6 ${activeTab === 'details' ? 'hidden lg:block' : ''}`}>
+              <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm h-full flex flex-col">
+                  <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2"><History size={20}/> Linha do Tempo</h3>
+                  
+                  <div className="relative border-l-2 border-gray-100 ml-3 space-y-8 pb-8">
+                       {history.length === 0 && <p className="text-sm text-gray-400 pl-6 italic">Sem histórico registrado.</p>}
+                       {history.map((item, index) => (
+                           <div key={item.id || index} className="relative pl-6 group">
+                               <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-sm ${item.action?.includes('Manutenção') ? 'bg-orange-500' : item.action?.includes('Entrega') ? 'bg-green-500' : 'bg-gray-400'} group-hover:scale-125 transition-transform`}></div>
+                               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5 block">{formatDate(item.date)}</span>
+                               <h4 className="text-sm font-bold text-gray-900">{item.action}</h4>
+                               {item.details && <p className="text-xs text-gray-500 mt-1 leading-relaxed bg-gray-50 p-2 rounded-lg">{item.details}</p>}
+                               <p className="text-[10px] text-gray-400 mt-1 font-medium">{item.user || 'Sistema'}</p>
+                           </div>
+                       ))}
+                  </div>
+              </div>
+          </div>
+      
+      </div>
+
+      {/* MODALS */}
+      {isMoveModalOpen && <MoveAssetModal isOpen={isMoveModalOpen} onClose={() => setIsMoveModalOpen(false)} onConfirm={handleMoveConfirm} currentAsset={{...asset, responsibleName, location: asset.location}} />}
+      {isMaintModalOpen && <MaintenanceModal isOpen={isMaintModalOpen} onClose={() => setIsMaintModalOpen(false)} onConfirm={handleMaintenanceConfirm} currentAsset={asset} />}
+
     </div>
   );
 };
+
+// UI Helpers
+const SpecItem = ({ label, value, fontMono, copyable }) => (
+    <div className="flex flex-col">
+        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</span>
+        <div className="flex items-center gap-2">
+            <span className={`text-sm font-medium text-gray-800 ${fontMono ? 'font-mono' : ''} truncate max-w-full`} title={value}>{value || '---'}</span>
+            {copyable && value && <button onClick={() => {navigator.clipboard.writeText(value); alert("Copiado!")}} className="text-gray-300 hover:text-black transition-colors"><CopyIcon size={12}/></button>}
+        </div>
+    </div>
+);
+
+const CopyIcon = ({size}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2-2v1"></path></svg>;
+const BarcodeIcon = ({className}) => <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5v14"/><path d="M8 5v14"/><path d="M12 5v14"/><path d="M17 5v14"/><path d="M21 5v14"/></svg>;
 
 export default AssetDetail;

@@ -181,7 +181,7 @@ const Employees = () => {
       <div className="lg:w-2/3">
         <div className="flex justify-between items-center mb-4">
              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <Users /> Equipe Shineray
+                <Users /> Equipe BySabel
              </h1>
              <div className="relative">
                 <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />

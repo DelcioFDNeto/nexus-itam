@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, MapPin, User, Calendar, Truck, Search, ArrowRight, ArrowRightLeft } from 'lucide-react';
 import { getEmployees } from '../services/employeeService';
+import AssetIcon from '../components/AssetIcon';
 
 const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
   const [employees, setEmployees] = useState([]);
@@ -57,7 +58,10 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
             <h2 className="text-xl font-black flex items-center gap-2 uppercase tracking-wide">
               <Truck className="text-white" size={24}/> Transferência
             </h2>
-            <p className="text-red-100 text-xs mt-0.5 font-bold opacity-90">{asset?.model} ({asset?.internalId})</p>
+            <p className="text-red-100 text-xs mt-0.5 font-bold opacity-90 flex items-center gap-2">
+              <AssetIcon type={asset?.type} category={asset?.category} model={asset?.model} internalId={asset?.internalId} size={16} className="text-white"/> 
+              {asset?.model} ({asset?.internalId})
+            </p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-red-700 rounded-lg transition-colors text-white">
             <X size={20} />

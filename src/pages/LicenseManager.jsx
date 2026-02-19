@@ -110,7 +110,7 @@ const LicenseManager = () => {
       <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div>
           <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
-            <ShieldCheck className="text-shineray" /> Licenças & Software
+            <ShieldCheck className="text-brand" /> Licenças & Software
           </h1>
           <p className="text-sm text-gray-500">Gestão de chaves, contratos e ativações.</p>
         </div>

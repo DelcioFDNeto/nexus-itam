@@ -11,6 +11,7 @@ import {
   query, 
   orderBy, 
   where,
+  limit,
   serverTimestamp 
 } from 'firebase/firestore';
 
@@ -43,6 +44,22 @@ export const getAssetHistory = async (assetId) => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
+// --- DASHBOARD & REPORTS ---
+
+export const getRecentActivity = async (limitCount = 8) => {
+  const q = query(historyCollection, orderBy('date', 'desc'), limit(limitCount));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return { 
+          id: doc.id, 
+          ...data,
+          // Normaliza data para evitar erros no frontend
+          jsDate: data.date?.toDate ? data.date.toDate() : new Date(data.date)
+      };
+  });
+};
+
 // --- ESCRITA (CREATE / UPDATE / DELETE) ---
 
 // Cria um novo ativo e registra na timeline
@@ -66,8 +83,8 @@ export const createAsset = async (assetData) => {
   return docRef;
 };
 
-// Atualiza dados e registra na timeline que houve edição
-export const updateAsset = async (id, assetData) => {
+// Atualiza dados e registra na timeline com detalhes personalizados
+export const updateAsset = async (id, assetData, historyOptions = null) => {
   const docRef = doc(db, 'assets', id);
   
   await updateDoc(docRef, {
@@ -75,16 +92,28 @@ export const updateAsset = async (id, assetData) => {
     updatedAt: serverTimestamp()
   });
 
-  // Log de Edição (Se não for uma atualização automática de sistema)
-  // Filtramos para não poluir a timeline se for apenas update interno
-  await addDoc(historyCollection, {
-    assetId: id,
-    type: 'update',
-    action: 'Dados Editados',
-    date: serverTimestamp(),
-    user: 'Admin TI',
-    details: 'Informações ou especificações atualizadas.'
-  });
+  // Log de Edição
+  // Se historyOptions for fornecido, usa ele. Se não, usa o genérico apenas se NÃO for update automático
+  if (historyOptions) {
+      await addDoc(historyCollection, {
+        assetId: id,
+        type: historyOptions.type || 'update',
+        action: historyOptions.action || 'Dados Editados',
+        date: serverTimestamp(),
+        user: historyOptions.user || 'Admin TI',
+        details: historyOptions.details || 'Atualização realizada.'
+      });
+  } else {
+      // Setup padrão para edições genéricas (opcional: pode ser removido se quiser logar só o explícito)
+      await addDoc(historyCollection, {
+        assetId: id,
+        type: 'update',
+        action: 'Dados Editados',
+        date: serverTimestamp(),
+        user: 'Admin TI',
+        details: 'Informações ou especificações atualizadas.'
+      });
+  }
 };
 
 export const deleteAsset = async (id) => {

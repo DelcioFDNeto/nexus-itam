@@ -7,14 +7,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx'; 
 import { useReactToPrint } from 'react-to-print'; 
 import { QRCodeSVG } from 'qrcode.react'; 
-import logoShineray from '../assets/logo-shineray.png'; 
+import AssetListSkeleton from '../components/assets/AssetListSkeleton';
+import AssetIcon from '../components/AssetIcon';
 import { 
   Search, Plus, Filter, LayoutGrid, 
   Smartphone, Monitor, Printer, Network, 
   MapPin, User, FileText, Laptop, Megaphone, CreditCard,
   Download, CheckSquare, Square, 
   Printer as PrinterIcon, RefreshCcw, X, Check, ArrowDownAZ, ArrowUpAZ,
-  AlertCircle, ChevronRight, Plug // Adicionado Plug
+  AlertCircle, ChevronRight, Plug, MoreVertical, SlidersHorizontal, Package
 } from 'lucide-react';
 
 const AssetList = () => {
@@ -27,15 +28,16 @@ const AssetList = () => {
   // Filtros e Ordenação
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('Todos');
+  const [filterStatus, setFilterStatus] = useState('Todos');
   const [sortOrder, setSortOrder] = useState('asc'); 
   const [sortBy, setSortBy] = useState('internalId');
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false); // Mobile filter menu
    
   // Seleção e Ações em Massa
   const [selectedIds, setSelectedIds] = useState([]);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false); 
   const [bulkProcessing, setBulkProcessing] = useState(false); 
 
-  // --- 1. Sincronização em Tempo Real ---
   useEffect(() => {
     setLoading(true);
     const q = query(collection(db, 'assets'), orderBy('createdAt', 'desc'));
@@ -55,15 +57,16 @@ const AssetList = () => {
     return () => unsubscribe();
   }, []);
 
-  // --- 2. Lógica de Filtragem e Ordenação Otimizada (useMemo) ---
+  // --- Lógica de Filtragem e Ordenação Otimizada ---
   const processedAssets = useMemo(() => {
     const safeLower = (val) => (val || '').toString().toLowerCase();
 
     // 1. Filtragem
     let result = assets.filter(asset => {
         const isPromo = asset.category === 'Promocional' || asset.internalId?.includes('PRM');
-        const term = safeLower(searchTerm);
         
+        // Filtro de Texto
+        const term = safeLower(searchTerm);
         const matchesSearch = 
             safeLower(asset.model).includes(term) ||
             safeLower(asset.internalId).includes(term) ||
@@ -74,6 +77,10 @@ const AssetList = () => {
 
         if (!matchesSearch) return false;
 
+        // Filtro de Status
+        if (filterStatus !== 'Todos' && asset.status !== filterStatus) return false;
+
+        // Filtro de Tipo (Abas)
         if (filterType === 'Todos') return true;
         if (filterType === 'Promocionais') return isPromo;
         if (isPromo) return false;
@@ -93,9 +100,8 @@ const AssetList = () => {
             : valB.localeCompare(valA, undefined, { numeric: true, sensitivity: 'base' });
     });
 
-  }, [assets, searchTerm, filterType, sortBy, sortOrder]);
+  }, [assets, searchTerm, filterType, filterStatus, sortBy, sortOrder]);
 
-  // --- 3. Seleção e Dados para Impressão ---
   const toggleSelectAll = () => {
       if (selectedIds.length === processedAssets.length) setSelectedIds([]);
       else setSelectedIds(processedAssets.map(a => a.id));
@@ -106,45 +112,37 @@ const AssetList = () => {
       else setSelectedIds(prev => [...prev, id]);
   };
 
-  // Dados dos ATIVOS Selecionados
   const selectedAssetsData = useMemo(() => {
       return assets.filter(a => selectedIds.includes(a.id));
   }, [assets, selectedIds]);
 
-  // Dados dos PERIFÉRICOS dos Ativos Selecionados (Extração Automática)
   const selectedPeripheralsData = useMemo(() => {
       return selectedAssetsData.flatMap(asset => {
           const peripherals = asset.peripherals || [];
           return peripherals.map(p => ({
               ...p,
-              parentId: asset.internalId, // ID do Pai para o QR Code
+              parentId: asset.internalId, 
               parentModel: asset.model
           }));
       });
   }, [selectedAssetsData]);
 
-  // --- 4. Configuração de Impressão ---
-  
-  // Ref para Ativos
+  // --- Refs de Impressão ---
   const bulkPrintRef = useRef();
-  const handleBulkPrint = useReactToPrint({
-    contentRef: bulkPrintRef,
-    documentTitle: 'Etiquetas_Ativos_Shineray',
-  });
-
-  // Ref para Periféricos
+  const handleBulkPrint = useReactToPrint({ contentRef: bulkPrintRef, documentTitle: 'Etiquetas_Ativos_BySabel' });
   const bulkPeripheralPrintRef = useRef();
-  const handleBulkPeripheralPrint = useReactToPrint({
-    contentRef: bulkPeripheralPrintRef,
-    documentTitle: 'Etiquetas_Perifericos_Shineray',
-  });
+  const handleBulkPeripheralPrint = useReactToPrint({ contentRef: bulkPeripheralPrintRef, documentTitle: 'Etiquetas_Perifericos_BySabel' });
 
-  // --- 5. Ações em Massa (Status e Excel) ---
+  // --- Ações ---
   const handleBulkStatusChange = async (newStatus) => {
       if (!confirm(`Mudar status de ${selectedIds.length} ativos para "${newStatus}"?`)) return;
       setBulkProcessing(true);
       try {
-          const updates = selectedIds.map(id => updateAsset(id, { status: newStatus }));
+          const updates = selectedIds.map(id => updateAsset(id, { status: newStatus }, {
+              action: 'Alteração em Massa',
+              details: `Status alterado em lote para: ${newStatus}`,
+              user: 'Admin TI'
+          }));
           await Promise.all(updates);
           alert("Sucesso!");
           setSelectedIds([]); 
@@ -165,20 +163,7 @@ const AssetList = () => {
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Ativos");
-    XLSX.writeFile(workbook, `Inventario_Shineray_${new Date().toLocaleDateString()}.xlsx`);
-  };
-
-  // --- Helpers Visuais ---
-  const getTypeIcon = (asset) => {
-    if (asset.category === 'Promocional' || asset.internalId?.includes('PRM')) return <Megaphone size={20} className="text-pink-500" />;
-    if (asset.model?.toLowerCase().includes('notebook')) return <Laptop size={20} className="text-blue-600" />;
-    switch (asset.type) {
-      case 'Celular': return <Smartphone size={20} className="text-blue-500" />;
-      case 'Impressora': return <Printer size={20} className="text-orange-500" />;
-      case 'PGT': return <CreditCard size={20} className="text-yellow-600" />;
-      case 'Computador': return <Monitor size={20} className="text-purple-500" />;
-      default: return <Network size={20} className="text-gray-500" />;
-    }
+    XLSX.writeFile(workbook, `Inventario_BySabel_${new Date().toLocaleDateString()}.xlsx`);
   };
 
   const filters = [
@@ -193,350 +178,344 @@ const AssetList = () => {
 
   const statusOptions = ["Em Uso", "Disponível", "Em Transferência", "Manutenção", "Entregue", "Defeito", "Em Trânsito"];
 
+  if (loading) return <AssetListSkeleton />;
+
+  // --- CALCULOS DO MINI-DASHBOARD ---
+  const totalAssets = assets.length;
+  const totalValue = assets.reduce((acc, curr) => {
+      if (curr.category === 'Promocional' || curr.internalId?.includes('PRM')) return acc;
+      return acc + (parseFloat(curr.valor) || 0);
+  }, 0);
+  const maintenanceCount = assets.filter(a => a.status === 'Manutenção').length;
+
   return (
-    <div className="p-4 md:p-8 max-w-[1600px] mx-auto relative pb-24">
+    <div className="max-w-[1920px] mx-auto pb-24 animate-fade-in relative min-h-screen">
       
-      {/* ======================================================== */}
-      {/* IMPRESSÃO 1: ATIVOS (SEU FORMATO DEFINITIVO - 7cm x 3.5cm) */}
-      {/* ======================================================== */}
+      
+      {/* IMPRESSÃO (Oculta) */}
       <div style={{ display: 'none' }}>
         <div ref={bulkPrintRef} className="print-grid">
             <style>{`
                 @media print { 
-                    @page { 
-                        size: A4; 
-                        margin: 5mm; 
-                    } 
-                    body { 
-                        -webkit-print-color-adjust: exact; 
-                    } 
-                    .print-grid { 
-                        display: grid; 
-                        grid-template-columns: repeat(3, 1fr); 
-                        gap: 5mm; 
-                        justify-items: center; 
-                        width: 100%;
-                    } 
-                    .bulk-label { 
-                        width: 7cm; 
-                        height: 3.5cm; 
-                        padding: 4px; /* Padding reduzido para a logo crescer */
-                        border: 2px solid black; 
-                        border-radius: 6px; 
-                        display: flex; 
-                        flex-direction: row;
-                        align-items: center; 
-                        gap: 6px; 
-                        background-color: white;
-                        font-family: Arial, sans-serif;
-                        box-sizing: border-box;
-                        page-break-inside: avoid; 
-                        overflow: hidden;
-                    } 
+                    @page { size: A4; margin: 5mm; } 
+                    body { -webkit-print-color-adjust: exact; } 
+                    .print-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5mm; justify-items: center; width: 100%; } 
+                    .bulk-label { width: 7cm; height: 3.5cm; padding: 4px; border: 2px solid black; border-radius: 6px; display: flex; align-items: center; gap: 6px; background-color: white; font-family: Arial, sans-serif; box-sizing: border-box; page-break-inside: avoid; overflow: hidden; } 
                 }
             `}</style>
-            
             {selectedAssetsData.map(asset => (
                 <div key={asset.id} className="bulk-label">
-                    
-                    {/* ESQUERDA: QR CODE */}
                     <div style={{ width: '68px', height: '68px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <QRCodeSVG value={asset.internalId} size={68} level="M" />
                     </div>
-
-                    {/* DIREITA: INFO */}
                     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
-                        
-                        {/* 1. LOGO DESTAQUE */}
                         <div style={{ height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', borderBottom: '1px solid #eee', paddingBottom: '2px' }}>
-                            <img 
-                                src={logoShineray} 
-                                alt="Shineray" 
-                                style={{ height: '100%', maxHeight: '28px', width: 'auto', objectFit: 'contain' }} 
-                            />
+                            <img src="/logo.png" alt="BySabel" style={{ height: '100%', maxHeight: '28px' }} />
                         </div>
-
-                        {/* 2. DADOS PRINCIPAIS */}
                         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                             <span style={{ fontSize: '7px', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', lineHeight: '1' }}>Patrimônio</span>
-                            <span style={{ fontSize: '18px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1.1', letterSpacing: '-0.5px' }}>
-                                {asset.internalId}
-                            </span>
-                            <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '125px' }}>
-                                {asset.model}
-                            </span>
+                            <span style={{ fontSize: '18px', fontWeight: '900', color: 'black', fontFamily: 'monospace', lineHeight: '1.1', letterSpacing: '-0.5px' }}>{asset.internalId}</span>
+                            <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', marginTop: '2px', whiteSpace: 'nowrap', truncate: true, maxWidth: '125px' }}>{asset.model}</span>
                         </div>
-
-                        {/* 3. RODAPÉ SUPORTE */}
                         <div style={{ borderTop: '1.5px solid #000', paddingTop: '1px', marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '6px', fontWeight: 'bold', color: '#444', textTransform: 'uppercase' }}>SUPORTE TI</span>
+                            <span style={{ fontSize: '6px', fontWeight: 'bold', color: '#444' }}>SUPORTE TI</span>
                             <span style={{ fontSize: '8px', fontWeight: '900', color: '#000' }}>shiadmti@gmail.com</span>
                         </div>
                     </div>
                 </div>
             ))}
         </div>
-      </div>
-
-      {/* ======================================================== */}
-      {/* IMPRESSÃO 2: PERIFÉRICOS (MENORES - 5cm x 2.5cm)        */}
-      {/* ======================================================== */}
-      <div style={{ display: 'none' }}>
         <div ref={bulkPeripheralPrintRef} className="print-grid-peri">
-            <style>{`
-                @media print { 
-                    @page { size: A4; margin: 5mm; } 
-                    body { -webkit-print-color-adjust: exact; } 
-                    .print-grid-peri { 
-                        display: grid; 
-                        grid-template-columns: repeat(4, 1fr); 
-                        gap: 3mm; 
-                        justify-items: center; 
-                        width: 100%;
-                    } 
-                    .peri-label { 
-                        width: 5cm; 
-                        height: 2.5cm; 
-                        padding: 2px; 
-                        border: 1px solid black; 
-                        border-radius: 4px; 
-                        display: flex; 
-                        flex-direction: row; 
-                        align-items: center; 
-                        gap: 3px; 
-                        background-color: white; 
-                        font-family: Arial, sans-serif; 
-                        box-sizing: border-box; 
-                        page-break-inside: avoid; 
-                        overflow: hidden;
-                    } 
-                }
-            `}</style>
-            
-            {selectedPeripheralsData.map((peri, index) => (
-                <div key={index} className="peri-label">
-                    <div style={{ width: '45px', height: '45px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {/* QR aponta para o ID DO PAI */}
-                        <QRCodeSVG value={peri.parentId} size={42} level="M" />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between', overflow: 'hidden' }}>
-                        <div style={{ height: '22px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '0.5px solid #ccc', marginBottom: '1px' }}>
-                            <img src={logoShineray} alt="Shineray" style={{ height: '100%', width: '100%', objectFit: 'contain' }} />
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 0.9 }}>
-                            <span style={{ fontSize: '10px', fontWeight: '900', color: 'black', fontFamily: 'monospace' }}>{peri.parentId}</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                <span style={{ fontSize: '6px', fontWeight: 'bold', color: '#333', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80px' }}>
-                                    {peri.name}
-                                </span>
-                            </div>
-                        </div>
-                        <div style={{ borderTop: '0.5px solid #000', paddingTop: '1px', marginTop: 'auto' }}>
-                            <p style={{ margin: 0, fontSize: '5px', fontWeight: '900', color: '#000', textAlign: 'right' }}>TI SHINERAY</p>
-                        </div>
-                    </div>
+           <style>{`@media print { @page { size: A4; margin: 5mm; } .print-grid-peri { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; justify-items: center; width: 100%; } .peri-label { width: 5cm; height: 2.5cm; padding: 2px; border: 1px solid black; border-radius: 4px; display: flex; align-items: center; gap: 3px; font-family: Arial, sans-serif; box-sizing: border-box; page-break-inside: avoid; overflow: hidden; } }`}</style>
+           {selectedPeripheralsData.map((peri, i) => (
+                <div key={i} className="peri-label">
+                     <div style={{ width: '45px', height: '45px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><QRCodeSVG value={peri.parentId} size={42} level="M" /></div>
+                     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', flexGrow: 1, justifyContent: 'space-between' }}>
+                        <div style={{ height: '22px', borderBottom: '0.5px solid #ccc', marginBottom: '1px', display: 'flex', justifyContent:'center' }}><img src="/logo.png" style={{ height: '100%' }} /></div>
+                        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 0.9 }}><span style={{ fontSize: '10px', fontWeight: '900', fontFamily: 'monospace' }}>{peri.parentId}</span><span style={{ fontSize: '6px', fontWeight: 'bold', textTransform: 'uppercase', truncate: true, maxWidth: '80px' }}>{peri.name}</span></div>
+                        <div style={{ borderTop: '0.5px solid #000', paddingTop: '1px', marginTop: 'auto' }}><p style={{ margin: 0, fontSize: '5px', fontWeight: '900', textAlign: 'right' }}>TI BYSABEL</p></div>
+                     </div>
                 </div>
-            ))}
+           ))}
         </div>
       </div>
       
-      {/* HEADER E AÇÕES */}
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex justify-between items-end">
-            <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Inventário</h1>
-                <p className="text-gray-500 text-sm">Gestão de Ativos TI</p>
-            </div>
-            
-            <div className="hidden md:flex gap-3">
-                <button onClick={handleExportExcel} className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-green-700 font-bold hover:bg-green-50 shadow-sm flex items-center gap-2 transition-all hover:scale-105 active:scale-95"><Download size={18} /> Excel</button>
-                <Link to="/import" className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-blue-700 font-bold hover:bg-blue-50 flex items-center gap-2 transition-all hover:scale-105 active:scale-95"><FileText size={18} /> Importar</Link>
-                <Link to="/assets/new" className="px-4 py-2 bg-black text-white rounded-lg font-bold hover:bg-gray-800 flex items-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95"><Plus size={18} /> Novo</Link>
-            </div>
-        </div>
+      {/* 1. MINI DASHBOARD (UI 2.0) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 md:p-8">
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between h-32 md:h-40 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-gray-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform"></div>
+              <div className="relative z-10 p-2 bg-black text-white w-fit rounded-xl"><Package size={20}/></div>
+              <div className="relative z-10">
+                  <span className="text-3xl font-black text-gray-900">{totalAssets}</span>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-1">Total de Ativos</p>
+              </div>
+          </div>
+          
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between h-32 md:h-40 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-green-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform"></div>
+              <div className="relative z-10 p-2 bg-green-100 text-green-700 w-fit rounded-xl"><CreditCard size={20}/></div>
+              <div className="relative z-10">
+                  <span className="text-2xl font-black text-gray-900">{(totalValue/1000).toFixed(0)}k</span>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-1">Valor Estimado (R$)</p>
+              </div>
+          </div>
 
-        {/* BARRA FLUTUANTE DE AÇÃO EM MASSA */}
-        {selectedIds.length > 0 && (
-            <div className="fixed bottom-20 md:bottom-8 left-4 right-4 md:left-auto md:right-8 bg-black/90 backdrop-blur-md text-white p-4 rounded-2xl shadow-2xl z-50 flex items-center justify-between animate-in slide-in-from-bottom-4 border border-white/10">
-                <div className="flex items-center gap-3">
-                    <div className="bg-white/20 px-3 py-1 rounded-lg font-bold text-sm">{selectedIds.length}</div>
-                    <span className="text-sm font-bold hidden md:inline">Itens selecionados</span>
-                </div>
-                <div className="flex gap-2">
-                    <button onClick={() => setIsStatusModalOpen(true)} className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-3 py-2 rounded-lg text-sm font-bold transition-colors">
-                        <RefreshCcw size={16} /> <span className="hidden md:inline">Status</span>
-                    </button>
-                    
-                    {/* BOTÃO ETIQUETAS ATIVOS */}
-                    <button onClick={handleBulkPrint} className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-3 py-2 rounded-lg text-sm font-bold transition-colors">
-                        <PrinterIcon size={16} /> <span className="hidden md:inline">Etiquetas</span>
-                    </button>
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between h-32 md:h-40 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform"></div>
+              <div className="relative z-10 p-2 bg-orange-100 text-orange-700 w-fit rounded-xl"><AlertCircle size={20}/></div>
+              <div className="relative z-10">
+                  <span className="text-3xl font-black text-gray-900">{maintenanceCount}</span>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-1">Em Manutenção</p>
+              </div>
+          </div>
 
-                    {/* BOTÃO ETIQUETAS PERIFÉRICOS (Só aparece se houver) */}
-                    {selectedPeripheralsData.length > 0 && (
-                        <button onClick={handleBulkPeripheralPrint} className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm font-bold transition-colors border-l border-gray-600">
-                            <Plug size={16} /> <span className="hidden md:inline">Acessórios ({selectedPeripheralsData.length})</span>
-                        </button>
-                    )}
-
-                    <button onClick={() => setSelectedIds([])} className="p-2 bg-white/10 hover:bg-red-600 hover:text-white rounded-lg transition-colors ml-2"><X size={18} /></button>
-                </div>
-            </div>
-        )}
-
-        {/* CONTROLES DE BUSCA E FILTRO */}
-        <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-                <Search className="absolute left-3 top-3 text-gray-400" size={20} />
-                <input type="text" placeholder="Buscar ativo, patrimônio, serial, usuário..." className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black font-medium text-sm shadow-sm transition-shadow hover:shadow-md" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
-            </div>
-
-            <div className="hidden md:flex gap-1 border border-gray-200 rounded-xl p-1 bg-white items-center shadow-sm">
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="pl-3 pr-8 py-2 text-sm bg-transparent outline-none font-bold text-gray-700 cursor-pointer">
-                    <option value="internalId">Patrimônio</option>
-                    <option value="model">Modelo</option>
-                    <option value="status">Status</option>
-                    <option value="assignedTo">Responsável</option>
-                </select>
-                <button onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 border-l border-gray-100">
-                    {sortOrder === 'asc' ? <ArrowDownAZ size={18} /> : <ArrowUpAZ size={18} />}
-                </button>
-            </div>
-        </div>
-
-        {/* FILTROS SCROLLÁVEIS (ABAS) */}
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
-            {filters.map(f => (
-                <button key={f.value} onClick={() => setFilterType(f.value)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all border ${filterType === f.value ? 'bg-black text-white border-black shadow-md scale-105' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
-                    {f.icon} {f.label}
-                </button>
-            ))}
-        </div>
+          {/* QUICK ACTIONS CARD */}
+          <div className="bg-black text-white p-6 rounded-3xl shadow-lg flex flex-col justify-between h-32 md:h-40 relative overflow-hidden md:col-span-1 col-span-2 cursor-pointer group hover:shadow-2xl transition-all" onClick={() => navigate('/assets/new')}>
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-xl group-hover:bg-white/20 transition-all"></div>
+              <div className="flex justify-between items-start">
+                  <div className="p-2 bg-white/20 w-fit rounded-xl backdrop-blur-sm"><Plus size={20}/></div>
+                  <ChevronRight className="opacity-50 group-hover:opacity-100 transition-opacity"/>
+              </div>
+              <div className="relative z-10">
+                  <span className="text-lg font-bold">Novo Ativo</span>
+                  <p className="text-xs font-medium text-gray-400 mt-1">Registrar equipamento</p>
+              </div>
+          </div>
       </div>
 
-      {/* --- LISTA DE ATIVOS --- */}
-      {loading ? (
-          <div className="p-20 text-center text-gray-400 flex flex-col items-center"><div className="w-8 h-8 border-2 border-gray-200 border-t-black rounded-full animate-spin mb-4"></div>Carregando inventário...</div>
-      ) : processedAssets.length === 0 ? (
-          <div className="p-20 text-center text-gray-400 flex flex-col items-center bg-white rounded-2xl border border-gray-200 border-dashed"><AlertCircle size={48} className="mb-4 opacity-20"/><p>Nenhum ativo encontrado.</p></div>
-      ) : (
-          <>
-            {/* VIEW MOBILE: CARDS */}
-            <div className="grid grid-cols-1 gap-3 md:hidden">
-                {processedAssets.map(asset => (
-                    <div key={asset.id} onClick={() => navigate(`/assets/${asset.id}`)} className={`bg-white p-4 rounded-xl border border-gray-200 shadow-sm active:scale-[0.98] transition-all relative overflow-hidden ${selectedIds.includes(asset.id) ? 'ring-2 ring-black border-transparent bg-gray-50' : ''}`}>
-                        <div className="absolute top-4 right-4 z-10" onClick={(e) => e.stopPropagation()}>
-                            <button onClick={() => toggleSelectOne(asset.id)} className="text-gray-300 active:scale-125 transition-transform">
-                                {selectedIds.includes(asset.id) ? <CheckSquare size={24} className="text-black"/> : <Square size={24}/>}
-                            </button>
-                        </div>
-                        <div className="flex items-start gap-4 pr-10">
-                            <div className="p-3 bg-gray-50 rounded-xl text-gray-600 shrink-0">{getTypeIcon(asset)}</div>
-                            <div className="min-w-0">
-                                <h3 className="font-bold text-gray-900 leading-tight truncate">{asset.model}</h3>
-                                <p className="text-xs text-gray-500 font-mono mt-0.5 font-bold tracking-wide">{asset.internalId}</p>
-                                <span className={`inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${asset.status === 'Em Uso' ? 'bg-green-100 text-green-700' : asset.status === 'Disponível' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{asset.status}</span>
+      {/* 2. HEADER & FILTERS BAR */}
+      <div className="px-4 md:px-8 pb-6 bg-[#F4F4F5] sticky top-0 md:static z-20">
+          <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
+              
+              {/* SEARCH */}
+              <div className="relative w-full md:flex-1">
+                  <Search className="absolute left-4 top-3.5 text-gray-400" size={20} />
+                  <input 
+                      type="text" 
+                      placeholder="Buscar por tag, modelo, serial ou responsável..." 
+                      className="w-full pl-12 pr-4 py-3 bg-gray-50 border-transparent focus:bg-white border-2 focus:border-black rounded-2xl outline-none font-bold text-sm transition-all" 
+                      value={searchTerm} 
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+              </div>
+
+              {/* FILTER BUTTONS (DESKTOP) */}
+              <div className="hidden md:flex gap-2 items-center">
+                   <div className="flex gap-1 bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
+                      {statusOptions.slice(0,3).map(st => (
+                          <button 
+                              key={st}
+                              onClick={() => setFilterStatus(filterStatus === st ? 'Todos' : st)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${filterStatus === st ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:bg-gray-200'}`}
+                          >
+                              {st}
+                          </button>
+                      ))}
+                      <div className="w-[1px] h-6 bg-gray-200 mx-1 self-center"></div>
+                      <select 
+                          value={filterStatus} 
+                          onChange={(e) => setFilterStatus(e.target.value)}
+                          className="bg-transparent text-xs font-bold text-gray-500 outline-none cursor-pointer hover:text-black"
+                      >
+                          <option value="Todos">Mais Filtros</option>
+                          {statusOptions.slice(3).map(st => <option key={st} value={st}>{st}</option>)}
+                      </select>
+                   </div>
+                   
+                   <button onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')} className="p-3 bg-gray-50 hover:bg-gray-100 rounded-2xl border border-gray-100 text-gray-600 transition-colors">
+                      {sortOrder === 'asc' ? <ArrowDownAZ size={20} /> : <ArrowUpAZ size={20} />}
+                   </button>
+              </div>
+
+              {/* IMPORT/EXPORT ACTIONS */}
+              <div className="hidden md:flex gap-2 border-l border-gray-100 pl-4">
+                  <button onClick={handleExportExcel} className="p-3 bg-green-50 text-green-700 hover:bg-green-100 rounded-2xl transition-colors" title="Exportar Excel"><Download size={20}/></button>
+                  <Link to="/import" className="p-3 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-2xl transition-colors" title="Importar"><FileText size={20}/></Link>
+              </div>
+          </div>
+
+          {/* Quick Categories Pills */}
+          <div className="flex gap-3 overflow-x-auto py-4 scrollbar-hide">
+              {filters.map(f => (
+                  <button 
+                      key={f.value} 
+                      onClick={() => setFilterType(f.value)} 
+                      className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${filterType === f.value ? 'bg-black text-white border-black shadow-lg scale-105' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
+                  >
+                      {f.icon} {f.label}
+                  </button>
+              ))}
+          </div>
+      </div>
+
+      {/* 3. ASSET GRID/LIST */}
+      <div className="px-4 md:px-8">
+          {processedAssets.length === 0 ? (
+              <div className="p-20 text-center text-gray-400 flex flex-col items-center bg-white rounded-3xl border border-gray-200 border-dashed animate-fade-in"><AlertCircle size={48} className="mb-4 opacity-20"/><p className="font-medium">Nenhum ativo encontrado com esses filtros.</p></div>
+          ) : (
+              <>
+                {/* VIEW MOBILE: TRADING CARDS */}
+                <div className="grid grid-cols-1 gap-4 md:hidden pb-20">
+                    {processedAssets.map(asset => (
+                        <div key={asset.id} onClick={() => navigate(`/assets/${asset.id}`)} className={`bg-white p-5 rounded-3xl border border-gray-100 shadow-[0_4px_20px_-12px_rgba(0,0,0,0.1)] active:scale-[0.98] transition-all relative overflow-hidden group ${selectedIds.includes(asset.id) ? 'ring-2 ring-black bg-gray-50' : ''}`}>
+                            
+                            {/* Card Decoration */}
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 rounded-full -mr-10 -mt-10 opacity-50 pointer-events-none"></div>
+
+                            <div className="flex justify-between items-start mb-4 relative z-10">
+                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wide ${asset.status === 'Em Uso' ? 'bg-green-100 text-green-700' : asset.status === 'Disponível' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                                    {asset.status}
+                                </span>
+                                <button onClick={(e) => { e.stopPropagation(); toggleSelectOne(asset.id); }} className="text-gray-300 active:scale-125 transition-transform p-1">
+                                    {selectedIds.includes(asset.id) ? <CheckSquare size={24} className="text-black"/> : <Square size={24}/>}
+                                </button>
+                            </div>
+
+                            <div className="flex items-center gap-5 relative z-10">
+                                <div className="w-16 h-16 bg-white border border-gray-100 rounded-2xl flex items-center justify-center shadow-sm text-gray-700 shrink-0">
+                                    <AssetIcon type={asset.type} category={asset.category} model={asset.model} internalId={asset.internalId} size={32} />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <h3 className="font-black text-gray-900 leading-tight truncate text-lg">{asset.model}</h3>
+                                    <p className="text-xs text-gray-400 font-mono font-bold mt-1 tracking-wider">{asset.internalId}</p>
+                                </div>
+                            </div>
+
+                            <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-between text-xs font-medium text-gray-500 relative z-10">
+                                <div className="flex items-center gap-2 truncate max-w-[60%]">
+                                    <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center"><User size={12}/></div>
+                                    <span className="truncate">{asset.assignedTo || asset.clientName || 'N/A'}</span>
+                                </div>
+                                <div className="flex items-center gap-1 opacity-75">
+                                    <MapPin size={12}/> {asset.location?.substring(0,10) || 'N/A'}
+                                </div>
                             </div>
                         </div>
-                        <div className="mt-4 pt-3 border-t border-gray-50 flex items-center justify-between text-xs text-gray-500">
-                            <div className="flex items-center gap-1.5 truncate max-w-[60%]"><User size={14} className="text-gray-400 shrink-0"/> <span className="font-medium truncate">{asset.assignedTo || asset.clientName || 'Sem dono'}</span></div>
-                        </div>
-                    </div>
-                ))}
-            </div>
+                    ))}
+                </div>
 
-            {/* VIEW DESKTOP: TABLE */}
-            <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto custom-scrollbar">
-                    <table className="w-full text-left border-collapse min-w-[1000px]">
-                        <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
-                            <tr className="text-xs uppercase text-gray-400 font-bold tracking-wider">
-                                <th className="p-5 w-14 text-center">
-                                    <button onClick={toggleSelectAll} className="hover:text-black transition-colors">
-                                        {selectedIds.length > 0 && selectedIds.length === processedAssets.length ? <CheckSquare size={20} className="text-black"/> : <Square size={20}/>}
-                                    </button>
-                                </th>
-                                <th className="p-5">Ativo / Detalhes</th>
-                                <th className="p-5">Identificação</th>
-                                <th className="p-5">Responsável / Local</th>
-                                <th className="p-5">Status</th>
-                                <th className="p-5 text-center">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {processedAssets.map((asset) => {
-                                const responsibleName = asset.assignedTo || asset.clientName || '---';
-                                return (
-                                    <tr key={asset.id} className={`hover:bg-gray-50/80 transition-colors group cursor-pointer ${selectedIds.includes(asset.id) ? 'bg-blue-50/30' : ''}`} onClick={() => navigate(`/assets/${asset.id}`)}>
-                                        <td className="p-5 text-center" onClick={(e) => e.stopPropagation()}>
-                                            <button onClick={() => toggleSelectOne(asset.id)} className="text-gray-300 hover:text-black transition-colors">
-                                                {selectedIds.includes(asset.id) ? <CheckSquare size={20} className="text-blue-600"/> : <Square size={20}/>}
-                                            </button>
-                                        </td>
-                                        <td className="p-5">
-                                            <div className="flex items-center gap-4">
-                                                <div className="p-3 bg-gray-100 rounded-xl text-gray-600 group-hover:bg-white group-hover:shadow-md transition-all shrink-0">{getTypeIcon(asset)}</div>
-                                                <div className="min-w-0">
-                                                    <p className="font-bold text-gray-900 text-sm truncate max-w-[200px]" title={asset.model}>{asset.model}</p>
-                                                    <div className="flex gap-2 mt-1">
-                                                        <span className="text-[10px] font-bold uppercase bg-gray-100 text-gray-500 px-2 py-0.5 rounded whitespace-nowrap">{asset.type}</span>
-                                                        {(asset.category === 'Promocional' || asset.internalId?.includes('PRM')) && <span className="text-[10px] font-bold uppercase bg-pink-100 text-pink-600 px-2 py-0.5 rounded whitespace-nowrap">Promo</span>}
+                {/* VIEW DESKTOP: PREMIUM TABLE */}
+                <div className="hidden md:block bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="overflow-x-auto custom-scrollbar">
+                        <table className="w-full text-left border-collapse min-w-[1000px]">
+                            <thead className="bg-[#FAFAFA] border-b border-gray-100 sticky top-0 z-10 backdrop-blur-sm">
+                                <tr className="text-xs uppercase text-gray-400 font-black tracking-widest">
+                                    <th className="p-6 w-16 text-center">
+                                        <button onClick={toggleSelectAll} className="hover:text-black transition-colors">
+                                            {selectedIds.length > 0 && selectedIds.length === processedAssets.length ? <CheckSquare size={20} className="text-black"/> : <Square size={20}/>}
+                                        </button>
+                                    </th>
+                                    <th className="p-6">Ativo</th>
+                                    <th className="p-6">Identificação</th>
+                                    <th className="p-6">Responsável</th>
+                                    <th className="p-6">Localização</th>
+                                    <th className="p-6">Status</th>
+                                    <th className="p-6 text-center">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {processedAssets.map((asset) => {
+                                    const responsibleName = asset.assignedTo || asset.clientName || '---';
+                                    return (
+                                        <tr key={asset.id} className={`hover:bg-gray-50/80 transition-all group cursor-pointer ${selectedIds.includes(asset.id) ? 'bg-gray-50' : ''}`} onClick={() => navigate(`/assets/${asset.id}`)}>
+                                            <td className="p-6 text-center" onClick={(e) => e.stopPropagation()}>
+                                                <button onClick={() => toggleSelectOne(asset.id)} className="text-gray-300 hover:text-black transition-colors">
+                                                    {selectedIds.includes(asset.id) ? <CheckSquare size={20} className="text-black"/> : <Square size={20}/>}
+                                                </button>
+                                            </td>
+                                            <td className="p-6">
+                                                <div className="flex items-center gap-5">
+                                                    <div className="w-12 h-12 bg-white border border-gray-100 rounded-xl flex items-center justify-center shadow-sm text-gray-600 group-hover:scale-110 transition-transform shrink-0">
+                                                        <AssetIcon type={asset.type} category={asset.category} model={asset.model} internalId={asset.internalId} size={20} />
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="font-bold text-gray-900 text-sm truncate max-w-[200px]" title={asset.model}>{asset.model}</p>
+                                                        <span className="text-[10px] font-bold uppercase text-gray-400 mt-1 block">{asset.type}</span>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </td>
-                                        <td className="p-5">
-                                            <p className="font-mono font-bold text-sm text-gray-700 bg-gray-50 px-2 py-1 rounded w-fit border border-gray-200">{asset.internalId}</p>
-                                            <p className="text-xs text-gray-400 mt-1 font-mono truncate max-w-[120px]" title={asset.serialNumber}>{asset.serialNumber || 'SN: ---'}</p>
-                                        </td>
-                                        <td className="p-5">
-                                            <div className="flex items-center gap-3">
-                                                {responsibleName !== '---' && <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 uppercase border border-white shadow-sm shrink-0">{responsibleName.substring(0,2)}</div>}
-                                                <div className="min-w-0">
-                                                    <p className="text-sm font-bold text-gray-800 truncate max-w-[150px]" title={responsibleName}>{responsibleName}</p>
-                                                    <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5 truncate max-w-[150px]" title={asset.location}><MapPin size={10} className="shrink-0"/> {asset.location || "Local n/d"}</p>
+                                            </td>
+                                            <td className="p-6">
+                                                <div className="bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200 w-fit group-hover:bg-white transition-colors">
+                                                    <p className="font-mono font-bold text-xs text-gray-900">{asset.internalId}</p>
                                                 </div>
-                                            </div>
-                                        </td>
-                                        <td className="p-5">
-                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide whitespace-nowrap ${asset.status === 'Em Uso' ? 'bg-green-100 text-green-700' : asset.status === 'Disponível' ? 'bg-blue-100 text-blue-700' : asset.status === 'Entregue' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
-                                                <span className={`w-1.5 h-1.5 rounded-full mr-2 shrink-0 ${asset.status === 'Em Uso' ? 'bg-green-500' : asset.status === 'Disponível' ? 'bg-blue-500' : 'bg-gray-500'}`}></span>
-                                                {asset.status}
-                                            </span>
-                                        </td>
-                                        <td className="p-5 text-center">
-                                            <div className="p-2 text-gray-400 hover:text-black hover:bg-gray-100 rounded-lg transition-all inline-flex group-hover:bg-white group-hover:shadow-sm"><ChevronRight size={20} /></div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                                                {asset.serialNumber && <p className="text-[10px] text-gray-400 mt-1 font-mono truncate max-w-[100px]">{asset.serialNumber}</p>}
+                                            </td>
+                                            <td className="p-6">
+                                                <div className="flex items-center gap-3">
+                                                    {responsibleName !== '---' && <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-[10px] font-black text-gray-600 uppercase border border-white shadow-sm shrink-0">{responsibleName.substring(0,2)}</div>}
+                                                    <p className="text-sm font-bold text-gray-700 truncate max-w-[150px]">{responsibleName}</p>
+                                                </div>
+                                            </td>
+                                            <td className="p-6">
+                                                 <div className="flex items-center gap-2 text-gray-500 text-sm">
+                                                    <MapPin size={14} className="text-gray-400"/>
+                                                    <span className="truncate max-w-[150px] font-medium">{asset.location || "---"}</span>
+                                                 </div>
+                                            </td>
+                                            <td className="p-6">
+                                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wide whitespace-nowrap shadow-sm border ${asset.status === 'Em Uso' ? 'bg-green-50 text-green-700 border-green-100' : asset.status === 'Disponível' ? 'bg-blue-50 text-blue-700 border-blue-100' : asset.status === 'Entregue' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-gray-50 text-gray-600 border-gray-100'}`}>
+                                                    <span className={`w-1.5 h-1.5 rounded-full mr-2 shrink-0 animate-pulse ${asset.status === 'Em Uso' ? 'bg-green-500' : asset.status === 'Disponível' ? 'bg-blue-500' : 'bg-gray-400'}`}></span>
+                                                    {asset.status}
+                                                </span>
+                                            </td>
+                                            <td className="p-6 text-center">
+                                                <div className="p-2 text-gray-300 group-hover:text-black hover:bg-gray-100 rounded-xl transition-all inline-flex"><ChevronRight size={20} /></div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
+              </>
+          )}
+      </div>
+
+      <div className="mt-8 text-center text-[10px] text-gray-300 font-bold uppercase tracking-widest pb-8">Exibindo {processedAssets.length} de {assets.length} ativos</div>
+
+      {/* FLOATING ACTION BAR FOR BULK ACTIONS */}
+      {selectedIds.length > 0 && (
+            <div className={`fixed ${window.innerWidth < 768 ? 'bottom-[90px]' : 'bottom-8'} left-1/2 -translate-x-1/2 bg-[#18181B] text-white p-2 pl-6 pr-2 rounded-full shadow-2xl z-50 flex items-center gap-6 animate-in slide-in-from-bottom-10 border border-white/10 w-[90%] md:w-auto max-w-2xl`}>
+                <div className="flex items-center gap-3">
+                    <div className="bg-white text-black w-6 h-6 rounded-full flex items-center justify-center font-black text-xs">{selectedIds.length}</div>
+                    <span className="text-sm font-bold whitespace-nowrap hidden sm:inline">Selecionados</span>
+                </div>
+                <div className="h-6 w-[1px] bg-white/20"></div>
+                <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+                    <button onClick={() => setIsStatusModalOpen(true)} className="flex items-center gap-2 hover:bg-white/20 px-4 py-2 rounded-full text-xs font-bold uppercase transition-colors whitespace-nowrap">
+                        <RefreshCcw size={14} /> Status
+                    </button>
+                    <button onClick={handleBulkPrint} className="flex items-center gap-2 hover:bg-white/20 px-4 py-2 rounded-full text-xs font-bold uppercase transition-colors whitespace-nowrap">
+                        <PrinterIcon size={14} /> Etiquetas
+                    </button>
+                    {selectedPeripheralsData.length > 0 && (
+                        <button onClick={handleBulkPeripheralPrint} className="flex items-center gap-2 hover:bg-white/20 px-4 py-2 rounded-full text-xs font-bold uppercase transition-colors whitespace-nowrap">
+                            <Plug size={14} /> Acessórios
+                        </button>
+                    )}
+                </div>
+                <button onClick={() => setSelectedIds([])} className="p-2 hover:bg-red-600 rounded-full transition-colors ml-auto"><X size={18} /></button>
             </div>
-          </>
       )}
 
-      <div className="mt-4 text-center text-xs text-gray-400 font-medium">Exibindo {processedAssets.length} de {assets.length} ativos</div>
-
-      {/* MODAL DE STATUS EM MASSA */}
+      {/* MODAL DE STATUS */}
       {isStatusModalOpen && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in duration-200">
-                  <div className="bg-black p-5 text-white flex justify-between items-center">
-                      <h3 className="font-bold flex items-center gap-2"><RefreshCcw size={18} /> Novo Status</h3>
-                      <button onClick={() => setIsStatusModalOpen(false)} className="hover:bg-gray-700 p-1 rounded transition-colors"><X size={18}/></button>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in">
+              <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 p-2">
+                  <div className="bg-gray-50 p-5 rounded-[1.5rem] mb-2 flex justify-between items-center">
+                      <h3 className="font-black text-lg flex items-center gap-2"><RefreshCcw size={20} className="text-black" /> Novo Status</h3>
+                      <button onClick={() => setIsStatusModalOpen(false)} className="hover:bg-gray-200 p-2 rounded-full transition-colors"><X size={20}/></button>
                   </div>
-                  <div className="p-6">
-                      <p className="text-sm text-gray-600 mb-4 font-medium">Aplicar status para <strong>{selectedIds.length}</strong> itens:</p>
-                      <div className="flex flex-col gap-2">
+                  <div className="p-4">
+                      <p className="text-sm text-gray-500 mb-6 font-medium px-2">Alterar status de <strong>{selectedIds.length}</strong> itens selecionados:</p>
+                      <div className="space-y-2">
                           {statusOptions.map(status => (
-                              <button key={status} onClick={() => handleBulkStatusChange(status)} disabled={bulkProcessing} className="w-full py-3 px-4 rounded-xl border border-gray-100 bg-gray-50 hover:bg-black hover:text-white transition-all font-bold text-sm text-left flex items-center justify-between group">
+                              <button key={status} onClick={() => handleBulkStatusChange(status)} disabled={bulkProcessing} className="w-full py-3 px-5 rounded-2xl border border-gray-100 bg-white hover:bg-black hover:text-white hover:border-black transition-all font-bold text-sm text-left flex items-center justify-between group active:scale-95 shadow-sm">
                                   {status} <span className="opacity-0 group-hover:opacity-100 transition-opacity"><Check size={16}/></span>
                               </button>
                           ))}
                       </div>
-                      {bulkProcessing && <p className="text-center text-xs text-gray-500 mt-4 animate-pulse font-bold">Processando...</p>}
                   </div>
               </div>
           </div>

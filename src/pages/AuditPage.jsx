@@ -3,35 +3,66 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../services/firebase';
 import { collection, query, onSnapshot, orderBy, doc, updateDoc, serverTimestamp, addDoc } from 'firebase/firestore'; 
-import QRScanner from '../components/QRScanner';
 import { 
   ClipboardCheck, MapPin, Scan, CheckCircle, XCircle, AlertTriangle, ArrowLeft, 
-  ArrowRightLeft, Search, Save, List, Clock
+  ArrowRightLeft, Search, Save, List, Clock, Box, Play, Check, X, AlertOctagon, Volume2, VolumeX, Smartphone
 } from 'lucide-react';
+import QRScanner from '../components/QRScanner';
+import AssetIcon from '../components/AssetIcon';
 
 const AuditPage = () => {
   const navigate = useNavigate();
   
-  // Estados
+  // DATA STATES
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedLocation, setSelectedLocation] = useState('');
   
-  // Auditoria
+  // SESSION STATES
+  const [selectedLocation, setSelectedLocation] = useState(null); // null = Selection Mode
   const [scannedIds, setScannedIds] = useState(new Set()); 
-  const [sessionLog, setSessionLog] = useState([]); // LOG DETALHADO DA SESSÃO
-  
+  const [sessionLog, setSessionLog] = useState([]);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [manualSearch, setManualSearch] = useState('');
   
-  // Refs
-  const logEndRef = useRef(null);
+  // UX STATES
+  const [viewMode, setViewMode] = useState('scan'); // 'scan', 'list'
+  const [lastScanResult, setLastScanResult] = useState(null); // { type: 'success'|'error'|'warning', msg: '', item: {} }
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [manualSearch, setManualSearch] = useState('');
 
-  // Scroll automático para o fim do log
-  useEffect(() => {
-      logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [sessionLog]);
+  // SOUND EFFECTS
+  const playSound = (type) => {
+    if (!soundEnabled) return;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
 
+    if (type === 'success') {
+        osc.frequency.setValueAtTime(800, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.15);
+    } else if (type === 'error') {
+        osc.frequency.setValueAtTime(300, ctx.currentTime);
+        osc.type = 'sawtooth';
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.3);
+    } else { // warning
+        osc.frequency.setValueAtTime(500, ctx.currentTime);
+        osc.type = 'square';
+        gain.gain.setValueAtTime(0.05, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.2);
+    }
+  };
+
+  // DATA FETCHING
   useEffect(() => {
     setLoading(true);
     const q = query(collection(db, 'assets'), orderBy('location', 'asc'));
@@ -43,7 +74,19 @@ const AuditPage = () => {
     return () => unsubscribe();
   }, []);
 
-  const locations = useMemo(() => [...new Set(assets.map(a => a.location).filter(Boolean))].sort(), [assets]);
+  // COMPUTED DATA
+  const locationsData = useMemo(() => {
+    const locs = {};
+    assets.forEach(asset => {
+        if (!asset.location) return;
+        if (!locs[asset.location]) locs[asset.location] = { name: asset.location, count: 0, preview: [] };
+        // Filtrar 'Baixado' e 'Descarte' da contagem esperada de auditoria
+        if (!['Baixado', 'Descarte'].includes(asset.status) && asset.category !== 'Promocional' && !asset.internalId?.includes('PRM')) {
+            locs[asset.location].count++;
+        }
+    });
+    return Object.values(locs).sort((a,b) => a.name.localeCompare(b.name));
+  }, [assets]);
 
   const expectedAssets = useMemo(() => {
       if (!selectedLocation) return [];
@@ -77,55 +120,56 @@ const AuditPage = () => {
 
   const progress = expectedAssets.length > 0 ? Math.round((auditResult.found.length / expectedAssets.length) * 100) : 0;
 
-  // --- LOGIC: SCAN & LOGGING ---
+  // --- ACTIONS ---
+
   const handleScan = async (code) => {
       if (!code) return;
       const cleanCode = code.trim().toUpperCase();
       
-      // Evita duplicidade no log visual (opcional)
-      // if (scannedIds.has(cleanCode)) return; 
-
-      if (navigator.vibrate) navigator.vibrate(200);
-      setScannedIds(prev => new Set(prev).add(cleanCode));
-
       const asset = assets.find(a => a.internalId === cleanCode);
       const isExpected = asset && asset.location === selectedLocation;
       const isIntruder = asset && asset.location !== selectedLocation;
-      const isUnknown = !asset;
 
-      // Adiciona ao Log Detalhado
-      const newLogEntry = {
-          time: new Date(),
-          code: cleanCode,
-          model: asset?.model || 'Desconhecido',
-          status: isExpected ? 'Sucesso' : isIntruder ? 'Intruso' : 'Não Cadastrado',
-          type: isExpected ? 'success' : isIntruder ? 'warning' : 'error'
-      };
-      setSessionLog(prev => [...prev, newLogEntry]);
-
-      // Persistência no Banco (apenas se existe)
-      if (asset) {
-          try {
-              const assetRef = doc(db, 'assets', asset.id);
-              await updateDoc(assetRef, {
-                  lastAudit: serverTimestamp(),
-                  auditStatus: isExpected ? 'Conforme' : 'Local Divergente'
-              });
-          } catch (error) { console.error(error); }
+      // FEEDBACK LOGIC
+      if (isExpected) {
+          if (scannedIds.has(cleanCode)) {
+              setLastScanResult({ type: 'warning', msg: 'Já auditado', item: asset, code: cleanCode });
+              playSound('warning');
+          } else {
+              setLastScanResult({ type: 'success', msg: 'Confirmado', item: asset, code: cleanCode });
+              playSound('success');
+              setScannedIds(prev => new Set(prev).add(cleanCode));
+              
+              // Persistência
+              try {
+                  const assetRef = doc(db, 'assets', asset.id);
+                  await updateDoc(assetRef, {
+                      lastAudit: serverTimestamp(),
+                      auditStatus: 'Conforme'
+                  });
+              } catch (error) { console.error(error); }
+          }
+      } else if (isIntruder) {
+          setLastScanResult({ type: 'warning', msg: 'Intruso Detectado!', item: asset, code: cleanCode });
+          playSound('warning');
+          setScannedIds(prev => new Set(prev).add(cleanCode));
+      } else {
+          setLastScanResult({ type: 'error', msg: 'Não Encontrado', item: null, code: cleanCode });
+          playSound('error');
       }
+
+      // Add to Log if new or important
+      setSessionLog(prev => [{ time: new Date(), code: cleanCode, status: isExpected ? 'OK' : isIntruder ? 'INTRUSO' : 'ERRO' }, ...prev]);
   };
 
-  const handleMoveIntruder = async (asset) => {
-      if (!confirm(`Transferir ${asset.model} para "${selectedLocation}"?`)) return;
-      try {
-          const assetRef = doc(db, 'assets', asset.id);
-          await updateDoc(assetRef, { location: selectedLocation, lastAudit: serverTimestamp(), auditStatus: 'Movimentado Audit' });
-          setSessionLog(prev => [...prev, { time: new Date(), code: asset.internalId, model: asset.model, status: 'Movido', type: 'info' }]);
-      } catch (error) { alert("Erro ao mover."); }
+  const handleManualInput = (e) => {
+      e.preventDefault();
+      handleScan(manualSearch);
+      setManualSearch('');
   };
 
   const handleFinishAudit = async () => {
-      if (!confirm("Finalizar e salvar relatório?")) return;
+      if (!confirm(`Finalizar conferência de ${selectedLocation}?`)) return;
       try {
           await addDoc(collection(db, 'audits'), {
               location: selectedLocation,
@@ -140,138 +184,209 @@ const AuditPage = () => {
               intruderItems: auditResult.intruders.map(a => a.internalId),
               status: progress === 100 ? 'Completa' : 'Parcial'
           });
-          alert("Auditoria salva!");
-          setSelectedLocation('');
+          alert("Auditoria salva com sucesso!");
+          setSelectedLocation(null);
           setScannedIds(new Set());
           setSessionLog([]);
+          setLastScanResult(null);
       } catch (error) { alert("Erro ao salvar."); }
   };
 
-  return (
-    <div className="p-4 md:p-8 max-w-[1600px] mx-auto pb-24 h-screen flex flex-col">
-      
-      <div className="flex items-center gap-4 mb-4 shrink-0">
-        <button onClick={() => navigate('/')} className="p-3 bg-white rounded-xl hover:bg-gray-100 shadow-sm border border-gray-200"><ArrowLeft size={20} /></button>
-        <div>
-            <h1 className="text-xl md:text-2xl font-black text-gray-900 flex items-center gap-2"><ClipboardCheck className="text-shineray" /> Auditoria</h1>
-            <p className="text-xs text-gray-500 font-bold uppercase tracking-wide">Conferência Física</p>
-        </div>
-      </div>
+  // --- RENDERING ---
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
-        
-        {/* ESQUERDA: CONTROLES */}
-        <div className="lg:col-span-1 flex flex-col gap-4 overflow-y-auto">
-            
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2"><MapPin size={14} /> Local</label>
-                <div className="relative">
-                    <select 
-                        className="w-full p-3 border-2 border-gray-100 rounded-xl bg-gray-50 focus:border-black outline-none font-bold text-gray-800 appearance-none"
-                        value={selectedLocation}
-                        onChange={(e) => { setSelectedLocation(e.target.value); setScannedIds(new Set()); setSessionLog([]); }}
+  if (loading) return <div className="flex h-screen items-center justify-center bg-gray-50"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-black"></div></div>;
+
+  // 1. SELECTION SCREEN
+  if (!selectedLocation) {
+      return (
+        <div className="p-4 md:p-8 min-h-screen bg-gray-50">
+            <header className="flex items-center gap-4 mb-8">
+                <button onClick={() => navigate('/')} className="p-3 bg-white rounded-xl shadow-sm hover:scale-105 transition-transform"><ArrowLeft size={24}/></button>
+                <div>
+                   <h1 className="text-3xl font-black text-gray-900 tracking-tight">Nova Auditoria</h1>
+                   <p className="text-gray-500">Selecione o local para iniciar a conferência.</p>
+                </div>
+            </header>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {locationsData.map((loc) => (
+                    <button 
+                        key={loc.name}
+                        onClick={() => setSelectedLocation(loc.name)}
+                        className="group relative overflow-hidden bg-white p-6 rounded-3xl border border-gray-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all text-left"
                     >
-                        <option value="">-- Selecionar --</option>
-                        {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
-                    </select>
-                    <div className="absolute right-4 top-4 text-gray-400 pointer-events-none">▼</div>
-                </div>
+                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <MapPin size={64} className="text-black transform rotate-12"/>
+                        </div>
+                        <h3 className="text-xl font-black text-gray-900 mb-2">{loc.name}</h3>
+                        <div className="flex items-center gap-2">
+                             <span className="bg-black text-white px-3 py-1 rounded-lg text-xs font-bold">{loc.count} Ativos</span>
+                             {loc.count === 0 && <span className="text-xs text-red-500 font-bold">Vazio</span>}
+                        </div>
+                    </button>
+                ))}
             </div>
+            {locationsData.length === 0 && <div className="text-center py-20 text-gray-400">Nenhum local com ativos encontrado.</div>}
+        </div>
+      );
+  }
 
-            {selectedLocation && (
-                <>
-                    <div className="bg-black text-white p-6 rounded-2xl shadow-xl">
-                        <div className="flex justify-between items-end mb-4">
-                            <div><p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Progresso</p><h2 className="text-5xl font-black tracking-tighter">{progress}%</h2></div>
-                            <div className="text-right"><p className="text-2xl font-bold">{auditResult.found.length} <span className="text-gray-500 text-base">/ {expectedAssets.length}</span></p></div>
-                        </div>
-                        <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
-                            <div className="h-full bg-green-500 transition-all duration-500" style={{ width: `${progress}%` }}></div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 mt-6">
-                            <button onClick={() => setIsScannerOpen(true)} className="bg-shineray hover:bg-red-700 text-white p-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 shadow-lg border border-red-500"><Scan size={24} /><span className="font-bold text-xs uppercase">Scan</span></button>
-                            <button onClick={handleFinishAudit} disabled={progress === 0} className="bg-white text-black p-3 rounded-xl flex flex-col items-center justify-center gap-1 hover:bg-gray-100 transition-all disabled:opacity-50"><Save size={24}/><span className="font-bold text-xs uppercase">Finalizar</span></button>
-                        </div>
-                    </div>
-
-                    {/* CONSOLE DE LOG (NOVO) */}
-                    <div className="flex-1 bg-gray-900 rounded-2xl border border-gray-800 p-4 flex flex-col min-h-[300px]">
-                        <h3 className="text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2"><List size={14}/> Log da Sessão</h3>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1 font-mono text-xs">
-                            {sessionLog.length === 0 && <p className="text-gray-600 text-center mt-10">Aguardando leituras...</p>}
-                            {sessionLog.map((entry, i) => (
-                                <div key={i} className="flex gap-3 text-gray-300 border-b border-gray-800 pb-1 mb-1">
-                                    <span className="text-gray-500 w-12 shrink-0">{entry.time.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}</span>
-                                    <span className={`font-bold w-24 shrink-0 ${entry.type === 'success' ? 'text-green-400' : entry.type === 'warning' ? 'text-yellow-400' : 'text-red-400'}`}>{entry.code}</span>
-                                    <span className="truncate flex-1 text-gray-400">{entry.status}</span>
-                                </div>
-                            ))}
-                            <div ref={logEndRef} />
-                        </div>
-                    </div>
-                </>
-            )}
+  // 2. AUDIT HUD (ACTIVE MODE)
+  return (
+    <div className="flex flex-col h-screen bg-gray-900 text-white overflow-hidden">
+        
+        {/* TOP BAR */}
+        <div className="px-4 py-4 bg-gray-900 border-b border-gray-800 flex justify-between items-center shrink-0">
+             <div className="flex items-center gap-3">
+                 <button onClick={() => { if(confirm('Sair da auditoria?')) setSelectedLocation(null); }} className="p-2 rounded-full bg-gray-800 text-gray-400 hover:text-white"><ArrowLeft size={20}/></button>
+                 <div>
+                     <h2 className="font-bold text-lg leading-none">{selectedLocation}</h2>
+                     <p className="text-[10px] text-gray-400 uppercase tracking-widest">{expectedAssets.length} ITENS ESPERADOS</p>
+                 </div>
+             </div>
+             <button onClick={() => setSoundEnabled(!soundEnabled)} className={`p-3 rounded-full ${soundEnabled ? 'bg-gray-800 text-green-400' : 'bg-gray-800 text-gray-500'}`}>
+                 {soundEnabled ? <Volume2 size={20}/> : <VolumeX size={20}/>}
+             </button>
         </div>
 
-        {/* DIREITA: LISTAS */}
-        {selectedLocation && (
-            <div className="lg:col-span-2 flex flex-col gap-6 overflow-y-auto">
-                
-                {/* Intrusos (Destaque) */}
-                {auditResult.intruders.length > 0 && (
-                    <div className="bg-yellow-50 rounded-2xl border border-yellow-200 p-4 animate-in slide-in-from-right">
-                        <div className="flex justify-between items-center mb-2">
-                            <h3 className="font-bold text-yellow-900 text-sm flex items-center gap-2 uppercase tracking-wide"><AlertTriangle size={16} /> Intrusos ({auditResult.intruders.length})</h3>
+        {/* PROGRESS BAR */}
+        <div className="w-full bg-gray-800 h-2 shrink-0">
+             <div className="h-full bg-green-500 transition-all duration-500 shadow-[0_0_10px_#22c55e]" style={{ width: `${progress}%` }}></div>
+        </div>
+
+        {/* MAIN CONTENT AREA */}
+        <div className="flex-1 relative bg-gray-900 overflow-y-auto">
+            
+            {/* VIEW: SCANNER MODE */}
+            {viewMode === 'scan' && (
+                <div className="flex flex-col items-center justify-center min-h-full p-6 gap-8">
+                    
+                    {/* FEEDBACK CARD (CENTRAL) */}
+                    <div className={`
+                        w-full max-w-sm aspect-square rounded-[3rem] flex flex-col items-center justify-center p-8 text-center transition-all duration-300 shadow-2xl border-4
+                        ${!lastScanResult ? 'bg-gray-800 border-gray-700' : 
+                          lastScanResult.type === 'success' ? 'bg-green-600 border-green-400 shadow-green-900/50' :
+                          lastScanResult.type === 'error' ? 'bg-red-600 border-red-400 shadow-red-900/50' : 
+                          'bg-yellow-600 border-yellow-400 shadow-yellow-900/50'}
+                    `}>
+                        {!lastScanResult ? (
+                            <>
+                                <Scan size={64} className="text-gray-600 mb-4 opacity-50"/>
+                                <p className="text-gray-500 font-bold text-lg">Aguardando Leitura...</p>
+                                <p className="text-gray-600 text-sm mt-2">Use o scanner ou digite abaixo</p>
+                            </>
+                        ) : (
+                            <div className="animate-in zoom-in duration-300">
+                                {lastScanResult.type === 'success' && <CheckCircle size={80} className="text-white mb-4 mx-auto"/>}
+                                {lastScanResult.type === 'error' && <XCircle size={80} className="text-white mb-4 mx-auto"/>}
+                                {lastScanResult.type === 'warning' && <AlertTriangle size={80} className="text-white mb-4 mx-auto"/>}
+                                
+                                <h2 className="text-3xl font-black text-white mb-2 uppercase">{lastScanResult.msg}</h2>
+                                <p className="text-white/80 font-mono text-xl">{lastScanResult.code}</p>
+                                {lastScanResult.item && <p className="text-white font-bold mt-2 bg-black/20 px-3 py-1 rounded-lg">{lastScanResult.item.model}</p>}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* MANUAL INPUT */}
+                    <form onSubmit={handleManualInput} className="w-full max-w-sm relative">
+                        <input 
+                            value={manualSearch}
+                            onChange={e => setManualSearch(e.target.value)}
+                            placeholder="Digitar código..."
+                            className="w-full bg-gray-800 border-2 border-gray-700 text-white p-4 pl-12 rounded-2xl outline-none focus:border-brand font-mono text-lg transition-all"
+                        />
+                        <Search className="absolute left-4 top-5 text-gray-500" size={20}/>
+                    </form>
+
+                    {/* ACTIONS */}
+                    <div className="grid grid-cols-2 gap-4 w-full max-w-sm">
+                        <button onClick={() => setIsScannerOpen(true)} className="bg-white text-black py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-gray-200 active:scale-95 transition-all">
+                            <Smartphone size={20}/> Câmera
+                        </button>
+                        <button onClick={() => setViewMode('list')} className="bg-gray-800 text-white py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-gray-700 active:scale-95 transition-all border border-gray-700">
+                            <List size={20}/> Detalhes
+                        </button>
+                    </div>
+
+                </div>
+            )}
+
+            {/* VIEW: LIST MODE */}
+            {viewMode === 'list' && (
+                <div className="p-4 space-y-6">
+                    {/* STATS */}
+                    <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
+                            <p className="text-[10px] text-gray-400 uppercase font-black">Faltam</p>
+                            <p className="text-2xl font-black text-red-500">{auditResult.missing.length}</p>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
+                            <p className="text-[10px] text-gray-400 uppercase font-black">Achados</p>
+                            <p className="text-2xl font-black text-green-500">{auditResult.found.length}</p>
+                        </div>
+                        <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
+                            <p className="text-[10px] text-gray-400 uppercase font-black">Intrusos</p>
+                            <p className="text-2xl font-black text-yellow-500">{auditResult.intruders.length}</p>
+                        </div>
+                    </div>
+
+                    {/* INTRUDERS LIST */}
+                    {auditResult.intruders.length > 0 && (
+                        <div className="space-y-2">
+                            <h3 className="text-yellow-500 font-bold text-xs uppercase flex items-center gap-2"><AlertTriangle size={14}/> Itens de Outros Setores</h3>
                             {auditResult.intruders.map(asset => (
-                                <div key={asset.id} className="p-2 bg-white rounded-lg border border-yellow-100 flex justify-between items-center shadow-sm">
-                                    <div><p className="font-black text-xs text-gray-900">{asset.internalId}</p><p className="text-[10px] text-red-500 font-bold">Origem: {asset.location}</p></div>
-                                    <button onClick={() => handleMoveIntruder(asset)} className="bg-yellow-200 hover:bg-yellow-300 text-yellow-900 p-1.5 rounded-lg"><ArrowRightLeft size={14}/></button>
+                                <div key={asset.id} className="bg-yellow-900/20 border border-yellow-500/30 p-3 rounded-xl flex justify-between items-center">
+                                    <div>
+                                        <p className="text-yellow-100 font-bold text-sm">{asset.model}</p>
+                                        <p className="text-yellow-500/70 text-xs font-mono">{asset.internalId} • De: {asset.location}</p>
+                                    </div>
+                                    <AlertOctagon size={16} className="text-yellow-500"/>
                                 </div>
                             ))}
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {/* Pendentes e Encontrados */}
-                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm flex-1 flex flex-col overflow-hidden">
-                    <div className="flex border-b border-gray-100">
-                        <div className="flex-1 p-4 bg-red-50/50 border-r border-gray-100">
-                            <div className="flex justify-between items-center mb-3">
-                                <h3 className="font-bold text-red-800 text-sm flex items-center gap-2"><XCircle size={16} /> Pendentes ({auditResult.missing.length})</h3>
-                                <div className="relative w-32"><Search size={12} className="absolute left-2 top-2 text-red-300"/><input value={manualSearch} onChange={e => setManualSearch(e.target.value)} placeholder="Busca..." className="w-full pl-6 py-1 text-[10px] border border-red-100 rounded-md bg-white focus:outline-none"/></div>
-                            </div>
-                            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
-                                {auditResult.missing
-                                    .filter(a => a.model.toLowerCase().includes(manualSearch.toLowerCase()) || a.internalId.toLowerCase().includes(manualSearch.toLowerCase()))
-                                    .map(asset => (
-                                    <div key={asset.id} className="flex justify-between items-center p-2 hover:bg-red-50 rounded border border-transparent hover:border-red-100 group">
-                                        <div><p className="font-bold text-xs text-gray-900">{asset.model}</p><p className="font-mono text-[10px] text-gray-400">{asset.internalId}</p></div>
-                                        <button onClick={() => handleScan(asset.internalId)} className="text-[10px] bg-white border border-gray-200 px-2 py-1 rounded hover:bg-black hover:text-white transition-colors opacity-0 group-hover:opacity-100">Manual</button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="flex-1 p-4 bg-green-50/30">
-                            <h3 className="font-bold text-green-800 text-sm flex items-center gap-2 mb-3"><CheckCircle size={16} /> Encontrados ({auditResult.found.length})</h3>
-                            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
-                                {auditResult.found.map(asset => (
-                                    <div key={asset.id} className="flex justify-between items-center p-2 bg-green-50/50 rounded border border-green-100">
-                                        <div><p className="font-bold text-xs text-gray-900">{asset.model}</p><p className="font-mono text-[10px] text-green-700">{asset.internalId}</p></div>
-                                        <CheckCircle size={14} className="text-green-500" />
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+                    {/* MISSING LIST */}
+                    <div className="space-y-2">
+                         <h3 className="text-red-500 font-bold text-xs uppercase flex items-center gap-2"><XCircle size={14}/> Pendentes</h3>
+                         {auditResult.missing.map(asset => (
+                             <div key={asset.id} className="bg-gray-800 border border-gray-700 p-3 rounded-xl flex justify-between items-center opacity-80">
+                                 <div className="flex items-center gap-3">
+                                     <div className="w-8 h-8 rounded bg-gray-700 flex items-center justify-center text-gray-400"><Box size={14}/></div>
+                                     <div>
+                                         <p className="text-gray-300 font-bold text-sm">{asset.model}</p>
+                                         <p className="text-gray-600 text-xs font-mono">{asset.internalId}</p>
+                                     </div>
+                                 </div>
+                             </div>
+                         ))}
                     </div>
+                    
+                    <button onClick={() => setViewMode('scan')} className="w-full py-4 bg-gray-800 text-white font-bold rounded-xl mt-4">
+                        Voltar para Scanner
+                    </button>
                 </div>
-            </div>
-        )}
-      </div>
+            )}
 
-      {isScannerOpen && <QRScanner onClose={() => setIsScannerOpen(false)} onScan={handleScan} />}
+        </div>
+
+        {/* BOTTOM ACTION BAR */}
+        <div className="p-4 bg-gray-900 border-t border-gray-800 shrink-0 flex gap-4">
+            <div className="flex-1 bg-gray-800 rounded-xl px-4 flex items-center justify-between">
+                <span className="text-xs text-gray-400 font-bold uppercase">Progresso</span>
+                <span className="font-mono text-white text-lg font-bold">{progress}%</span>
+            </div>
+            <button 
+                onClick={handleFinishAudit} 
+                disabled={progress === 0} 
+                className="bg-brand hover:bg-red-600 disabled:opacity-50 disabled:bg-gray-700 text-white px-8 py-3 rounded-xl font-black uppercase tracking-wider transition-all shadow-lg shadow-red-900/20 flex items-center gap-2"
+            >
+                <Save size={18}/> Salvar
+            </button>
+        </div>
+
+        {isScannerOpen && <QRScanner onClose={() => setIsScannerOpen(false)} onScan={(code) => { setIsScannerOpen(false); handleScan(code); }} />}
     </div>
   );
 };

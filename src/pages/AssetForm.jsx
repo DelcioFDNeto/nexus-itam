@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getEmployees } from '../services/employeeService';
 import { createAsset, updateAsset, getAssetById } from '../services/assetService';
-import { Save, ArrowLeft, Search, Smartphone, Monitor, Printer, Network, CreditCard, Megaphone } from 'lucide-react';
+import { Save, ArrowLeft, Search, Check, Smartphone, Monitor, Printer, Wifi, Server, Box, User, MapPin, Building2, Tag, Calendar, DollarSign, FileText } from 'lucide-react';
+import AssetIcon from '../components/AssetIcon';
 
 const AssetForm = () => {
   const { id } = useParams();
@@ -15,7 +16,7 @@ const AssetForm = () => {
     model: '',
     internalId: '',
     type: 'Computador',
-    category: 'Corporativo',
+    category: 'Corporativo', // 'Corporativo', 'Promocional', 'Infra'
     status: 'Em Uso',
     location: 'Matriz - Belém',
     assignedTo: '', 
@@ -97,164 +98,252 @@ const AssetForm = () => {
     setLoading(true);
     try {
         const cleanData = JSON.parse(JSON.stringify(formData));
-        if (id) await updateAsset(id, cleanData);
+        if (id) await updateAsset(id, cleanData, {
+            action: 'Edição Completa',
+            details: 'Dados atualizados via formulário de edição.',
+            user: 'Admin TI'
+        });
         else await createAsset(cleanData);
         navigate('/assets');
     } catch (error) { alert("Erro ao salvar."); } finally { setLoading(false); }
   };
-
-  const getTypeIcon = () => {
-      if (formData.category === 'Promocional') return <Megaphone size={24} className="text-pink-500"/>;
-      switch(formData.type) {
-          case 'Celular': return <Smartphone size={24} />;
-          case 'Impressora': return <Printer size={24} />;
-          case 'Rede': return <Network size={24} />;
-          case 'PGT': return <CreditCard size={24} />;
-          default: return <Monitor size={24} />;
-      }
-  };
-
+ 
   const isPromotional = formData.category === 'Promocional';
   const isMobile = formData.type === 'Celular' || formData.type === 'PGT';
   const isPrinter = formData.type === 'Impressora';
   const isPC = formData.type === 'Computador' || formData.type === 'Notebook' || formData.type === 'Servidor';
 
-  return (
-    <div className="p-8 max-w-4xl mx-auto">
-        <button onClick={() => navigate('/assets')} className="mb-6 flex items-center gap-2 text-gray-500 hover:text-black font-bold uppercase text-sm">
-            <ArrowLeft size={18} /> Voltar para Lista
-        </button>
+  // Opções de Tipo com Ícones
+  const assetTypes = [
+      { id: 'Computador', label: 'Computador', icon: Monitor },
+      { id: 'Notebook', label: 'Notebook', icon: Monitor },
+      { id: 'Celular', label: 'Celular', icon: Smartphone },
+      { id: 'Impressora', label: 'Impressora', icon: Printer },
+      { id: 'Rede', label: 'Rede', icon: Wifi },
+      { id: 'Monitor', label: 'Monitor', icon: Monitor },
+      { id: 'PGT', label: 'PGT', icon: Smartphone },
+      { id: 'Servidor', label: 'Servidor', icon: Server },
+      { id: 'Outros', label: 'Outros', icon: Box },
+  ];
 
-        <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 bg-black text-shineray rounded-lg">{getTypeIcon()}</div>
-            <h1 className="text-2xl font-bold text-gray-900">{id ? 'Editar Ativo' : 'Novo Ativo'}</h1>
+  return (
+    <div className="max-w-5xl mx-auto pb-24 animate-fade-in relative">
+        
+        {/* HEADER */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+            <button onClick={() => navigate('/assets')} className="group flex items-center text-gray-500 hover:text-black transition-colors font-bold text-sm">
+                <div className="p-2 rounded-full group-hover:bg-gray-100 transition-all mr-2"><ArrowLeft size={20} /></div>
+                Cancelar
+            </button>
+            <div className="flex items-center gap-3">
+                 <div className="text-right hidden md:block">
+                     <h1 className="text-2xl font-black text-gray-900">{id ? 'Editar Ativo' : 'Novo Ativo'}</h1>
+                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{id ? `ID: ${id}` : 'Cadastro no Inventário'}</p>
+                 </div>
+                 <div className="w-12 h-12 bg-black text-white rounded-2xl flex items-center justify-center shadow-lg">
+                     {id ? <AssetIcon type={formData.type} size={24} className="text-white"/> : <Box size={24}/>}
+                 </div>
+            </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8 bg-white p-8 rounded-2xl shadow-sm border border-gray-200">
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
-            {/* Bloco 1: Identificação */}
-            <div>
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b pb-2">Identificação</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div><label className="block text-sm font-bold text-gray-700 mb-1">Modelo / Nome</label><input name="model" value={formData.model} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none" required placeholder="Ex: Galaxy A32" /></div>
-                    <div><label className="block text-sm font-bold text-gray-700 mb-1">Patrimônio (Tag)</label><input name="internalId" value={formData.internalId} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded bg-gray-50 font-mono font-bold" required placeholder="Ex: SHL-CEL-001" /></div>
-                    <div><label className="block text-sm font-bold text-gray-700 mb-1">Categoria</label><select name="category" value={formData.category} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none bg-white"><option value="Corporativo">Corporativo</option><option value="Promocional">Promocional</option><option value="Infra">Infraestrutura</option></select></div>
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-1">Tipo</label>
-                        <select name="type" value={formData.type} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none bg-white">
-                            <option>Computador</option><option>Notebook</option><option>Celular</option><option>Impressora</option><option>Rede</option><option>PGT</option><option>Monitor</option>
-                        </select>
+            {/* ======================== MAIN COLUMN (LEFT) ======================== */}
+            <div className="lg:col-span-2 space-y-8">
+                
+                {/* CARD 1: IDENTIFICAÇÃO BÁSICA */}
+                <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 pb-2"><Tag size={16}/> Identificação & Classificação</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="md:col-span-2">
+                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Nome / Modelo do Ativo</label>
+                             <input name="model" value={formData.model} onChange={handleChange} className="w-full p-4 bg-gray-50 border-2 border-transparent focus:bg-white focus:border-black rounded-xl outline-none font-bold text-lg transition-all placeholder:font-normal" required placeholder="Ex: Notebook Dell Latitude 3420" />
+                        </div>
+
+                        <div>
+                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Patrimônio (Tag)</label>
+                             <div className="relative">
+                                 <Tag size={18} className="absolute left-4 top-4 text-gray-400"/>
+                                 <input name="internalId" value={formData.internalId} onChange={handleChange} className="w-full pl-11 pr-4 py-3.5 bg-gray-50 border-2 border-transparent focus:bg-white focus:border-black rounded-xl outline-none font-mono font-bold text-gray-900 transition-all uppercase" required placeholder="Ex: SHL-NB-001" />
+                             </div>
+                        </div>
+
+                        <div>
+                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Serial Number</label>
+                             <input name="serialNumber" value={formData.serialNumber} onChange={handleChange} className="w-full p-3.5 bg-gray-50 border-2 border-transparent focus:bg-white focus:border-black rounded-xl outline-none font-mono text-sm font-bold text-gray-900 transition-all" placeholder="N/A" />
+                        </div>
                     </div>
+
+                    <div className="mt-8">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 block">Tipo de Equipamento</label>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                            {assetTypes.map(t => {
+                                const Icon = t.icon;
+                                const isSelected = formData.type === t.id;
+                                return (
+                                    <button type="button" key={t.id} onClick={() => setFormData({...formData, type: t.id})} className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${isSelected ? 'border-black bg-black text-white shadow-lg scale-105' : 'border-gray-100 bg-white text-gray-500 hover:border-gray-200 hover:bg-gray-50'}`}>
+                                        <Icon size={20} />
+                                        <span className="text-xs font-bold">{t.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+
+                {/* CARD 2: DETALHES TÉCNICOS (CONDICIONAL) */}
+                <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100">
+                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 pb-2"><Server size={16}/> Especificações Técnicas</h3>
+                     
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {isMobile && (
+                            <>
+                                <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">IMEI 1</label><input name="imei1" value={formData.imei1} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none font-mono text-sm" placeholder="Ex: 3569..." /></div>
+                                <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">IMEI 2 (Opcional)</label><input name="imei2" value={formData.imei2} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none font-mono text-sm" /></div>
+                            </>
+                        )}
+
+                        {isPrinter && (
+                            <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Contador de Páginas</label><input type="number" name="specs.pageCount" value={formData.specs.pageCount} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none font-bold" placeholder="Ex: 15000" /></div>
+                        )}
+
+                        {(isPC || formData.type === 'Rede' || isPrinter) && (
+                            <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Endereço IP</label><input name="specs.ip" value={formData.specs.ip} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none font-mono text-sm" placeholder="192.168..." /></div>
+                        )}
+                        
+                        {(isPC) && (
+                            <>
+                                <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Processador</label><input name="specs.processor" value={formData.specs?.processor || ''} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: i5 1135G7" /></div>
+                                <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Memória RAM</label><input name="specs.ram" value={formData.specs.ram} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: 16GB" /></div>
+                                <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Armazenamento</label><input name="specs.storage" value={formData.specs.storage} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: SSD 512GB" /></div>
+                            </>
+                        )}
+                     </div>
+                     
+                     {!isMobile && !isPrinter && !isPC && (
+                         <p className="text-sm text-gray-400 italic text-center py-4">Sem campos específicos para este tipo de ativo.</p>
+                     )}
+                </div>
+
+                {/* CARD 3: OBSERVAÇÕES */}
+                <div className="bg-yellow-50 p-6 md:p-8 rounded-[2rem] border border-yellow-100">
+                    <h3 className="text-xs font-bold text-yellow-700 uppercase tracking-widest mb-4 flex items-center gap-2"><FileText size={16}/> Notas & Observações</h3>
+                    <textarea name="notes" value={formData.notes} onChange={handleChange} rows="4" className="w-full p-4 bg-white border border-yellow-200 rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 text-gray-700 leading-relaxed resize-none" placeholder="Detalhes adicionais, histórico breve, avarias conhecidas..." />
                 </div>
             </div>
 
-            {/* Bloco 2: Responsabilidade & Local */}
-            <div>
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b pb-2">Responsabilidade & Local</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-bold text-gray-700 mb-1 flex justify-between">{isPromotional ? "Cliente / Beneficiário" : "Colaborador Responsável"}<span className="text-xs font-bold text-blue-600 cursor-pointer hover:underline" onClick={() => navigate('/employees')}>+ Gerenciar Equipe</span></label>
-                        <div className="relative"><select name="assignedTo" value={formData.assignedTo} onChange={handleEmployeeSelect} className="w-full p-2 pl-3 border border-gray-300 rounded appearance-none bg-white focus:ring-2 focus:ring-black outline-none"><option value="">Selecione ou deixe vazio...</option>{employees.map(emp => (<option key={emp.id} value={emp.name}>{emp.name} - {emp.sector}</option>))}</select><Search size={16} className="absolute right-3 top-3 text-gray-400 pointer-events-none" /></div>
-                        {(!formData.assignedTo || !employees.find(e => e.name === formData.assignedTo)) && (<input name="assignedTo" value={formData.assignedTo} onChange={handleChange} placeholder="Ou digite o nome manualmente..." className="w-full p-2 border border-gray-300 rounded mt-2 text-sm bg-gray-50"/>)}
-                    </div>
-                    {isPromotional && (<div className="md:col-span-2 bg-pink-50 p-4 rounded-lg border border-pink-100"><label className="block text-sm font-bold text-pink-700 mb-1">Vendedor Vinculado</label><input name="vendedor" value={formData.vendedor} onChange={handleChange} placeholder="Nome do Vendedor..." className="w-full p-2 border border-pink-200 rounded focus:ring-2 focus:ring-pink-500 outline-none"/></div>)}
-                    <div><label className="block text-sm font-bold text-gray-700 mb-1">{isPromotional ? "Campanha" : "Setor"}</label><input name="sector" value={formData.sector} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded bg-gray-50" placeholder="Automático ou Digite" /></div>
-                    
-                    {/* LISTA COMPLETA DE LOCAIS RESTAURADA AQUI */}
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-1">Localização Física</label>
-                        <select name="location" value={formData.location} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none bg-white">
-                            <optgroup label="Pará - Região Metropolitana">
-                                <option value="Matriz - Belém">Matriz - Belém</option>
-                                <option value="Fábrica / CD - Ananindeua">Fábrica / CD - Ananindeua</option>
-                                <option value="Filial Ananindeua">Filial Ananindeua</option>
-                                <option value="Filial Castanhal">Filial Castanhal</option>
-                                <option value="Icoaraci">Icoaraci</option>
-                                <option value="Barcarena">Barcarena</option>
-                            </optgroup>
-                            <optgroup label="Pará - Interior">
-                                <option value="Acará">Acará</option>
-                                <option value="Bragança">Bragança</option>
-                                <option value="Breves">Breves</option>
-                                <option value="Cametá">Cametá</option>
-                                <option value="Capanema">Capanema</option>
-                                <option value="Capitão Poço">Capitão Poço</option>
-                                <option value="Concórdia">Concórdia</option>
-                                <option value="Curuçá">Curuçá</option>
-                                <option value="Moju">Moju</option>
-                                <option value="Igarapé Mirim">Igarapé Mirim</option>
-                                <option value="São Miguel">São Miguel</option>
-                                <option value="Soure">Soure</option>
-                                <option value="Tailândia">Tailândia</option>
-                                <option value="Tomé-Açu">Tomé-Açu</option>
-                            </optgroup>
-                            <optgroup label="Ceará">
-                                <option value="Aldeota (CE)">Aldeota (CE)</option>
-                                <option value="Demócrito Rocha (CE)">Demócrito Rocha (CE)</option>
-                                <option value="Fortaleza (CE)">Fortaleza (CE)</option>
-                                <option value="Parangaba (CE)">Parangaba (CE)</option>
+            {/* ======================== SIDEBAR COLUMN (RIGHT) ======================== */}
+            <div className="space-y-6">
+                
+                {/* STATUS & CATEGORIA */}
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Status & Categoria</h3>
+                     
+                     <div className="mb-4">
+                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Status Atual</label>
+                         <div className="relative">
+                             <select name="status" value={formData.status} onChange={handleChange} className="w-full p-3 pl-3 pr-8 bg-gray-50 border border-gray-200 rounded-xl appearance-none font-bold text-sm outline-none focus:border-black cursor-pointer">
+                                 <option>Em Uso</option><option>Disponível</option><option>Manutenção</option><option>Entregue</option><option>Defeito</option>
+                             </select>
+                             <div className={`absolute right-3 top-3.5 w-2 h-2 rounded-full ${formData.status === 'Em Uso' ? 'bg-green-500' : formData.status === 'Disponível' ? 'bg-blue-500' : 'bg-gray-400'}`}></div>
+                         </div>
+                     </div>
 
-                            </optgroup>
-                            <optgroup label="Outros">
-                                <option value="Home Office">Home Office</option>
-                                <option value="Em Trânsito">Em Trânsito</option>
-                            </optgroup>
-                        </select>
-                    </div>
-
-                    <div><label className="block text-sm font-bold text-gray-700 mb-1">Status Atual</label><select name="status" value={formData.status} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none bg-white"><option>Em Uso</option><option>Disponível</option><option>Manutenção</option><option>Entregue</option><option>Defeito</option></select></div>
+                     <div>
+                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Categoria Contábil</label>
+                         <select name="category" value={formData.category} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm outline-none focus:border-black cursor-pointer">
+                             <option value="Corporativo">Corporativo (Patrimônio)</option>
+                             <option value="Promocional">Promocional (Comodato)</option>
+                             <option value="Infra">Infraestrutura</option>
+                         </select>
+                     </div>
                 </div>
-            </div>
 
-            {/* Bloco 3: Especificações Técnicas (Dinâmico) */}
-            <div>
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 border-b pb-2">Especificações Técnicas</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div><label className="block text-sm font-bold text-gray-700 mb-1">Serial Number</label><input name="serialNumber" value={formData.serialNumber} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none" /></div>
-                    
-                    {/* Campos Exclusivos CELULAR / PGT */}
-                    {isMobile && (
+                {/* RESPONSABILIDADE */}
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><User size={16}/> Responsabilidade</h3>
+                     
+                     <div className="mb-4">
+                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 flex justify-between">
+                             {isPromotional ? "Cliente / Beneficiário" : "Colaborador"}
+                             <button type="button" onClick={() => navigate('/employees')} className="text-brand hover:underline text-[10px]">+ Gerenciar</button>
+                         </label>
+                         <div className="relative">
+                            <select name="assignedTo" value={formData.assignedTo} onChange={handleEmployeeSelect} className="w-full p-3 pl-3 bg-gray-50 border border-gray-200 rounded-xl appearance-none font-bold text-sm outline-none focus:border-black cursor-pointer text-gray-700">
+                                <option value="">Selecione...</option>
+                                {employees.map(emp => (<option key={emp.id} value={emp.name}>{emp.name}</option>))}
+                            </select>
+                            <Search size={16} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
+                         </div>
+                         {/* Fallback input se não selecionar da lista */}
+                         {(!formData.assignedTo || !employees.find(e => e.name === formData.assignedTo)) && formData.assignedTo !== '' && (
+                            <div className="mt-2 p-2 bg-yellow-50 border border-yellow-100 rounded-lg text-xs text-yellow-700 flex items-center gap-2">
+                                <span className="font-bold">Nome manual:</span> {formData.assignedTo}
+                            </div>
+                         )}
+                         <input name="assignedTo" value={formData.assignedTo} onChange={handleChange} placeholder="Ou digite o nome..." className="w-full mt-2 p-2 text-xs border-b border-gray-200 focus:border-black outline-none bg-transparent" />
+                     </div>
+
+                     <div className="mb-4">
+                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">{isPromotional ? "Campanha" : "Setor"}</label>
+                         <div className="relative">
+                            <Building2 size={16} className="absolute left-3 top-3 text-gray-400"/>
+                            <input name="sector" value={formData.sector} onChange={handleChange} className="w-full pl-9 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:border-black outline-none" placeholder="Ex: Financeiro" />
+                         </div>
+                     </div>
+
+                     {isPromotional && (
+                         <div className="bg-pink-50 p-3 rounded-xl border border-pink-100 mb-4">
+                             <label className="text-[10px] font-bold text-pink-700 uppercase mb-1 block">Vendedor Responsável</label>
+                             <input name="vendedor" value={formData.vendedor} onChange={handleChange} className="w-full p-2 bg-white border border-pink-200 rounded-lg text-sm focus:ring-2 focus:ring-pink-500 outline-none" placeholder="Nome do Vendedor..." />
+                         </div>
+                     )}
+
+                     <div>
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Localização Física</label>
+                        <div className="relative">
+                            <MapPin size={16} className="absolute left-3 top-3 text-gray-400"/>
+                            <select name="location" value={formData.location} onChange={handleChange} className="w-full pl-9 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:border-black outline-none cursor-pointer">
+                                <optgroup label="Pará - R. Metropolitana"><option value="Matriz - Belém">Matriz - Belém</option><option value="Fábrica / CD - Ananindeua">Fábrica / CD - Ananindeua</option><option value="Filial Ananindeua">Filial Ananindeua</option><option value="Filial Castanhal">Filial Castanhal</option><option value="Icoaraci">Icoaraci</option><option value="Barcarena">Barcarena</option></optgroup>
+                                <optgroup label="Pará - Interior"><option value="Acará">Acará</option><option value="Bragança">Bragança</option><option value="Breves">Breves</option><option value="Cametá">Cametá</option><option value="Capanema">Capanema</option><option value="Capitão Poço">Capitão Poço</option><option value="Concórdia">Concórdia</option><option value="Curuçá">Curuçá</option><option value="Moju">Moju</option><option value="Igarapé Mirim">Igarapé Mirim</option><option value="São Miguel">São Miguel</option><option value="Soure">Soure</option><option value="Tailândia">Tailândia</option><option value="Tomé-Açu">Tomé-Açu</option></optgroup>
+                                <optgroup label="Ceará"><option value="Aldeota (CE)">Aldeota (CE)</option><option value="Demócrito Rocha (CE)">Demócrito Rocha (CE)</option><option value="Fortaleza (CE)">Fortaleza (CE)</option><option value="Parangaba (CE)">Parangaba (CE)</option></optgroup>
+                                <optgroup label="Outros"><option value="Home Office">Home Office</option><option value="Em Trânsito">Em Trânsito</option></optgroup>
+                            </select>
+                        </div>
+                     </div>
+                </div>
+
+                {/* FINANCEIRO */}
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><DollarSign size={16}/> Aquisição</h3>
+                     
+                     <div className="grid grid-cols-2 gap-4">
+                         <div>
+                             <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Valor (R$)</label>
+                             <input name="valor" value={formData.valor} onChange={handleChange} className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono focus:border-black outline-none" placeholder="0,00" />
+                         </div>
+                         <div>
+                             <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Data</label>
+                             <input type="date" name="purchaseDate" value={formData.purchaseDate} onChange={handleChange} className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:border-black outline-none" />
+                         </div>
+                     </div>
+                </div>
+
+                {/* ACTION BUTTON */}
+                <button disabled={loading} className="w-full py-4 bg-black text-white rounded-2xl font-black text-lg hover:bg-gray-800 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-3">
+                    {loading ? (
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                    ) : (
                         <>
-                            <div><label className="block text-sm font-bold text-gray-700 mb-1">IMEI 1</label><input name="imei1" value={formData.imei1} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none font-mono" placeholder="Ex: 3569..." /></div>
-                            <div><label className="block text-sm font-bold text-gray-700 mb-1">IMEI 2 (Opcional)</label><input name="imei2" value={formData.imei2} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none font-mono" /></div>
+                            <Save size={24} />
+                            {id ? 'Salvar Alterações' : 'Cadastrar Ativo'}
                         </>
                     )}
-
-                    {/* Campos Exclusivos IMPRESSORA */}
-                    {isPrinter && (
-                        <>
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-1">Contador de Páginas</label>
-                                <input type="number" name="specs.pageCount" value={formData.specs.pageCount} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none" placeholder="Ex: 15000" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-1">Endereço IP</label>
-                                <input name="specs.ip" value={formData.specs.ip} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none" placeholder="192.168..." />
-                            </div>
-                        </>
-                    )}
-
-                    {/* Campos Exclusivos COMPUTADOR / REDE */}
-                    {(isPC || formData.type === 'Rede') && !isPrinter && (
-                        <div><label className="block text-sm font-bold text-gray-700 mb-1">Endereço IP</label><input name="specs.ip" value={formData.specs.ip} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none" placeholder="192.168..." /></div>
-                    )}
-
-                    <div><label className="block text-sm font-bold text-gray-700 mb-1">Valor do Ativo (R$)</label><input name="valor" value={formData.valor} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none" placeholder="R$ 0,00" /></div>
-                    <div><label className="block text-sm font-bold text-gray-700 mb-1">Data de Aquisição</label><input type="date" name="purchaseDate" value={formData.purchaseDate} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-black outline-none" /></div>
-                </div>
-            </div>
-
-            {/* Bloco 4: Observações */}
-            <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Observações</label>
-                <textarea name="notes" value={formData.notes} onChange={handleChange} rows="3" className="w-full p-2 border border-gray-300 rounded outline-none focus:ring-2 focus:ring-black" placeholder="Detalhes adicionais..." />
-            </div>
-
-            <div className="pt-4">
-                <button disabled={loading} className="w-full bg-black text-white py-4 rounded-lg font-bold hover:bg-gray-800 transition flex items-center justify-center gap-2 shadow-lg">
-                    {loading ? "Processando..." : <><Save size={20} /> Salvar Dados do Ativo</>}
                 </button>
+
             </div>
+
         </form>
     </div>
   );

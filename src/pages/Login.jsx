@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Lock, Mail, ArrowRight, AlertCircle, KeyRound, X, CheckCircle } from 'lucide-react';
-import logoShineray from '../assets/logo-shineray.png';
+import logo from '../assets/logo.png';
 
 const Login = () => {
   // Estados de Login
@@ -77,7 +77,7 @@ const Login = () => {
         
         <div className="flex flex-col items-center mb-8">
           <div className="px-6 py-3 bg-white rounded-xl mb-6 shadow-md border border-gray-100 transform hover:scale-105 transition-transform duration-300">
-              <img src={logoShineray} alt="Shineray ITAM" className="h-12 object-contain" />
+              <img src={logo} alt="BySabel ITAM" className="h-12 object-contain" />
           </div>
           <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tighter text-center">Portal TI</h2>
           <p className="text-xs font-medium text-gray-400 mt-1 text-center">Gestão de Ativos & Infraestrutura</p>
@@ -98,7 +98,7 @@ const Login = () => {
                 type="email" 
                 required 
                 className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:outline-none focus:border-black focus:bg-white transition-all font-bold text-gray-900 text-sm"
-                placeholder="usuario@shineray.com.br"
+                placeholder="usuario@bysabel.com.br"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -140,7 +140,7 @@ const Login = () => {
         </div>
 
         <div className="mt-6 text-center border-t border-gray-100 pt-4">
-          <p className="text-[10px] text-gray-400 font-medium">Shineray do Brasil © {new Date().getFullYear()}</p>
+          <p className="text-[10px] text-gray-400 font-medium">BySabel © {new Date().getFullYear()}</p>
         </div>
       </div>
 
@@ -172,7 +172,7 @@ const Login = () => {
                                 type="email" 
                                 required 
                                 className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-black transition-all text-sm font-bold"
-                                placeholder="usuario@shineray.com.br"
+                                placeholder="usuario@bysabel.com.br"
                                 value={resetEmail}
                                 onChange={(e) => setResetEmail(e.target.value)}
                             />

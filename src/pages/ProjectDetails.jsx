@@ -212,7 +212,7 @@ const ProjectDetails = () => {
           
           <div className="lg:col-span-1 space-y-6">
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-                  <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"><Target size={18} className="text-shineray"/> Escopo</h3>
+                  <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"><Target size={18} className="text-brand"/> Escopo</h3>
                   <p className="text-sm text-gray-600 leading-relaxed text-justify">{project.description || "Nenhuma descrição."}</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -226,10 +226,10 @@ const ProjectDetails = () => {
                   </div>
               </div>
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-                  <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"><Users size={18} className="text-shineray"/> Equipe</h3>
+                  <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"><Users size={18} className="text-brand"/> Equipe</h3>
                   <div className="flex -space-x-2 overflow-hidden mb-2">
-                      <div className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600">{getLeaderName(project.leader).substring(0,2)}</div>
-                      <div className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-gray-800 flex items-center justify-center text-xs font-bold text-white">+</div>
+                      <div className="h-8 w-8 rounded-full ring-2 ring-white bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600">{getLeaderName(project.leader).substring(0,2)}</div>
+                      <div className="h-8 w-8 rounded-full ring-2 ring-white bg-gray-800 flex items-center justify-center text-xs font-bold text-white">+</div>
                   </div>
                   <p className="text-xs text-gray-400">Gerido por {project.leader || 'TI'}</p>
               </div>
@@ -240,7 +240,7 @@ const ProjectDetails = () => {
                   
                   <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                       <h3 className="font-black text-gray-900 flex items-center gap-2">
-                          <FileText size={20} className="text-shineray"/> Diário de Bordo
+                          <FileText size={20} className="text-brand"/> Diário de Bordo
                       </h3>
                       {!isAddingLog && (
                           <button onClick={() => setIsAddingLog(true)} className="bg-black text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-gray-800 flex items-center gap-2 shadow-lg transition-all">

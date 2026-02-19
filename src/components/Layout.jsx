@@ -1,17 +1,31 @@
 // src/components/Layout.jsx
 import React, { useState, useEffect } from 'react';
-import { useLocation, Link } from 'react-router-dom';
+import { useLocation, Link, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
-import GlobalSearch from './GlobalSearch'; // Certifique-se que este arquivo existe (enviei anteriormente)
+import GlobalSearch from './GlobalSearch';
 import { 
-  Home, Box, QrCode, Search, Plus, Settings 
+  Home, Box, QrCode, Search, Plus, Settings, Menu, Bell, User
 } from 'lucide-react';
 
 const Layout = ({ children }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
-  // Atalho de Teclado (Ctrl + K) para abrir a busca
+  // Persistência do estado da Sidebar
+  useEffect(() => {
+    const savedState = localStorage.getItem('sidebar_collapsed');
+    if (savedState) setIsSidebarCollapsed(JSON.parse(savedState));
+  }, []);
+
+  const toggleSidebar = () => {
+    const newState = !isSidebarCollapsed;
+    setIsSidebarCollapsed(newState);
+    localStorage.setItem('sidebar_collapsed', JSON.stringify(newState));
+  };
+
+  // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -24,69 +38,96 @@ const Layout = ({ children }) => {
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-gray-50 font-sans text-gray-900">
+    <div className="flex min-h-screen bg-[#F4F4F5] font-sans text-gray-900 selection:bg-red-500 selection:text-white">
       
-      {/* 1. SIDEBAR (Apenas Desktop - md:block) */}
-      <div className="hidden md:block w-64 fixed h-full z-30">
-        <Sidebar onSearchClick={() => setIsSearchOpen(true)} />
+      {/* ----------------------------------------------------- */}
+      {/*                  DESKTOP LAYOUT                       */}
+      {/* ----------------------------------------------------- */}
+      
+      {/* 1. SIDEBAR DESKTOP */}
+      <div className={`hidden md:block fixed h-full z-40 transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1) ${isSidebarCollapsed ? 'w[88px]' : 'w-[280px]'}`}>
+        <Sidebar 
+          isCollapsed={isSidebarCollapsed} 
+          toggleCollapse={toggleSidebar}
+          onSearchClick={() => setIsSearchOpen(true)} 
+        />
       </div>
 
-      {/* 2. ÁREA DE CONTEÚDO PRINCIPAL */}
-      {/* Adicionamos margem à esquerda no desktop (ml-64) e padding bottom no mobile para o menu não tapar conteúdo */}
-      <div className="flex-1 md:ml-64 flex flex-col min-h-screen relative pb-24 md:pb-0 transition-all duration-300">
-        
-        {/* Barra Superior Mobile (Apenas Mobile - md:hidden) */}
-        <div className="md:hidden bg-white border-b border-gray-200 p-4 flex justify-between items-center sticky top-0 z-20 shadow-sm safe-area-pt">
-            <div className="flex items-center gap-2">
-                <div className="bg-black text-white p-1.5 rounded text-xs font-black">SH</div>
-                <h1 className="font-black text-lg tracking-tight text-gray-900">Shineray <span className="text-red-600">TI</span></h1>
-            </div>
-            <button onClick={() => setIsSearchOpen(true)} className="p-2 bg-gray-50 rounded-full text-gray-500 border border-gray-100 active:scale-95 transition-transform">
-                <Search size={20}/>
-            </button>
-        </div>
-
-        {/* Conteúdo da Página Injetado Aqui */}
-        <main className="flex-1 animate-in fade-in duration-300 w-full max-w-[100vw] overflow-x-hidden">
-            {children}
-        </main>
-
+      {/* 2. DESKTOP MAIN AREA */}
+      <div className={`hidden md:flex flex-1 flex-col min-h-screen transition-all duration-500 ${isSidebarCollapsed ? 'ml-[88px]' : 'ml-[280px]'}`}>
+          {/* Header Desktop (Optional, if needed for breadcrumbs/profile) */}
+          <main className="flex-1 w-full max-w-[1920px] mx-auto animate-fade-in p-6">
+              {children}
+          </main>
       </div>
 
-      {/* 3. BOTTOM NAVIGATION (Menu Inferior - Apenas Mobile) */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 flex justify-between items-end py-2 px-6 z-40 shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] safe-area-pb">
+
+      {/* ----------------------------------------------------- */}
+      {/*                   MOBILE LAYOUT                       */}
+      {/* ----------------------------------------------------- */}
+
+      <div className="md:hidden flex flex-col flex-1 min-h-screen relative w-full bg-[#FAFAFA]">
           
-          <Link to="/" className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${location.pathname === '/' ? 'text-black font-bold' : 'text-gray-400 font-medium'}`}>
-              <Home size={22} strokeWidth={location.pathname === '/' ? 2.5 : 2} />
-              <span className="text-[9px]">Início</span>
-          </Link>
-
-          <Link to="/assets" className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${location.pathname.startsWith('/assets') && location.pathname !== '/assets/new' ? 'text-black font-bold' : 'text-gray-400 font-medium'}`}>
-              <Box size={22} strokeWidth={location.pathname.startsWith('/assets') ? 2.5 : 2} />
-              <span className="text-[9px]">Ativos</span>
-          </Link>
-
-          {/* Botão de Ação Central (Novo Ativo) - Flutuante */}
-          <Link to="/assets/new" className="flex flex-col items-center justify-center -mb-4 group">
-              <div className="bg-black text-white p-4 rounded-2xl shadow-xl shadow-gray-300 border-4 border-gray-50 group-active:scale-95 transition-transform mb-1">
-                  <Plus size={26} />
+          {/* 1. TOP BAR MOBILE (Sticky & Glass) */}
+          <div className="sticky top-0 z-30 w-full px-5 py-3 glass flex justify-between items-center safe-area-pt">
+              <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
+                      <span className="text-white font-black text-xs">BY</span>
+                  </div>
+                  <div>
+                      <h1 className="font-black text-sm text-gray-900 leading-none">BySabel</h1>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Mobile Manager</p>
+                  </div>
               </div>
-              <span className="text-[9px] font-bold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Novo</span>
-          </Link>
+              
+              <div className="flex items-center gap-2">
+                  <button onClick={() => setIsSearchOpen(true)} className="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-full text-gray-600 active:scale-95 transition-all">
+                      <Search size={18}/>
+                  </button>
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-gray-200 to-gray-100 p-[2px]">
+                      <img src="https://ui-avatars.com/api/?name=Admin+User&background=000&color=fff" className="w-full h-full rounded-full object-cover" alt="Profile" />
+                  </div>
+              </div>
+          </div>
 
-          <Link to="/audit" className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${location.pathname === '/audit' ? 'text-black font-bold' : 'text-gray-400 font-medium'}`}>
-              <QrCode size={22} strokeWidth={location.pathname === '/audit' ? 2.5 : 2} />
-              <span className="text-[9px]">Audit</span>
-          </Link>
+          {/* 2. MOBILE CONTENT AREA */}
+          <main className="flex-1 w-full pb-24 px-4 pt-4 overflow-x-hidden animate-slide-up safe-area-pb">
+              {children}
+          </main>
 
-          {/* Agora linka para Configurações em vez de Busca (já que busca está no topo) */}
-          <Link to="/settings" className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${location.pathname === '/settings' ? 'text-black font-bold' : 'text-gray-400 font-medium'}`}>
-              <Settings size={22} strokeWidth={location.pathname === '/settings' ? 2.5 : 2} />
-              <span className="text-[9px]">Config</span>
-          </Link>
+          {/* 3. BOTTOM NAVIGATION (Floating Island) */}
+          <div className="fixed bottom-6 left-4 right-4 z-40">
+              <div className="bg-black/90 backdrop-blur-xl text-white rounded-3xl shadow-2xl border border-white/10 p-2 flex justify-between items-center px-6 safe-area-pb">
+                  
+                  <Link to="/dashboard" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname.includes('/dashboard') ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+                      <Home size={22} strokeWidth={location.pathname.includes('/dashboard') ? 3 : 2} />
+                  </Link>
+                  
+                  <Link to="/assets" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname.startsWith('/assets') && location.pathname !== '/assets/new' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+                      <Box size={22} strokeWidth={location.pathname.startsWith('/assets') ? 3 : 2} />
+                  </Link>
+
+                  {/* CENTER ACTION BUTTON */}
+                  <Link to="/assets/new" className="-mt-8">
+                       <div className="w-14 h-14 bg-[#E61E05] rounded-full flex items-center justify-center shadow-lg shadow-red-900/50 border-4 border-[#FAFAFA] transform active:scale-90 transition-transform">
+                           <Plus size={28} className="text-white" />
+                       </div>
+                  </Link>
+
+                  <Link to="/audit" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/audit' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+                      <QrCode size={22} strokeWidth={location.pathname === '/audit' ? 3 : 2} />
+                  </Link>
+
+                  <Link to="/settings" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/settings' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+                      <Settings size={22} strokeWidth={location.pathname === '/settings' ? 3 : 2} />
+                  </Link>
+
+              </div>
+          </div>
+
       </div>
 
-      {/* 4. COMPONENTE DE BUSCA GLOBAL (Overlay) */}
+      {/* GLOBAL SEARCH OVERLAY */}
       <GlobalSearch isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
 
     </div>

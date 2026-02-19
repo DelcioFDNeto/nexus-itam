@@ -52,7 +52,7 @@ const ServiceManager = () => {
       <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div>
           <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
-            <Globe className="text-shineray" /> Contas & Serviços
+            <Globe className="text-brand" /> Contas & Serviços
           </h1>
           <p className="text-sm text-gray-500">Links, Hospedagem, Outsourcing e Assinaturas.</p>
         </div>
@@ -77,7 +77,7 @@ const ServiceManager = () => {
                 <button onClick={() => handleDelete(contract.id)} className="absolute top-4 right-4 text-gray-300 hover:text-red-500"><Trash2 size={18}/></button>
                 
                 <div className="flex items-center gap-3 mb-4">
-                    <div className="p-3 bg-gray-50 rounded-xl text-shineray font-bold border border-gray-100">
+                    <div className="p-3 bg-gray-50 rounded-xl text-brand font-bold border border-gray-100">
                         {contract.serviceType === 'Internet' ? <Globe size={24}/> : <Briefcase size={24}/>}
                     </div>
                     <div>
@@ -155,7 +155,7 @@ const ServiceManager = () => {
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Descrição do Plano</label>
                     <textarea className="w-full p-3 border rounded-xl outline-none" rows="2" placeholder="Ex: Link Dedicado 100MB + IP Fixo" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}></textarea>
                 </div>
-                <button type="submit" className="w-full bg-shineray hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-colors mt-2">Salvar Contrato</button>
+                <button type="submit" className="w-full bg-brand hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-colors mt-2">Salvar Contrato</button>
             </form>
           </div>
         </div>

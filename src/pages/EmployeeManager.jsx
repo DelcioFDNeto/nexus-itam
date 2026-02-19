@@ -138,7 +138,7 @@ const EmployeeManager = () => {
       <div className="flex flex-col md:flex-row justify-between items-end gap-6 mb-8">
         <div>
             <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
-                <Users className="text-shineray" size={28}/> Gestão de Pessoas & Áreas
+                <Users className="text-brand" size={28}/> Gestão de Pessoas & Áreas
             </h1>
             <p className="text-sm text-gray-500">Mantenha a estrutura organizacional atualizada</p>
         </div>

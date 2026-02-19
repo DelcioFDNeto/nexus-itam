@@ -8,7 +8,7 @@ export default {
     extend: {
       // ADICIONE ISSO AQUI:
       colors: {
-        shineray: {
+        brand: {
           DEFAULT: '#DC2626', // Um vermelho vibrante (red-600 do tailwind)
           dark: '#B91C1C',    // Um tom mais escuro para hover (red-700)
         }
