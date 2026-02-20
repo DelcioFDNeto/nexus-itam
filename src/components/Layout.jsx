@@ -10,6 +10,7 @@ import {
 const Layout = ({ children }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -71,6 +72,9 @@ const Layout = ({ children }) => {
           {/* 1. TOP BAR MOBILE (Sticky & Glass) */}
           <div className="sticky top-0 z-30 w-full px-5 py-3 glass flex justify-between items-center safe-area-pt">
               <div className="flex items-center gap-3">
+                  <button onClick={() => setIsMobileMenuOpen(true)} className="p-1 -ml-1 text-gray-800 hover:text-black">
+                      <Menu size={24} />
+                  </button>
                   <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
                       <span className="text-white font-black text-xs">BY</span>
                   </div>
@@ -125,6 +129,14 @@ const Layout = ({ children }) => {
               </div>
           </div>
 
+      </div>
+
+      {/* MOBILE SIDEBAR */}
+      <div className="md:hidden">
+        <Sidebar 
+          isOpen={isMobileMenuOpen} 
+          onClose={() => setIsMobileMenuOpen(false)} 
+        />
       </div>
 
       {/* GLOBAL SEARCH OVERLAY */}
