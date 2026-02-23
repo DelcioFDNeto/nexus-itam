@@ -77,7 +77,7 @@ const ProjectsPage = () => {
     >
         <div className="flex justify-between items-start mb-4">
             <div className="flex gap-3">
-                <img src={project.coverImage} alt="Logo" className="w-10 h-10 rounded-lg object-cover shadow-sm bg-gray-100" />
+                <img src={project.coverImage || `https://ui-avatars.com/api/?name=${project.name || 'Projeto'}&background=random`} alt="Logo" className="w-10 h-10 rounded-lg object-cover shadow-sm bg-gray-100" />
                 <div>
                     <h3 className="font-bold text-gray-900 leading-tight group-hover:text-blue-600 transition-colors line-clamp-1">{project.name}</h3>
                     <p className="text-[10px] text-gray-500 font-mono uppercase mt-0.5">v{project.version}</p>
