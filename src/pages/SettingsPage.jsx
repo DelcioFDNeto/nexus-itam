@@ -6,6 +6,7 @@ import {
   Settings, Save, Database, Download, AlertTriangle, 
   UserCog, FileText, CheckCircle, Shield, UploadCloud, RefreshCcw, FileJson, Info, Code, Play 
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const SettingsPage = () => {
   const [loading, setLoading] = useState(false);
@@ -50,9 +51,9 @@ const SettingsPage = () => {
     setLoading(true);
     try {
       await setDoc(doc(db, 'settings', 'general'), config);
-      alert("Configurações atualizadas com sucesso!");
+      toast.success("Configurações atualizadas com sucesso!");
     } catch (error) {
-      alert("Erro ao salvar.");
+      toast.error("Erro ao salvar.");
     } finally {
       setLoading(false);
     }
@@ -72,7 +73,7 @@ const SettingsPage = () => {
       downloadAnchorNode.remove();
     } catch (error) {
       console.error(error);
-      alert("Erro ao gerar backup. Verifique o console.");
+      toast.error("Erro ao gerar backup. Verifique o console.");
     } finally {
       setBackupLoading(false);
     }
@@ -117,7 +118,7 @@ const SettingsPage = () => {
 
   const handleFile = (file) => {
     if (file.type !== "application/json" && !file.name.endsWith('.json')) {
-        alert("Arquivo inválido. Por favor, envie um JSON.");
+        toast.error("Arquivo inválido. Por favor, envie um JSON.");
         return;
     }
 
@@ -127,7 +128,7 @@ const SettingsPage = () => {
             const json = JSON.parse(e.target.result);
             // Validação preliminar da estrutura
             if (!json.meta || !json.data) {
-                alert("Estrutura do arquivo inválida. Falta 'meta' ou 'data'. Consulte o guia.");
+                toast.error("Estrutura do arquivo inválida. Falta 'meta' ou 'data'. Consulte o guia.");
                 return;
             }
             
@@ -146,7 +147,7 @@ const SettingsPage = () => {
             setImportSummary(summary);
             
         } catch (err) {
-            alert("Erro ao ler o arquivo JSON: " + err.message);
+            toast.error("Erro ao ler o arquivo JSON: " + err.message);
         }
     };
     reader.readAsText(file);
@@ -166,11 +167,11 @@ const SettingsPage = () => {
               setRestoreStatus(message);
           });
           
-          alert(`Sucesso! Importação finalizada.\n\nColeções: ${stats.collectionsUpdated.join(', ')}\nErros: ${stats.errors.length}`);
+          toast.success(`Sucesso! Importação finalizada.\n\nColeções: ${stats.collectionsUpdated.join(', ')}\nErros: ${stats.errors.length}`);
           window.location.reload(); 
       } catch (error) {
           console.error(error);
-          alert("Falha na restauração: " + error.message);
+          toast.error("Falha na restauração: " + error.message);
       } finally {
           setRestoreLoading(false);
           setRestoreStatus("");

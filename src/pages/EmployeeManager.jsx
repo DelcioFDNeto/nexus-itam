@@ -8,6 +8,7 @@ import {
   Users, Briefcase, Plus, Trash2, Search, Edit,
   UserCircle, Building2, MapPin, Mail, Save, X 
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const EmployeeManager = () => {
   // Estados de Dados
@@ -114,7 +115,7 @@ const EmployeeManager = () => {
         setIsModalOpen(false);
         loadData();
     } catch (error) {
-        alert("Erro ao salvar.");
+        toast.error("Erro ao salvar.");
     }
   };
 

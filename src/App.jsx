@@ -1,36 +1,44 @@
 // src/App.jsx
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
 // Contexto de Autenticação
 import { AuthProvider } from './contexts/AuthContext';
 
-// Estrutura Base
+// Estrutura Base (Carregamento Imediato)
 import Login from './pages/Login';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
 
-// Páginas do Sistema
-import Dashboard from './pages/Dashboard';
-import AssetList from './pages/AssetList';
-import AssetForm from './pages/AssetForm';
-import AssetDetail from './pages/AssetDetail';
-import ImportData from './pages/ImportData';
-import EmployeeManager from './pages/EmployeeManager';
-import AuditPage from './pages/AuditPage';
-import LicenseManager from './pages/LicenseManager';
-import TaskManager from './pages/TaskManager';
-import ProjectsPage from './pages/ProjectsPage';
-import ProjectDetails from './pages/ProjectDetails';
-import ServiceManager from './pages/ServiceManager';
-import SettingsPage from './pages/SettingsPage';
+// Componente de Fallback (Loading State)
+const PageLoader = () => (
+  <div className="flex flex-col items-center justify-center min-h-screen bg-[#F4F4F5]">
+    <div className="w-12 h-12 border-4 border-gray-200 border-t-black rounded-full animate-spin"></div>
+    <p className="mt-4 text-sm font-bold text-gray-500 tracking-widest uppercase animate-pulse">Carregando...</p>
+  </div>
+);
 
+// Páginas do Sistema (Lazy Loading)
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const AssetList = lazy(() => import('./pages/AssetList'));
+const AssetForm = lazy(() => import('./pages/AssetForm'));
+const AssetDetail = lazy(() => import('./pages/AssetDetail'));
+const ImportData = lazy(() => import('./pages/ImportData'));
+const EmployeeManager = lazy(() => import('./pages/EmployeeManager'));
+const AuditPage = lazy(() => import('./pages/AuditPage'));
+const LicenseManager = lazy(() => import('./pages/LicenseManager'));
+const TaskManager = lazy(() => import('./pages/TaskManager'));
+const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
+const ProjectDetails = lazy(() => import('./pages/ProjectDetails'));
+const ServiceManager = lazy(() => import('./pages/ServiceManager'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 
 function App() {
   return (
     <AuthProvider>
       <Router>
-        <Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
           
           {/* Rota Pública (Login) */}
           <Route path="/" element={<Login />} />
@@ -96,6 +104,7 @@ function App() {
           } />
 
         </Routes>
+        </Suspense>
       </Router>
     </AuthProvider>
   );

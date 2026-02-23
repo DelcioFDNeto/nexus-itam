@@ -8,6 +8,7 @@ import {
   BarChart3, DollarSign, Users, ImageIcon, Trash2, 
   ChevronDown, ChevronUp
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const ProjectDetails = () => {
   const { id } = useParams();
@@ -65,7 +66,7 @@ const ProjectDetails = () => {
       setIsAddingLog(false);
       setShowAllLogs(true); 
     } catch (error) {
-      alert("Erro ao salvar log.");
+      toast.error("Erro ao salvar log.");
     }
   };
 
@@ -86,7 +87,7 @@ const ProjectDetails = () => {
 
     } catch (error) {
         console.error(error);
-        alert("Erro ao excluir log.");
+        toast.error("Erro ao excluir log.");
     }
   };
 
@@ -97,7 +98,7 @@ const ProjectDetails = () => {
           setProject(prev => ({ ...prev, ...editFormData }));
           setIsEditModalOpen(false);
       } catch (error) {
-          alert("Erro ao atualizar projeto.");
+          toast.error("Erro ao atualizar projeto.");
       }
   };
 

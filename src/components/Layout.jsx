@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import GlobalSearch from './GlobalSearch';
+import { Toaster } from 'sonner';
 import { 
   Home, Box, QrCode, Search, Plus, Settings, Menu, Bell, User
 } from 'lucide-react';
@@ -40,7 +41,7 @@ const Layout = ({ children }) => {
 
   return (
     <div className="flex min-h-screen bg-[#F4F4F5] font-sans text-gray-900 selection:bg-red-500 selection:text-white">
-      
+      <Toaster richColors position="top-right" />
       {/* ----------------------------------------------------- */}
       {/*                  DESKTOP LAYOUT                       */}
       {/* ----------------------------------------------------- */}

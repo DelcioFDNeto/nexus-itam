@@ -5,6 +5,7 @@ import {
   CheckSquare, Plus, Trash2, Calendar, Square, Edit, 
   LayoutGrid, X, AlertCircle, Save, Kanban, List 
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const TaskManager = () => {
   const [tasks, setTasks] = useState([]);
@@ -47,7 +48,7 @@ const TaskManager = () => {
           await updateTask(editingTask.id, editingTask);
           setIsEditOpen(false);
           loadTasks();
-      } catch (error) { alert("Erro ao atualizar"); }
+      } catch (error) { toast.error("Erro ao atualizar"); }
   };
 
   const toggleStatus = async (task) => {

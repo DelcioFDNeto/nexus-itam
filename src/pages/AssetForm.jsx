@@ -3,14 +3,18 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getEmployees } from '../services/employeeService';
 import { createAsset, updateAsset, getAssetById } from '../services/assetService';
+import { useAuth } from '../contexts/AuthContext';
+import { toast } from 'sonner';
 import { Save, ArrowLeft, Search, Check, Smartphone, Monitor, Printer, Wifi, Server, Box, User, MapPin, Building2, Tag, Calendar, DollarSign, FileText } from 'lucide-react';
 import AssetIcon from '../components/AssetIcon';
 
 const AssetForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState([]); 
+  const [initialData, setInitialData] = useState(null);
 
   const [formData, setFormData] = useState({
     model: '',
@@ -43,7 +47,7 @@ const AssetForm = () => {
             if (id) {
                 const data = await getAssetById(id);
                 if (data) {
-                    setFormData({ 
+                    const loadedData = { 
                         model: data.model || '',
                         internalId: data.internalId || '',
                         type: data.type || 'Computador',
@@ -67,7 +71,9 @@ const AssetForm = () => {
                             storage: data.specs?.storage || '',
                             pageCount: data.specs?.pageCount || '' 
                         } 
-                    });
+                    };
+                    setFormData(loadedData);
+                    setInitialData(loadedData);
                 }
             }
         } catch (error) { console.error(error); }
@@ -98,14 +104,44 @@ const AssetForm = () => {
     setLoading(true);
     try {
         const cleanData = JSON.parse(JSON.stringify(formData));
-        if (id) await updateAsset(id, cleanData, {
-            action: 'Edição Completa',
-            details: 'Dados atualizados via formulário de edição.',
-            user: 'Admin TI'
-        });
-        else await createAsset(cleanData);
+        const userEmail = currentUser?.email || 'Usuário Desconhecido';
+        
+        if (id) {
+            let diffs = [];
+            if (initialData) {
+                // Fields to compare
+                const fieldsMap = {
+                    model: 'Modelo', internalId: 'Patrimônio', type: 'Tipo', category: 'Categoria',
+                    status: 'Status', location: 'Localização', assignedTo: 'Responsável',
+                    sector: 'Setor', vendor: 'Vendedor', purchaseDate: 'Data de Aquisição',
+                    serialNumber: 'Serial Number', valor: 'Valor'
+                };
+                
+                Object.keys(fieldsMap).forEach(key => {
+                    if (initialData[key] !== cleanData[key]) {
+                        diffs.push(`Alterou ${fieldsMap[key]} de '${initialData[key] || 'Vazio'}' para '${cleanData[key] || 'Vazio'}'`);
+                    }
+                });
+            }
+
+            const detailsText = diffs.length > 0 ? diffs.join(', ') : 'Dados atualizados sem modificações rastreadas.';
+
+            await updateAsset(id, cleanData, {
+                action: 'Edição de Ativo',
+                details: detailsText,
+                user: userEmail
+            });
+        }
+        else {
+            await createAsset({ ...cleanData, createdBy: userEmail });
+        }
+        
+        toast.success(id ? "Ativo atualizado com sucesso!" : "Ativo cadastrado com sucesso!");
         navigate('/assets');
-    } catch (error) { alert("Erro ao salvar."); } finally { setLoading(false); }
+    } catch (error) { 
+        console.error(error);
+        toast.error("Erro ao salvar! Verifique sua conexão."); 
+    } finally { setLoading(false); }
   };
  
   const isPromotional = formData.category === 'Promocional';

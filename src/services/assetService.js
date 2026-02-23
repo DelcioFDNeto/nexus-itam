@@ -76,7 +76,7 @@ export const createAsset = async (assetData) => {
     type: 'creation',
     action: 'Ativo Criado',
     date: serverTimestamp(),
-    user: 'Sistema',
+    user: assetData.createdBy || 'Sistema',
     details: 'Cadastro inicial no sistema.'
   });
 
@@ -100,7 +100,7 @@ export const updateAsset = async (id, assetData, historyOptions = null) => {
         type: historyOptions.type || 'update',
         action: historyOptions.action || 'Dados Editados',
         date: serverTimestamp(),
-        user: historyOptions.user || 'Admin TI',
+        user: historyOptions.user || 'Sistema',
         details: historyOptions.details || 'Atualização realizada.'
       });
   } else {
@@ -110,7 +110,7 @@ export const updateAsset = async (id, assetData, historyOptions = null) => {
         type: 'update',
         action: 'Dados Editados',
         date: serverTimestamp(),
-        user: 'Admin TI',
+        user: 'Sistema',
         details: 'Informações ou especificações atualizadas.'
       });
   }
@@ -126,7 +126,7 @@ export const deleteAsset = async (id) => {
 // --- AÇÕES ESPECÍFICAS (TIMELINE RICA) ---
 
 // Realiza a movimentação
-export const moveAsset = async (assetId, currentData, moveData) => {
+export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema') => {
   const assetRef = doc(db, 'assets', assetId);
 
   // 1. Atualiza o Ativo
@@ -153,7 +153,7 @@ export const moveAsset = async (assetId, currentData, moveData) => {
     newHolder: moveData.newResponsible || 'Sem responsável',
     
     reason: moveData.reason || 'Movimentação de rotina',
-    user: 'Admin TI' 
+    user: user 
   };
 
   await addDoc(historyCollection, historyLog);
@@ -161,7 +161,7 @@ export const moveAsset = async (assetId, currentData, moveData) => {
 };
 
 // Registra manutenção
-export const registerMaintenance = async (assetId, maintenanceData) => {
+export const registerMaintenance = async (assetId, maintenanceData, user = 'Sistema') => {
   const assetRef = doc(db, 'assets', assetId);
 
   // 1. Atualiza status do ativo
@@ -182,7 +182,7 @@ export const registerMaintenance = async (assetId, maintenanceData) => {
     defect: maintenanceData.defect || 'Não informado',
     description: maintenanceData.description || '',
     
-    user: 'Admin TI'
+    user: user
   };
 
   await addDoc(historyCollection, historyLog);

@@ -28,41 +28,7 @@ const ProjectsPage = () => {
 
   useEffect(() => { loadProjects(); }, []);
 
-  // AUTO-SEED: ITAM 2.0 Project Log
-  useEffect(() => {
-    const seedProject = async () => {
-        const existing = await getProjects();
-        if (!existing.find(p => p.name === 'Desenvolvimento ITAM 2.0')) {
-            await createProject({
-                name: 'Desenvolvimento ITAM 2.0',
-                description: 'Refatoração completa do sistema, rebranding e melhorias de UI/UX (Versão 2.0).',
-                status: 'Concluído',
-                priority: 'Alta',
-                leader: 'Antigravity AI',
-                deadline: new Date().toISOString(),
-                version: '2.0.0',
-                progress: 100,
-                coverImage: 'https://ui-avatars.com/api/?name=ITAM+2.0&background=000&color=fff&size=128&bold=true',
-                changelog: [
-                    'v2.0.0: Release oficial da versão 2.0 - UI/UX Overhaul Completo.',
-                    'v2.0.0: Rebranding para BySabel ITAM (Logo, Cores, Textos).',
-                    'v1.9.5: Termo de Responsabilidade Jurídico (CLT Art. 462 §1º) com assinatura.',
-                    'v1.9.0: Nova tela de Detalhes do Ativo (Hero Section, Bento Grid, Timeline).',
-                    'v1.8.5: Refatoração do Formulário de Ativos (Cards, Inputs Premium, Ícones).',
-                    'v1.8.0: Lista de Ativos 2.0 (Filtros, Modais de Ação, Mobile Cards).',
-                    'v1.7.5: Sidebar Responsiva com navegação colapsável e badges.',
-                    'v1.7.0: Sistema de Backup e Restore Avançado com validação de dados.',
-                    'v1.6.5: Módulo de Importação Inteligente (Excel/JSON) com análise prévia.',
-                    'v1.6.0: Dashboard otimizado com Skeleton Loading e novos KPIs.',
-                    'v1.5.0: Auditoria de Ativos com Scanner QR Code integrado.',
-                    'v1.0.0: Versão Inicial (Legacy).'
-                ]
-            });
-            loadProjects(); // Reload to show
-        }
-    };
-    seedProject();
-  }, []);
+
 
   const handleCreate = async (e) => {
     e.preventDefault();

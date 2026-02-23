@@ -7,6 +7,8 @@ import { moveAsset, registerMaintenance, updateAsset, deleteAsset } from '../ser
 import MoveAssetModal from '../components/MoveAssetModal';
 import MaintenanceModal from '../components/MaintenanceModal';
 import { QRCodeSVG } from 'qrcode.react'; 
+import { useAuth } from '../contexts/AuthContext';
+import { toast } from 'sonner';
 import { 
   ArrowLeft, MapPin, User, Tag, Monitor, History, 
   Building2, ArrowRightLeft, Wrench, StickyNote, Save, 
@@ -18,6 +20,7 @@ import AssetIcon from '../components/AssetIcon';
 const AssetDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   
   // --- ESTADOS ---
   const [asset, setAsset] = useState(null);
@@ -102,74 +105,90 @@ const AssetDetail = () => {
   // --- HANDLERS ---
   
   const handleMoveConfirm = async (moveData) => { 
-      await moveAsset(id, asset, moveData); 
+      const userEmail = currentUser?.email || 'Usuário Desconhecido';
+      await moveAsset(id, asset, moveData, userEmail); 
   };
   
   const handleMaintenanceConfirm = async (maintData) => { 
-      await registerMaintenance(id, maintData); 
+      const userEmail = currentUser?.email || 'Usuário Desconhecido';
+      await registerMaintenance(id, maintData, userEmail); 
   };
   
   const handleSaveNotes = async () => { 
       setIsSavingNotes(true); 
+      const userEmail = currentUser?.email || 'Usuário Desconhecido';
       await updateAsset(id, { notes: notes }, {
           action: 'Nota Técnica',
           details: 'Observações técnicas atualizadas.',
-          type: 'update'
+          type: 'update',
+          user: userEmail
       }); 
       setIsSavingNotes(false); 
-      alert("Notas salvas!"); 
+      toast.success("Notas atualizadas!"); 
   };
 
   const handleAddLink = async () => {
-      if (!newLinkUrl || !newLinkName) return alert("Preencha o nome e o link!");
+      if (!newLinkUrl || !newLinkName) return toast.warning("Preencha o nome e o link!");
       setIsAddingLink(true);
+      const userEmail = currentUser?.email || 'Usuário Desconhecido';
       try {
           const currentLinks = asset.attachments || [];
           const newLink = { name: newLinkName, url: newLinkUrl, type: 'link', addedAt: new Date() };
           await updateAsset(id, { attachments: [...currentLinks, newLink] }, {
               action: 'Novo Anexo',
-              details: `Adicionado link/documento: ${newLinkName}`
+              details: `Adicionado link/documento: ${newLinkName}`,
+              user: userEmail
           });
           setNewLinkUrl(''); setNewLinkName('');
-      } catch (error) { alert("Erro ao salvar link."); } finally { setIsAddingLink(false); }
+          toast.success("Link anexado com sucesso!");
+      } catch (error) { toast.error("Erro ao salvar link."); } finally { setIsAddingLink(false); }
   };
 
   const handleDeleteLink = async (linkToDelete) => {
       if(!confirm("Remover este link?")) return;
+      const userEmail = currentUser?.email || 'Usuário Desconhecido';
       try {
           const currentLinks = asset.attachments || [];
           const newLinks = currentLinks.filter(l => l.url !== linkToDelete.url);
           await updateAsset(id, { attachments: newLinks }, {
               action: 'Anexo Removido',
-              details: `Removido link/documento: ${linkToDelete.name}`
+              details: `Removido link/documento: ${linkToDelete.name}`,
+              user: userEmail
           });
-      } catch (error) { alert("Erro ao remover."); }
+          toast.success("Link removido.");
+      } catch (error) { toast.error("Erro ao remover link."); }
   };
 
   const handleAddPeripheral = async () => {
-      if (!newPeripheral) return alert("Digite o nome do periférico (ex: Carregador)");
+      if (!newPeripheral) return toast.warning("Digite o nome do periférico (ex: Carregador)");
       setIsAddingPeripheral(true);
+      const userEmail = currentUser?.email || 'Usuário Desconhecido';
       try {
           const currentPeripherals = asset.peripherals || [];
           const newItem = { name: newPeripheral, addedAt: new Date() };
           await updateAsset(id, { peripherals: [...currentPeripherals, newItem] }, {
               action: 'Periférico Vinculado',
-              details: `Acessório adicionado: ${newPeripheral}`
+              details: `Acessório adicionado: ${newPeripheral}`,
+              user: userEmail
           });
           setNewPeripheral('');
-      } catch (error) { alert("Erro ao salvar periférico."); } finally { setIsAddingPeripheral(false); }
+          toast.success("Acessório vinculado.");
+      } catch (error) { toast.error("Erro ao salvar acessório."); } finally { setIsAddingPeripheral(false); }
   };
 
   const handleDeletePeripheral = async (itemToDelete) => {
       if(!confirm(`Remover ${itemToDelete.name}?`)) return;
+      const userEmail = currentUser?.email || 'Usuário Desconhecido';
       try {
           const currentPeripherals = asset.peripherals || [];
           const newPeripherals = currentPeripherals.filter(p => p.name !== itemToDelete.name);
           await updateAsset(id, { peripherals: newPeripherals }, {
               action: 'Periférico Removido',
-              details: `Acessório desvinculado: ${itemToDelete.name}`
+              details: `Acessório desvinculado: ${itemToDelete.name}`,
+              user: userEmail
           });
-      } catch (error) { alert("Erro ao remover."); }
+          toast.success("Acessório removido.");
+      } catch (error) { toast.error("Erro ao remover acessório."); }
   };
 
   const handleDelete = async () => {
@@ -563,8 +582,25 @@ const AssetDetail = () => {
                                <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-sm ${item.action?.includes('Manutenção') ? 'bg-orange-500' : item.action?.includes('Entrega') ? 'bg-green-500' : 'bg-gray-400'} group-hover:scale-125 transition-transform`}></div>
                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5 block">{formatDate(item.date)}</span>
                                <h4 className="text-sm font-bold text-gray-900">{item.action}</h4>
-                               {item.details && <p className="text-xs text-gray-500 mt-1 leading-relaxed bg-gray-50 p-2 rounded-lg">{item.details}</p>}
-                               <p className="text-[10px] text-gray-400 mt-1 font-medium">{item.user || 'Sistema'}</p>
+                               
+                               {/* Enhanced details rendering for diffs */}
+                               {item.details && (
+                                   <div className="text-xs text-gray-600 mt-1 leading-relaxed bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                       {item.action === 'Edição de Ativo' && item.details.includes(', Alterou ') ? (
+                                           <ul className="list-disc pl-4 space-y-1">
+                                               {item.details.split(', ').map((diff, i) => (
+                                                   <li key={i}>{diff}</li>
+                                               ))}
+                                           </ul>
+                                       ) : (
+                                           <p>{item.details}</p>
+                                       )}
+                                   </div>
+                               )}
+                               
+                               <p className="text-[10px] text-gray-400 mt-2 font-medium flex items-center gap-1">
+                                    <User size={10}/> {item.user || 'Sistema'}
+                               </p>
                            </div>
                        ))}
                   </div>

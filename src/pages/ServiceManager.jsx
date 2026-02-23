@@ -4,6 +4,7 @@ import { getContracts, createContract, deleteContract } from '../services/contra
 import { 
   Globe, Plus, Trash2, Search, Phone, Calendar, DollarSign, Briefcase 
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const ServiceManager = () => {
   const [contracts, setContracts] = useState([]);
@@ -36,7 +37,7 @@ const ServiceManager = () => {
       setIsModalOpen(false);
       setFormData({ provider: '', serviceType: 'Internet', monthlyCost: '', renewalDate: '', supportPhone: '', description: '' });
       loadData();
-    } catch (error) { alert("Erro ao salvar."); }
+    } catch (error) { toast.error("Erro ao salvar."); }
   };
 
   const handleDelete = async (id) => {

@@ -7,6 +7,7 @@ import {
   ClipboardCheck, MapPin, Scan, CheckCircle, XCircle, AlertTriangle, ArrowLeft, 
   ArrowRightLeft, Search, Save, List, Clock, Box, Play, Check, X, AlertOctagon, Volume2, VolumeX, Smartphone
 } from 'lucide-react';
+import { toast } from 'sonner';
 import QRScanner from '../components/QRScanner';
 import AssetIcon from '../components/AssetIcon';
 
@@ -184,12 +185,12 @@ const AuditPage = () => {
               intruderItems: auditResult.intruders.map(a => a.internalId),
               status: progress === 100 ? 'Completa' : 'Parcial'
           });
-          alert("Auditoria salva com sucesso!");
+          toast.success("Auditoria salva com sucesso!");
           setSelectedLocation(null);
           setScannedIds(new Set());
           setSessionLog([]);
           setLastScanResult(null);
-      } catch (error) { alert("Erro ao salvar."); }
+      } catch (error) { toast.error("Erro ao salvar."); }
   };
 
   // --- RENDERING ---

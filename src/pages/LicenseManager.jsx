@@ -6,6 +6,7 @@ import {
   Key, ShieldCheck, Plus, Trash2, Search, Monitor,
   X, Copy, CheckCircle, AlertTriangle, Calendar
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const LicenseManager = () => {
   const [licenses, setLicenses] = useState([]);
@@ -51,12 +52,12 @@ const LicenseManager = () => {
     e.preventDefault();
     try {
       await createLicense(formData);
-      alert("Licença cadastrada!");
+      toast.success("Licença cadastrada!");
       setIsFormOpen(false);
       setFormData({ softwareName: '', key: '', type: 'Vitalícia', totalSeats: 1, expirationDate: '' });
       loadData();
     } catch (error) {
-      alert("Erro ao salvar.");
+      toast.error("Erro ao salvar.");
     }
   };
 
@@ -71,17 +72,17 @@ const LicenseManager = () => {
     if (!selectedAssetId || !selectedLicense) return;
 
     const used = selectedLicense.assignedAssets?.length || 0;
-    if (used >= selectedLicense.totalSeats) return alert("Todas as ativações foram usadas!");
+    if (used >= selectedLicense.totalSeats) return toast.warning("Todas as ativações foram usadas!");
 
     const assetObj = assets.find(a => a.id === selectedAssetId);
 
     try {
       await assignLicense(selectedLicense.id, assetObj.id, `${assetObj.model} (${assetObj.internalId})`);
-      alert("Ativo vinculado!");
+      toast.success("Ativo vinculado!");
       setIsAssignOpen(false);
       loadData();
     } catch (error) {
-      alert("Erro ao vincular.");
+      toast.error("Erro ao vincular.");
     }
   };
 
@@ -188,7 +189,7 @@ const LicenseManager = () => {
                         <span className="text-gray-500 font-bold text-xs select-none">KEY:</span>
                         <span className="font-bold text-gray-800 truncate flex-1" title={license.key}>{license.key}</span>
                         <button 
-                            onClick={() => { navigator.clipboard.writeText(license.key); alert("Chave copiada para a área de transferência!"); }} 
+                            onClick={() => { navigator.clipboard.writeText(license.key); toast.success("Chave copiada para a área de transferência!"); }} 
                             className="text-gray-400 hover:text-blue-600 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity absolute right-1 bg-gray-50"
                             title="Copiar Chave"
                         >
