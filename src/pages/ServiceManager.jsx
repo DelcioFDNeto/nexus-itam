@@ -44,7 +44,7 @@ const ServiceManager = () => {
     if(confirm("Excluir este contrato?")) { await deleteContract(id); loadData(); }
   };
 
-  // Soma dos custos mensais
+  // Soma automática de todos os custos recorrentes para exibir no painel principal
   const totalMonthly = contracts.reduce((acc, curr) => acc + (parseFloat(curr.monthlyCost) || 0), 0);
 
   return (
@@ -62,7 +62,7 @@ const ServiceManager = () => {
         </button>
       </div>
 
-      {/* Resumo de Custos */}
+      {/* Painel de destaque financeiro exibindo o escoamento mensal em serviços */}
       <div className="bg-neutral-900 text-white p-6 rounded-2xl shadow-lg mb-8 flex justify-between items-center relative overflow-hidden">
           <div className="relative z-10">
               <p className="text-gray-400 text-xs font-bold uppercase mb-1">Custo Mensal Recorrente</p>
@@ -71,7 +71,7 @@ const ServiceManager = () => {
           <div className="p-3 bg-white/10 rounded-full"><DollarSign size={32}/></div>
       </div>
 
-      {/* Lista de Contratos */}
+      {/* Grade exibindo cada contrato como um cartão individual com suas regras e contatos */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {contracts.map(contract => (
             <div key={contract.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all group relative">
@@ -112,7 +112,7 @@ const ServiceManager = () => {
         ))}
       </div>
 
-      {/* MODAL */}
+      {/* Formulário pop-up para registrar um novo centro de custo/serviço na plataforma */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">

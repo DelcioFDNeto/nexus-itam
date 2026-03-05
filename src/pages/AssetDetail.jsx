@@ -54,7 +54,7 @@ const AssetDetail = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
 
-  // --- ESTADOS ---
+  // Estados principais da página
   const [asset, setAsset] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -65,17 +65,17 @@ const AssetDetail = () => {
   const [isMaintModalOpen, setIsMaintModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("details"); // 'details' | 'history' (Mobile)
 
-  // Links
+  // Controle do formulário de links e anexos
   const [newLinkUrl, setNewLinkUrl] = useState("");
   const [newLinkName, setNewLinkName] = useState("");
   const [isAddingLink, setIsAddingLink] = useState(false);
 
-  // Periféricos
+  // Controle do formulário de novos periféricos
   const [newPeripheral, setNewPeripheral] = useState("");
   const [isAddingPeripheral, setIsAddingPeripheral] = useState(false);
   const [peripheralToPrint, setPeripheralToPrint] = useState(null);
 
-  // --- CONFIGURAÇÕES ---
+  // Configurações da empresa para impressão de termos
   const [config, setConfig] = useState({
     companyName: "Shineray By Sabel",
     cnpj: "00.000.000/0001-00", // Placeholder
@@ -101,7 +101,7 @@ const AssetDetail = () => {
     loadConfig();
   }, []);
 
-  // --- IMPRESSÃO (via nova janela - compatível com mobile) ---
+  // Sistema de impressão utilizando nova janela para contornar limitações de navegadores móveis
   const printInNewWindow = (htmlContent) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -228,7 +228,7 @@ const AssetDetail = () => {
   const handlePrintPeripheral = (item) => {
     if (!asset || !peripheralLabelRef.current) return;
     setPeripheralToPrint(item);
-    // Aguarda o React re-renderizar o nome do periférico no label oculto
+    // Garante que a etiqueta foi atualizada visualmente com o periférico correto antes de gerar a impressão
     setTimeout(() => {
       const svgContent = peripheralLabelRef.current.innerHTML;
       const html = `<!DOCTYPE html>
@@ -242,7 +242,7 @@ const AssetDetail = () => {
     }, 200);
   };
 
-  // --- DATA ---
+  // Busca de dados no banco (Firestore)
   const fetchHistory = async () => {
     try {
       const q = query(
@@ -280,7 +280,7 @@ const AssetDetail = () => {
     return () => unsubscribe();
   }, [id, navigate]);
 
-  // --- HANDLERS ---
+  // Ações de usuário e eventos de interface (Movimentação, Manutenção, Anexos...)
 
   const handleMoveConfirm = async (moveData) => {
     const userEmail = currentUser?.email || "Usuário Desconhecido";
@@ -425,7 +425,6 @@ const AssetDetail = () => {
     }
   };
 
-  // --- RENDER ---
   if (loading)
     return (
       <div className="flex h-screen items-center justify-center bg-[#F4F4F5]">
@@ -459,11 +458,9 @@ const AssetDetail = () => {
 
   return (
     <div className="max-w-[1920px] mx-auto pb-24 animate-fade-in relative min-h-screen">
-      {/* ======================================================================= */}
-      {/* ÁREA DE IMPRESSÃO OCULTA (apenas etiquetas com QR Code)                  */}
-      {/* ======================================================================= */}
+      {/* Elementos ocultos desenhados de forma padronizada para geração de impressão visual */}
       <div style={{ display: "none" }}>
-        {/* 1. ETIQUETA QR PEQUENA (Térmica) */}
+        {/* Layout da etiqueta principal do ativo (formato padrão térmico) */}
         <div
           ref={labelRef}
           style={{
@@ -589,7 +586,7 @@ const AssetDetail = () => {
           </div>
         </div>
 
-        {/* 3. ETIQUETA PERIFÉRICO */}
+        {/* Layout simplificado de identificação para colar em periféricos ou acessórios */}
         <div
           ref={peripheralLabelRef}
           style={{
@@ -691,9 +688,7 @@ const AssetDetail = () => {
         </div>
       </div>
 
-      {/* ======================================================================= */}
-      {/* HEADER / NAVIGATION                                                     */}
-      {/* ======================================================================= */}
+      {/* Barra superior de navegação com botões de ação e exportação */}
       <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <button
           onClick={() => navigate("/assets")}
@@ -750,9 +745,7 @@ const AssetDetail = () => {
         </div>
       </div>
 
-      {/* ======================================================================= */}
-      {/* HERO SECTION                                                            */}
-      {/* ======================================================================= */}
+      {/* Quadro de destaque no topo, exibindo a visão geral principal do equipamento */}
       <div className="bg-white rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100 relative overflow-hidden mb-8 group">
         <div
           className={`absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-gray-50 to-gray-100 rounded-bl-full -mr-16 -mt-16 opacity-50 pointer-events-none transition-all duration-700 group-hover:scale-110`}
@@ -809,9 +802,7 @@ const AssetDetail = () => {
         </div>
       </div>
 
-      {/* ======================================================================= */}
-      {/* MOBILE TABS                                                             */}
-      {/* ======================================================================= */}
+      {/* Sistema de abas presente apenas na visão mobile para poupar espaço vertical na tela */}
       <div className="md:hidden flex mb-6 bg-gray-100 p-1 rounded-xl">
         <button
           onClick={() => setActiveTab("details")}
@@ -828,11 +819,11 @@ const AssetDetail = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* ======================== LEFT COLUMN (DETAILS) ======================== */}
+        {/* Coluna principal contendo todos os formulários e campos detalhados do equipamento */}
         <div
           className={`lg:col-span-2 space-y-8 ${activeTab === "history" ? "hidden lg:block" : ""}`}
         >
-          {/* CARD: RESPONSABILIDADE */}
+          {/* Card com os dados do usuário atual em posse da máquina e sua localização física */}
           <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm relative overflow-hidden">
             <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
               <User size={20} /> Responsabilidade e Localização
@@ -864,7 +855,7 @@ const AssetDetail = () => {
             </div>
           </div>
 
-          {/* CARD: ESPECIFICAÇÕES TÉCNICAS */}
+          {/* Card listando todas as chaves técnicas do hardware como identificadores e valores de componentes */}
           <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -935,7 +926,7 @@ const AssetDetail = () => {
             </div>
           </div>
 
-          {/* CARD: PERIFÉRICOS & ACESSÓRIOS */}
+          {/* Lista gerenciável de pequenos acessórios extras fornecidos em conjunto com o equipamento */}
           <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm">
             <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
               <Plug size={20} /> Periféricos & Acessórios
@@ -993,9 +984,8 @@ const AssetDetail = () => {
             </div>
           </div>
 
-          {/* CARD: NOTES & LINKS */}
+          {/* Agrupamento final para notas detalhadas e armazenamento de links e arquivos digitais */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Notes */}
             <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm flex flex-col">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -1023,7 +1013,6 @@ const AssetDetail = () => {
               ></textarea>
             </div>
 
-            {/* Links */}
             <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm flex flex-col">
               <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <LinkIcon size={20} /> Anexos & Links
@@ -1088,7 +1077,7 @@ const AssetDetail = () => {
           </div>
         </div>
 
-        {/* ======================== RIGHT COLUMN (HISTORY) ======================== */}
+        {/* Coluna secundária reservada exclusivamente para a linha do tempo e registro do que aconteceu no sistema */}
         <div
           className={`lg:col-span-1 space-y-6 ${activeTab === "details" ? "hidden lg:block" : ""}`}
         >
@@ -1115,7 +1104,7 @@ const AssetDetail = () => {
                     {item.action}
                   </h4>
 
-                  {/* Enhanced details rendering for diffs */}
+                  {/* Mostra em lista organizada caso existam múltiplas alterações geradas no processo de edição */}
                   {item.details && (
                     <div className="text-xs text-gray-600 mt-1 leading-relaxed bg-gray-50 p-3 rounded-xl border border-gray-100">
                       {item.action === "Edição de Ativo" &&
@@ -1141,7 +1130,7 @@ const AssetDetail = () => {
         </div>
       </div>
 
-      {/* MODALS */}
+      {/* Janelas flutuantes que surgem na frente da tela principal para preenchimento de formulários e etapas em processo */}
       {isMoveModalOpen && (
         <MoveAssetModal
           isOpen={isMoveModalOpen}
@@ -1162,7 +1151,7 @@ const AssetDetail = () => {
   );
 };
 
-// UI Helpers
+// Componentes minimalistas e locais que evitam muita repetição na exibição das especificações
 const SpecItem = ({ label, value, fontMono, copyable }) => (
   <div className="flex flex-col">
     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">

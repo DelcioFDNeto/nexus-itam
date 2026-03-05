@@ -10,10 +10,10 @@ import { toast } from 'sonner';
 const TaskManager = () => {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('kanban'); // 'list' | 'kanban'
+  const [viewMode, setViewMode] = useState('kanban'); // Define o jeito que o usuário prefere ver: Listinha corrida ou Quadro Kanban
   const [newTaskTitle, setNewTaskTitle] = useState('');
   
-  // Estados de Edição (Modal)
+  // Retém os dados da tarefa capturada quando o usuário decide alterá-la
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
 
@@ -53,7 +53,7 @@ const TaskManager = () => {
 
   const toggleStatus = async (task) => {
       const newStatus = task.status === 'Concluído' ? 'A Fazer' : 'Concluído';
-      // Local update for instant feedback
+      // Truque visual: Troca na interface imediatamente antes mesmo do banco responder pra parecer instantâneo
       setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
       await updateTask(task.id, { status: newStatus });
   };
@@ -70,7 +70,7 @@ const TaskManager = () => {
       }
   };
 
-  // --- KANBAN CONFIG ---
+  // DNA das colunas do painel Kanban definindo como se chamam e como se vestem
   const KANBAN_COLS = [
       { id: 'A Fazer', label: 'A Fazer', color: 'bg-gray-100 border-gray-200' },
       { id: 'Em Andamento', label: 'Fazendo', color: 'bg-blue-50 border-blue-100' },
@@ -105,7 +105,7 @@ const TaskManager = () => {
                  <Calendar size={10}/> {new Date(task.createdAt?.seconds * 1000 || Date.now()).toLocaleDateString()}
              </span>
              
-             {/* Quick Actions (Arrows) */}
+             {/* Botões microscópicos de atalho pra jogar a tarefa pra lá e pra cá num clique */}
              <div className="flex gap-1">
                  {task.status !== 'A Fazer' && (
                      <button onClick={() => moveTask(task, 'A Fazer')} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-[10px] text-gray-500" title="Mover para A Fazer">←</button>
@@ -121,7 +121,7 @@ const TaskManager = () => {
   return (
     <div className="p-4 md:p-8 max-w-[1600px] mx-auto pb-24 min-h-screen">
       
-      {/* HEADER */}
+      {/* Faixa superior com o título principal e as alavancas de visualização */}
       <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
           <div>
               <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
@@ -136,7 +136,7 @@ const TaskManager = () => {
           </div>
       </div>
 
-      {/* INPUT RÁPIDO */}
+      {/* Campo viciado em produtividade: bateu, levou! Cria novas tarefas sem abrir janelas chatas */}
       <form onSubmit={handleQuickAdd} className="mb-8 relative group max-w-2xl mx-auto">
           <input 
             value={newTaskTitle}
@@ -150,10 +150,10 @@ const TaskManager = () => {
           </button>
       </form>
 
-      {/* VIEW CONTENT */}
+      {/* Palco principal que muda a peça dependendo do que o usuário escolher assistir */}
       {loading ? <p className="text-center text-gray-400 py-10">Carregando...</p> : (
           viewMode === 'kanban' ? (
-              // KANBAN VIEW
+              // Modo Quadro: Colunas isoladas prendendo as tarefas em estágios (A Fazer > Fazendo > Feito)
               <div className="flex gap-4 overflow-x-auto pb-4 items-start h-full min-h-[500px]">
                   {KANBAN_COLS.map(col => (
                       <div key={col.id} className="min-w-[280px] w-full flex-1 flex flex-col bg-gray-50/80 rounded-2xl border border-gray-200">
@@ -173,7 +173,7 @@ const TaskManager = () => {
                   ))}
               </div>
           ) : (
-              // LIST VIEW (LEGACY STYLE UPDATED)
+              // Modo Checklist: Uma tripa limpa e direta baseada na urgência e finalização
               <div className="space-y-3 max-w-4xl mx-auto">
                   {tasks.length === 0 ? (
                       <div className="text-center py-16 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
@@ -203,7 +203,7 @@ const TaskManager = () => {
           )
       )}
 
-      {/* MODAL EDITAR */}
+      {/* Janelona que salta no meio da tela pra ajustar os detalhes finos de uma tarefa pinçada */}
       {isEditOpen && editingTask && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95">

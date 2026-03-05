@@ -20,7 +20,7 @@ const SettingsPage = () => {
   
   const fileInputRef = useRef(null);
   
-  // Estado das configurações
+  // Guarda na memória as variáveis globais da empresa, laços e termos de uso
   const [config, setConfig] = useState({
     companyName: 'BySabel ITAM',
     itManager: 'Délcio Farias',
@@ -29,7 +29,7 @@ const SettingsPage = () => {
     locationBranch: 'Matriz - Belém'
   });
 
-  // 1. Carregar Configurações
+  // Busca a identidade visual e dados cadastrais no banco logo na largada da tela
   useEffect(() => {
     const loadConfig = async () => {
       try {
@@ -45,7 +45,7 @@ const SettingsPage = () => {
     loadConfig();
   }, []);
 
-  // 2. Salvar Configurações
+  // Carimba e documenta (Salva) todo o formulário global alterado
   const handleSave = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -59,7 +59,7 @@ const SettingsPage = () => {
     }
   };
 
-  // 3. Gerar Backup
+  // Varredura sistêmica completa, envelopando o ecossistema em um JSON gordo
   const handleFullBackup = async () => {
     setBackupLoading(true);
     try {
@@ -79,7 +79,7 @@ const SettingsPage = () => {
     }
   };
 
-  // 4. Download Template
+  // Fornece um arquivo em branco com o DNA da aplicação pra evitar importações frustradas
   const handleDownloadTemplate = () => {
      const template = {
        meta: { version: "2.0", type: "full_backup", date: new Date().toISOString() },
@@ -97,7 +97,7 @@ const SettingsPage = () => {
      a.remove();
   };
 
-  // 5. Manipulação de Arquivo
+  // Orquestração mágica para transformar "arrastas" e "soltas" em ações reais
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -126,13 +126,13 @@ const SettingsPage = () => {
     reader.onload = async (e) => {
         try {
             const json = JSON.parse(e.target.result);
-            // Validação preliminar da estrutura
+            // Batida de olho técnica: O arquivo tem cabeça (meta) e corpo (data)?
             if (!json.meta || !json.data) {
                 toast.error("Estrutura do arquivo inválida. Falta 'meta' ou 'data'. Consulte o guia.");
                 return;
             }
             
-            // Análise do conteúdo
+            // Dissecar o organismo do arquivo: Quantos braços (ativos), pernas (histórico) ele tem
             const summary = {
                 filename: file.name,
                 version: json.meta.version || 'Desconhecida',
@@ -181,7 +181,7 @@ const SettingsPage = () => {
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto pb-24">
       
-      {/* Header */}
+      {/* Painel topo da central de controle do sistema */}
       <div className="flex items-center gap-3 mb-8">
         <div className="p-3 bg-gray-900 text-white rounded-xl">
             <Settings size={28} />
@@ -194,7 +194,7 @@ const SettingsPage = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* ESQUERDA: PARÂMETROS */}
+        {/* COLUNA 1: Textos burocráticos e variáveis que pipocam nos PDFs do sistema */}
         <div className="lg:col-span-1 space-y-6">
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden sticky top-8">
                 <div className="bg-gray-50 p-4 border-b border-gray-100 flex items-center gap-2">
@@ -202,7 +202,7 @@ const SettingsPage = () => {
                     <h2 className="font-bold text-gray-800 text-sm uppercase">Documentos (PDF)</h2>
                 </div>
                 <form onSubmit={handleSave} className="p-5 space-y-4">
-                     {/* Campos simplificados para não ocupar muito espaço no código da resposta, mas mantendo a lógica */}
+                     {/* Montagem inteligente de loops mapeando todos os inputs das configurações */}
                      {['companyName', 'itManager', 'supportEmail', 'termTitle'].map(field => (
                         <div key={field}>
                             <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">{field}</label>
@@ -216,10 +216,10 @@ const SettingsPage = () => {
             </div>
         </div>
 
-        {/* CENTRO/DIREITA: BACKUP E RESTORE */}
+        {/* COLUNA 2 e 3: Área nevrálgica de transplante de órgãos (Dados JSON) */}
         <div className="lg:col-span-2 space-y-6">
             
-            {/* 1. EXPORTAÇÃO */}
+            {/* CAIXA 1: Ferramenta brutalista de backup global em um clique */}
             <div className="bg-white rounded-2xl border border-blue-100 shadow-sm overflow-hidden relative group">
                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Database size={100} className="text-blue-500"/></div>
                 <div className="p-6 relative z-10">
@@ -232,7 +232,7 @@ const SettingsPage = () => {
                 </div>
             </div>
 
-            {/* 2. IMPORTAÇÃO AVANÇADA */}
+            {/* CAIXA 2: Receptor focado em assimilar vidas passadas de outras bases suportadas */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-gray-100 flex justify-between items-center">
                     <div>
@@ -244,7 +244,7 @@ const SettingsPage = () => {
                     </button>
                 </div>
                 
-                {/* GUIA DE FORMATO (COLLAPSIBLE) */}
+                {/* Aba retrátil agindo como um instrutor chato porém necessário para formats de injeção */}
                 {showFormatGuide && (
                     <div className="bg-gray-50 p-6 border-b border-gray-200 text-sm">
                         <div className="flex justify-between items-start mb-4">
@@ -282,7 +282,7 @@ const SettingsPage = () => {
                 )}
 
                 <div className="p-6">
-                    {/* MODAL / VISUAL DE CONFIRMAÇÃO DO ARQUIVO */}
+                    {/* Estado 2: Diagnóstico pronto. Aguardando a bênção do chefe supremo para atirar as informações no banco */}
                     {importSummary ? (
                         <div className="animate-in fade-in zoom-in duration-200 bg-blue-50 border border-blue-100 rounded-xl p-5">
                             <h3 className="font-bold text-blue-900 text-lg mb-4 flex items-center gap-2"><FileJson className="text-blue-600"/> Arquivo Analisado</h3>
@@ -312,7 +312,7 @@ const SettingsPage = () => {
                             </div>
                         </div>
                     ) : restoreLoading ? (
-                        // LOADING STATE
+                        // Estado 3: Turbinas trabalhando. Barra progressiva acalma a ansiedade avisando que não travou
                         <div className="text-center py-8">
                             <div className="w-16 h-16 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-4"></div>
                             <h3 className="font-bold text-xl text-gray-800">{restoreProgress}%</h3>
@@ -322,7 +322,7 @@ const SettingsPage = () => {
                             </div>
                         </div>
                     ) : (
-                        // DRAG & DROP AREA
+                        // Estado 1: Tela de imã limpa e seca clamando por injeção de arquivo JSON
                         <div 
                             className={`border-2 border-dashed rounded-xl p-10 text-center transition-all cursor-pointer group ${dragActive ? 'border-orange-500 bg-orange-50 scale-[1.02]' : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'}`}
                             onDragEnter={handleDrag}
@@ -342,7 +342,7 @@ const SettingsPage = () => {
                 </div>
             </div>
 
-            {/* ZONA DE PERIGO VISUAL */}
+            {/* Alerta estético, brincadeira de WipeOut travada só pra botar medo caso queiram */}
             <div className="border border-red-100 rounded-xl p-4 bg-red-50/30 flex items-center justify-between opacity-60 hover:opacity-100 transition-opacity">
                 <div className="flex items-center gap-3">
                     <Shield className="text-red-400" size={20}/>

@@ -16,14 +16,14 @@ const ProjectDetails = () => {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   
-  // Estados de Interação
+  // Controla os botões e janelas ativadas pelo usuário
   const [isAddingLog, setIsAddingLog] = useState(false);
   const [newLog, setNewLog] = useState('');
   
-  // Estado para controlar a expansão dos logs
+  // Define se exibimos apenas um resumo dos logs ou a lista inteira
   const [showAllLogs, setShowAllLogs] = useState(false); 
 
-  // Modal de Edição Geral
+  // Armazena temporariamente as informações quando o modal Editar for aberto
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editFormData, setEditFormData] = useState({});
 
@@ -46,7 +46,7 @@ const ProjectDetails = () => {
     fetchProject();
   }, [id, navigate]);
 
-  // --- ACTIONS ---
+  // Central de disparos de gravação ou exclusão no Firebase
 
   const handleAddLog = async () => {
     if (!newLog.trim()) return;
@@ -118,7 +118,7 @@ const ProjectDetails = () => {
       setIsEditModalOpen(true);
   };
 
-  // --- HELPERS ---
+  // Funções de formatação visual para deixar os dados enxutos na tela
   
   const getLeaderName = (leader) => {
       if (typeof leader === 'string') return leader.split(' ')[0];
@@ -156,12 +156,12 @@ const ProjectDetails = () => {
     }
   };
 
-  // --- RENDER CHECKS (CRUCIAL: ISTO DEVE VIR ANTES DE ACESSAR project.*) ---
+  // Proteção contra falsas renderizações: a página só deve carregar ao encontrar os dados do projeto
   
   if (loading) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-black"></div></div>;
   if (!project) return null;
 
-  // --- LOGIC EXECUTION (AGORA É SEGURO ACESSAR O PROJECT) ---
+  // Agora podemos trabalhar pois sabemos com segurança o projeto atual
 
   const renderLogs = () => {
       if (!project.changelog || project.changelog.length === 0) return [];
@@ -175,7 +175,7 @@ const ProjectDetails = () => {
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24">
       
-      {/* HEADER */}
+      {/* Topo da página contendo controles básicos de retorno e edição */}
       <div className="flex justify-between items-center mb-6">
         <button onClick={() => navigate('/projects')} className="flex items-center gap-2 text-gray-500 hover:text-black font-bold text-sm transition-colors">
             <ArrowLeft size={18}/> Voltar
@@ -185,7 +185,7 @@ const ProjectDetails = () => {
         </button>
       </div>
       
-      {/* BANNER */}
+      {/* Quadro dinâmico de apresentação das informações essenciais de progressão */}
       <div className="bg-white rounded-3xl border border-gray-200 shadow-sm mb-8 overflow-hidden relative">
           <div className="h-32 w-full bg-cover bg-center absolute top-0 left-0 opacity-10" style={{ backgroundImage: `url(${project.coverImage || 'https://ui-avatars.com/api/?background=random'})` }}></div>
           <div className="relative z-10 p-8 pt-12 flex flex-col md:flex-row gap-8 items-start">
@@ -270,7 +270,7 @@ const ProjectDetails = () => {
                       </div>
                   )}
 
-                  {/* LISTA DE LOGS */}
+                  {/* Percorre o histórico e exibe a linha do tempo do projeto */}
                   <div className="p-6 space-y-8">
                       {totalLogs === 0 ? (
                           <div className="text-center py-12 text-gray-400">
@@ -286,7 +286,7 @@ const ProjectDetails = () => {
                                           <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-gray-100 group-hover/item:border-blue-500 group-hover/item:text-blue-600 text-gray-300 transition-colors shadow-sm z-10">
                                               <CheckCircle size={18} />
                                           </div>
-                                          {/* Linha conectora: Só mostra se NÃO for o último item visualizado */}
+                                          {/* Traço conectivo visual desabilitado apenas no último registro */}
                                           {(index !== visibleLogs.length - 1) && <div className="w-0.5 h-full bg-gray-100 -my-2 group-hover/item:bg-blue-50 transition-colors"></div>}
                                       </div>
 
@@ -320,7 +320,7 @@ const ProjectDetails = () => {
                       )}
                   </div>
 
-                  {/* BOTÃO VER MAIS / VER MENOS */}
+                  {/* Controle de expansão do painel de atividades */}
                   {totalLogs > 3 && (
                       <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-center">
                           <button 

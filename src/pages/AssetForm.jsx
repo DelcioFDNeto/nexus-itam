@@ -34,7 +34,7 @@ const AssetForm = () => {
     imei2: '', 
     valor: '',
     notes: '', 
-    // Specs dinâmicas
+    // Armazena especificações técnicas flexíveis dependendo do tipo do ativo
     specs: { ip: '', ram: '', storage: '', pageCount: '' }
   });
 
@@ -109,7 +109,7 @@ const AssetForm = () => {
         if (id) {
             let diffs = [];
             if (initialData) {
-                // Fields to compare
+                // Mapeia os campos para gerar um log legível no histórico de alterações
                 const fieldsMap = {
                     model: 'Modelo', internalId: 'Patrimônio', type: 'Tipo', category: 'Categoria',
                     status: 'Status', location: 'Localização', assignedTo: 'Responsável',
@@ -149,7 +149,7 @@ const AssetForm = () => {
   const isPrinter = formData.type === 'Impressora';
   const isPC = formData.type === 'Computador' || formData.type === 'Notebook' || formData.type === 'Servidor';
 
-  // Opções de Tipo com Ícones
+  // Lista de tipos de equipamentos e seus respectivos ícones de exibição na interface
   const assetTypes = [
       { id: 'Computador', label: 'Computador', icon: Monitor },
       { id: 'Notebook', label: 'Notebook', icon: Monitor },
@@ -165,7 +165,7 @@ const AssetForm = () => {
   return (
     <div className="max-w-5xl mx-auto pb-24 animate-fade-in relative">
         
-        {/* HEADER */}
+        {/* Cabeçalho da página de formulário com botão de retorno e título dinâmico */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
             <button onClick={() => navigate('/assets')} className="group flex items-center text-gray-500 hover:text-black transition-colors font-bold text-sm">
                 <div className="p-2 rounded-full group-hover:bg-gray-100 transition-all mr-2"><ArrowLeft size={20} /></div>
@@ -184,10 +184,10 @@ const AssetForm = () => {
 
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
-            {/* ======================== MAIN COLUMN (LEFT) ======================== */}
+            {/* Coluna principal contendo os campos vitais do equipamento (Esquerda e Centro) */}
             <div className="lg:col-span-2 space-y-8">
                 
-                {/* CARD 1: IDENTIFICAÇÃO BÁSICA */}
+                {/* Agrupamento de campos para identificação primária (Nome, Tag, Serial) */}
                 <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100">
                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 pb-2"><Tag size={16}/> Identificação & Classificação</h3>
                     
@@ -228,7 +228,7 @@ const AssetForm = () => {
                     </div>
                 </div>
 
-                {/* CARD 2: DETALHES TÉCNICOS (CONDICIONAL) */}
+                {/* Seção de dados técnicos que muda dinamicamente baseada no tipo escolhido acima */}
                 <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100">
                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 pb-2"><Server size={16}/> Especificações Técnicas</h3>
                      
@@ -262,17 +262,17 @@ const AssetForm = () => {
                      )}
                 </div>
 
-                {/* CARD 3: OBSERVAÇÕES */}
+                {/* Campo de notas em formato livre para registrar informações adicionais e histórico manual */}
                 <div className="bg-yellow-50 p-6 md:p-8 rounded-[2rem] border border-yellow-100">
                     <h3 className="text-xs font-bold text-yellow-700 uppercase tracking-widest mb-4 flex items-center gap-2"><FileText size={16}/> Notas & Observações</h3>
                     <textarea name="notes" value={formData.notes} onChange={handleChange} rows="4" className="w-full p-4 bg-white border border-yellow-200 rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 text-gray-700 leading-relaxed resize-none" placeholder="Detalhes adicionais, histórico breve, avarias conhecidas..." />
                 </div>
             </div>
 
-            {/* ======================== SIDEBAR COLUMN (RIGHT) ======================== */}
+            {/* Coluna lateral menor para definições gerenciais (Status, Responsável, Financeiro) */}
             <div className="space-y-6">
                 
-                {/* STATUS & CATEGORIA */}
+                {/* Definição do estado de uso e a classificação contábil */}
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Status & Categoria</h3>
                      
@@ -296,7 +296,7 @@ const AssetForm = () => {
                      </div>
                 </div>
 
-                {/* RESPONSABILIDADE */}
+                {/* Associação do equipamento a um colaborador, setor e local específico */}
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><User size={16}/> Responsabilidade</h3>
                      
@@ -312,7 +312,7 @@ const AssetForm = () => {
                             </select>
                             <Search size={16} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
                          </div>
-                         {/* Fallback input se não selecionar da lista */}
+                         {/* Exibe temporariamente o nome registrado caso o responsável não faça mais parte da lista padrão */}
                          {(!formData.assignedTo || !employees.find(e => e.name === formData.assignedTo)) && formData.assignedTo !== '' && (
                             <div className="mt-2 p-2 bg-yellow-50 border border-yellow-100 rounded-lg text-xs text-yellow-700 flex items-center gap-2">
                                 <span className="font-bold">Nome manual:</span> {formData.assignedTo}
@@ -350,7 +350,7 @@ const AssetForm = () => {
                      </div>
                 </div>
 
-                {/* FINANCEIRO */}
+                {/* Registro do valor de custo e data da compra */}
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><DollarSign size={16}/> Aquisição</h3>
                      
@@ -366,7 +366,7 @@ const AssetForm = () => {
                      </div>
                 </div>
 
-                {/* ACTION BUTTON */}
+                {/* Botão final que efetiva o salvamento das informações digitadas */}
                 <button disabled={loading} className="w-full py-4 bg-black text-white rounded-2xl font-black text-lg hover:bg-gray-800 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-3">
                     {loading ? (
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>

@@ -11,10 +11,10 @@ const ProjectsPage = () => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'kanban'
+  const [viewMode, setViewMode] = useState('grid'); // Define a escolha visual do usuário (tabelão em grid ou colunas de Kanban)
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Form State para NOVO projeto
+  // Guarda os rascunhos de digitação temporários do modal de "Novo Projeto"
   const [formData, setFormData] = useState({
     name: '', description: '', status: 'Planejamento', priority: 'Média', leader: '', deadline: '', version: '2.0'
   });
@@ -52,7 +52,7 @@ const ProjectsPage = () => {
     }
   };
 
-  // --- KANBAN LOGIC ---
+  // Motores de categorização e estilos das colunas do painel tipo Trello
   const KANBAN_COLUMNS = [
       { id: 'Planejamento', label: 'Planejamento', color: 'bg-gray-100 border-gray-200' },
       { id: 'Em Andamento', label: 'Em Execução', color: 'bg-blue-50 border-blue-100' },
@@ -60,7 +60,7 @@ const ProjectsPage = () => {
   ];
 
   const getProjectsByStatus = (status) => {
-      // Normalização simples para matching
+      // Agrupa status semelhantes na raia correta do Kanban (ex: Pausado encosta no Planejamento)
       return projects.filter(p => {
          if (status === 'Planejamento') return p.status === 'Planejamento' || p.status === 'Pausado';
          if (status === 'Em Andamento') return p.status === 'Em Andamento' || p.status === 'Revisão';
@@ -69,7 +69,7 @@ const ProjectsPage = () => {
       });
   };
 
-  // --- COMPONENTES VISUAIS ---
+  // Peças visuais isoladas construídas para serem replicadas na tela
   const ProjectCard = ({ project }) => (
     <div 
         onClick={() => navigate(`/projects/${project.id}`)} 
@@ -93,7 +93,7 @@ const ProjectsPage = () => {
         <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-4 flex-1">{project.description}</p>
 
         <div className="mt-auto space-y-3">
-            {/* Progress Bar */}
+            {/* Termômetro pintado dinamicamente que corre de 0 a 100% */}
             <div>
                 <div className="flex justify-between text-[10px] font-bold text-gray-400 mb-1">
                     <span>Progresso</span><span>{project.progress || 0}%</span>
@@ -105,7 +105,7 @@ const ProjectsPage = () => {
 
             <div className="pt-3 border-t border-gray-100 flex justify-between items-center">
                 <div className="flex -space-x-2">
-                     {/* Fake Avatars para 'Equipe' */}
+                     {/* Espaço temporário reservado para colar as miniaturas com as fotos da equipe no futuro */}
                     {[1,2,3].map(i => (
                         <div key={i} className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-[8px] font-bold text-gray-500">U{i}</div>
                     ))}
@@ -124,7 +124,7 @@ const ProjectsPage = () => {
   return (
     <div className="p-4 md:p-8 max-w-[1600px] mx-auto pb-24 space-y-8 min-h-screen">
       
-      {/* HEADER */}
+      {/* Faixa superior master com o título e as chaves de troca de visão (Grid/Kanban) */}
       <div className="flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
           <h1 className="text-3xl font-black text-gray-900 flex items-center gap-3">
@@ -150,7 +150,7 @@ const ProjectsPage = () => {
       ) : (
         <>
            {viewMode === 'grid' ? (
-                // GRID VIEW
+                // Layout Padrão: Todos os cartões esparramados numa grande grade responsiva
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {projects.map(project => <ProjectCard key={project.id} project={project} />)}
                     {projects.length === 0 && (
@@ -161,7 +161,7 @@ const ProjectsPage = () => {
                     )}
                 </div>
            ) : (
-                // KANBAN VIEW
+                // Layout Dinâmico: Projetos isolados em raias organizadas arrastáveis (ilusão de arrasto) pelo estágio
                 <div className="flex gap-6 overflow-x-auto pb-4 items-start min-h-[600px]">
                     {KANBAN_COLUMNS.map(col => (
                         <div key={col.id} className="min-w-[320px] w-[350px] flex-shrink-0 flex flex-col bg-gray-50/50 rounded-2xl border border-gray-200/60 max-h-full">
@@ -190,7 +190,7 @@ const ProjectsPage = () => {
         </>
       )}
 
-      {/* MODAL CRIAR */}
+      {/* Janela pop-up minimalista acionada unicamente para batizar um projeto base no ar */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8 animate-in zoom-in-95">

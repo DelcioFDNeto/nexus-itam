@@ -46,19 +46,19 @@ import {
 const AssetList = () => {
   const navigate = useNavigate();
 
-  // --- ESTADO LOCAL ---
+  // Estados que controlam a lista de ativos e o carregamento da tela
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Filtros e Ordenação
+  // Definições de filtros de pesquisa e ordenação da tabela
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("Todos");
   const [filterStatus, setFilterStatus] = useState("Todos");
   const [sortOrder, setSortOrder] = useState("asc");
   const [sortBy, setSortBy] = useState("internalId");
-  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false); // Mobile filter menu
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false); // Controle de exibição do menu de filtros na versão mobile
 
-  // Seleção e Ações em Massa
+  // Controle da seleção múltipla para exportação, impressão corporativa e edições conjuntas
   const [selectedIds, setSelectedIds] = useState([]);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -86,16 +86,16 @@ const AssetList = () => {
     return () => unsubscribe();
   }, []);
 
-  // --- Lógica de Filtragem e Ordenação Otimizada ---
+  // Processa a lista de ativos otimizando filtragem e ordenação dependendo das seleções do menu
   const processedAssets = useMemo(() => {
     const safeLower = (val) => (val || "").toString().toLowerCase();
 
-    // 1. Filtragem
+    // Filtra logicamente antes de devolver a lista visual de ativos
     let result = assets.filter((asset) => {
       const isPromo =
         asset.category === "Promocional" || asset.internalId?.includes("PRM");
 
-      // Filtro de Texto
+      // Busca por correspondências em diversos campos textuais do registro
       const term = safeLower(searchTerm);
       const matchesSearch =
         safeLower(asset.model).includes(term) ||
@@ -107,11 +107,11 @@ const AssetList = () => {
 
       if (!matchesSearch) return false;
 
-      // Filtro de Status
+      // Limita resultados focando num status específico (Ex: Em Uso, Defeito)
       if (filterStatus !== "Todos" && asset.status !== filterStatus)
         return false;
 
-      // Filtro de Tipo (Abas)
+      // Navega rapidamente através das abas horizontais focadas no tipo da máquina
       if (filterType === "Todos") return true;
       if (filterType === "Promocionais") return isPromo;
       if (isPromo) return false;
@@ -130,7 +130,7 @@ const AssetList = () => {
       return asset.type === filterType;
     });
 
-    // 2. Ordenação
+    // Ordena os resultados finais alfabeticamente ou numericamente de forma crescente ou decrescente
     return result.sort((a, b) => {
       const valA = safeLower(a[sortBy]);
       const valB = safeLower(b[sortBy]);
@@ -172,7 +172,7 @@ const AssetList = () => {
     });
   }, [selectedAssetsData]);
 
-  // --- Refs de Impressão ---
+  // Elementos ocultos referenciados pela biblioteca de impressão (react-to-print)
   const bulkPrintRef = useRef();
   const handleBulkPrint = useReactToPrint({
     contentRef: bulkPrintRef,
@@ -184,7 +184,7 @@ const AssetList = () => {
     documentTitle: "Etiquetas_Perifericos_BySabel",
   });
 
-  // --- Ações ---
+  // Métodos que manipulam a API/banco de dados ou processam a lista num contexto maior
   const handleBulkStatusChange = async (newStatus) => {
     if (
       !confirm(
@@ -263,7 +263,7 @@ const AssetList = () => {
 
   return (
     <div className="max-w-[1920px] mx-auto pb-24 animate-fade-in relative min-h-screen">
-      {/* IMPRESSÃO (Oculta) */}
+      {/* Elementos estruturais desenhados unicamente para a formatação de leitura em impressoras térmicas */}
       <div style={{ display: "none" }}>
         <div ref={bulkPrintRef} className="print-grid">
           <style>{`
@@ -480,13 +480,13 @@ const AssetList = () => {
         </div>
       </div>
 
-      {/* 1. MINI DASHBOARD (UI 2.0) - Reusable Component */}
+      {/* Componente externo contendo o quadro abstrato e quantitativo do ambiente de TI no topo */}
       <AssetMetrics assets={assets} />
 
-      {/* 2. HEADER & FILTERS BAR */}
+      {/* Controles de Busca, Visualização, Botão de Filtro Expandido e Ações Inicias */}
       <div className="px-4 md:px-8 pb-6 bg-[#F4F4F5] sticky top-0 md:static z-20">
         <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
-          {/* SEARCH */}
+          {/* Campo de pesquisa global que abrange IDs e Nomes */}
           <div className="relative w-full md:flex-1">
             <Search
               className="absolute left-4 top-3.5 text-gray-400"
@@ -501,7 +501,7 @@ const AssetList = () => {
             />
           </div>
 
-          {/* FILTER BUTTONS (DESKTOP) */}
+          {/* Controles maiores ou que tomam muito espaço sendo mostrados apenas nos computadores */}
           <div className="hidden md:flex gap-2 items-center">
             <div className="flex gap-1 bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
               {statusOptions.slice(0, 3).map((st) => (
@@ -544,7 +544,7 @@ const AssetList = () => {
             </button>
           </div>
 
-          {/* IMPORT/EXPORT ACTIONS */}
+          {/* Atalhos do painel direito para tarefas mais gerenciais (importar/exportar para Excel) */}
           <div className="hidden md:flex gap-2 border-l border-gray-100 pl-4">
             <button
               onClick={handleExportExcel}
@@ -563,7 +563,7 @@ const AssetList = () => {
           </div>
         </div>
 
-        {/* Quick Categories Pills */}
+        {/* Rolagem horizontal de abas arredondadas e rápidas organizando por Tipo de Ativo */}
         <div className="flex gap-3 overflow-x-auto py-4 scrollbar-hide">
           {filters.map((f) => (
             <button
@@ -577,7 +577,7 @@ const AssetList = () => {
         </div>
       </div>
 
-      {/* 3. ASSET GRID/LIST */}
+      {/* Lista real contendo dados extraídos de acordo com o cruzamento de pesquisa, ordenameto e status */}
       <div className="px-4 md:px-8">
         {processedAssets.length === 0 ? (
           <div className="p-20 text-center text-gray-400 flex flex-col items-center bg-white rounded-3xl border border-gray-200 border-dashed animate-fade-in">
@@ -588,7 +588,7 @@ const AssetList = () => {
           </div>
         ) : (
           <>
-            {/* VIEW MOBILE: TRADING CARDS */}
+            {/* Exibe listagem agrupada em cards com menos detalhes quando no celular por falta de tela */}
             <div className="grid grid-cols-1 gap-4 md:hidden pb-20">
               {processedAssets.map((asset) => (
                 <div
@@ -596,7 +596,7 @@ const AssetList = () => {
                   onClick={() => navigate(`/assets/${asset.id}`)}
                   className={`bg-white p-5 rounded-3xl border border-gray-100 shadow-[0_4px_20px_-12px_rgba(0,0,0,0.1)] active:scale-[0.98] transition-all relative overflow-hidden group ${selectedIds.includes(asset.id) ? "ring-2 ring-black bg-gray-50" : ""}`}
                 >
-                  {/* Card Decoration */}
+                  {/* Forma orgânica desenhada apenas para visual agradável das extremidades do Card */}
                   <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 rounded-full -mr-10 -mt-10 opacity-50 pointer-events-none"></div>
 
                   <div className="flex justify-between items-start mb-4 relative z-10">
@@ -658,7 +658,7 @@ const AssetList = () => {
               ))}
             </div>
 
-            {/* VIEW DESKTOP: PREMIUM TABLE */}
+            {/* Quando no formato para computadores, usa tabelas extensas super rápidas de varrer a visão */}
             <div className="hidden md:block bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
               <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-left border-collapse">
@@ -796,7 +796,7 @@ const AssetList = () => {
         Exibindo {processedAssets.length} de {assets.length} ativos
       </div>
 
-      {/* FLOATING ACTION BAR FOR BULK ACTIONS */}
+      {/* Janela de controle extra que sobe da tela do usuário ao fazer checagem nos itens individualmente */}
       {selectedIds.length > 0 && (
         <div
           className={`fixed ${window.innerWidth < 768 ? "bottom-[90px]" : "bottom-8"} left-1/2 -translate-x-1/2 bg-[#18181B] text-white p-2 pl-6 pr-2 rounded-full shadow-2xl z-50 flex items-center gap-6 animate-in slide-in-from-bottom-10 border border-white/10 w-[90%] md:w-auto max-w-2xl`}
@@ -841,7 +841,7 @@ const AssetList = () => {
         </div>
       )}
 
-      {/* MODAL DE STATUS */}
+      {/* Opção para forçar alteração simultânea nos atributos dos componentes de um mesmo modelo (Ex: Retornar para Status Disponível um lote de Notebooks) */}
       {isStatusModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 p-2">

@@ -11,25 +11,25 @@ import {
 import { toast } from 'sonner';
 
 const EmployeeManager = () => {
-  // Estados de Dados
+  // Armazena as listas puxadas do banco de dados
   const [employees, setEmployees] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Controle de Interface
+  // Controla o que o usuário está interagindo no momento (abas ativas, buscas, janelas suspensas)
   const [activeTab, setActiveTab] = useState('employees'); 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null); // NULL = Criar, ID = Editar
+  const [editingId, setEditingId] = useState(null); // Identifica se a janela foi aberta para salvar um novo item (null) ou consertar um já existente (ID)
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Formulário Unificado
+  // Molde padrão para dar reset no formulário sem precisar limpar campo por campo
   const initialForm = {
     name: '', role: '', email: '', cpf: '', branch: 'Matriz - Belém', sectorId: '',
     sectorName: '', manager: '', description: ''
   };
   const [formData, setFormData] = useState(initialForm);
 
-  // --- CARGA DE DADOS ---
+  // Puxa colaborades e departamentos simultaneamente para tornar a tela mais rápida
   const loadData = async () => {
     setLoading(true);
     try {
@@ -45,7 +45,7 @@ const EmployeeManager = () => {
 
   useEffect(() => { loadData(); }, []);
 
-  // --- AÇÕES DO MODAL (CRIAR vs EDITAR) ---
+  // Funções que preparam ou limpam a janela flutuante antes que ela surja na tela
   
   const openCreateModal = () => {
       setEditingId(null);
@@ -57,7 +57,7 @@ const EmployeeManager = () => {
       setEditingId(item.id);
       
       if (activeTab === 'employees') {
-          // Preenche dados do Funcionário
+          // Extrai e transporta os dados atuais do colaborador para dentro dos campos do formulário
           setFormData({
               ...initialForm,
               name: item.name,
@@ -65,10 +65,10 @@ const EmployeeManager = () => {
               email: item.email,
               cpf: item.cpf,
               branch: item.branch,
-              sectorId: item.sector // Aqui 'sector' guarda o nome ou ID
+              sectorId: item.sector // Transporta o setor em que o cara trabalha; como às vezes vem apenas o nome, acopla no ID mesmo assim
           });
       } else {
-          // Preenche dados do Setor
+          // Transfere o resumo atual e responsável do setor em questão para os campos abertos
           setFormData({
               ...initialForm,
               sectorName: item.name,
@@ -127,7 +127,7 @@ const EmployeeManager = () => {
     }
   };
 
-  // --- FILTROS ---
+  // O filtro ocorre localmente varrendo o nome sem bater no servidor novamente
   const filteredList = activeTab === 'employees' 
     ? employees.filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()) || e.role?.toLowerCase().includes(searchTerm.toLowerCase()))
     : sectors.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -135,7 +135,7 @@ const EmployeeManager = () => {
   return (
     <div className="p-4 md:p-8 max-w-[1600px] mx-auto pb-24">
       
-      {/* HEADER */}
+      {/* Titulação da página com botão de nova ação que muda o contexto conforme a aba atual */}
       <div className="flex flex-col md:flex-row justify-between items-end gap-6 mb-8">
         <div>
             <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
@@ -148,7 +148,7 @@ const EmployeeManager = () => {
         </button>
       </div>
 
-      {/* TABS DE NAVEGAÇÃO */}
+      {/* Chaves principais que alternam a visão entre pessoas ou a visão por hierarquia */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full md:w-fit mb-6">
           <button 
             onClick={() => setActiveTab('employees')} 
@@ -164,7 +164,7 @@ const EmployeeManager = () => {
           </button>
       </div>
 
-      {/* BARRA DE BUSCA */}
+      {/* Campo que reage tecla por tecla sem ter que fazer a tabela piscar ou ir na nuvem */}
       <div className="relative mb-6">
           <Search className="absolute left-3 top-3 text-gray-400" size={20}/>
           <input 
@@ -175,13 +175,13 @@ const EmployeeManager = () => {
           />
       </div>
 
-      {/* CONTEÚDO */}
+      {/* Área flexível que injeta os cartões da aba selecionada */}
       {loading ? (
           <div className="text-center py-20 text-gray-400 animate-pulse">Carregando dados...</div>
       ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               
-              {/* --- LISTA DE COLABORADORES --- */}
+              {/* Mapeia a lista de funcionários em pequenos cartões estilo crachá de contato */}
               {activeTab === 'employees' && filteredList.map(emp => (
                   <div key={emp.id} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all group relative flex flex-col">
                       <div className="flex justify-between items-start mb-3">
@@ -217,7 +217,7 @@ const EmployeeManager = () => {
                   </div>
               ))}
 
-              {/* --- LISTA DE SETORES --- */}
+              {/* Lista focada nas informações departamentais criando pequenos resumos do setor */}
               {activeTab === 'sectors' && filteredList.map(sec => (
                   <div key={sec.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:border-black transition-all group relative">
                       <div className="flex justify-between items-start mb-4">
@@ -251,7 +251,7 @@ const EmployeeManager = () => {
           </div>
       )}
 
-      {/* MODAL DE EDIÇÃO / CRIAÇÃO */}
+      {/* Janela polivalente: muda os campos baseada em qual aba o usuário quis abrir o "Novo" ou "Editar" */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95">
@@ -266,7 +266,7 @@ const EmployeeManager = () => {
             <form onSubmit={handleSave} className="space-y-4">
               
               {activeTab === 'employees' ? (
-                  // --- FORMULÁRIO DE COLABORADOR ---
+                  // Campos moldados individualmente focado apenas para montar a ficha do peão
                   <>
                     <div>
                         <label className="text-xs font-bold text-gray-500 uppercase">Nome Completo</label>
@@ -281,7 +281,7 @@ const EmployeeManager = () => {
                             <label className="text-xs font-bold text-gray-500 uppercase">Setor</label>
                             <select value={formData.sectorId} onChange={e => setFormData({...formData, sectorId: e.target.value})} className="w-full p-3 border rounded-xl bg-white outline-none focus:border-black cursor-pointer">
                                 <option value="">Selecione...</option>
-                                {/* Puxa os setores da outra aba */}
+                                {/* Extrai os setores já consolidados do banco e cria uma listinha rápida */}
                                 {sectors.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                 <option value="Outro">Outro / Externo</option>
                             </select>
@@ -304,7 +304,7 @@ const EmployeeManager = () => {
                     </div>
                   </>
               ) : (
-                  // --- FORMULÁRIO DE SETOR ---
+                  // Config para criar áreas independentemente das pessoas
                   <>
                     <div>
                         <label className="text-xs font-bold text-gray-500 uppercase">Nome do Setor</label>
@@ -314,7 +314,7 @@ const EmployeeManager = () => {
                         <label className="text-xs font-bold text-gray-500 uppercase">Gestor Responsável</label>
                         <select value={formData.manager} onChange={e => setFormData({...formData, manager: e.target.value})} className="w-full p-3 border rounded-xl bg-white outline-none focus:border-black cursor-pointer">
                             <option value="">Selecione um colaborador...</option>
-                            {/* Puxa os funcionários da outra aba */}
+                            {/* Permite usar a lista de funcionários para atrelar a liderança de forma amarrada */}
                             {employees.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
                         </select>
                     </div>

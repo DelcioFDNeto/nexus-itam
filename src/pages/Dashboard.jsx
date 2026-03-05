@@ -56,13 +56,13 @@ const Dashboard = () => {
     fetchData();
   }, []);
 
-  // --- CALCULATIONS ---
+  // Cálculos baseados nos dados carregados para alimentar os quadros de estatísticas
   const totalValue = assets.reduce((acc, asset) => {
       if (asset.category === 'Promocional' || asset.internalId?.includes('PRM')) return acc;
       return acc + (parseFloat(asset.valor) || 0);
   }, 0);
 
-  // --- CHARTS CONFIG ---
+  // Configurações e soma agrupada de valores para gerar os gráficos visuais
   const typeCounts = assets.reduce((acc, curr) => {
       const type = ['Notebook', 'Computador', 'Celular', 'Impressora'].includes(curr.type) ? curr.type : 'Outros';
       acc[type] = (acc[type] || 0) + 1;
@@ -95,7 +95,7 @@ const Dashboard = () => {
   return (
     <div className="max-w-[1600px] mx-auto space-y-6 animate-fade-in">
       
-      {/* 1. HERO SECTION (WELCOME) */}
+      {/* Quadro de boas-vindas heroico com atalhos rápidos para as ações proativas mais comuns */}
       <div className="bg-white rounded-[2.5rem] p-8 md:p-12 shadow-sm border border-gray-100 relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-gray-100 to-gray-50 rounded-full blur-3xl opacity-50 -mr-20 -mt-20 group-hover:scale-110 transition-transform duration-1000"></div>
           
@@ -117,10 +117,10 @@ const Dashboard = () => {
           </div>
       </div>
 
-      {/* 2. BENTO GRID STATS */}
+      {/* Painéis principais de estatísticas vitais do sistema agrupados em grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           
-          {/* Main Stat Card - Dark */}
+          {/* Cartão de alto contraste com destaque absoluto para o número total de ativos na base */}
           <div className="bg-black text-white p-8 rounded-[2rem] shadow-xl flex flex-col justify-between h-64 relative overflow-hidden group hover:shadow-2xl transition-all cursor-pointer" onClick={() => navigate('/assets')}>
                <div className="absolute right-[-20px] top-[-20px] bg-white/10 w-32 h-32 rounded-full blur-2xl group-hover:bg-white/20 transition-all"></div>
                <div className="flex justify-between items-start">
@@ -133,7 +133,7 @@ const Dashboard = () => {
                </div>
           </div>
 
-          {/* Value Card */}
+          {/* Cartão financeiro demonstrando o valor estimado em dinheiro do patrimônio registrado */}
           <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col justify-between h-64 hover:border-green-200 transition-colors">
                <div className="flex justify-between items-start">
                    <div className="p-3 bg-green-50 text-green-600 rounded-2xl"><DollarSign size={24}/></div>
@@ -145,7 +145,7 @@ const Dashboard = () => {
                </div>
           </div>
 
-          {/* Chart Card */}
+          {/* Espaço reservado para o gráfico dinâmico mostrando as proporções das categorias */}
           <div className="md:col-span-2 bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex flex-col h-64">
                <div className="flex justify-between items-center mb-4">
                     <h3 className="font-bold text-gray-900 flex items-center gap-2"><TrendingUp size={18} className="text-brand"/> Distribuição</h3>
@@ -158,10 +158,10 @@ const Dashboard = () => {
 
       </div>
 
-      {/* 3. LOWER SECTION */}
+      {/* Seção inferior mista: Atalhos de filtro e feed constante de atividades */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* Quick Categories */}
+          {/* Lista vertical interativa com contadores para os tipos de equipamento mais comuns */}
           <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm">
               <h3 className="font-black text-gray-900 mb-6 text-lg">Categorias</h3>
               <div className="space-y-4">
@@ -181,7 +181,7 @@ const Dashboard = () => {
               </div>
           </div>
 
-          {/* Recent Activity Feed */}
+          {/* Feed atualizado com o histórico orgânico e recente de quem fez o que no sistema */}
           <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm lg:col-span-2 flex flex-col">
               <div className="flex justify-between items-center mb-6">
                   <h3 className="font-black text-gray-900 text-lg flex items-center gap-2"><Zap size={20} className="text-yellow-500 fill-yellow-500"/> Atividade Recente</h3>

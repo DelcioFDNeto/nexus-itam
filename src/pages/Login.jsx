@@ -6,26 +6,26 @@ import { Lock, Mail, ArrowRight, AlertCircle, KeyRound, X, CheckCircle } from 'l
 import logo from '../assets/logo.png';
 
 const Login = () => {
-  // Estados de Login
+  // Armazena as credenciais digitadas e o status de carregamento da tela
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Estados de Recuperação de Senha
+  // Controla a janela e os feedbacks textuais do processo "Esqueci minha senha"
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetMessage, setResetMessage] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   
-  const { login, resetPassword, currentUser } = useAuth(); // Puxamos o resetPassword
+  const { login, resetPassword, currentUser } = useAuth(); // Transporta a função de reset do Firebase configurada no contexto
   const navigate = useNavigate();
 
   useEffect(() => {
     if (currentUser) navigate('/dashboard');
   }, [currentUser, navigate]);
 
-  // Login Normal
+  // Dispara a tentativa de abrir a porta do sistema validando o email e senha no banco
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -41,7 +41,7 @@ const Login = () => {
     }
   };
 
-  // Recuperação de Senha
+  // Solicita ao carteiro do Firebase que solte um link de segurança direto na caixa do usuário
   const handleResetPassword = async (e) => {
     e.preventDefault();
     if (!resetEmail) return setError('Digite seu e-mail para recuperar.');
@@ -55,7 +55,7 @@ const Login = () => {
       setTimeout(() => {
          setIsResetOpen(false);
          setResetMessage('');
-      }, 5000); // Fecha modal após 5s
+      }, 5000); // Dá tempo do usuário ler que deu tudo certo antes do card derreter
     } catch (err) {
       console.error(err);
       setError('Falha ao enviar e-mail. Verifique se o endereço está correto.');
@@ -67,12 +67,12 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-900 p-4 relative overflow-hidden">
       
-      {/* Background Decorativo */}
+      {/* Luzes difusas no fundo da tela compondo a aura premium corporativa */}
       <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-red-900 via-red-600 to-red-900"></div>
       <div className="hidden md:block absolute -top-20 -right-20 w-96 h-96 bg-red-600/10 rounded-full blur-3xl pointer-events-none"></div>
       <div className="hidden md:block absolute -bottom-20 -left-20 w-96 h-96 bg-blue-600/5 rounded-full blur-3xl pointer-events-none"></div>
 
-      {/* Card de Login */}
+      {/* Quadro branco robusto onde toda a interação de dados ocorre */}
       <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-gray-100 relative z-10">
         
         <div className="flex flex-col items-center mb-8">
@@ -129,7 +129,7 @@ const Login = () => {
           </button>
         </form>
 
-        {/* Link Esqueci a Senha */}
+        {/* Rota de fuga caso o usuário trave por esquecimento da senha */}
         <div className="mt-4 text-center">
             <button 
                 onClick={() => setIsResetOpen(true)}
@@ -144,7 +144,7 @@ const Login = () => {
         </div>
       </div>
 
-      {/* MODAL DE RECUPERAÇÃO DE SENHA */}
+      {/* Janela de emergência que foca puramente no input de email para resolver o problema e sair */}
       {isResetOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 relative">

@@ -9,7 +9,7 @@ import {
   Users, Server, Layers, FolderGit2, Download, Database, CheckCircle, Info, X, Play
 } from 'lucide-react';
 
-// --- SCHEMAS PARA IMPORTAÇÃO SIMPLES (EXCEL) ---
+// Dicionário de regras definindo a estrutura esperada e as colunas vitais para cada tipo de importação
 const IMPORT_SCHEMAS = {
   assets: {
     label: 'Ativos (Hardware)',
@@ -82,7 +82,7 @@ const IMPORT_SCHEMAS = {
   }
 };
 
-// --- TRADUTORES INTELIGENTES ---
+// Padronizam informações comuns digitadas de diversas formas pelo usuário na planilha
 const normalizeStatus = (status) => {
     if (!status) return 'Planejamento';
     const s = String(status).toLowerCase();
@@ -156,17 +156,17 @@ const ImportData = () => {
 
       const reader = new FileReader();
       
-      // JSON HANDLER
+      // Leitura e mapeamento de arquivos diretos em formato de máquina (JSON)
       if (file.name.toLowerCase().endsWith('.json')) {
           reader.onload = (evt) => {
               try {
                   const json = JSON.parse(evt.target.result);
-                  // Lógica simplificada para JSON: Assume array de objetos
+                  // O sistema entende apenas arrays contendo objetos limpos sem metadados em volta
                   const arrayData = Array.isArray(json) ? json : (json.data || []);
                   
                   if (arrayData.length === 0) throw new Error("JSON vazio ou formato inválido.");
 
-                  // Adaptação simples para JSON (tenta usar as chaves do schema como lower case)
+                  // Puxa uma pequena amostra para o usuário namorar os dados antes de consolidar
                   const sample = arrayData.slice(0, 3);
                   
                   setFileAnalysis({
@@ -174,7 +174,7 @@ const ImportData = () => {
                       type: 'JSON',
                       totalRows: arrayData.length,
                       valid: true,
-                      missingCols: [], // JSON é mais flexível, deixamos passar
+                      missingCols: [], // JSON é geralmente pré-mastigado por máquinas, liberamos a exigência estrita aqui
                       sample: sample,
                       rawData: arrayData
                   });
@@ -183,7 +183,7 @@ const ImportData = () => {
           };
           reader.readAsText(file);
       } 
-      // EXCEL HANDLER
+      // Leitura da típica planilha comercial originária de humanos e setores administrativos
       else {
           reader.onload = (evt) => {
               try {
@@ -203,7 +203,7 @@ const ImportData = () => {
                       totalRows: rawData.length,
                       valid: validation.valid,
                       missingCols: validation.missing,
-                      sample: rawData.slice(0, 3), // Primeiras 3 linhas para preview
+                      sample: rawData.slice(0, 3), // Puxa uma pequena amostra de apenas 3 itens para a vitrine visual
                       rawData: rawData
                   });
 
@@ -237,15 +237,15 @@ const ImportData = () => {
       const batch = writeBatch(db);
       const collectionRef = collection(db, currentSchema.collection);
       
-      // Transforma os dados usando o Schema atual
+      // Converte as colunas irregulares do Excel para a formatação limpa baseada nas regras declaradas no topo do arquivo
       const formattedData = fileAnalysis.rawData.map(row => currentSchema.transform(row));
       
-      // Firestore Batch Limit is 500. Vamos pegar os primeiros 490 para segurança neste exemplo simples. 
-      // Para produção real, seria ideal chunking como no backupService.js
+      // Limite cravado do Firebase Firestore para transações em lote visando não explodir a nuvem
+      // Pega somente os primeiros registros por segurança; em carga maciça de produção usaríamos o modelo do backupService
       const chunk = formattedData.slice(0, 490); 
       
       chunk.forEach(item => {
-        const docRef = doc(collectionRef); // ID Auto-gerado
+        const docRef = doc(collectionRef); // Gera um ID alfanumérico fresco para identificar a linha na tabela
         batch.set(docRef, item);
       });
 
@@ -256,7 +256,7 @@ const ImportData = () => {
           message: `${chunk.length} registros importados com sucesso em '${currentSchema.collection}'!` 
       });
       
-      setFileAnalysis(null); // Limpa estado
+      setFileAnalysis(null); // Esconde a janela de verificação para devolver a tela limpa
 
       setTimeout(() => setNotification(null), 5000);
 
@@ -271,7 +271,7 @@ const ImportData = () => {
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 min-h-screen">
       
-      {/* HEADER */}
+      {/* Título da ferramenta com opção rápida de dar um salto para trás pelas configurações */}
       <div className="flex items-center gap-4 mb-8">
         <button onClick={() => navigate('/settings')} className="p-2 bg-white rounded-full hover:bg-gray-100 shadow-sm border border-gray-200 transition-colors">
             <ArrowLeft size={20} className="text-gray-600"/>
@@ -286,7 +286,7 @@ const ImportData = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* SIDEBAR - TIPO DE IMPORTAÇÃO */}
+          {/* Menu lateral de botões criados dinamicamente baseados nos "schemas" lá do topo do arquivo */}
           <div className="lg:col-span-3 space-y-2">
               <h3 className="font-bold text-gray-400 text-[10px] uppercase tracking-wider mb-2 px-2">Selecione o Tipo</h3>
               {Object.entries(IMPORT_SCHEMAS).map(([key, schema]) => (
@@ -307,10 +307,10 @@ const ImportData = () => {
               ))}
           </div>
 
-          {/* MAIN CONTENT */}
+          {/* Caixa central maior focada na recepção, análise e validação visual das informações */}
           <div className="lg:col-span-9 space-y-6">
               
-              {/* GUIA DO FORMATO (CARD INFORMATIVO) */}
+              {/* Exibe o manual de instruções mínimo alertando o usuário sobre as colunas inegociáveis do Excel */}
               <div className="bg-white rounded-2xl border border-gray-200 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm">
                   <div>
                       <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -333,9 +333,9 @@ const ImportData = () => {
                   </button>
               </div>
 
-              {/* ÁREA DE ANÁLISE / UPLOAD */}
+              {/* Quadros dinâmicos que decidem se mostram o painel de largar arquivos ou a tabela dissecada após análise */}
               {fileAnalysis ? (
-                  // ESTADO: ARQUIVO ANALISADO
+                  // Estado Ativo: O navegador conseguiu mastigar o arquivo e exibe a anatomia do que achou de bom ou ruim lá dentro
                   <div className="bg-white rounded-2xl border border-blue-100 shadow-lg overflow-hidden animate-in zoom-in-95 duration-200">
                       <div className="bg-blue-50/50 p-4 border-b border-blue-100 flex justify-between items-center">
                           <div className="flex items-center gap-3">
@@ -405,7 +405,7 @@ const ImportData = () => {
                       </div>
                   </div>
               ) : (
-                  // ESTADO: DRAG & DROP
+                  // Estado Seco/Vazio: Tela pronta com imã visual chamando o usuário para derrubar a planilha ali
                   <div 
                     className={`border-2 border-dashed rounded-2xl p-12 text-center transition-all cursor-pointer group flex flex-col items-center justify-center min-h-[300px] ${
                         dragActive 
@@ -439,7 +439,7 @@ const ImportData = () => {
           </div>
       </div>
 
-        {/* TOAST SUCCESS */}
+        {/* Alerta efêmero e feliz confirmando a injeção maciça de dados sem problemas */}
         {notification && (
           <div className="fixed bottom-8 right-8 z-50 animate-in slide-in-from-right duration-500 fade-in bg-green-600 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3">
               <CheckCircle size={24} className="text-green-200"/>

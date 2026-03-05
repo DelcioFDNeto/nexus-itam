@@ -14,12 +14,12 @@ const LicenseManager = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Modais
+  // Controle de exibição das janelas sobrepostas para criação e atribuição
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [selectedLicense, setSelectedLicense] = useState(null);
 
-  // Form State
+  // Armazena temporariamente os dados digitados ao registrar um novo software
   const [formData, setFormData] = useState({
     softwareName: '',
     key: '',
@@ -28,7 +28,7 @@ const LicenseManager = () => {
     expirationDate: ''
   });
 
-  // Assign State
+  // Guarda qual máquina foi selecionada para receber a licença no momento
   const [selectedAssetId, setSelectedAssetId] = useState('');
 
   const loadData = async () => {
@@ -47,7 +47,7 @@ const LicenseManager = () => {
     loadData();
   }, []);
 
-  // --- AÇÕES ---
+  // Central de funções que gravam no banco e processam as regras de cruzamento de dados
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -107,7 +107,7 @@ const LicenseManager = () => {
   return (
     <div className="p-8 max-w-[1600px] mx-auto pb-24"> {/* Adicionado pb-24 para scroll e footer */}
 
-      {/* HEADER */}
+      {/* Área superior com o título e o botão de partida para registrar novas compras */}
       <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div>
           <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
@@ -120,8 +120,8 @@ const LicenseManager = () => {
         </button>
       </div>
 
-      {/* FILTRO */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex items-center gap-3 sticky top-0 z-10"> {/* Sticky search bar */}
+      {/* Barra fixa na tela dedicada à localização de pacotes específicos rapidamente */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex items-center gap-3 sticky top-0 z-10"> {/* Preso no topo para sempre estar à mão */}
         <Search className="text-gray-400" size={20} />
         <input
           type="text"
@@ -137,8 +137,8 @@ const LicenseManager = () => {
         )}
       </div>
 
-      {/* LISTA DE LICENÇAS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"> {/* Mudança para Grid Responsivo */}
+      {/* Renderiza os cartões densos de informação mostrando uso, chaves e vencimentos de cada pacote */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"> {/* Auto-organiza em colunas dependendo do monitor */}
         {loading ? (
             <div className="col-span-full text-center py-10">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
@@ -160,7 +160,7 @@ const LicenseManager = () => {
             return (
               <div key={license.id} className={`bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all flex flex-col justify-between ${isExpired ? 'border-red-300 bg-red-50' : ''}`}>
                 
-                {/* Cabeçalho do Card */}
+                {/* Título do software e os rótulos dinâmicos alertando prazos de vencimento */}
                 <div>
                     <div className="flex justify-between items-start mb-3">
                         <div className="flex items-center gap-3">
@@ -184,7 +184,7 @@ const LicenseManager = () => {
                         </button>
                     </div>
 
-                    {/* Chave de Licença */}
+                    {/* A serial key em si, destacada e com acesso de um clique para cópia */}
                     <div className="flex items-center gap-2 text-sm font-mono bg-gray-50 p-2 rounded border border-gray-200 mb-4 select-all relative group">
                         <span className="text-gray-500 font-bold text-xs select-none">KEY:</span>
                         <span className="font-bold text-gray-800 truncate flex-1" title={license.key}>{license.key}</span>
@@ -197,7 +197,7 @@ const LicenseManager = () => {
                         </button>
                     </div>
 
-                    {/* Barra de Progresso */}
+                    {/* Termômetro visual para ver de longe a porcentagem de instalações executadas vs compradas */}
                     <div className="mb-4">
                         <div className="flex justify-between text-xs font-bold uppercase mb-1 text-gray-500">
                             <span>Utilização</span>
@@ -208,7 +208,7 @@ const LicenseManager = () => {
                         </div>
                     </div>
 
-                    {/* Lista de Ativos Vinculados (Scrollável se muitos) */}
+                    {/* Relação restrita indicando quais computadores específicos engoliram essas ativações */}
                     <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar mb-4 pr-1">
                         {license.assignedAssets?.length > 0 ? (
                             license.assignedAssets.map((asset, idx) => (
@@ -228,7 +228,7 @@ const LicenseManager = () => {
                     </div>
                 </div>
 
-                {/* Rodapé do Card */}
+                {/* Fechamento do cartão reforçando validades e deixando engatilhado o botão de adicionar mais computadores */}
                 <div className="pt-3 border-t border-gray-100 flex justify-between items-center mt-auto">
                     <div className="text-xs text-gray-400 flex items-center gap-1">
                         {license.expirationDate ? (
@@ -258,7 +258,7 @@ const LicenseManager = () => {
         )}
       </div>
 
-      {/* MODAL NOVA LICENÇA */}
+      {/* Formulário principal que cadastra o coração do software adquirido (Nota: Fica oculto até pedirem) */}
       {isFormOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">
@@ -308,7 +308,7 @@ const LicenseManager = () => {
         </div>
       )}
 
-      {/* MODAL VINCULAR ATIVO */}
+      {/* Caixinha rápida focada em fazer o encontro do Hardware escolhido com a Licença atual */}
       {isAssignOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">

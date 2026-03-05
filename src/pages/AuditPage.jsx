@@ -14,23 +14,23 @@ import AssetIcon from '../components/AssetIcon';
 const AuditPage = () => {
   const navigate = useNavigate();
   
-  // DATA STATES
+  // Estados principais de dados
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // SESSION STATES
-  const [selectedLocation, setSelectedLocation] = useState(null); // null = Selection Mode
+  // Controle da sessão de auditoria atual
+  const [selectedLocation, setSelectedLocation] = useState(null); // null significa que estamos na tela de seleção inicial
   const [scannedIds, setScannedIds] = useState(new Set()); 
   const [sessionLog, setSessionLog] = useState([]);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   
-  // UX STATES
-  const [viewMode, setViewMode] = useState('scan'); // 'scan', 'list'
+  // Estados de interface e experiência do usuário
+  const [viewMode, setViewMode] = useState('scan'); // Define se vemos a tela de leitura de código ou a lista de progresso
   const [lastScanResult, setLastScanResult] = useState(null); // { type: 'success'|'error'|'warning', msg: '', item: {} }
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [manualSearch, setManualSearch] = useState('');
 
-  // SOUND EFFECTS
+  // Gerador de efeitos sonoros sintéticos para feedback rápido na operação sem ter que olhar para a tela
   const playSound = (type) => {
     if (!soundEnabled) return;
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -53,7 +53,7 @@ const AuditPage = () => {
         gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
         osc.start();
         osc.stop(ctx.currentTime + 0.3);
-    } else { // warning
+    } else { // Som de aviso para situações anormais ou alertas menores
         osc.frequency.setValueAtTime(500, ctx.currentTime);
         osc.type = 'square';
         gain.gain.setValueAtTime(0.05, ctx.currentTime);
@@ -63,7 +63,7 @@ const AuditPage = () => {
     }
   };
 
-  // DATA FETCHING
+  // Buscando a lista atualizada de ativos do banco de dados
   useEffect(() => {
     setLoading(true);
     const q = query(collection(db, 'assets'), orderBy('location', 'asc'));
@@ -75,13 +75,13 @@ const AuditPage = () => {
     return () => unsubscribe();
   }, []);
 
-  // COMPUTED DATA
+  // Processamento lógico mais custoso, feito apenas quando necessário (Memorizado)
   const locationsData = useMemo(() => {
     const locs = {};
     assets.forEach(asset => {
         if (!asset.location) return;
         if (!locs[asset.location]) locs[asset.location] = { name: asset.location, count: 0, preview: [] };
-        // Filtrar 'Baixado' e 'Descarte' da contagem esperada de auditoria
+        // Ignoramos itens baixados/descartados e brindes promocionais, pois não pertencem ao grupo de auditoria patrimonial
         if (!['Baixado', 'Descarte'].includes(asset.status) && asset.category !== 'Promocional' && !asset.internalId?.includes('PRM')) {
             locs[asset.location].count++;
         }
@@ -121,7 +121,7 @@ const AuditPage = () => {
 
   const progress = expectedAssets.length > 0 ? Math.round((auditResult.found.length / expectedAssets.length) * 100) : 0;
 
-  // --- ACTIONS ---
+  // Ações do usuário (Digitação, Escaneamento e Finalização)
 
   const handleScan = async (code) => {
       if (!code) return;
@@ -131,7 +131,7 @@ const AuditPage = () => {
       const isExpected = asset && asset.location === selectedLocation;
       const isIntruder = asset && asset.location !== selectedLocation;
 
-      // FEEDBACK LOGIC
+      // Decido o feedback sonoro e visual baseando-me em estar ou não intruso/esperado
       if (isExpected) {
           if (scannedIds.has(cleanCode)) {
               setLastScanResult({ type: 'warning', msg: 'Já auditado', item: asset, code: cleanCode });
@@ -141,7 +141,7 @@ const AuditPage = () => {
               playSound('success');
               setScannedIds(prev => new Set(prev).add(cleanCode));
               
-              // Persistência
+              // Atualiza o relógio interno do banco marcando a última auditoria deste item
               try {
                   const assetRef = doc(db, 'assets', asset.id);
                   await updateDoc(assetRef, {
@@ -159,7 +159,7 @@ const AuditPage = () => {
           playSound('error');
       }
 
-      // Add to Log if new or important
+      // Registra no histórico visual caso a leitura seja confirmada como nova, um erro ou um item perdido
       setSessionLog(prev => [{ time: new Date(), code: cleanCode, status: isExpected ? 'OK' : isIntruder ? 'INTRUSO' : 'ERRO' }, ...prev]);
   };
 
@@ -193,11 +193,11 @@ const AuditPage = () => {
       } catch (error) { toast.error("Erro ao salvar."); }
   };
 
-  // --- RENDERING ---
+  // ---------------- Interface Gráfica e Componentes ----------------
 
   if (loading) return <div className="flex h-screen items-center justify-center bg-gray-50"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-black"></div></div>;
 
-  // 1. SELECTION SCREEN
+  // Tela inicial pedindo para escolher qual local vai ser auditado agora
   if (!selectedLocation) {
       return (
         <div className="p-4 md:p-8 min-h-screen bg-gray-50">
@@ -232,11 +232,11 @@ const AuditPage = () => {
       );
   }
 
-  // 2. AUDIT HUD (ACTIVE MODE)
+  // Tela principal ativada durante o processo ativo de auditoria em um local específico
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-white overflow-hidden">
         
-        {/* TOP BAR */}
+        {/* Barra fixa superior mostrando onde estamos e controle do som do "bipe" */}
         <div className="px-4 py-4 bg-gray-900 border-b border-gray-800 flex justify-between items-center shrink-0">
              <div className="flex items-center gap-3">
                  <button onClick={() => { if(confirm('Sair da auditoria?')) setSelectedLocation(null); }} className="p-2 rounded-full bg-gray-800 text-gray-400 hover:text-white"><ArrowLeft size={20}/></button>
@@ -250,19 +250,19 @@ const AuditPage = () => {
              </button>
         </div>
 
-        {/* PROGRESS BAR */}
+        {/* Visualização de progresso no topo para dar noção tátil do tempo restante */}
         <div className="w-full bg-gray-800 h-2 shrink-0">
              <div className="h-full bg-green-500 transition-all duration-500 shadow-[0_0_10px_#22c55e]" style={{ width: `${progress}%` }}></div>
         </div>
 
-        {/* MAIN CONTENT AREA */}
+        {/* Área rolável onde a leitura e checagem ocorrem visualmente */}
         <div className="flex-1 relative bg-gray-900 overflow-y-auto">
             
-            {/* VIEW: SCANNER MODE */}
+            {/* Visão de escaneamento: Interface para receber os bipes do leitor com botão pra câmera */}
             {viewMode === 'scan' && (
                 <div className="flex flex-col items-center justify-center min-h-full p-6 gap-8">
                     
-                    {/* FEEDBACK CARD (CENTRAL) */}
+                    {/* Cartão grande central que muda de cor e ícone para transmitir a sensação tátil do sucesso ou falha */}
                     <div className={`
                         w-full max-w-sm aspect-square rounded-[3rem] flex flex-col items-center justify-center p-8 text-center transition-all duration-300 shadow-2xl border-4
                         ${!lastScanResult ? 'bg-gray-800 border-gray-700' : 
@@ -289,7 +289,7 @@ const AuditPage = () => {
                         )}
                     </div>
 
-                    {/* MANUAL INPUT */}
+                    {/* Opção auxiliar de digitar rápido se o QR-Code não ler */}
                     <form onSubmit={handleManualInput} className="w-full max-w-sm relative">
                         <input 
                             value={manualSearch}
@@ -300,7 +300,7 @@ const AuditPage = () => {
                         <Search className="absolute left-4 top-5 text-gray-500" size={20}/>
                     </form>
 
-                    {/* ACTIONS */}
+                    {/* Botões para alternar ferramentas visuais durante o inventário */}
                     <div className="grid grid-cols-2 gap-4 w-full max-w-sm">
                         <button onClick={() => setIsScannerOpen(true)} className="bg-white text-black py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-gray-200 active:scale-95 transition-all">
                             <Smartphone size={20}/> Câmera
@@ -313,10 +313,10 @@ const AuditPage = () => {
                 </div>
             )}
 
-            {/* VIEW: LIST MODE */}
+            {/* Visão de Checagem Secundária: Exibe as quantidades e os intrusos/faltantes para analisar melhor */}
             {viewMode === 'list' && (
                 <div className="p-4 space-y-6">
-                    {/* STATS */}
+                    {/* Placar numérico de contadores da auditoria atual para tomada de decisão */}
                     <div className="grid grid-cols-3 gap-2">
                         <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
                             <p className="text-[10px] text-gray-400 uppercase font-black">Faltam</p>
@@ -332,7 +332,7 @@ const AuditPage = () => {
                         </div>
                     </div>
 
-                    {/* INTRUDERS LIST */}
+                    {/* Lista dos equipamentos que pipocaram ali mas o banco de dados julgava estarem em outras filiais */}
                     {auditResult.intruders.length > 0 && (
                         <div className="space-y-2">
                             <h3 className="text-yellow-500 font-bold text-xs uppercase flex items-center gap-2"><AlertTriangle size={14}/> Itens de Outros Setores</h3>
@@ -348,7 +348,7 @@ const AuditPage = () => {
                         </div>
                     )}
 
-                    {/* MISSING LIST */}
+                    {/* Lista fantasma contendo os itens esperados mas que ainda não foram encontrados no ambiente */}
                     <div className="space-y-2">
                          <h3 className="text-red-500 font-bold text-xs uppercase flex items-center gap-2"><XCircle size={14}/> Pendentes</h3>
                          {auditResult.missing.map(asset => (
@@ -372,7 +372,7 @@ const AuditPage = () => {
 
         </div>
 
-        {/* BOTTOM ACTION BAR */}
+        {/* Rodapé retalhado com o percentual vivo e o grande botão para arquivar o resultado */}
         <div className="p-4 bg-gray-900 border-t border-gray-800 shrink-0 flex gap-4">
             <div className="flex-1 bg-gray-800 rounded-xl px-4 flex items-center justify-between">
                 <span className="text-xs text-gray-400 font-bold uppercase">Progresso</span>
