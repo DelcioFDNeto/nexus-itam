@@ -165,9 +165,9 @@ const AssetDetail = () => {
     <div style="text-align:right"><p style="margin:0;font-size:10px">Emitido em: ${new Date().toLocaleDateString('pt-BR')}</p></div>
   </div>
   <h2 class="title">${config.termTitle}</h2>
-  <p class="content">
-    Pelo presente instrumento particular, de um lado a empregadora <strong>${config.companyName}</strong>, e de outro lado o(a) colaborador(a) abaixo qualificado(a),
-    celebram o presente termo de responsabilidade, regido pelas cláusulas e condições seguintes, em conformidade com o Art. 462 da CLT e legislação civil pertinente.
+<p class="content">
+    Pelo presente instrumento particular, de um lado a empresa <strong>${config.companyName}</strong>, e de outro lado o(a) responsável abaixo qualificado(a),
+    celebram o presente termo de responsabilidade e comodato, regido pelas cláusulas e condições seguintes, em conformidade com a legislação civil pertinente e, quando aplicável, com o Art. 462 da CLT.
   </p>
   <div class="box">
     <div class="box-title">1. DADOS DO COLABORADOR(A) / RESPONSÁVEL</div>
@@ -180,7 +180,7 @@ const AssetDetail = () => {
   </div>
   <div class="box">
     <div class="box-title">2. OBJETO (EQUIPAMENTO EM COMODATO)</div>
-    <div style="font-size:11px;margin-bottom:8px">A empresa cede ao colaborador, a título de comodato gratuito, para uso EXCLUSIVO no desempenho de suas funções laborais, o(s) seguinte(s) bem(ns):</div>
+    <div style="font-size:11px;margin-bottom:8px">A empresa cede ao(à) responsável, a título de comodato gratuito, para uso EXCLUSIVO no desempenho de suas atividades profissionais/laborais, o(s) seguinte(s) bem(ns):</div>
     <div class="grid-info">
       <div><span class="label">Equipamento:</span> <span class="value">${asset.model}</span></div>
       <div><span class="label">Tipo:</span> <span class="value">${asset.type.toUpperCase()}</span></div>
@@ -193,11 +193,11 @@ const AssetDetail = () => {
   <div class="content">
     <p style="font-weight:bold;margin-bottom:5px">CLÁUSULAS CONTRATUAIS:</p>
     <ol class="clauses">
-      <li class="clause-item"><strong>DO USO E FINALIDADE:</strong> O Colaborador declara ter recebido o equipamento acima descrito em perfeito estado de conservação e funcionamento. Compromete-se a utilizá-lo estrita e exclusivamente para fins profissionais, sendo vedado o uso para fins pessoais, empréstimo a terceiros ou instalação de softwares não autorizados pela TI.</li>
-      <li class="clause-item"><strong>DA GUARDA E CONSERVAÇÃO:</strong> É responsabilidade do Colaborador zelar pela guarda, segurança e conservação do equipamento. O mau uso, negligência, imprudência ou imperícia que resultar em danos ao equipamento sujeitará o Colaborador às sanções disciplinares previstas em lei.</li>
-      <li class="clause-item"><strong>DA RESTITUIÇÃO:</strong> O equipamento deverá ser devolvido imediatamente à Empresa, em perfeito estado (salvo desgaste natural), nas seguintes hipóteses: a) Rescisão do contrato de trabalho; b) Mudança de cargo ou função; c) Solicitação expressa da Empresa a qualquer tempo.</li>
-      <li class="clause-item"><strong>DO EXTRAVIO, DANO OU FURTO (ART. 462, §1º CLT):</strong> Em conformidade com o Art. 462, §1º da CLT e Art. 186 do Código Civil, o Colaborador <strong>AUTORIZA EXPRESSAMENTE</strong> o desconto em sua folha de pagamento ou verbas rescisórias dos valores correspondentes ao reparo ou reposição do equipamento, caso seja comprovado que os danos ou o extravio decorreram de <strong>DOLO</strong> (intenção), <strong>NEGLIGÊNCIA</strong> (falta de cuidado) ou uso em desconformidade com as normas da empresa (mau uso).</li>
-      <li class="clause-item"><strong>DA SEGURANÇA DA INFORMAÇÃO:</strong> O Colaborador está ciente de que o equipamento é monitorado e que não deve armazenar dados pessoais sensíveis, responsabilizando-se pelo sigilo de suas senhas e cumprimento das normas de LGPD da empresa.</li>
+      <li class="clause-item"><strong>DO USO E FINALIDADE:</strong> O(a) Responsável declara ter recebido o equipamento acima descrito em perfeito estado de conservação e funcionamento. Compromete-se a utilizá-lo estrita e exclusivamente para fins profissionais, sendo vedado o uso para fins pessoais, empréstimo a terceiros ou instalação de softwares não autorizados pela TI.</li>
+      <li class="clause-item"><strong>DA GUARDA E CONSERVAÇÃO:</strong> É responsabilidade do(a) Responsável zelar pela guarda, segurança e conservação do equipamento. O mau uso, negligência, imprudência ou imperícia que resultar em danos ao equipamento sujeitará o(a) Responsável às sanções cíveis e disciplinares previstas em lei.</li>
+      <li class="clause-item"><strong>DA RESTITUIÇÃO:</strong> O equipamento deverá ser devolvido imediatamente à Empresa, em perfeito estado (salvo desgaste natural), nas seguintes hipóteses: a) Rescisão do contrato de trabalho ou encerramento da prestação de serviços; b) Mudança de cargo ou função; c) Solicitação expressa da Empresa a qualquer tempo.</li>
+      <li class="clause-item"><strong>DO EXTRAVIO, DANO OU FURTO:</strong> Em conformidade com o Art. 186 do Código Civil e, quando aplicável, Art. 462, §1º da CLT, o(a) Responsável <strong>AUTORIZA EXPRESSAMENTE</strong> o desconto em seus recebimentos (faturas/notas fiscais), folha de pagamento ou verbas rescisórias dos valores correspondentes ao reparo ou reposição do equipamento, caso seja comprovado que os danos ou o extravio decorreram de <strong>DOLO</strong> (intenção), <strong>NEGLIGÊNCIA</strong> (falta de cuidado) ou uso em desconformidade com as normas da empresa (mau uso).</li>
+      <li class="clause-item"><strong>DA SEGURANÇA DA INFORMAÇÃO:</strong> O(a) Responsável está ciente de que o equipamento é monitorado e que não deve armazenar dados pessoais sensíveis, responsabilizando-se pelo sigilo de suas senhas e cumprimento das normas de LGPD da empresa.</li>
     </ol>
   </div>
   <div style="margin-top:30px;font-size:11px">
@@ -205,7 +205,7 @@ const AssetDetail = () => {
     <p>_______________________, _____ de _______________________ de _________.</p>
   </div>
   <div class="signatures">
-    <div><div class="line"></div><span>${_responsibleName}</span><br/><small>COLABORADOR(A)</small></div>
+    <div><div class="line"></div><span>${_responsibleName}</span><br/><small>RECEBEDOR(A) / RESPONSÁVEL</small></div>
     <div><div class="line"></div><span>${config.itManager}</span><br/><small>GESTOR DE TI</small></div>
   </div>
   <div class="footer">Documento gerado eletronicamente pelo sistema BySabel ITAM Asset Management. ID: ${id}</div>
