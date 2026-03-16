@@ -6,7 +6,7 @@ import { updateAsset } from "../services/assetService";
 import { Link, useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { QRCodeSVG } from "qrcode.react";
-import { useReactToPrint } from "react-to-print";
+import ReactDOMServer from "react-dom/server";
 import { toast } from "sonner";
 import AssetListSkeleton from "../components/assets/AssetListSkeleton";
 import AssetIcon from "../components/AssetIcon";
@@ -172,17 +172,108 @@ const AssetList = () => {
     });
   }, [selectedAssetsData]);
 
-  // Elementos ocultos referenciados pela biblioteca de impressão (react-to-print)
-  const bulkPrintRef = useRef();
-  const handleBulkPrint = useReactToPrint({
-    contentRef: bulkPrintRef,
-    documentTitle: "Etiquetas_Ativos_BySabel",
-  });
-  const bulkPeripheralPrintRef = useRef();
-  const handleBulkPeripheralPrint = useReactToPrint({
-    contentRef: bulkPeripheralPrintRef,
-    documentTitle: "Etiquetas_Perifericos_BySabel",
-  });
+  // Abre uma nova janela com HTML autocontido e aciona a impressão (compatível com mobile)
+  const printInNewWindow = (htmlContent) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Popup bloqueado! Permita popups para imprimir.');
+      return;
+    }
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 500);
+    };
+  };
+
+  const handleBulkPrint = () => {
+    if (selectedAssetsData.length === 0) return;
+    const labelsHtml = selectedAssetsData.map((asset) => {
+      const qrSvg = ReactDOMServer.renderToStaticMarkup(<QRCodeSVG value={asset.internalId} size={68} level="M" />);
+      return `<div class="bulk-label">
+        <div class="qr">${qrSvg}</div>
+        <div class="info">
+          <div class="logo-row"><img src="${window.location.origin}/logo.png" alt="BySabel" /></div>
+          <div class="id-section">
+            <span class="id-label">Patrimônio</span>
+            <span class="id-value">${asset.internalId}</span>
+            <span class="model">${asset.model}</span>
+          </div>
+          <div class="footer-row">
+            <span class="footer-left">SUPORTE TI</span>
+            <span class="footer-right">shiadmti@gmail.com</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Etiquetas_Ativos_BySabel</title>
+<style>
+  @page { size: A4; margin: 5mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { margin: 0; padding: 5mm; font-family: Arial, sans-serif; -webkit-print-color-adjust: exact; }
+  .print-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5mm; justify-items: center; width: 100%; }
+  .bulk-label { width: 7cm; height: 3.5cm; padding: 4px; border: 2px solid black; border-radius: 6px; display: flex; align-items: center; gap: 6px; background: white; overflow: hidden; page-break-inside: avoid; }
+  .qr { width: 68px; height: 68px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .info { display: flex; flex-direction: column; height: 100%; flex-grow: 1; justify-content: space-between; overflow: hidden; }
+  .logo-row { height: 32px; display: flex; align-items: center; justify-content: flex-start; border-bottom: 1px solid #eee; padding-bottom: 2px; }
+  .logo-row img { height: 100%; max-height: 28px; }
+  .id-section { display: flex; flex-direction: column; justify-content: center; }
+  .id-label { font-size: 7px; font-weight: bold; color: #666; text-transform: uppercase; line-height: 1; }
+  .id-value { font-size: 18px; font-weight: 900; color: black; font-family: monospace; line-height: 1.1; letter-spacing: -0.5px; }
+  .model { font-size: 8px; font-weight: bold; color: #333; text-transform: uppercase; margin-top: 2px; white-space: nowrap; max-width: 125px; overflow: hidden; text-overflow: ellipsis; }
+  .footer-row { border-top: 1.5px solid #000; padding-top: 1px; margin-top: auto; display: flex; justify-content: space-between; align-items: center; }
+  .footer-left { font-size: 6px; font-weight: bold; color: #444; }
+  .footer-right { font-size: 8px; font-weight: 900; color: #000; }
+</style></head><body>
+  <div class="print-grid">${labelsHtml}</div>
+</body></html>`;
+    printInNewWindow(html);
+  };
+
+  const handleBulkPeripheralPrint = () => {
+    if (selectedPeripheralsData.length === 0) return;
+    const labelsHtml = selectedPeripheralsData.map((peri) => {
+      const qrSvg = ReactDOMServer.renderToStaticMarkup(<QRCodeSVG value={peri.parentId} size={42} level="M" />);
+      return `<div class="peri-label">
+        <div class="qr">${qrSvg}</div>
+        <div class="info">
+          <div class="logo-row"><img src="${window.location.origin}/logo.png" alt="Logo" /></div>
+          <div class="id-section">
+            <span class="id-value">${peri.parentId}</span>
+            <span class="peri-name">${peri.name}</span>
+          </div>
+          <div class="footer-row"><p>TI BYSABEL</p></div>
+        </div>
+      </div>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Etiquetas_Perifericos_BySabel</title>
+<style>
+  @page { size: A4; margin: 5mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { margin: 0; padding: 5mm; font-family: Arial, sans-serif; -webkit-print-color-adjust: exact; }
+  .print-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; justify-items: center; width: 100%; }
+  .peri-label { width: 5cm; height: 2.5cm; padding: 2px; border: 1px solid black; border-radius: 4px; display: flex; align-items: center; gap: 3px; overflow: hidden; page-break-inside: avoid; }
+  .qr { width: 45px; height: 45px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .info { display: flex; flex-direction: column; height: 100%; flex-grow: 1; justify-content: space-between; }
+  .logo-row { height: 22px; border-bottom: 0.5px solid #ccc; margin-bottom: 1px; display: flex; justify-content: center; }
+  .logo-row img { height: 100%; }
+  .id-section { display: flex; flex-direction: column; line-height: 0.9; }
+  .id-value { font-size: 10px; font-weight: 900; font-family: monospace; }
+  .peri-name { font-size: 6px; font-weight: bold; text-transform: uppercase; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .footer-row { border-top: 0.5px solid #000; padding-top: 1px; margin-top: auto; text-align: right; }
+  .footer-row p { margin: 0; font-size: 5px; font-weight: 900; }
+</style></head><body>
+  <div class="print-grid">${labelsHtml}</div>
+</body></html>`;
+    printInNewWindow(html);
+  };
 
   // Métodos que manipulam a API/banco de dados ou processam a lista num contexto maior
   const handleBulkStatusChange = async (newStatus) => {
@@ -263,222 +354,7 @@ const AssetList = () => {
 
   return (
     <div className="max-w-[1920px] mx-auto pb-24 animate-fade-in relative min-h-screen">
-      {/* Elementos estruturais desenhados unicamente para a formatação de leitura em impressoras térmicas */}
-      <div style={{ display: "none" }}>
-        <div ref={bulkPrintRef} className="print-grid">
-          <style>{`
-                @media print { 
-                    @page { size: A4; margin: 5mm; } 
-                    body { -webkit-print-color-adjust: exact; } 
-                    .print-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5mm; justify-items: center; width: 100%; } 
-                    .bulk-label { width: 7cm; height: 3.5cm; padding: 4px; border: 2px solid black; border-radius: 6px; display: flex; align-items: center; gap: 6px; background-color: white; font-family: Arial, sans-serif; box-sizing: border-box; page-break-inside: avoid; overflow: hidden; } 
-                }
-            `}</style>
-          {selectedAssetsData.map((asset) => (
-            <div key={asset.id} className="bulk-label">
-              <div
-                style={{
-                  width: "68px",
-                  height: "68px",
-                  flexShrink: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <QRCodeSVG value={asset.internalId} size={68} level="M" />
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  height: "100%",
-                  flexGrow: 1,
-                  justifyContent: "space-between",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    height: "32px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "flex-start",
-                    borderBottom: "1px solid #eee",
-                    paddingBottom: "2px",
-                  }}
-                >
-                  <img
-                    src="/logo.png"
-                    alt="BySabel"
-                    style={{ height: "100%", maxHeight: "28px" }}
-                  />
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "7px",
-                      fontWeight: "bold",
-                      color: "#666",
-                      textTransform: "uppercase",
-                      lineHeight: "1",
-                    }}
-                  >
-                    Patrimônio
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "18px",
-                      fontWeight: "900",
-                      color: "black",
-                      fontFamily: "monospace",
-                      lineHeight: "1.1",
-                      letterSpacing: "-0.5px",
-                    }}
-                  >
-                    {asset.internalId}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "8px",
-                      fontWeight: "bold",
-                      color: "#333",
-                      textTransform: "uppercase",
-                      marginTop: "2px",
-                      whiteSpace: "nowrap",
-                      truncate: true,
-                      maxWidth: "125px",
-                    }}
-                  >
-                    {asset.model}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    borderTop: "1.5px solid #000",
-                    paddingTop: "1px",
-                    marginTop: "auto",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "6px",
-                      fontWeight: "bold",
-                      color: "#444",
-                    }}
-                  >
-                    SUPORTE TI
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "8px",
-                      fontWeight: "900",
-                      color: "#000",
-                    }}
-                  >
-                    shiadmti@gmail.com
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div ref={bulkPeripheralPrintRef} className="print-grid-peri">
-          <style>{`@media print { @page { size: A4; margin: 5mm; } .print-grid-peri { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; justify-items: center; width: 100%; } .peri-label { width: 5cm; height: 2.5cm; padding: 2px; border: 1px solid black; border-radius: 4px; display: flex; align-items: center; gap: 3px; font-family: Arial, sans-serif; box-sizing: border-box; page-break-inside: avoid; overflow: hidden; } }`}</style>
-          {selectedPeripheralsData.map((peri, i) => (
-            <div key={i} className="peri-label">
-              <div
-                style={{
-                  width: "45px",
-                  height: "45px",
-                  flexShrink: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <QRCodeSVG value={peri.parentId} size={42} level="M" />
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  height: "100%",
-                  flexGrow: 1,
-                  justifyContent: "space-between",
-                }}
-              >
-                <div
-                  style={{
-                    height: "22px",
-                    borderBottom: "0.5px solid #ccc",
-                    marginBottom: "1px",
-                    display: "flex",
-                    justifyContent: "center",
-                  }}
-                >
-                  <img src="/logo.png" style={{ height: "100%" }} />
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    lineHeight: 0.9,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "10px",
-                      fontWeight: "900",
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    {peri.parentId}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "6px",
-                      fontWeight: "bold",
-                      textTransform: "uppercase",
-                      truncate: true,
-                      maxWidth: "80px",
-                    }}
-                  >
-                    {peri.name}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    borderTop: "0.5px solid #000",
-                    paddingTop: "1px",
-                    marginTop: "auto",
-                  }}
-                >
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: "5px",
-                      fontWeight: "900",
-                      textAlign: "right",
-                    }}
-                  >
-                    TI BYSABEL
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+
 
       {/* Componente externo contendo o quadro abstrato e quantitativo do ambiente de TI no topo */}
       <AssetMetrics assets={assets} />
