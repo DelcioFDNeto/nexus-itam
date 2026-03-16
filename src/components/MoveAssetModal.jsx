@@ -43,7 +43,9 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
   };
 
   const handleResponsibleSelect = (e) => {
-      setFormData({ ...formData, newResponsible: e.target.value });
+      const selectedName = e.target.value;
+      const emp = employees.find(ep => ep.name === selectedName);
+      setFormData({ ...formData, newResponsible: selectedName, newCpf: emp?.cpf || '' });
   };
 
   const isCustomResponsible = formData.newResponsible && !employees.find(e => e.name === formData.newResponsible);
