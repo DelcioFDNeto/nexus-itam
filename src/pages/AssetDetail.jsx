@@ -888,6 +888,11 @@ const AssetDetail = () => {
                 <div className="flex items-center gap-2 mt-2 text-xs font-medium text-gray-500">
                   <Building2 size={12} /> {derivedSector}
                 </div>
+                {asset.clientCpf && (
+                  <div className="flex items-center gap-2 mt-2 text-xs font-mono font-medium text-gray-500">
+                    <FileText size={12} /> CPF: {asset.clientCpf}
+                  </div>
+                )}
               </div>
               <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100">
                 <p className="text-xs font-bold text-gray-400 uppercase mb-1">
@@ -901,6 +906,53 @@ const AssetDetail = () => {
                   {asset.locationDetails || "Sem detalhes de sala/mesa"}
                 </div>
               </div>
+            </div>
+
+            {/* Campo editável para adicionar ou alterar o CPF do responsável pelo ativo */}
+            <div className="mt-6 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+              <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">
+                CPF do Responsável
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="000.000.000-00"
+                  defaultValue={asset.clientCpf || ""}
+                  className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-xl font-mono font-bold text-sm text-gray-800 outline-none focus:border-black transition-colors"
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const cpfValue = e.target.value.trim();
+                      const userEmail = currentUser?.email || "Usuário Desconhecido";
+                      await updateAsset(id, { clientCpf: cpfValue }, {
+                        action: "CPF Atualizado",
+                        details: `CPF do responsável ${cpfValue ? "definido como: " + cpfValue : "removido"}.`,
+                        type: "update",
+                        user: userEmail,
+                      });
+                      toast.success("CPF atualizado!");
+                    }
+                  }}
+                  id="cpf-input"
+                />
+                <button
+                  onClick={async () => {
+                    const cpfValue = document.getElementById("cpf-input").value.trim();
+                    const userEmail = currentUser?.email || "Usuário Desconhecido";
+                    await updateAsset(id, { clientCpf: cpfValue }, {
+                      action: "CPF Atualizado",
+                      details: `CPF do responsável ${cpfValue ? "definido como: " + cpfValue : "removido"}.`,
+                      type: "update",
+                      user: userEmail,
+                    });
+                    toast.success("CPF atualizado!");
+                  }}
+                  className="px-4 py-2.5 bg-black text-white rounded-xl font-bold text-sm hover:bg-gray-800 transition-all active:scale-95 flex items-center gap-2"
+                >
+                  <Save size={14} /> Salvar
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-2">Este CPF será usado automaticamente no Termo de Responsabilidade.</p>
             </div>
           </div>
 

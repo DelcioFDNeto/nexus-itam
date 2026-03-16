@@ -6,7 +6,7 @@ import {
 } from '../services/employeeService';
 import { 
   Users, Briefcase, Plus, Trash2, Search, Edit,
-  UserCircle, Building2, MapPin, Mail, Save, X 
+  UserCircle, Building2, MapPin, Mail, Save, X, CreditCard 
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -213,6 +213,11 @@ const EmployeeManager = () => {
                                   <Mail size={14} className="text-gray-400"/> {emp.email}
                               </div>
                           )}
+                          {emp.cpf && (
+                              <div className="flex items-center gap-2 text-xs text-gray-500 font-mono" title={emp.cpf}>
+                                  <CreditCard size={14} className="text-gray-400"/> {emp.cpf}
+                              </div>
+                          )}
                       </div>
                   </div>
               ))}
@@ -290,6 +295,10 @@ const EmployeeManager = () => {
                     <div>
                         <label className="text-xs font-bold text-gray-500 uppercase">Email</label>
                         <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-3 border rounded-xl outline-none focus:border-black" />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-gray-500 uppercase">CPF</label>
+                        <input value={formData.cpf} onChange={e => setFormData({...formData, cpf: e.target.value})} placeholder="000.000.000-00" className="w-full p-3 border rounded-xl outline-none focus:border-black font-mono" />
                     </div>
                     <div>
                         <label className="text-xs font-bold text-gray-500 uppercase">Unidade / Base</label>
