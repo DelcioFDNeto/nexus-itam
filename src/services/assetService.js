@@ -131,9 +131,10 @@ export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema'
 
   // 1. Atualiza o Ativo
   const updateData = {
-    assignedTo: moveData.newResponsible || '', // Garante string vazia se undefined
+    assignedTo: moveData.newResponsible || '',
+    clientCpf: moveData.newCpf || '',
     location: moveData.newLocation,
-    status: 'Em Uso', // Assume 'Em Uso' ao transferir, ou mantenha o status anterior se preferir
+    status: 'Em Uso',
     updatedAt: serverTimestamp()
   };
 
