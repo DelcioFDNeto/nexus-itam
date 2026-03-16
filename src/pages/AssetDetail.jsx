@@ -1,5 +1,6 @@
 // src/pages/AssetDetail.jsx
 import React, { useEffect, useState, useRef } from "react";
+import ReactDOMServer from "react-dom/server";
 import { useParams, useNavigate } from "react-router-dom";
 import { db } from "../services/firebase";
 import {
@@ -214,32 +215,79 @@ const AssetDetail = () => {
   };
 
   const handlePrintLabel = () => {
-    if (!asset || !labelRef.current) return;
-    const svgContent = labelRef.current.innerHTML;
+    if (!asset) return;
+    const qrSvg = ReactDOMServer.renderToStaticMarkup(<QRCodeSVG value={asset.internalId} size={68} level="M" />);
     const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Etiqueta_${id}</title>
 <style>
   @page { size: auto; margin: 5mm; }
-  body { margin: 0; padding: 10px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-</style></head><body>${svgContent}</body></html>`;
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { margin: 0; padding: 10px; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: Arial, sans-serif; }
+  .label { width: 7cm; height: 3.5cm; padding: 4px; border: 2px solid black; border-radius: 6px; display: flex; align-items: center; gap: 6px; background: white; overflow: hidden; }
+  .qr { width: 68px; height: 68px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .info { display: flex; flex-direction: column; height: 100%; flex-grow: 1; justify-content: space-between; overflow: hidden; }
+  .logo-row { height: 32px; display: flex; align-items: center; justify-content: flex-start; border-bottom: 1px solid #eee; padding-bottom: 2px; }
+  .logo-row img { height: 100%; max-height: 28px; }
+  .id-section { display: flex; flex-direction: column; justify-content: center; }
+  .id-label { font-size: 7px; font-weight: bold; color: #666; text-transform: uppercase; line-height: 1; }
+  .id-value { font-size: 18px; font-weight: 900; color: black; font-family: monospace; line-height: 1.1; letter-spacing: -0.5px; }
+  .model { font-size: 8px; font-weight: bold; color: #333; text-transform: uppercase; margin-top: 2px; white-space: nowrap; max-width: 125px; overflow: hidden; text-overflow: ellipsis; }
+  .footer-row { border-top: 1.5px solid #000; padding-top: 1px; margin-top: auto; display: flex; justify-content: space-between; align-items: center; }
+  .footer-left { font-size: 6px; font-weight: bold; color: #444; }
+  .footer-right { font-size: 8px; font-weight: 900; color: #000; }
+</style></head><body>
+  <div class="label">
+    <div class="qr">${qrSvg}</div>
+    <div class="info">
+      <div class="logo-row"><img src="${window.location.origin}/logo.png" alt="BySabel" /></div>
+      <div class="id-section">
+        <span class="id-label">Patrimônio</span>
+        <span class="id-value">${asset.internalId}</span>
+        <span class="model">${asset.model}</span>
+      </div>
+      <div class="footer-row">
+        <span class="footer-left">SUPORTE TI</span>
+        <span class="footer-right">shiadmti@gmail.com</span>
+      </div>
+    </div>
+  </div>
+</body></html>`;
     printInNewWindow(html);
   };
 
   const handlePrintPeripheral = (item) => {
-    if (!asset || !peripheralLabelRef.current) return;
-    setPeripheralToPrint(item);
-    // Garante que a etiqueta foi atualizada visualmente com o periférico correto antes de gerar a impressão
-    setTimeout(() => {
-      const svgContent = peripheralLabelRef.current.innerHTML;
-      const html = `<!DOCTYPE html>
+    if (!asset) return;
+    const qrSvg = ReactDOMServer.renderToStaticMarkup(<QRCodeSVG value={asset.internalId} size={42} level="M" />);
+    const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Acessorio_${id}</title>
 <style>
   @page { size: auto; margin: 5mm; }
-  body { margin: 0; padding: 10px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-</style></head><body>${svgContent}</body></html>`;
-      printInNewWindow(html);
-      setTimeout(() => setPeripheralToPrint(null), 500);
-    }, 200);
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { margin: 0; padding: 10px; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: Arial, sans-serif; }
+  .label { width: 5cm; height: 2.5cm; padding: 2px; border: 1px solid black; border-radius: 4px; display: flex; align-items: center; gap: 3px; overflow: hidden; }
+  .qr { width: 45px; height: 45px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .info { display: flex; flex-direction: column; height: 100%; flex-grow: 1; justify-content: space-between; }
+  .logo-row { height: 22px; border-bottom: 0.5px solid #ccc; margin-bottom: 1px; display: flex; justify-content: center; }
+  .logo-row img { height: 100%; }
+  .id-section { display: flex; flex-direction: column; line-height: 0.9; }
+  .id-value { font-size: 10px; font-weight: 900; font-family: monospace; }
+  .peri-name { font-size: 6px; font-weight: bold; text-transform: uppercase; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .footer-row { border-top: 0.5px solid #000; padding-top: 1px; margin-top: auto; text-align: right; }
+  .footer-row p { margin: 0; font-size: 5px; font-weight: 900; }
+</style></head><body>
+  <div class="label">
+    <div class="qr">${qrSvg}</div>
+    <div class="info">
+      <div class="logo-row"><img src="${window.location.origin}/logo.png" alt="Logo" /></div>
+      <div class="id-section">
+        <span class="id-value">${asset.internalId}</span>
+        <span class="peri-name">${item.name || 'Acessório'}</span>
+      </div>
+      <div class="footer-row"><p>TI BYSABEL</p></div>
+    </div>
+  </div>
+</body></html>`;
+    printInNewWindow(html);
   };
 
   // Busca de dados no banco (Firestore)
