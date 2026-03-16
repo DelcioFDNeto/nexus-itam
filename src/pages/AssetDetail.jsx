@@ -160,6 +160,7 @@ const AssetDetail = () => {
       <img src="${window.location.origin}/logo.png" alt="Shineray" class="logo-img" />
       <div>
         <h1 style="font-size:20px;margin:0;font-weight:900">${config.companyName.toUpperCase()}</h1>
+        <p style="margin:2px 0 0;font-size:10px">CNPJ: 34.249.103/0003-73</p>
         <p style="margin:0;font-size:10px">Departamento de Tecnologia da Informação</p>
       </div>
     </div>
@@ -167,15 +168,15 @@ const AssetDetail = () => {
   </div>
   <h2 class="title">${config.termTitle}</h2>
 <p class="content">
-    Pelo presente instrumento particular, de um lado a empresa <strong>${config.companyName}</strong>, e de outro lado o(a) responsável abaixo qualificado(a),
+    Pelo presente instrumento particular, de um lado a empresa <strong>${config.companyName}</strong>, inscrita no CNPJ sob o nº <strong>34.249.103/0003-73</strong>, e de outro lado o(a) responsável abaixo qualificado(a),
     celebram o presente termo de responsabilidade e comodato, regido pelas cláusulas e condições seguintes, em conformidade com a legislação civil pertinente e, quando aplicável, com o Art. 462 da CLT.
   </p>
   <div class="box">
     <div class="box-title">1. DADOS DO COLABORADOR(A) / RESPONSÁVEL</div>
     <div class="grid-info">
       <div><span class="label">Nome:</span> <span class="value">${_responsibleName.toUpperCase()}</span></div>
+      <div><span class="label">CPF:</span> <span class="value">${asset.clientCpf || '___.___.___-__'}</span></div>
       <div><span class="label">Departamento/Setor:</span> <span class="value">${_derivedSector.toUpperCase()}</span></div>
-      ${asset.cpf ? `<div><span class="label">CPF:</span> <span class="value">${asset.cpf}</span></div>` : ''}
       <div><span class="label">Local de Trabalho:</span> <span class="value">${_location.toUpperCase()}</span></div>
     </div>
   </div>
@@ -206,7 +207,7 @@ const AssetDetail = () => {
     <p>_______________________, _____ de _______________________ de _________.</p>
   </div>
   <div class="signatures">
-    <div><div class="line"></div><span>${_responsibleName}</span><br/><small>RECEBEDOR(A) / RESPONSÁVEL</small></div>
+    <div><div class="line"></div><span>${_responsibleName}</span><br/><small>RECEBEDOR(A) / RESPONSÁVEL</small>${!asset.clientCpf ? '<br/><small style="font-size:9px;color:#666">CPF: ___.___.___-__</small>' : ''}</div>
     <div><div class="line"></div><span>${config.itManager}</span><br/><small>GESTOR DE TI</small></div>
   </div>
   <div class="footer">Documento gerado eletronicamente pelo sistema BySabel ITAM Asset Management. ID: ${id}</div>
