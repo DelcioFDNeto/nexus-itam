@@ -1,5 +1,5 @@
 // src/pages/AuditPage.jsx
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../services/firebase';
 import { collection, query, onSnapshot, orderBy, doc, updateDoc, serverTimestamp, addDoc } from 'firebase/firestore'; 
@@ -21,7 +21,7 @@ const AuditPage = () => {
   // Controle da sessão de auditoria atual
   const [selectedLocation, setSelectedLocation] = useState(null); // null significa que estamos na tela de seleção inicial
   const [scannedIds, setScannedIds] = useState(new Set()); 
-  const [sessionLog, setSessionLog] = useState([]);
+  const [sessionLog, setSessionLog] = useState([]); // eslint-disable-line no-unused-vars
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   
   // Estados de interface e experiência do usuário
@@ -65,13 +65,12 @@ const AuditPage = () => {
 
   // Buscando a lista atualizada de ativos do banco de dados
   useEffect(() => {
-    setLoading(true);
     const q = query(collection(db, 'assets'), orderBy('location', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const assetData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setAssets(assetData);
       setLoading(false);
-    }, (error) => { console.error(error); setLoading(false); });
+    }, (err) => { console.error(err); setLoading(false); });
     return () => unsubscribe();
   }, []);
 
@@ -148,7 +147,7 @@ const AuditPage = () => {
                       lastAudit: serverTimestamp(),
                       auditStatus: 'Conforme'
                   });
-              } catch (error) { console.error(error); }
+              } catch (err) { console.error(err); }
           }
       } else if (isIntruder) {
           setLastScanResult({ type: 'warning', msg: 'Intruso Detectado!', item: asset, code: cleanCode });
@@ -190,7 +189,7 @@ const AuditPage = () => {
           setScannedIds(new Set());
           setSessionLog([]);
           setLastScanResult(null);
-      } catch (error) { toast.error("Erro ao salvar."); }
+      } catch (err) { console.error(err); toast.error("Erro ao salvar."); }
   };
 
   // ---------------- Interface Gráfica e Componentes ----------------

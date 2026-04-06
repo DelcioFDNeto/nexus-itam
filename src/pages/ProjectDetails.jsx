@@ -66,6 +66,7 @@ const ProjectDetails = () => {
       setIsAddingLog(false);
       setShowAllLogs(true); 
     } catch (error) {
+      console.error(error);
       toast.error("Erro ao salvar log.");
     }
   };
@@ -98,6 +99,7 @@ const ProjectDetails = () => {
           setProject(prev => ({ ...prev, ...editFormData }));
           setIsEditModalOpen(false);
       } catch (error) {
+          console.error(error);
           toast.error("Erro ao atualizar projeto.");
       }
   };

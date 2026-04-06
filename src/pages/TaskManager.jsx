@@ -17,14 +17,14 @@ const TaskManager = () => {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
 
-  useEffect(() => { loadTasks(); }, []);
-
-  const loadTasks = async () => {
+  async function loadTasks() {
     const data = await getTasks();
     const sorted = data.sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds);
     setTasks(sorted);
     setLoading(false);
-  };
+  }
+
+  useEffect(() => { loadTasks(); }, []); // eslint-disable-line react-hooks/set-state-in-effect
 
   const handleQuickAdd = async (e) => {
     e.preventDefault();
@@ -48,7 +48,7 @@ const TaskManager = () => {
           await updateTask(editingTask.id, editingTask);
           setIsEditOpen(false);
           loadTasks();
-      } catch (error) { toast.error("Erro ao atualizar"); }
+      } catch (err) { console.error(err); toast.error("Erro ao atualizar"); }
   };
 
   const toggleStatus = async (task) => {

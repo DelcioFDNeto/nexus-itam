@@ -19,17 +19,15 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
         const fetchEmps = async () => {
             const data = await getEmployees();
             setEmployees(data);
+            // Inicializa o formulário após carregar os employees
+            setFormData({
+                newLocation: '',
+                newResponsible: asset?.assignedTo || '',
+                date: new Date().toISOString().split('T')[0],
+                reason: ''
+            });
         };
         fetchEmps();
-        
-        // Inicializa com vazio para forçar o usuário a escolher, 
-        // ou você pode iniciar com os dados atuais se preferir.
-        setFormData({
-            newLocation: '', // Começa vazio para o usuário selecionar
-            newResponsible: asset?.assignedTo || '', // Mantém o responsável atual como sugestão
-            date: new Date().toISOString().split('T')[0],
-            reason: ''
-        });
     }
   }, [isOpen, asset]);
 

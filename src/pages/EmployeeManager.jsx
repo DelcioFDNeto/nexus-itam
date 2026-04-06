@@ -114,7 +114,8 @@ const EmployeeManager = () => {
         }
         setIsModalOpen(false);
         loadData();
-    } catch (error) {
+    } catch (err) {
+        console.error(err);
         toast.error("Erro ao salvar.");
     }
   };

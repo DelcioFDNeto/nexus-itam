@@ -10,16 +10,13 @@ import {
 
 const Layout = ({ children }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    const savedState = localStorage.getItem('sidebar_collapsed');
+    return savedState ? JSON.parse(savedState) : false;
+  });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-
-  // Persistência do estado da Sidebar
-  useEffect(() => {
-    const savedState = localStorage.getItem('sidebar_collapsed');
-    if (savedState) setIsSidebarCollapsed(JSON.parse(savedState));
-  }, []);
 
   const toggleSidebar = () => {
     const newState = !isSidebarCollapsed;
@@ -27,17 +24,28 @@ const Layout = ({ children }) => {
     localStorage.setItem('sidebar_collapsed', JSON.stringify(newState));
   };
 
+  // Scroll sempre para o topo ao trocar de rotas/páginas
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Busca Global: Ctrl+K ou Cmd+K
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
         setIsSearchOpen(true);
       }
+      // Novo Ativo: Alt+N ou Option+N
+      if (e.altKey && e.key === 'n') {
+        e.preventDefault();
+        navigate('/assets/new');
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [navigate]);
 
   return (
     <div className="flex min-h-screen bg-[#F4F4F5] font-sans text-gray-900 selection:bg-red-500 selection:text-white">

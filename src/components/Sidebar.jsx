@@ -6,11 +6,11 @@ import { auth } from '../services/firebase';
 import { 
   LayoutDashboard, Server, PlusSquare, FileInput, 
   Users, LogOut, ClipboardCheck, X, ShieldCheck, Layers, Globe,
-  FolderGit2, Settings, ChevronLeft, ChevronRight, Menu 
+  FolderGit2, Settings, ChevronLeft, ChevronRight, Menu, Search 
 } from 'lucide-react';
-import logo from '../assets/logo.png';
 
-const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse }) => { // Recebe props de colapso
+
+const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }) => { // Recebe props de colapso
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -121,6 +121,18 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse }) => { // Receb
                 <PlusSquare size={20} className="shrink-0"/> 
                 {!isCollapsed && <span className="font-black text-xs uppercase tracking-wider whitespace-nowrap">Novo Item</span>}
              </Link>
+          </div>
+
+          {/* BOTÃO BUSCA GLOBAL (COM ATALHO) */}
+          <div className="px-3 mt-2">
+             <button 
+                onClick={() => { if(onSearchClick) onSearchClick(); if(onClose) onClose(); }}
+                className={`flex items-center justify-center gap-3 bg-[#1F1F1F] text-white hover:bg-neutral-800 transition-all group overflow-hidden border border-[#333] ${isCollapsed ? 'rounded-xl w-12 h-12 mx-auto' : 'rounded-lg px-4 py-2.5 w-full'}`}
+                title="Busca Global (Ctrl+K)"
+             >
+                <Search size={20} className="shrink-0 text-gray-400 group-hover:text-white transition-colors"/> 
+                {!isCollapsed && <div className="flex-1 flex items-center justify-between"><span className="font-bold text-xs text-gray-300 group-hover:text-white transition-colors">Busca Global</span><span className="text-[10px] bg-[#333] text-gray-400 px-1.5 py-0.5 rounded border border-[#444] font-mono group-hover:text-white transition-colors tracking-widest hidden lg:block">Ctrl+K</span></div>}
+             </button>
           </div>
 
           {/* MENUS LOOP */}

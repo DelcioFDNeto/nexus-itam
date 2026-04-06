@@ -1,6 +1,6 @@
 // src/services/firebase.js
 import { initializeApp } from "firebase/app";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 // COLOQUE SUAS CHAVES DIRETAMENTE AQUI (Ou use VITE_envs caso use Vite/React)

@@ -57,6 +57,7 @@ const LicenseManager = () => {
       setFormData({ softwareName: '', key: '', type: 'Vitalícia', totalSeats: 1, expirationDate: '' });
       loadData();
     } catch (error) {
+      console.error(error);
       toast.error("Erro ao salvar.");
     }
   };
@@ -82,6 +83,7 @@ const LicenseManager = () => {
       setIsAssignOpen(false);
       loadData();
     } catch (error) {
+      console.error(error);
       toast.error("Erro ao vincular.");
     }
   };
