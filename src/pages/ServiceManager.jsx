@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 
 const ServiceManager = () => {
   const [contracts, setContracts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -37,7 +37,7 @@ const ServiceManager = () => {
       setIsModalOpen(false);
       setFormData({ provider: '', serviceType: 'Internet', monthlyCost: '', renewalDate: '', supportPhone: '', description: '' });
       loadData();
-    } catch (error) { toast.error("Erro ao salvar."); }
+    } catch (error) { console.error(error); toast.error("Erro ao salvar."); }
   };
 
   const handleDelete = async (id) => {

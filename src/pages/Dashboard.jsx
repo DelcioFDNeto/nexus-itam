@@ -3,7 +3,8 @@ import React, { useEffect, useState } from 'react';
 import { 
   TrendingUp, Users, Server, DollarSign, 
   Monitor, Smartphone, Printer, CreditCard,
-  Plus, ClipboardCheck, Activity, ArrowRight, Zap
+  Plus, ClipboardCheck, Activity, ArrowRight, Zap,
+  Key, CheckSquare
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Bar, Doughnut } from 'react-chartjs-2';
@@ -24,7 +25,7 @@ const Dashboard = () => {
   // Estados
   const [assets, setAssets] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
-  const [totalEmployees, setTotalEmployees] = useState(0);
+  const [, setTotalEmployees] = useState(0);
 
   useEffect(() => {
     // Time-based greeting
@@ -112,6 +113,12 @@ const Dashboard = () => {
                   </button>
                   <button onClick={() => navigate('/audit')} className="bg-white border-2 border-gray-100 text-gray-900 px-6 py-4 rounded-2xl font-bold flex items-center gap-2 hover:border-black transition-all active:scale-95">
                       <ClipboardCheck size={20}/> <span className="hidden md:inline">Auditoria</span>
+                  </button>
+                  <button onClick={() => navigate('/licenses')} className="bg-white border-2 border-gray-100 text-gray-900 px-4 py-4 rounded-2xl font-bold flex items-center gap-2 hover:border-black transition-all active:scale-95 shadow-sm">
+                      <Key size={20}/> <span className="hidden md:inline">Licenças</span>
+                  </button>
+                  <button onClick={() => navigate('/tasks')} className="bg-white border-2 border-gray-100 text-gray-900 px-4 py-4 rounded-2xl font-bold flex items-center gap-2 hover:border-black transition-all active:scale-95 shadow-sm">
+                      <CheckSquare size={20}/> <span className="hidden md:inline">Tarefas</span>
                   </button>
               </div>
           </div>

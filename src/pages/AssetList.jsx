@@ -1,10 +1,9 @@
 // src/pages/AssetList.jsx
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { db } from "../services/firebase";
 import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 import { updateAsset } from "../services/assetService";
 import { Link, useNavigate } from "react-router-dom";
-import * as XLSX from "xlsx";
 import { QRCodeSVG } from "qrcode.react";
 import ReactDOMServer from "react-dom/server";
 import { toast } from "sonner";
@@ -50,13 +49,19 @@ const AssetList = () => {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Definições de filtros de pesquisa e ordenação da tabela
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState("Todos");
-  const [filterStatus, setFilterStatus] = useState("Todos");
-  const [sortOrder, setSortOrder] = useState("asc");
-  const [sortBy, setSortBy] = useState("internalId");
-  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false); // Controle de exibição do menu de filtros na versão mobile
+  // Definições de filtros de pesquisa e ordenação da tabela (Persistidos na Sessão)
+  const [searchTerm, setSearchTerm] = useState(() => sessionStorage.getItem("itam_asset_searchTerm") || "");
+  const [filterType, setFilterType] = useState(() => sessionStorage.getItem("itam_asset_filterType") || "Todos");
+  const [filterStatus, setFilterStatus] = useState(() => sessionStorage.getItem("itam_asset_filterStatus") || "Todos");
+  const [sortOrder, setSortOrder] = useState(() => sessionStorage.getItem("itam_asset_sortOrder") || "asc");
+  const [sortBy] = useState("internalId");
+
+  useEffect(() => {
+    sessionStorage.setItem("itam_asset_searchTerm", searchTerm);
+    sessionStorage.setItem("itam_asset_filterType", filterType);
+    sessionStorage.setItem("itam_asset_filterStatus", filterStatus);
+    sessionStorage.setItem("itam_asset_sortOrder", sortOrder);
+  }, [searchTerm, filterType, filterStatus, sortOrder]);
 
   // Controle da seleção múltipla para exportação, impressão corporativa e edições conjuntas
   const [selectedIds, setSelectedIds] = useState([]);
@@ -300,14 +305,16 @@ const AssetList = () => {
       toast.success(`Status de ${selectedIds.length} ativos atualizados!`);
       setSelectedIds([]);
       setIsStatusModalOpen(false);
-    } catch (error) {
+    } catch (err) {
+      console.error(err);
       toast.error("Erro ao atualizar ativos em lote.");
     } finally {
       setBulkProcessing(false);
     }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await import("xlsx");
     const dataToExport = processedAssets.map((asset) => ({
       Patrimônio: asset.internalId,
       Modelo: asset.model,

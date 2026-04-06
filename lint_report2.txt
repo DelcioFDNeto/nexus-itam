@@ -1,0 +1,64 @@
+[0m[0m
+[0m[4mC:\Users\ShinerayADM\itam-shineray\src\components\GlobalSearch.jsx[24m[0m
+[0m  [2m78:6[22m  [33mwarning[39m  React Hook useEffect has a missing dependency: 'systemPages'. Either include it or remove the dependency array  [2mreact-hooks/exhaustive-deps[22m[0m
+[0m[0m
+[0m[4mC:\Users\ShinerayADM\itam-shineray\src\contexts\AuthContext.jsx[24m[0m
+[0m  [2m13:14[22m  [31merror[39m  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  [2mreact-refresh/only-export-components[22m[0m
+[0m[0m
+[0m[4mC:\Users\ShinerayADM\itam-shineray\src\pages\AssetList.jsx[24m[0m
+[0m  [2m301:14[22m  [31merror[39m  'err' is defined but never used  [2mno-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\ShinerayADM\itam-shineray\src\pages\LicenseManager.jsx[24m[0m
+[0m  [2m59:14[22m  [31merror[39m  'error' is defined but never used  [2mno-unused-vars[22m[0m
+[0m  [2m84:14[22m  [31merror[39m  'error' is defined but never used  [2mno-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\ShinerayADM\itam-shineray\src\pages\ProjectDetails.jsx[24m[0m
+[0m   [2m68:14[22m  [31merror[39m  'error' is defined but never used  [2mno-unused-vars[22m[0m
+[0m  [2m100:16[22m  [31merror[39m  'error' is defined but never used  [2mno-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\ShinerayADM\itam-shineray\src\pages\ProjectsPage.jsx[24m[0m
+[0m  [2m29:21[22m  [31merror[39m    Error: Calling setState synchronously within an effect can trigger cascading renders[0m
+[0m[0m
+[0mEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:[0m
+[0m* Update external systems with the latest state from React.[0m
+[0m* Subscribe for updates from some external system, calling setState in a callback function when external state changes.[0m
+[0m[0m
+[0mCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).[0m
+[0m[0m
+[0m  27 |   }[0m
+[0m  28 |[0m
+[0m> 29 |   useEffect(() => { loadProjects(); }, []); // eslint-disable-line react-hooks/exhaustive-deps[0m
+[0m     |                     ^^^^^^^^^^^^ Avoid calling setState() directly within an effect[0m
+[0m  30 |[0m
+[0m  31 |[0m
+[0m  32 |  [2mreact-hooks/set-state-in-effect[22m[0m
+[0m  [2m29:45[22m  [33mwarning[39m  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')[0m
+[0m[0m
+[0m[4mC:\Users\ShinerayADM\itam-shineray\src\pages\ServiceManager.jsx[24m[0m
+[0m  [2m11:10[22m  [31merror[39m  'loading' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  [2mno-unused-vars[22m[0m
+[0m  [2m40:14[22m  [31merror[39m  'error' is defined but never used                                                        [2mno-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\ShinerayADM\itam-shineray\src\pages\SettingsPage.jsx[24m[0m
+[0m  [2m55:14[22m  [31merror[39m  'error' is defined but never used  [2mno-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\ShinerayADM\itam-shineray\src\pages\TaskManager.jsx[24m[0m
+[0m  [2m27:21[22m  [31merror[39m    Error: Calling setState synchronously within an effect can trigger cascading renders[0m
+[0m[0m
+[0mEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:[0m
+[0m* Update external systems with the latest state from React.[0m
+[0m* Subscribe for updates from some external system, calling setState in a callback function when external state changes.[0m
+[0m[0m
+[0mCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).[0m
+[0m[0m
+[0m  25 |   }[0m
+[0m  26 |[0m
+[0m> 27 |   useEffect(() => { loadTasks(); }, []); // eslint-disable-line react-hooks/exhaustive-deps[0m
+[0m     |                     ^^^^^^^^^ Avoid calling setState() directly within an effect[0m
+[0m  28 |[0m
+[0m  29 |   const handleQuickAdd = async (e) => {[0m
+[0m  30 |     e.preventDefault();  [2mreact-hooks/set-state-in-effect[22m[0m
+[0m  [2m27:42[22m  [33mwarning[39m  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')[0m
+[0m[0m
+[0m[31m[1m✖ 14 problems (11 errors, 3 warnings)[22m[39m[0m
+[0m[31m[1m[22m[39m[31m[1m  0 errors and 2 warnings potentially fixable with the `--fix` option.[22m[39m[0m
+[0m[31m[1m[22m[39m[0m

@@ -133,7 +133,7 @@ export const generateCleanData = () => {
     // ------------------------------------------------------
     // SERIAL
     // ------------------------------------------------------
-    const serialMatch = text.match(/(?:S[\/.]?N|Serial|Tag|Série|Serie)[\W_]*?([A-Z0-9][A-Z0-9\-\/]{3,})/i);
+    const serialMatch = text.match(/(?:S[/.]?N|Serial|Tag|Série|Serie)[\W_]*?([A-Z0-9][A-Z0-9\-/]{3,})/i);
 
     if (serialMatch && !serialMatch[1].match(/^\d{15}$/)) {
       asset.serialNumber = serialMatch[1].trim();

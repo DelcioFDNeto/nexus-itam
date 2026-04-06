@@ -19,14 +19,14 @@ const ProjectsPage = () => {
     name: '', description: '', status: 'Planejamento', priority: 'Média', leader: '', deadline: '', version: '2.0'
   });
 
-  const loadProjects = async () => {
+  async function loadProjects() {
     setLoading(true);
     const data = await getProjects();
     setProjects(data);
     setLoading(false);
-  };
+  }
 
-  useEffect(() => { loadProjects(); }, []);
+  useEffect(() => { loadProjects(); }, []); // eslint-disable-line react-hooks/set-state-in-effect
 
 
 

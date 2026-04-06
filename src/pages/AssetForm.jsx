@@ -19,10 +19,10 @@ const AssetForm = () => {
   const [formData, setFormData] = useState({
     model: '',
     internalId: '',
-    type: 'Computador',
-    category: 'Corporativo', // 'Corporativo', 'Promocional', 'Infra'
+    type: localStorage.getItem('itam_last_type') || 'Computador',
+    category: localStorage.getItem('itam_last_category') || 'Corporativo', // 'Corporativo', 'Promocional', 'Infra'
     status: 'Em Uso',
-    location: 'Matriz - Belém',
+    location: localStorage.getItem('itam_last_location') || 'Matriz - Belém',
     assignedTo: '', 
     clientCpf: '',
     sector: '',
@@ -134,6 +134,10 @@ const AssetForm = () => {
         }
         else {
             await createAsset({ ...cleanData, createdBy: userEmail });
+            // Salva as escolhas globais de batch (lote) para a próxima inserção
+            localStorage.setItem('itam_last_type', cleanData.type);
+            localStorage.setItem('itam_last_category', cleanData.category);
+            localStorage.setItem('itam_last_location', cleanData.location);
         }
         
         toast.success(id ? "Ativo atualizado com sucesso!" : "Ativo cadastrado com sucesso!");

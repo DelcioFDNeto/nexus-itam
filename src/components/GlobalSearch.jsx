@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Monitor, User, FileText, ArrowRight, Command, X } from 'lucide-react';
-import { collection, getDocs, limit, query, where } from 'firebase/firestore';
+import { collection, getDocs, limit, query } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 const GlobalSearch = ({ isOpen, onClose }) => {

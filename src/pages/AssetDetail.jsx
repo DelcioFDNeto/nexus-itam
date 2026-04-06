@@ -59,7 +59,7 @@ const AssetDetail = () => {
   const [asset, setAsset] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false); // eslint-disable-line no-unused-vars
   const [notes, setNotes] = useState("");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
@@ -74,7 +74,7 @@ const AssetDetail = () => {
   // Controle do formulário de novos periféricos
   const [newPeripheral, setNewPeripheral] = useState("");
   const [isAddingPeripheral, setIsAddingPeripheral] = useState(false);
-  const [peripheralToPrint, setPeripheralToPrint] = useState(null);
+  const [peripheralToPrint, setPeripheralToPrint] = useState(null); // eslint-disable-line no-unused-vars
 
   // Configurações da empresa para impressão de termos
   const [config, setConfig] = useState({
@@ -95,8 +95,8 @@ const AssetDetail = () => {
             ...snap.data(),
             companyName: "Shineray By Sabel",
           }));
-      } catch (error) {
-        console.error(error);
+      } catch (err) {
+        console.error(err);
       }
     };
     loadConfig();
@@ -322,12 +322,13 @@ const AssetDetail = () => {
         }
         setLoading(false);
       },
-      (error) => {
+      (err) => {
+        console.error(err);
         setLoading(false);
       },
     );
     return () => unsubscribe();
-  }, [id, navigate]);
+  }, [id, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ações de usuário e eventos de interface (Movimentação, Manutenção, Anexos...)
 
@@ -383,7 +384,8 @@ const AssetDetail = () => {
       setNewLinkUrl("");
       setNewLinkName("");
       toast.success("Link anexado com sucesso!");
-    } catch (error) {
+    } catch (err) {
+      console.error(err);
       toast.error("Erro ao salvar link.");
     } finally {
       setIsAddingLink(false);
@@ -406,7 +408,8 @@ const AssetDetail = () => {
         },
       );
       toast.success("Link removido.");
-    } catch (error) {
+    } catch (err) {
+      console.error(err);
       toast.error("Erro ao remover link.");
     }
   };
@@ -430,7 +433,8 @@ const AssetDetail = () => {
       );
       setNewPeripheral("");
       toast.success("Acessório vinculado.");
-    } catch (error) {
+    } catch (err) {
+      console.error(err);
       toast.error("Erro ao salvar acessório.");
     } finally {
       setIsAddingPeripheral(false);
@@ -455,7 +459,8 @@ const AssetDetail = () => {
         },
       );
       toast.success("Acessório removido.");
-    } catch (error) {
+    } catch (err) {
+      console.error(err);
       toast.error("Erro ao remover acessório.");
     }
   };
@@ -467,7 +472,8 @@ const AssetDetail = () => {
         await deleteAsset(id);
         alert("Excluído.");
         navigate("/assets");
-      } catch (error) {
+      } catch (err) {
+        console.error(err);
         alert("Erro.");
         setIsDeleting(false);
       }
@@ -830,16 +836,22 @@ const AssetDetail = () => {
             </h1>
 
             <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-sm font-medium text-gray-500">
-              <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+              <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100 group">
                 <Tag size={16} className="text-black" />
                 <span className="font-mono font-bold text-gray-900">
                   {asset.internalId}
                 </span>
+                <button onClick={() => { navigator.clipboard.writeText(asset.internalId); toast.success("Patrimônio copiado!"); }} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-black transition-all" title="Copiar Patrimônio">
+                  <Copy size={14} />
+                </button>
               </div>
               {asset.serialNumber && (
-                <div className="flex items-center gap-2 px-2 py-1.5">
+                <div className="flex items-center gap-2 px-2 py-1.5 group">
                   <BarcodeIcon className="text-gray-400" />
                   <span className="font-mono">SN: {asset.serialNumber}</span>
+                  <button onClick={() => { navigator.clipboard.writeText(asset.serialNumber); toast.success("Serial copiado!"); }} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-black transition-all" title="Copiar Serial">
+                    <Copy size={14} />
+                  </button>
                 </div>
               )}
               <div className="flex items-center gap-2 px-2 py-1.5">
@@ -1269,7 +1281,7 @@ const SpecItem = ({ label, value, fontMono, copyable }) => (
         <button
           onClick={() => {
             navigator.clipboard.writeText(value);
-            alert("Copiado!");
+            toast.success(`${label} copiado!`);
           }}
           className="text-gray-300 hover:text-black transition-colors"
         >

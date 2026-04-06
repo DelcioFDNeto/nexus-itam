@@ -53,6 +53,7 @@ const SettingsPage = () => {
       await setDoc(doc(db, 'settings', 'general'), config);
       toast.success("Configurações atualizadas com sucesso!");
     } catch (error) {
+      console.error(error);
       toast.error("Erro ao salvar.");
     } finally {
       setLoading(false);

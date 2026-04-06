@@ -4,15 +4,27 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { useNavigate } from 'react-router-dom';
 import { X, Camera, AlertTriangle, RefreshCcw } from 'lucide-react';
 
-// Som de Bip simples (Base64 para não precisar de arquivo)
-const beepSound = "data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU"; // (Versão curta placeholder)
+// Som de Bip simples (placeholder, reservado para uso futuro)
+// const beepSound = ...;
 
 const QRScanner = ({ onClose, onScan }) => {
   const navigate = useNavigate();
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [lastScan, setLastScan] = useState(null);
+  const [lastScan] = useState(null);
   const scannerRef = useRef(null);
+
+  function handleScanSuccess(decodedText) {
+    const text = decodedText.trim();
+    
+    if (onScan) {
+        onScan(text);
+    } else {
+        if (scannerRef.current) scannerRef.current.pause();
+        navigate(`/assets/${text}`);
+        if (onClose) onClose();
+    }
+  }
 
   useEffect(() => {
     const elementId = "reader";
@@ -36,7 +48,6 @@ const QRScanner = ({ onClose, onScan }) => {
             aspectRatio: 1.0
           },
           (decodedText) => {
-            // Previne leituras duplicadas muito rápidas (1.5s de delay)
             const now = Date.now();
             if (lastScan && (now - lastScan < 1500) && decodedText === lastScan) return;
             
@@ -59,22 +70,7 @@ const QRScanner = ({ onClose, onScan }) => {
             scanner.stop().then(() => scanner.clear()).catch(() => {});
         }
     };
-  }, []);
-
-  const handleScanSuccess = (decodedText) => {
-    const text = decodedText.trim();
-    
-    // Se tiver função customizada (Auditoria), usa ela
-    if (onScan) {
-        onScan(text);
-        // Pequeno feedback visual/sonoro poderia vir aqui
-    } else {
-        // Comportamento padrão (Navegar)
-        if (scannerRef.current) scannerRef.current.pause();
-        navigate(`/assets/${text}`);
-        if (onClose) onClose();
-    }
-  };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="fixed inset-0 bg-black/95 z-[9999] flex flex-col items-center justify-center p-4">

@@ -1,7 +1,6 @@
 // src/pages/ImportData.jsx
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import * as XLSX from 'xlsx';
 import { db } from '../services/firebase';
 import { collection, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import { 
@@ -122,7 +121,6 @@ const ImportData = () => {
   const fileInputRef = useRef(null);
   
   const [selectedType, setSelectedType] = useState('assets');
-  const [data, setData] = useState([]);
   const [fileAnalysis, setFileAnalysis] = useState(null); // { filename, totalRows, missingCols: [], sample: [] }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -131,7 +129,8 @@ const ImportData = () => {
   
   const currentSchema = IMPORT_SCHEMAS[selectedType];
 
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
+    const XLSX = await import("xlsx");
     const templateRow = {};
     currentSchema.requiredCols.forEach(col => templateRow[col] = `(Obrigatório)`);
     currentSchema.optionalCols.forEach(col => templateRow[col] = `(Opcional)`);
@@ -152,7 +151,6 @@ const ImportData = () => {
   const processFile = (file) => {
       setError('');
       setFileAnalysis(null);
-      setData([]);
 
       const reader = new FileReader();
       
@@ -185,8 +183,9 @@ const ImportData = () => {
       } 
       // Leitura da típica planilha comercial originária de humanos e setores administrativos
       else {
-          reader.onload = (evt) => {
+          reader.onload = async (evt) => {
               try {
+                  const XLSX = await import("xlsx");
                   const bstr = evt.target.result;
                   const wb = XLSX.read(bstr, { type: 'binary' });
                   const wsname = wb.SheetNames[0];
