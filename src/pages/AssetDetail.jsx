@@ -500,8 +500,20 @@ const AssetDetail = () => {
       showPrinterInfo) &&
     asset.specs?.ip;
   const expandLocation = (loc) => loc || "Local não definido";
-  const formatDate = (d) =>
-    d ? new Date(d).toLocaleDateString("pt-BR") : "N/A";
+  const formatDate = (d) => {
+    if (!d) return "N/A";
+    let date;
+    if (d?.toDate) {
+      // Firestore Timestamp
+      date = d.toDate();
+    } else if (d?.seconds) {
+      // Firestore Timestamp serializado
+      date = new Date(d.seconds * 1000);
+    } else {
+      date = new Date(d);
+    }
+    return isNaN(date.getTime()) ? "N/A" : date.toLocaleDateString("pt-BR");
+  };
   const getBannerColor = () => {
     const s = asset.status.toLowerCase();
     if (s === "entregue") return "bg-purple-600";
