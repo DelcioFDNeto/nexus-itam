@@ -265,26 +265,32 @@ const AssetDetail = () => {
   @page { size: auto; margin: 5mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { margin: 0; padding: 10px; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: Arial, sans-serif; }
-  .label { width: 5cm; height: 2.5cm; padding: 2px; border: 1px solid black; border-radius: 4px; display: flex; align-items: center; gap: 3px; overflow: hidden; }
-  .qr { width: 45px; height: 45px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-  .info { display: flex; flex-direction: column; height: 100%; flex-grow: 1; justify-content: space-between; }
-  .logo-row { height: 22px; border-bottom: 0.5px solid #ccc; margin-bottom: 1px; display: flex; justify-content: center; }
-  .logo-row img { height: 100%; }
-  .id-section { display: flex; flex-direction: column; line-height: 0.9; }
-  .id-value { font-size: 10px; font-weight: 900; font-family: monospace; }
-  .peri-name { font-size: 6px; font-weight: bold; text-transform: uppercase; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .footer-row { border-top: 0.5px solid #000; padding-top: 1px; margin-top: auto; text-align: right; }
-  .footer-row p { margin: 0; font-size: 5px; font-weight: 900; }
+  .label { width: 5cm; height: 2.5cm; padding: 3px; border: 1.5px solid black; border-radius: 4px; display: flex; align-items: center; gap: 4px; overflow: hidden; background: white; }
+  .qr { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .info { display: flex; flex-direction: column; height: 100%; flex-grow: 1; justify-content: space-between; overflow: hidden; }
+  .logo-row { height: 18px; display: flex; align-items: center; justify-content: flex-start; border-bottom: 1px solid #eee; padding-bottom: 2px; }
+  .logo-row img { height: 100%; max-height: 16px; }
+  .id-section { display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+  .id-label { font-size: 4.5px; font-weight: bold; color: #666; text-transform: uppercase; line-height: 1; }
+  .id-value { font-size: 11px; font-weight: 900; color: black; font-family: monospace; line-height: 1; letter-spacing: -0.2px; }
+  .peri-name { font-size: 6px; font-weight: bold; color: #333; text-transform: uppercase; white-space: nowrap; max-width: 95px; overflow: hidden; text-overflow: ellipsis; line-height: 1.1; }
+  .footer-row { border-top: 1px solid #000; padding-top: 1px; margin-top: auto; display: flex; justify-content: space-between; align-items: center; }
+  .footer-left { font-size: 4px; font-weight: bold; color: #444; }
+  .footer-right { font-size: 5px; font-weight: 900; color: #000; }
 </style></head><body>
   <div class="label">
     <div class="qr">${qrSvg}</div>
     <div class="info">
       <div class="logo-row"><img src="${window.location.origin}/logo.png" alt="Logo" /></div>
       <div class="id-section">
+        <span class="id-label">Patrimônio / Periférico</span>
         <span class="id-value">${asset.internalId}</span>
         <span class="peri-name">${item.name || 'Acessório'}</span>
       </div>
-      <div class="footer-row"><p>TI BYSABEL</p></div>
+      <div class="footer-row">
+        <span class="footer-left">SUPORTE TI</span>
+        <span class="footer-right">shiadmti@gmail.com</span>
+      </div>
     </div>
   </div>
 </body></html>`;
@@ -659,12 +665,13 @@ const AssetDetail = () => {
           style={{
             width: "5cm",
             height: "2.5cm",
-            padding: "2px",
-            border: "1px solid black",
+            padding: "3px",
+            border: "1.5px solid black",
             borderRadius: "4px",
             display: "flex",
             alignItems: "center",
-            gap: "3px",
+            gap: "4px",
+            backgroundColor: "white",
             fontFamily: "Arial, sans-serif",
             boxSizing: "border-box",
             pageBreakInside: "avoid",
@@ -673,8 +680,8 @@ const AssetDetail = () => {
         >
           <div
             style={{
-              width: "45px",
-              height: "45px",
+              width: "44px",
+              height: "44px",
               flexShrink: 0,
               display: "flex",
               alignItems: "center",
@@ -690,31 +697,48 @@ const AssetDetail = () => {
               height: "100%",
               flexGrow: 1,
               justifyContent: "space-between",
+              overflow: "hidden",
             }}
           >
             <div
               style={{
-                height: "22px",
-                borderBottom: "0.5px solid #ccc",
-                marginBottom: "1px",
+                height: "18px",
                 display: "flex",
-                justifyContent: "center",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                borderBottom: "1px solid #eee",
+                paddingBottom: "2px",
               }}
             >
-              <img src="/logo.png" style={{ height: "100%" }} alt="Logo" />
+              <img src="/logo.png" style={{ height: "100%", maxHeight: "16px" }} alt="Logo" />
             </div>
             <div
               style={{
                 display: "flex",
                 flexDirection: "column",
-                lineHeight: 0.9,
+                justifyContent: "center",
+                gap: "1px",
               }}
             >
               <span
                 style={{
-                  fontSize: "10px",
+                  fontSize: "4.5px",
+                  fontWeight: "bold",
+                  color: "#666",
+                  textTransform: "uppercase",
+                  lineHeight: "1",
+                }}
+              >
+                Patrimônio / Periférico
+              </span>
+              <span
+                style={{
+                  fontSize: "11px",
                   fontWeight: "900",
                   fontFamily: "monospace",
+                  color: "black",
+                  lineHeight: "1",
+                  letterSpacing: "-0.2px",
                 }}
               >
                 {asset.internalId}
@@ -724,10 +748,12 @@ const AssetDetail = () => {
                   fontSize: "6px",
                   fontWeight: "bold",
                   textTransform: "uppercase",
-                  maxWidth: "80px",
+                  color: "#333",
+                  maxWidth: "95px",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
+                  lineHeight: "1.1",
                 }}
               >
                 {peripheralToPrint?.name || "Acessório"}
@@ -735,21 +761,32 @@ const AssetDetail = () => {
             </div>
             <div
               style={{
-                borderTop: "0.5px solid #000",
+                borderTop: "1px solid #000",
                 paddingTop: "1px",
                 marginTop: "auto",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
               }}
             >
-              <p
+              <span
                 style={{
-                  margin: 0,
-                  fontSize: "5px",
-                  fontWeight: "900",
-                  textAlign: "right",
+                  fontSize: "4px",
+                  fontWeight: "bold",
+                  color: "#444",
                 }}
               >
-                TI BYSABEL
-              </p>
+                SUPORTE TI
+              </span>
+              <span
+                style={{
+                  fontSize: "5px",
+                  fontWeight: "900",
+                  color: "#000",
+                }}
+              >
+                shiadmti@gmail.com
+              </span>
             </div>
           </div>
         </div>
