@@ -6,14 +6,19 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+firebase-debug.log*
+firebase-debug.*.log*
 
-# Dependências (A Vercel instala isso lá, não suba!)
+# Compilação e Dependências (Não Enviar)
 node_modules
 dist
 dist-ssr
-*.local
 
-# Editor directories and files
+# Arquivos de Configuração Local e Cache
+*.local
+.firebase/
+
+# Diretórios e Metadados do Sistema/Editor
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -24,7 +29,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# Variáveis de Ambiente (SEGURANÇA MÁXIMA)
+# Configurações Críticas (Segurança Máxima)
 .env
 .env.*
 !.env.example
