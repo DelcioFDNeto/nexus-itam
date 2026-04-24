@@ -1,6 +1,7 @@
 // src/pages/ProjectsPage.jsx
 import React, { useState, useEffect } from 'react';
 import { getProjects, createProject, deleteProject } from '../services/projectService';
+import { getEmployees } from '../services/employeeService';
 import { 
   FolderGit2, Plus, Calendar, Trash2, ArrowRight, 
   GitBranch, CheckSquare, Square, X, Users, LayoutGrid, List, Kanban 
@@ -10,19 +11,21 @@ import { useNavigate } from 'react-router-dom';
 const ProjectsPage = () => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('grid'); // Define a escolha visual do usuário (tabelão em grid ou colunas de Kanban)
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Guarda os rascunhos de digitação temporários do modal de "Novo Projeto"
   const [formData, setFormData] = useState({
-    name: '', description: '', status: 'Planejamento', priority: 'Média', leader: '', deadline: '', version: '2.0'
+    name: '', description: '', status: 'Planejamento', priority: 'Média', leader: '', deadline: '', version: '2.0', team: []
   });
 
   async function loadProjects() {
     setLoading(true);
-    const data = await getProjects();
-    setProjects(data);
+    const [pData, eData] = await Promise.all([getProjects(), getEmployees()]);
+    setProjects(pData);
+    setEmployees(eData);
     setLoading(false);
   }
 
@@ -39,7 +42,7 @@ const ProjectsPage = () => {
         progress: 0
     };
     await createProject(enrichedData);
-    setFormData({ name: '', description: '', status: 'Planejamento', priority: 'Média', leader: '', deadline: '', version: '2.0' });
+    setFormData({ name: '', description: '', status: 'Planejamento', priority: 'Média', leader: '', deadline: '', version: '2.0', team: [] });
     setIsModalOpen(false);
     loadProjects();
   };
@@ -104,16 +107,26 @@ const ProjectsPage = () => {
             </div>
 
             <div className="pt-3 border-t border-gray-100 flex justify-between items-center">
-                <div className="flex -space-x-2">
-                     {/* Espaço temporário reservado para colar as miniaturas com as fotos da equipe no futuro */}
-                    {[1,2,3].map(i => (
-                        <div key={i} className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-[8px] font-bold text-gray-500">U{i}</div>
-                    ))}
-                </div>
-                <div className="flex items-center gap-2">
-                     <span className="text-[10px] font-bold text-gray-400 flex items-center gap-1">
-                        <Calendar size={12}/> {project.deadline ? new Date(project.deadline).toLocaleDateString('pt-BR').slice(0,5) : 'ND'}
-                     </span>
+                 <div className="flex -space-x-2">
+                     {/* Círculos dinâmicos da equipe */}
+                     {(project.team || []).length > 0 ? (
+                         project.team.map((memberName, i) => (
+                             <div key={i} title={memberName} className="w-6 h-6 rounded-full bg-indigo-50 border-2 border-white flex items-center justify-center text-[8px] font-black text-brand uppercase shadow-sm">
+                                 {memberName.substring(0,2)}
+                             </div>
+                         ))
+                     ) : project.leader ? (
+                         <div title={project.leader} className="w-6 h-6 rounded-full bg-indigo-50 border-2 border-white flex items-center justify-center text-[8px] font-black text-brand uppercase shadow-sm">
+                             {project.leader.substring(0,2)}
+                         </div>
+                     ) : (
+                         <div title="Sem Equipe" className="w-6 h-6 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-[8px] font-black text-gray-400 uppercase shadow-sm">--</div>
+                     )}
+                 </div>
+                 <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold flex items-center gap-1 ${project.deadline ? 'text-gray-600' : 'text-gray-400'}`}>
+                         <Calendar size={12}/> {project.deadline ? new Date(project.deadline).toLocaleDateString('pt-BR', {timeZone: 'UTC'}).slice(0,5) : 'S/ Data'}
+                      </span>
                      <button onClick={(e) => handleDelete(project.id, e)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
                 </div>
             </div>
@@ -200,11 +213,29 @@ const ProjectsPage = () => {
               <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-3 border rounded-xl" rows="3" placeholder="Descrição macro..."></textarea>
               <div className="grid grid-cols-2 gap-4">
                   <input value={formData.version} onChange={e => setFormData({...formData, version: e.target.value})} className="w-full p-3 border rounded-xl" placeholder="Versão (1.0)" />
-                  <input value={formData.leader} onChange={e => setFormData({...formData, leader: e.target.value})} className="w-full p-3 border rounded-xl" placeholder="Líder" />
+                  <input type="date" value={formData.deadline} onChange={e => setFormData({...formData, deadline: e.target.value})} className="w-full p-3 border rounded-xl text-gray-600" title="Data Limite" />
               </div>
-              <div className="flex gap-2 pt-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-gray-100 rounded-xl font-bold">Cancelar</button>
-                <button type="submit" className="flex-1 py-3 bg-black text-white rounded-xl font-bold">Criar</button>
+              <div className="grid grid-cols-2 gap-4">
+                  <select value={formData.leader} onChange={e => setFormData({...formData, leader: e.target.value})} className="w-full p-3 border rounded-xl bg-white text-gray-600">
+                      <option value="">Líder do Projeto...</option>
+                      {employees.map(emp => <option key={emp.id} value={emp.name}>{emp.name}</option>)}
+                  </select>
+                  <div className="relative">
+                     <select 
+                        multiple 
+                        value={formData.team} 
+                        onChange={e => setFormData({...formData, team: Array.from(e.target.selectedOptions, option => option.value)})} 
+                        className="w-full p-3 border rounded-xl bg-white text-xs h-[50px] custom-scrollbar focus:h-[120px] absolute z-20 outline-none transition-all shadow-sm cursor-pointer"
+                        title="Segure CTRL para selecionar múltiplos"
+                     >
+                         {employees.map(emp => <option key={`t-${emp.id}`} value={emp.name}>{emp.name}</option>)}
+                     </select>
+                     <div className="absolute top-[-8px] text-[10px] left-3 bg-white px-1 font-bold text-brand z-30">Equipe Técnica (Segure CTRL)</div>
+                  </div>
+              </div>
+              <div className="flex gap-2 pt-12">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-gray-100 rounded-xl font-bold hover:bg-gray-200">Cancelar</button>
+                <button type="submit" className="flex-1 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-900 shadow-md">Criar Projeto</button>
               </div>
             </form>
           </div>
