@@ -10,9 +10,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: 'Shineray ITAM',
+        name: 'Nexus ITAM',
         short_name: 'ITAM',
-        description: 'Gestão de Ativos Shineray Label',
+        description: 'Gestão de Ativos Nexus ITAM',
         theme_color: '#ffffff',
         background_color: '#ffffff',
         display: 'standalone', // Remove a barra de navegação do navegador

@@ -82,7 +82,7 @@ const QRScanner = ({ onClose, onScan }) => {
         <div className="bg-gray-800 p-4 text-center text-white">
             <h3 className="font-bold text-lg flex items-center justify-center gap-2">
                 <Camera size={20} className="text-brand" /> 
-                {onScan ? "Modo Auditoria (Bipando...)" : "Scanner BySabel"}
+                {onScan ? "Modo Auditoria (Bipando...)" : "Scanner Nexus"}
             </h3>
         </div>
         

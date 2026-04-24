@@ -5,7 +5,6 @@
 @layer base {
   :root {
     /* PREMIUM PALETTE */
-    --brand-red: #e61e05;
     --brand-dark: #0a0a0a;
     --glass-bg: rgba(255, 255, 255, 0.85);
     --glass-border: rgba(255, 255, 255, 0.5);
@@ -59,13 +58,13 @@
 
 @layer utilities {
   .text-brand {
-    @apply text-[#E61E05];
+    @apply text-[#4F46E5];
   }
   .bg-brand {
-    @apply bg-[#E61E05];
+    @apply bg-[#4F46E5];
   }
   .border-brand {
-    @apply border-[#E61E05];
+    @apply border-[#4F46E5];
   }
 }
 

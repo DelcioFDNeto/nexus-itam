@@ -203,7 +203,7 @@ const EmployeeManager = () => {
                       
                       <div className="mt-auto space-y-2 pt-3 border-t border-gray-50">
                           <div className="flex items-center gap-2 text-xs text-gray-600">
-                              <Briefcase size={14} className="text-shineray"/> 
+                              <Briefcase size={14} className="text-brand"/> 
                               <span className="font-bold bg-gray-100 text-gray-700 px-2 py-0.5 rounded">{emp.sector}</span>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-gray-600">

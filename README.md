@@ -1,12 +1,12 @@
-# BySabel IT Asset Manager (ITAM) v2.0 🚀
+# Nexus IT Asset Manager (ITAM) v2.0 🚀
 
 > **Sistema Corporativo de Gestão de Ativos de TI, Licenciamento e Auditoria.**
 
-![Shield](https://img.shields.io/badge/Versão-2.0.0-red?style=for-the-badge&logo=firebase)
+![Shield](https://img.shields.io/badge/Versão-2.0.0-indigo?style=for-the-badge&logo=firebase)
 ![Shield](https://img.shields.io/badge/Status-Estável-green?style=for-the-badge&logo=react)
 ![Shield](https://img.shields.io/badge/License-Private-blue?style=for-the-badge)
 
-O **BySabel ITAM** é uma plataforma robusta desenvolvida para centralizar, controlar e auditar todo o parque tecnológico da empresa. Com foco em usabilidade (UI/UX 2.0) e conformidade jurídica, o sistema oferece desde o rastreamento de hardware até a gestão contratual de colaboradores.
+O **Nexus ITAM** é uma plataforma robusta desenvolvida para centralizar, controlar e auditar todo o parque tecnológico da empresa. Com foco em usabilidade (UI/UX 2.0) e conformidade jurídica, o sistema oferece desde o rastreamento de hardware até a gestão contratual de colaboradores.
 
 ---
 
@@ -86,8 +86,8 @@ O sistema foi construído utilizando as tecnologias mais modernas do mercado (20
 1. **Clone o repositório**
 
    ```bash
-   git clone https://github.com/DelcioFDNeto/itam-shineray.git
-   cd itam-shineray
+   git clone https://github.com/DelcioFDNeto/nexus-itam.git
+   cd nexus-itam
    ```
 
 2. **Instale as dependências**
@@ -118,11 +118,11 @@ O sistema foi construído utilizando as tecnologias mais modernas do mercado (20
 
 ## 📜 Histórico de Versões
 
-- **v2.0.0 (Atual)**: Rebranding "BySabel", Nova UI/UX, Termo Jurídico CLT, Backup System 2.0.
+- **v2.0.0 (Atual)**: Rebranding "Nexus ITAM", Nova UI/UX Glassmórfica, Termo Jurídico CLT, Backup System 2.0.
 - **v1.5.0**: Módulo de Auditoria Mobile com QR Code.
-- **v1.0.0**: Lançamento inicial (Legacy).
+- **v1.0.0**: Lançamento inicial (Legacy BySabel).
 
 ---
 
-© 2026 **BySabel ITAM**. Todos os direitos reservados.
+© 2026 **Nexus ITAM**. Todos os direitos reservados.
 _Desenvolvido com orgulho por Délcio Farias Dias Neto._
