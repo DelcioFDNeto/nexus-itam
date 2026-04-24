@@ -7,6 +7,7 @@ import { Toaster } from 'sonner';
 import { 
   Home, Box, QrCode, Search, Plus, Settings, Menu, Bell, User
 } from 'lucide-react';
+import Logo from './Logo';
 
 const Layout = ({ children }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -84,12 +85,9 @@ const Layout = ({ children }) => {
                   <button onClick={() => setIsMobileMenuOpen(true)} className="p-1 -ml-1 text-gray-800 hover:text-black">
                       <Menu size={24} />
                   </button>
-                  <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center shadow-md">
-                      <span className="text-white font-black text-xs">BY</span>
-                  </div>
-                  <div>
-                      <h1 className="font-black text-sm text-gray-900 leading-none">BySabel</h1>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Mobile Manager</p>
+                  <div className="flex flex-col">
+                      <Logo size="sm" />
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5 ml-8">Mobile Manager</p>
                   </div>
               </div>
               
@@ -122,7 +120,7 @@ const Layout = ({ children }) => {
 
                   {/* CENTER ACTION BUTTON */}
                   <Link to="/assets/new" className="-mt-8">
-                       <div className="w-14 h-14 bg-[#E61E05] rounded-full flex items-center justify-center shadow-lg shadow-red-900/50 border-4 border-[#FAFAFA] transform active:scale-90 transition-transform">
+                       <div className="w-14 h-14 bg-brand rounded-full flex items-center justify-center shadow-lg shadow-brand/50 border-4 border-[#FAFAFA] transform active:scale-90 transition-transform">
                            <Plus size={28} className="text-white" />
                        </div>
                   </Link>

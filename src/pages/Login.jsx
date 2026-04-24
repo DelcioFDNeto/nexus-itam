@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Lock, Mail, ArrowRight, AlertCircle, KeyRound, X, CheckCircle } from 'lucide-react';
-import logo from '../assets/logo.png';
+import Logo from '../components/Logo';
 
 const Login = () => {
   // Armazena as credenciais digitadas e o status de carregamento da tela
@@ -68,16 +68,16 @@ const Login = () => {
     <div className="min-h-screen flex items-center justify-center bg-neutral-900 p-4 relative overflow-hidden">
       
       {/* Luzes difusas no fundo da tela compondo a aura premium corporativa */}
-      <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-red-900 via-red-600 to-red-900"></div>
-      <div className="hidden md:block absolute -top-20 -right-20 w-96 h-96 bg-red-600/10 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-brand-dark via-brand to-brand-dark"></div>
+      <div className="hidden md:block absolute -top-20 -right-20 w-96 h-96 bg-brand/10 rounded-full blur-3xl pointer-events-none"></div>
       <div className="hidden md:block absolute -bottom-20 -left-20 w-96 h-96 bg-blue-600/5 rounded-full blur-3xl pointer-events-none"></div>
 
       {/* Quadro branco robusto onde toda a interação de dados ocorre */}
       <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-gray-100 relative z-10">
         
         <div className="flex flex-col items-center mb-8">
-          <div className="px-6 py-3 bg-white rounded-xl mb-6 shadow-md border border-gray-100 transform hover:scale-105 transition-transform duration-300">
-              <img src={logo} alt="BySabel ITAM" className="h-12 object-contain" />
+          <div className="mb-6 transform hover:scale-105 transition-transform duration-300">
+              <Logo size="lg" />
           </div>
           <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tighter text-center">Portal TI</h2>
           <p className="text-xs font-medium text-gray-400 mt-1 text-center">Gestão de Ativos & Infraestrutura</p>
@@ -98,7 +98,7 @@ const Login = () => {
                 type="email" 
                 required 
                 className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:outline-none focus:border-black focus:bg-white transition-all font-bold text-gray-900 text-sm"
-                placeholder="usuario@bysabel.com.br"
+                placeholder="usuario@nexusitam.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -123,7 +123,7 @@ const Login = () => {
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full bg-red-600 text-white font-black py-3.5 rounded-xl hover:bg-red-700 active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 text-xs uppercase tracking-widest mt-2"
+            className="w-full bg-brand text-white font-black py-3.5 rounded-xl hover:bg-brand-dark active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-brand/30 text-xs uppercase tracking-widest mt-2"
           >
             {loading ? 'Validando...' : <>Acessar Sistema <ArrowRight size={18} /></>}
           </button>
@@ -133,14 +133,14 @@ const Login = () => {
         <div className="mt-4 text-center">
             <button 
                 onClick={() => setIsResetOpen(true)}
-                className="text-xs text-gray-400 hover:text-red-600 font-bold transition-colors"
+                className="text-xs text-gray-400 hover:text-brand font-bold transition-colors"
             >
                 Esqueceu a senha?
             </button>
         </div>
 
         <div className="mt-6 text-center border-t border-gray-100 pt-4">
-          <p className="text-[10px] text-gray-400 font-medium">BySabel © {new Date().getFullYear()}</p>
+          <p className="text-[10px] text-gray-400 font-medium">Nexus ITAM © {new Date().getFullYear()}</p>
         </div>
       </div>
 
@@ -151,7 +151,7 @@ const Login = () => {
                 <button onClick={() => setIsResetOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black"><X size={20}/></button>
                 
                 <div className="mb-6 text-center">
-                    <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <div className="w-12 h-12 bg-indigo-50 text-brand rounded-full flex items-center justify-center mx-auto mb-3">
                         <KeyRound size={24} />
                     </div>
                     <h3 className="font-black text-gray-900 text-lg">Recuperar Acesso</h3>
@@ -172,7 +172,7 @@ const Login = () => {
                                 type="email" 
                                 required 
                                 className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-black transition-all text-sm font-bold"
-                                placeholder="usuario@bysabel.com.br"
+                                placeholder="usuario@nexusitam.com"
                                 value={resetEmail}
                                 onChange={(e) => setResetEmail(e.target.value)}
                             />
