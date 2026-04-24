@@ -56,7 +56,7 @@ const Layout = ({ children }) => {
       {/* ----------------------------------------------------- */}
       
       {/* 1. SIDEBAR DESKTOP */}
-      <div className={`hidden md:block fixed h-full z-40 transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1) ${isSidebarCollapsed ? 'w[88px]' : 'w-[280px]'}`}>
+      <div className={`hidden md:block fixed h-full z-40 transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1) ${isSidebarCollapsed ? 'w-[100px]' : 'w-[280px]'}`}>
         <Sidebar 
           isCollapsed={isSidebarCollapsed} 
           toggleCollapse={toggleSidebar}
@@ -65,7 +65,7 @@ const Layout = ({ children }) => {
       </div>
 
       {/* 2. DESKTOP MAIN AREA */}
-      <div className={`hidden md:flex flex-1 flex-col min-h-screen transition-all duration-500 ${isSidebarCollapsed ? 'ml-[88px]' : 'ml-[280px]'}`}>
+      <div className={`hidden md:flex flex-1 flex-col min-h-screen transition-all duration-500 ${isSidebarCollapsed ? 'ml-[100px]' : 'ml-[280px]'}`}>
           {/* Header Desktop (Optional, if needed for breadcrumbs/profile) */}
           <main className="flex-1 w-full max-w-[1920px] mx-auto animate-fade-in p-6">
               {children}

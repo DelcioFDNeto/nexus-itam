@@ -23,13 +23,13 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
     }
   };
 
-  // Lógica de Item Ativo (Neon Effect)
+  // Lógica de Item Ativo (Luxo / SaaS Premium)
   const isActive = (path) => {
     const active = location.pathname.startsWith(path) && (path !== '/' || location.pathname === '/');
     if (active) {
-        return "bg-neutral-800 text-white shadow-[0_0_15px_rgba(255,255,255,0.1)] border-l-4 border-brand";
+        return "bg-gradient-to-r from-brand to-indigo-500 text-white shadow-md shadow-brand/30 border-none font-bold translate-x-1";
     }
-    return "text-gray-500 hover:bg-neutral-800 hover:text-white";
+    return "text-slate-500 hover:bg-indigo-50 hover:text-brand hover:translate-x-1";
   };
 
   // Organização dos Menus
@@ -66,24 +66,24 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
         onClick={onClose}
       />
 
-      {/* Sidebar Container */}
+      {/* Sidebar Container - Floating Island */}
       <div className={`
-        fixed inset-y-0 left-0 z-40 bg-[#0A0A0A] border-r border-[#1F1F1F] 
-        flex flex-col shadow-2xl transition-all duration-300 ease-in-out
-        md:static md:h-screen
+        fixed z-40 bg-white/70 backdrop-blur-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.06)] 
+        flex flex-col transition-all duration-300 ease-in-out
+        inset-y-0 left-0 md:top-4 md:bottom-4 md:left-4 md:rounded-[2rem]
         ${isOpen ? 'translate-x-0 w-64' : '-translate-x-full md:translate-x-0'}
-        ${isCollapsed ? 'md:w-20' : 'md:w-64'}
+        ${isCollapsed ? 'md:w-20' : 'md:w-[260px]'}
       `}>
         
         {/* --- 1. HEADER (LOGO + TOGGLE) --- */}
-        <div className={`h-20 flex items-center ${isCollapsed ? 'justify-center' : 'justify-between px-6'} bg-[#0A0A0A] relative shrink-0 border-b border-[#1F1F1F]`}>
+        <div className={`h-24 flex items-center ${isCollapsed ? 'justify-center' : 'justify-between px-7'} bg-transparent relative shrink-0 border-b border-gray-100/50`}>
            
            {!isCollapsed && (
-             <div className="flex items-center gap-2 animate-in fade-in duration-300">
-               <div className="w-8 h-8 bg-gradient-to-br from-brand to-brand-dark rounded-lg flex items-center justify-center shadow-lg shadow-brand/40">
+             <div className="flex items-center gap-3 animate-in fade-in duration-300">
+               <div className="w-9 h-9 bg-gradient-to-br from-brand to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-brand/30 ring-4 ring-indigo-50">
                  <Layers className="text-white w-4 h-4" strokeWidth={2.5} />
                </div>
-               <span className="font-bold text-white tracking-tight">Nexus<span className="text-brand">ITAM</span> <span className="text-[9px] bg-brand-dark/50 text-indigo-200 px-1 py-0.5 rounded ml-1 border border-brand/50">v2.0</span></span>
+               <span className="font-black text-slate-800 tracking-tight text-lg">Nexus<span className="text-brand">ITAM</span> <span className="text-[9px] bg-indigo-50 text-brand px-1.5 py-0.5 rounded-full ml-1 border border-indigo-100 font-black relative -top-1 shadow-sm">v2.0</span></span>
              </div>
            )}
 
@@ -96,9 +96,9 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
            {/* Botão de Collapse (Desktop) */}
            <button 
              onClick={toggleCollapse} 
-             className={`hidden md:flex w-6 h-6 items-center justify-center rounded-full bg-[#1F1F1F] text-gray-400 hover:text-white hover:bg-brand transition-all absolute -right-3 top-7 border border-[#0A0A0A] z-50`}
+             className={`hidden md:flex w-7 h-7 items-center justify-center rounded-full bg-white text-gray-400 hover:text-brand hover:bg-indigo-50 transition-all absolute -right-3.5 top-8 border border-gray-100 shadow-md z-50`}
            >
-             {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+             {isCollapsed ? <ChevronRight size={14} strokeWidth={3} /> : <ChevronLeft size={14} strokeWidth={3} />}
            </button>
 
            {/* Botão Fechar (Mobile) */}
@@ -111,27 +111,27 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
         <nav className="flex-1 py-6 space-y-6 overflow-y-auto custom-sidebar-scroll">
           
           {/* BOTÃO NOVO (CONDENSADO SE COLAPSADO) */}
-          <div className="px-3">
+          <div className="px-5">
              <Link 
                 to="/assets/new"
                 onClick={onClose}
-                className={`flex items-center justify-center gap-3 bg-white text-black hover:bg-gray-200 transition-all group overflow-hidden ${isCollapsed ? 'rounded-xl w-12 h-12 mx-auto' : 'rounded-lg px-4 py-3'}`}
+                className={`flex items-center justify-center gap-2 bg-slate-900 text-white hover:bg-slate-800 transition-all group overflow-hidden shadow-lg shadow-slate-900/20 active:scale-95 ${isCollapsed ? 'rounded-2xl w-12 h-12 mx-auto' : 'rounded-xl px-4 py-3.5'}`}
                 title="Novo Cadastro"
              >
-                <PlusSquare size={20} className="shrink-0"/> 
+                <PlusSquare size={20} className="shrink-0 text-indigo-300"/> 
                 {!isCollapsed && <span className="font-black text-xs uppercase tracking-wider whitespace-nowrap">Novo Item</span>}
              </Link>
           </div>
 
           {/* BOTÃO BUSCA GLOBAL (COM ATALHO) */}
-          <div className="px-3 mt-2">
+          <div className="px-5 mt-3">
              <button 
                 onClick={() => { if(onSearchClick) onSearchClick(); if(onClose) onClose(); }}
-                className={`flex items-center justify-center gap-3 bg-[#1F1F1F] text-white hover:bg-neutral-800 transition-all group overflow-hidden border border-[#333] ${isCollapsed ? 'rounded-xl w-12 h-12 mx-auto' : 'rounded-lg px-4 py-2.5 w-full'}`}
+                className={`flex items-center justify-center gap-2 bg-white text-slate-700 hover:text-brand hover:border-brand/30 hover:bg-indigo-50/50 transition-all group overflow-hidden border border-gray-200 shadow-sm ${isCollapsed ? 'rounded-2xl w-12 h-12 mx-auto' : 'rounded-xl px-4 py-3 w-full'}`}
                 title="Busca Global (Ctrl+K)"
              >
-                <Search size={20} className="shrink-0 text-gray-400 group-hover:text-white transition-colors"/> 
-                {!isCollapsed && <div className="flex-1 flex items-center justify-between"><span className="font-bold text-xs text-gray-300 group-hover:text-white transition-colors">Busca Global</span><span className="text-[10px] bg-[#333] text-gray-400 px-1.5 py-0.5 rounded border border-[#444] font-mono group-hover:text-white transition-colors tracking-widest hidden lg:block">Ctrl+K</span></div>}
+                <Search size={18} className="shrink-0 text-slate-400 group-hover:text-brand transition-colors"/> 
+                {!isCollapsed && <div className="flex-1 flex items-center justify-between"><span className="font-bold text-xs">Busca Global</span><span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 font-mono tracking-widest hidden lg:block group-hover:bg-indigo-100 group-hover:border-indigo-200 group-hover:text-brand">Ctrl+K</span></div>}
              </button>
           </div>
 
@@ -141,9 +141,9 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
               { title: 'Gestão', items: manageItems },
               { title: 'Sistema', items: systemItems }
           ].map((group, idx) => (
-             <div key={idx} className="space-y-1">
-               {!isCollapsed && <p className="px-6 text-[10px] font-black text-[#525252] uppercase tracking-[0.2em] mb-2 fade-in">{group.title}</p>}
-               {isCollapsed && <div className="h-[1px] bg-[#1F1F1F] mx-4 my-2"></div>}
+             <div key={idx} className="space-y-1 mt-6">
+               {!isCollapsed && <p className="px-7 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{group.title}</p>}
+               {isCollapsed && <div className="h-[1px] bg-gray-100 mx-6 my-4"></div>}
                
                {group.items.map((item) => (
                  <Link 
@@ -151,16 +151,16 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
                     to={item.path} 
                     onClick={onClose} 
                     className={`
-                        flex items-center gap-3 mx-2 rounded-lg transition-all duration-200 group relative
-                        ${isCollapsed ? 'justify-center p-3' : 'px-4 py-2.5'}
+                        flex items-center gap-3 mx-4 rounded-xl transition-all duration-300 group relative
+                        ${isCollapsed ? 'justify-center p-3.5 mx-auto w-12 h-12' : 'px-4 py-3'}
                         ${isActive(item.path)}
                     `}
                     title={isCollapsed ? item.label : ''}
                  >
-                   <span className={`transition-transform duration-300 ${isCollapsed ? '' : 'group-hover:translate-x-1'}`}>
+                   <span className={`transition-transform duration-300`}>
                        {item.icon}
                    </span>
-                   {!isCollapsed && <span className="font-bold text-sm">{item.label}</span>}
+                   {!isCollapsed && <span className="font-bold text-sm tracking-wide">{item.label}</span>}
                    
                    {/* Tooltip Fake no Collapsed */}
                    {isCollapsed && (
@@ -176,14 +176,14 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
         </nav>
 
         {/* --- 3. FOOTER --- */}
-        <div className={`p-4 bg-[#0A0A0A] shrink-0 border-t border-[#1F1F1F] ${isCollapsed ? 'flex justify-center' : ''}`}>
+        <div className={`p-5 bg-transparent shrink-0 mt-auto ${isCollapsed ? 'flex justify-center' : ''}`}>
           <button 
             onClick={handleLogout}
-            className={`flex items-center justify-center gap-2 rounded-lg text-[#525252] hover:bg-neutral-800 hover:text-white transition-all duration-200 group ${isCollapsed ? 'w-10 h-10 p-0' : 'w-full px-4 py-3'}`}
+            className={`flex items-center justify-center gap-2 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-600 transition-all duration-300 group ${isCollapsed ? 'w-12 h-12 p-0' : 'w-full px-4 py-3 bg-gray-50/50 border border-gray-100/50'}`}
             title="Sair"
           >
-            <LogOut size={18} />
-            {!isCollapsed && <span className="font-bold text-xs uppercase tracking-widest">Sair</span>}
+            <LogOut size={18} className="group-hover:scale-110 transition-transform"/>
+            {!isCollapsed && <span className="font-bold text-xs uppercase tracking-widest">Encerrar Sessão</span>}
           </button>
         </div>
 

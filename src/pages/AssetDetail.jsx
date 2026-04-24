@@ -594,7 +594,7 @@ const AssetDetail = () => {
             >
               <img
                 src="/logo.png"
-                alt="BySabel"
+                alt="Nexus ITAM"
                 style={{ height: "100%", maxHeight: "28px" }}
               />
             </div>

@@ -22,7 +22,7 @@ export const generateFullBackup = async () => {
       version: '2.0',
       date: new Date().toISOString(),
       type: 'full_backup',
-      generator: 'BySabel ITAM Backup Service'
+      generator: 'Nexus ITAM Backup Service'
     },
     data: {}
   };
