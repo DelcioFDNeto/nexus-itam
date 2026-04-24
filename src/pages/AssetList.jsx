@@ -201,7 +201,10 @@ const AssetList = () => {
       return `<div class="bulk-label">
         <div class="qr">${qrSvg}</div>
         <div class="info">
-          <div class="logo-row"><img src="${window.location.origin}/logo.png" alt="BySabel" /></div>
+          <div class="logo-row" style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: flex-start; gap: 4px; color: #4F46E5; font-size: 14px; letter-spacing: -0.5px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+            Nexus<span style="color: #111827">ITAM</span>
+          </div>
           <div class="id-section">
             <span class="id-label">Patrimônio</span>
             <span class="id-value">${asset.internalId}</span>
@@ -216,7 +219,7 @@ const AssetList = () => {
     }).join('');
 
     const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Etiquetas_Ativos_BySabel</title>
+<html><head><meta charset="UTF-8"><title>Etiquetas_Ativos_NexusITAM</title>
 <style>
   @page { size: A4; margin: 5mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -247,18 +250,21 @@ const AssetList = () => {
       return `<div class="peri-label">
         <div class="qr">${qrSvg}</div>
         <div class="info">
-          <div class="logo-row"><img src="${window.location.origin}/logo.png" alt="Logo" /></div>
+          <div class="logo-row" style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: center; gap: 3px; color: #4F46E5; font-size: 8px; letter-spacing: -0.2px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+            NEXUS<span style="color: #111827">ITAM</span>
+          </div>
           <div class="id-section">
             <span class="id-value">${peri.parentId}</span>
             <span class="peri-name">${peri.name}</span>
           </div>
-          <div class="footer-row"><p>TI BYSABEL</p></div>
+          <div class="footer-row"><p>NEXUS ITAM</p></div>
         </div>
       </div>`;
     }).join('');
 
     const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Etiquetas_Perifericos_BySabel</title>
+<html><head><meta charset="UTF-8"><title>Etiquetas_Perifericos_NexusITAM</title>
 <style>
   @page { size: A4; margin: 5mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -329,7 +335,7 @@ const AssetList = () => {
     XLSX.utils.book_append_sheet(workbook, worksheet, "Ativos");
     XLSX.writeFile(
       workbook,
-      `Inventario_BySabel_${new Date().toLocaleDateString()}.xlsx`,
+      `Inventario_NexusITAM_${new Date().toLocaleDateString()}.xlsx`,
     );
   };
 

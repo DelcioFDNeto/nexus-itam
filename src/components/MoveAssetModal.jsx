@@ -52,8 +52,8 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200">
         
-        {/* Header Shineray */}
-        <div className="bg-red-600 p-5 flex justify-between items-center text-white shadow-md">
+        {/* Header Modal */}
+        <div className="bg-brand p-5 flex justify-between items-center text-white shadow-md">
           <div>
             <h2 className="text-xl font-black flex items-center gap-2 uppercase tracking-wide">
               <Truck className="text-white" size={24}/> Transferência

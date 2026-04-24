@@ -78,7 +78,7 @@ const AssetDetail = () => {
 
   // Configurações da empresa para impressão de termos
   const [config, setConfig] = useState({
-    companyName: "Shineray By Sabel",
+    companyName: "Nexus ITAM",
     cnpj: "00.000.000/0001-00", // Placeholder
     itManager: "SISTEMA ITAM",
     termTitle: "TERMO DE ENTREGA E RESPONSABILIDADE",
@@ -93,7 +93,7 @@ const AssetDetail = () => {
           setConfig((prev) => ({
             ...prev,
             ...snap.data(),
-            companyName: "Shineray By Sabel",
+            companyName: "Nexus ITAM",
           }));
       } catch (err) {
         console.error(err);
@@ -157,7 +157,10 @@ const AssetDetail = () => {
 </style></head><body>
   <div class="header">
     <div class="header-left">
-      <img src="${window.location.origin}/logo.png" alt="Shineray" class="logo-img" />
+      <div style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: flex-start; gap: 6px; color: #4F46E5; font-size: 24px; letter-spacing: -0.5px; height: 45px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+        NEXUS<span style="color: #111827">ITAM</span>
+      </div>
       <div>
         <h1 style="font-size:20px;margin:0;font-weight:900">${config.companyName.toUpperCase()}</h1>
         <p style="margin:2px 0 0;font-size:10px">CNPJ: 34.249.103/0003-73</p>
@@ -210,7 +213,7 @@ const AssetDetail = () => {
     <div><div class="line"></div><span>${_responsibleName}</span><br/><small>RECEBEDOR(A) / RESPONSÁVEL</small>${!asset.clientCpf ? '<br/><small style="font-size:9px;color:#666">CPF: ___.___.___-__</small>' : ''}</div>
     <div><div class="line"></div><span>${config.itManager}</span><br/><small>GESTOR DE TI</small></div>
   </div>
-  <div class="footer">Documento gerado eletronicamente pelo sistema BySabel ITAM Asset Management. ID: ${id}</div>
+  <div class="footer">Documento gerado eletronicamente pela plataforma corporativa Nexus ITAM. ID: ${id}</div>
 </body></html>`;
     printInNewWindow(html);
   };
@@ -240,7 +243,10 @@ const AssetDetail = () => {
   <div class="label">
     <div class="qr">${qrSvg}</div>
     <div class="info">
-      <div class="logo-row"><img src="${window.location.origin}/logo.png" alt="BySabel" /></div>
+      <div class="logo-row" style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: flex-start; gap: 4px; color: #4F46E5; font-size: 14px; letter-spacing: -0.5px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+            Nexus<span style="color: #111827">ITAM</span>
+      </div>
       <div class="id-section">
         <span class="id-label">Patrimônio</span>
         <span class="id-value">${asset.internalId}</span>
@@ -281,7 +287,10 @@ const AssetDetail = () => {
   <div class="label">
     <div class="qr">${qrSvg}</div>
     <div class="info">
-      <div class="logo-row"><img src="${window.location.origin}/logo.png" alt="Logo" /></div>
+      <div class="logo-row" style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: center; gap: 3px; color: #4F46E5; font-size: 8px; letter-spacing: -0.2px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+            NEXUS<span style="color: #111827">ITAM</span>
+      </div>
       <div class="id-section">
         <span class="id-label">Patrimônio / Periférico</span>
         <span class="id-value">${asset.internalId}</span>

@@ -27,7 +27,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
   const isActive = (path) => {
     const active = location.pathname.startsWith(path) && (path !== '/' || location.pathname === '/');
     if (active) {
-        return "bg-neutral-800 text-white shadow-[0_0_15px_rgba(255,255,255,0.1)] border-l-4 border-red-600";
+        return "bg-neutral-800 text-white shadow-[0_0_15px_rgba(255,255,255,0.1)] border-l-4 border-brand";
     }
     return "text-gray-500 hover:bg-neutral-800 hover:text-white";
   };
@@ -80,23 +80,23 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
            
            {!isCollapsed && (
              <div className="flex items-center gap-2 animate-in fade-in duration-300">
-               <div className="w-8 h-8 bg-gradient-to-br from-red-600 to-red-800 rounded-lg flex items-center justify-center shadow-lg shadow-red-900/40">
-                 <span className="font-black text-white text-xs">BY</span>
+               <div className="w-8 h-8 bg-gradient-to-br from-brand to-brand-dark rounded-lg flex items-center justify-center shadow-lg shadow-brand/40">
+                 <Layers className="text-white w-4 h-4" strokeWidth={2.5} />
                </div>
-               <span className="font-bold text-white tracking-tight">BySabel<span className="text-red-500">ITAM</span> <span className="text-[9px] bg-red-900/50 text-red-200 px-1 py-0.5 rounded ml-1 border border-red-800/50">v2.0</span></span>
+               <span className="font-bold text-white tracking-tight">Nexus<span className="text-brand">ITAM</span> <span className="text-[9px] bg-brand-dark/50 text-indigo-200 px-1 py-0.5 rounded ml-1 border border-brand/50">v2.0</span></span>
              </div>
            )}
 
            {isCollapsed && (
-             <div className="w-10 h-10 bg-gradient-to-br from-red-600 to-red-800 rounded-xl flex items-center justify-center shadow-lg shadow-red-900/40 cursor-pointer" onClick={toggleCollapse}>
-                 <span className="font-black text-white text-sm">BY</span>
+             <div className="w-10 h-10 bg-gradient-to-br from-brand to-brand-dark rounded-xl flex items-center justify-center shadow-lg shadow-brand/40 cursor-pointer" onClick={toggleCollapse}>
+                 <Layers className="text-white w-5 h-5" strokeWidth={2.5} />
              </div>
            )}
            
            {/* Botão de Collapse (Desktop) */}
            <button 
              onClick={toggleCollapse} 
-             className={`hidden md:flex w-6 h-6 items-center justify-center rounded-full bg-[#1F1F1F] text-gray-400 hover:text-white hover:bg-red-600 transition-all absolute -right-3 top-7 border border-[#0A0A0A] z-50`}
+             className={`hidden md:flex w-6 h-6 items-center justify-center rounded-full bg-[#1F1F1F] text-gray-400 hover:text-white hover:bg-brand transition-all absolute -right-3 top-7 border border-[#0A0A0A] z-50`}
            >
              {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
            </button>

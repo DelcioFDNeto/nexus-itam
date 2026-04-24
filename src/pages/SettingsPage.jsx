@@ -22,7 +22,7 @@ const SettingsPage = () => {
   
   // Guarda na memória as variáveis globais da empresa, laços e termos de uso
   const [config, setConfig] = useState({
-    companyName: 'BySabel ITAM',
+    companyName: 'Nexus ITAM',
     itManager: 'Délcio Farias',
     supportEmail: 'shiadmti@gmail.com',
     termTitle: 'Termo de Responsabilidade',
@@ -68,7 +68,7 @@ const SettingsPage = () => {
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
       const downloadAnchorNode = document.createElement('a');
       downloadAnchorNode.setAttribute("href", dataStr);
-      downloadAnchorNode.setAttribute("download", `BACKUP_SHINERAY_${new Date().toISOString().slice(0,10)}.json`);
+      downloadAnchorNode.setAttribute("download", `BACKUP_NEXUS_${new Date().toISOString().slice(0,10)}.json`);
       document.body.appendChild(downloadAnchorNode);
       downloadAnchorNode.click();
       downloadAnchorNode.remove();
