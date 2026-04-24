@@ -80,16 +80,16 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
            
            {!isCollapsed && (
              <div className="flex items-center gap-3 animate-in fade-in duration-300">
-               <div className="w-9 h-9 bg-gradient-to-br from-brand to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-brand/30 ring-4 ring-indigo-50">
-                 <Layers className="text-white w-4 h-4" strokeWidth={2.5} />
+               <div className="w-10 h-10 rounded-xl flex items-center justify-center pt-1 drop-shadow-md cursor-pointer hover:scale-105 transition-transform" onClick={() => navigate('/')}>
+                 <img src="/logo.png" alt="Nexus logo" className="w-full h-full object-contain" />
                </div>
                <span className="font-black text-slate-800 tracking-tight text-lg">Nexus<span className="text-brand">ITAM</span> <span className="text-[9px] bg-indigo-50 text-brand px-1.5 py-0.5 rounded-full ml-1 border border-indigo-100 font-black relative -top-1 shadow-sm">v2.0</span></span>
              </div>
            )}
 
            {isCollapsed && (
-             <div className="w-10 h-10 bg-gradient-to-br from-brand to-brand-dark rounded-xl flex items-center justify-center shadow-lg shadow-brand/40 cursor-pointer" onClick={toggleCollapse}>
-                 <Layers className="text-white w-5 h-5" strokeWidth={2.5} />
+             <div className="w-10 h-10 rounded-xl flex items-center justify-center drop-shadow-lg cursor-pointer hover:scale-110 transition-transform" onClick={toggleCollapse}>
+                 <img src="/logo.png" alt="Nexus logo" className="w-full h-full object-contain" />
              </div>
            )}
            

@@ -12,8 +12,8 @@ const Logo = ({ className = '', size = 'md' }) => {
 
   return (
     <div className={`flex items-center gap-2 font-black tracking-tighter ${className}`}>
-      <div className="bg-brand text-white p-1.5 rounded-xl shadow-sm flex items-center justify-center">
-        <Layers size={icon} strokeWidth={2.5} />
+      <div className="flex items-center justify-center" style={{ width: icon, height: icon }}>
+        <img src="/logo.png" alt="Nexus ITAM Logo" className="w-full h-full object-contain drop-shadow-sm" />
       </div>
       <span className={`${text} text-gray-900 leading-none`}>
         Nexus<span className="text-brand">ITAM</span>
