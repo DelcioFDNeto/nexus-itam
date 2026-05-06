@@ -32,6 +32,7 @@ const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
 const ProjectDetails = lazy(() => import('./pages/ProjectDetails'));
 const ServiceManager = lazy(() => import('./pages/ServiceManager'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const AgentManager = lazy(() => import('./pages/AgentManager'));
 
 function App() {
   return (
@@ -93,6 +94,10 @@ function App() {
 
           <Route path="/audit" element={
             <PrivateRoute><Layout><AuditPage /></Layout></PrivateRoute>
+          } />
+
+          <Route path="/agent" element={
+            <PrivateRoute><Layout><AgentManager /></Layout></PrivateRoute>
           } />
 
           <Route path="/import" element={

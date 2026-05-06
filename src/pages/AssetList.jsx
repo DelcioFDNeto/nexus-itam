@@ -1,7 +1,7 @@
 // src/pages/AssetList.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import { db } from "../services/firebase";
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, doc, getDoc } from "firebase/firestore";
 import { updateAsset } from "../services/assetService";
 import { Link, useNavigate } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
@@ -34,6 +34,7 @@ import {
   Check,
   ArrowDownAZ,
   ArrowUpAZ,
+  Clock,
   AlertCircle,
   ChevronRight,
   Plug,
@@ -42,26 +43,41 @@ import {
   Package,
 } from "lucide-react";
 
+const getCompanyLabel = (companyName) =>
+  (companyName || "Nexus ITAM").trim() || "Nexus ITAM";
+
+const escapeHtml = (value) =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
 const AssetList = () => {
   const navigate = useNavigate();
 
   // Estados que controlam a lista de ativos e o carregamento da tela
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [config, setConfig] = useState({
+    companyName: "Nexus ITAM",
+  });
 
   // Definições de filtros de pesquisa e ordenação da tabela (Persistidos na Sessão)
   const [searchTerm, setSearchTerm] = useState(() => sessionStorage.getItem("itam_asset_searchTerm") || "");
   const [filterType, setFilterType] = useState(() => sessionStorage.getItem("itam_asset_filterType") || "Todos");
   const [filterStatus, setFilterStatus] = useState(() => sessionStorage.getItem("itam_asset_filterStatus") || "Todos");
   const [sortOrder, setSortOrder] = useState(() => sessionStorage.getItem("itam_asset_sortOrder") || "asc");
-  const [sortBy] = useState("internalId");
+  const [sortBy, setSortBy] = useState(() => sessionStorage.getItem("itam_asset_sortBy") || "internalId");
 
   useEffect(() => {
     sessionStorage.setItem("itam_asset_searchTerm", searchTerm);
     sessionStorage.setItem("itam_asset_filterType", filterType);
     sessionStorage.setItem("itam_asset_filterStatus", filterStatus);
+    sessionStorage.setItem("itam_asset_sortBy", sortBy);
     sessionStorage.setItem("itam_asset_sortOrder", sortOrder);
-  }, [searchTerm, filterType, filterStatus, sortOrder]);
+  }, [searchTerm, filterType, filterStatus, sortBy, sortOrder]);
 
   // Controle da seleção múltipla para exportação, impressão corporativa e edições conjuntas
   const [selectedIds, setSelectedIds] = useState([]);
@@ -91,9 +107,35 @@ const AssetList = () => {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const settingsRef = doc(db, "settings", "general");
+        const snap = await getDoc(settingsRef);
+        if (snap.exists()) {
+          setConfig((prev) => ({
+            ...prev,
+            ...snap.data(),
+          }));
+        }
+      } catch (err) {
+        console.error("Erro ao carregar configurações:", err);
+      }
+    };
+
+    loadConfig();
+  }, []);
+
   // Processa a lista de ativos otimizando filtragem e ordenação dependendo das seleções do menu
   const processedAssets = useMemo(() => {
     const safeLower = (val) => (val || "").toString().toLowerCase();
+    const getTimeValue = (value) => {
+      if (!value) return 0;
+      if (value?.toDate) return value.toDate().getTime();
+      if (value?.seconds) return value.seconds * 1000;
+      const parsed = new Date(value).getTime();
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
 
     // Filtra logicamente antes de devolver a lista visual de ativos
     let result = assets.filter((asset) => {
@@ -135,8 +177,14 @@ const AssetList = () => {
       return asset.type === filterType;
     });
 
-    // Ordena os resultados finais alfabeticamente ou numericamente de forma crescente ou decrescente
+    // Ordena os resultados finais por data de registro ou alfabeticamente/numericamente.
     return result.sort((a, b) => {
+      if (sortBy === "createdAt") {
+        const valA = getTimeValue(a.createdAt);
+        const valB = getTimeValue(b.createdAt);
+        return sortOrder === "asc" ? valA - valB : valB - valA;
+      }
+
       const valA = safeLower(a[sortBy]);
       const valB = safeLower(b[sortBy]);
       return sortOrder === "asc"
@@ -196,14 +244,19 @@ const AssetList = () => {
 
   const handleBulkPrint = () => {
     if (selectedAssetsData.length === 0) return;
+    const companyLabel = escapeHtml(getCompanyLabel(config.companyName).toLocaleUpperCase("pt-BR"));
+    const supportEmail = escapeHtml((config.supportEmail || "shiadmti@gmail.com").trim() || "shiadmti@gmail.com");
     const labelsHtml = selectedAssetsData.map((asset) => {
       const qrSvg = ReactDOMServer.renderToStaticMarkup(<QRCodeSVG value={asset.internalId} size={68} level="M" />);
       return `<div class="bulk-label">
         <div class="qr">${qrSvg}</div>
         <div class="info">
           <div class="logo-row" style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: flex-start; gap: 4px; color: #4F46E5; font-size: 14px; letter-spacing: -0.5px;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
-            Nexus<span style="color: #111827">ITAM</span>
+            <div class="brand-line">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+              Nexus<span style="color: #111827">ITAM</span>
+            </div>
+            <div class="company-line">${companyLabel}</div>
           </div>
           <div class="id-section">
             <span class="id-label">Patrimônio</span>
@@ -212,7 +265,7 @@ const AssetList = () => {
           </div>
           <div class="footer-row">
             <span class="footer-left">SUPORTE TI</span>
-            <span class="footer-right">shiadmti@gmail.com</span>
+            <span class="footer-right">${supportEmail}</span>
           </div>
         </div>
       </div>`;
@@ -228,7 +281,9 @@ const AssetList = () => {
   .bulk-label { width: 7cm; height: 3.5cm; padding: 4px; border: 2px solid black; border-radius: 6px; display: flex; align-items: center; gap: 6px; background: white; overflow: hidden; page-break-inside: avoid; }
   .qr { width: 68px; height: 68px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .info { display: flex; flex-direction: column; height: 100%; flex-grow: 1; justify-content: space-between; overflow: hidden; }
-  .logo-row { height: 32px; display: flex; align-items: center; justify-content: flex-start; border-bottom: 1px solid #eee; padding-bottom: 2px; }
+  .logo-row { min-height: 32px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; border-bottom: 1px solid #eee; padding-bottom: 2px; overflow: hidden; }
+  .brand-line { display: flex; align-items: center; justify-content: flex-start; gap: 4px; color: #4F46E5; font-size: 14px; font-weight: 900; line-height: 1; letter-spacing: -0.5px; }
+  .company-line { width: 100%; margin-top: 2px; font-size: 6px; font-weight: 900; color: #111827; text-transform: uppercase; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .logo-row img { height: 100%; max-height: 28px; }
   .id-section { display: flex; flex-direction: column; justify-content: center; }
   .id-label { font-size: 7px; font-weight: bold; color: #666; text-transform: uppercase; line-height: 1; }
@@ -245,20 +300,25 @@ const AssetList = () => {
 
   const handleBulkPeripheralPrint = () => {
     if (selectedPeripheralsData.length === 0) return;
+    const companyLabel = escapeHtml(getCompanyLabel(config.companyName).toLocaleUpperCase("pt-BR"));
+    const supportEmail = escapeHtml((config.supportEmail || "shiadmti@gmail.com").trim() || "shiadmti@gmail.com");
     const labelsHtml = selectedPeripheralsData.map((peri) => {
       const qrSvg = ReactDOMServer.renderToStaticMarkup(<QRCodeSVG value={peri.parentId} size={42} level="M" />);
       return `<div class="peri-label">
         <div class="qr">${qrSvg}</div>
         <div class="info">
           <div class="logo-row" style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: center; gap: 3px; color: #4F46E5; font-size: 8px; letter-spacing: -0.2px;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
-            NEXUS<span style="color: #111827">ITAM</span>
+            <div class="brand-line">
+              <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+              NEXUS<span style="color: #111827">ITAM</span>
+            </div>
+            <div class="company-line">${companyLabel}</div>
           </div>
           <div class="id-section">
             <span class="id-value">${peri.parentId}</span>
             <span class="peri-name">${peri.name}</span>
           </div>
-          <div class="footer-row"><p>NEXUS ITAM</p></div>
+          <div class="footer-row"><p>${supportEmail}</p></div>
         </div>
       </div>`;
     }).join('');
@@ -273,7 +333,9 @@ const AssetList = () => {
   .peri-label { width: 5cm; height: 2.5cm; padding: 2px; border: 1px solid black; border-radius: 4px; display: flex; align-items: center; gap: 3px; overflow: hidden; page-break-inside: avoid; }
   .qr { width: 45px; height: 45px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .info { display: flex; flex-direction: column; height: 100%; flex-grow: 1; justify-content: space-between; }
-  .logo-row { height: 22px; border-bottom: 0.5px solid #ccc; margin-bottom: 1px; display: flex; justify-content: center; }
+  .logo-row { min-height: 22px; border-bottom: 0.5px solid #ccc; margin-bottom: 1px; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+  .brand-line { display: flex; align-items: center; justify-content: center; gap: 3px; color: #4F46E5; font-size: 8px; font-weight: 900; line-height: 1; letter-spacing: -0.2px; }
+  .company-line { width: 100%; margin-top: 1px; font-size: 4px; font-weight: 900; color: #111827; text-align: center; text-transform: uppercase; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .logo-row img { height: 100%; }
   .id-section { display: flex; flex-direction: column; line-height: 0.9; }
   .id-value { font-size: 10px; font-weight: 900; font-family: monospace; }
@@ -423,6 +485,7 @@ const AssetList = () => {
               onClick={() =>
                 setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))
               }
+              title={sortBy === "createdAt" ? "Alternar recentes/antigos" : "Alternar ordem alfabética"}
               className="p-3 bg-gray-50 hover:bg-gray-100 rounded-2xl border border-gray-100 text-gray-600 transition-colors"
             >
               {sortOrder === "asc" ? (
@@ -430,6 +493,18 @@ const AssetList = () => {
               ) : (
                 <ArrowUpAZ size={20} />
               )}
+            </button>
+            <button
+              onClick={() => {
+                const nextSort = sortBy === "createdAt" ? "internalId" : "createdAt";
+                setSortBy(nextSort);
+                setSortOrder(nextSort === "createdAt" ? "desc" : "asc");
+              }}
+              className={`flex items-center gap-2 px-3 py-3 rounded-2xl border text-xs font-black transition-colors ${sortBy === "createdAt" ? "bg-black text-white border-black shadow-md" : "bg-gray-50 hover:bg-gray-100 border-gray-100 text-gray-600"}`}
+              title="Ordenar por data e hora de registro"
+            >
+              <Clock size={18} />
+              <span>Recentes</span>
             </button>
           </div>
 
@@ -454,6 +529,16 @@ const AssetList = () => {
 
         {/* Rolagem horizontal de abas arredondadas e rápidas organizando por Tipo de Ativo */}
         <div className="flex gap-3 overflow-x-auto py-4 scrollbar-hide">
+          <button
+            onClick={() => {
+              const nextSort = sortBy === "createdAt" ? "internalId" : "createdAt";
+              setSortBy(nextSort);
+              setSortOrder(nextSort === "createdAt" ? "desc" : "asc");
+            }}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${sortBy === "createdAt" ? "bg-black text-white border-black shadow-lg scale-105" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:bg-gray-50"}`}
+          >
+            <Clock size={16} /> Recentes
+          </button>
           {filters.map((f) => (
             <button
               key={f.value}

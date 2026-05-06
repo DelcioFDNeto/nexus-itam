@@ -4,9 +4,23 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { generateFullBackup, restoreBackup } from '../services/backupService';
 import { 
   Settings, Save, Database, Download, AlertTriangle, 
-  UserCog, FileText, CheckCircle, Shield, UploadCloud, RefreshCcw, FileJson, Info, Code, Play 
+  UserCog, FileText, CheckCircle, Shield, UploadCloud, RefreshCcw, FileJson, Info, Code, Play, Tag
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+const CONFIG_FIELDS = [
+  { key: 'companyName', label: 'Nome da empresa', placeholder: 'Ex: Shineray do Brasil' },
+  { key: 'cnpj', label: 'CNPJ', placeholder: '00.000.000/0001-00' },
+  { key: 'itManager', label: 'Gestor de TI', placeholder: 'Nome do responsável' },
+  { key: 'supportEmail', label: 'Email de suporte', placeholder: 'suporte@empresa.com' },
+  { key: 'termTitle', label: 'Título do termo', placeholder: 'Termo de Responsabilidade' },
+];
+
+const getCompanyLabel = (companyName) =>
+  (companyName || 'Nexus ITAM').trim() || 'Nexus ITAM';
+
+const getSupportEmail = (supportEmail) =>
+  (supportEmail || 'shiadmti@gmail.com').trim() || 'shiadmti@gmail.com';
 
 const SettingsPage = () => {
   const [loading, setLoading] = useState(false);
@@ -23,6 +37,7 @@ const SettingsPage = () => {
   // Guarda na memória as variáveis globais da empresa, laços e termos de uso
   const [config, setConfig] = useState({
     companyName: 'Nexus ITAM',
+    cnpj: '',
     itManager: 'Délcio Farias',
     supportEmail: 'shiadmti@gmail.com',
     termTitle: 'Termo de Responsabilidade',
@@ -200,16 +215,41 @@ const SettingsPage = () => {
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden sticky top-8">
                 <div className="bg-gray-50 p-4 border-b border-gray-100 flex items-center gap-2">
                     <FileText className="text-brand" size={18}/>
-                    <h2 className="font-bold text-gray-800 text-sm uppercase">Documentos (PDF)</h2>
+                    <h2 className="font-bold text-gray-800 text-sm uppercase">Documentos e Etiquetas</h2>
                 </div>
                 <form onSubmit={handleSave} className="p-5 space-y-4">
-                     {/* Montagem inteligente de loops mapeando todos os inputs das configurações */}
-                     {['companyName', 'itManager', 'supportEmail', 'termTitle'].map(field => (
-                        <div key={field}>
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">{field}</label>
-                            <input value={config[field]} onChange={e => setConfig({...config, [field]: e.target.value})} className="w-full p-2 border rounded-lg font-bold text-sm text-gray-800 focus:outline-none focus:border-black"/>
+{/* Montagem inteligente de loops mapeando todos os inputs das configurações */}
+                      {CONFIG_FIELDS.map(field => (
+                         <div key={field.key}>
+                             <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">{field.label}</label>
+                             <input 
+                               value={config[field.key] || ''} 
+                               onChange={e => setConfig({...config, [field.key]: e.target.value})} 
+                               className="w-full p-2 border rounded-lg font-bold text-sm text-gray-800 focus:outline-none focus:border-black"
+                               placeholder={field.placeholder}
+                             />
+                         </div>
+                      ))}
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Tag size={16} className="text-brand" />
+                            <h3 className="text-xs font-black text-gray-700 uppercase">Identidade das Etiquetas</h3>
                         </div>
-                     ))}
+                        <div className="rounded-lg border-2 border-gray-900 bg-white p-3 font-sans">
+                            <div className="border-b border-gray-200 pb-2">
+                                <p className="text-sm font-black leading-none text-brand">Nexus<span className="text-gray-900">ITAM</span></p>
+                                <p className="mt-1 truncate text-[10px] font-black uppercase text-gray-900">{getCompanyLabel(config.companyName)}</p>
+                            </div>
+                            <div className="pt-3">
+                                <p className="text-[9px] font-black uppercase text-gray-500">Patrimônio</p>
+                                <p className="font-mono text-xl font-black text-gray-950">TAG-001</p>
+                            </div>
+                            <div className="mt-2 flex items-center justify-between border-t border-gray-900 pt-1">
+                                <span className="text-[8px] font-black text-gray-600">SUPORTE TI</span>
+                                <span className="max-w-[120px] truncate text-[9px] font-black text-gray-900">{getSupportEmail(config.supportEmail)}</span>
+                            </div>
+                        </div>
+                    </div>
                     <button type="submit" disabled={loading} className="w-full bg-black text-white py-3 rounded-lg font-bold hover:bg-gray-800 flex items-center justify-center gap-2 text-sm shadow-md transition-all active:scale-95">
                         {loading ? 'Salvando...' : <><Save size={16}/> Salvar Configurações</>}
                     </button>

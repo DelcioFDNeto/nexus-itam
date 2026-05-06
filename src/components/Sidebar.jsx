@@ -6,7 +6,7 @@ import { auth } from '../services/firebase';
 import { 
   LayoutDashboard, Server, PlusSquare, FileInput, 
   Users, LogOut, ClipboardCheck, X, ShieldCheck, Layers, Globe,
-  FolderGit2, Settings, ChevronLeft, ChevronRight, Menu, Search 
+  FolderGit2, Settings, ChevronLeft, ChevronRight, Menu, Search, Activity
 } from 'lucide-react';
 
 
@@ -45,6 +45,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
     { path: '/employees', icon: <Users size={isCollapsed ? 24 : 20} />, label: 'Equipe' },
     { path: '/licenses', icon: <ShieldCheck size={isCollapsed ? 24 : 20} />, label: 'Licenças' },
     { path: '/services', icon: <Globe size={isCollapsed ? 24 : 20} />, label: 'Contratos' },
+    { path: '/agent', icon: <Activity size={isCollapsed ? 24 : 20} />, label: 'Agente ITAM' },
   ];
 
   const systemItems = [

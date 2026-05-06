@@ -50,6 +50,17 @@ import {
 
 import AssetIcon from "../components/AssetIcon";
 
+const getCompanyLabel = (companyName) =>
+  (companyName || "Nexus ITAM").trim() || "Nexus ITAM";
+
+const escapeHtml = (value) =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
 const AssetDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -79,8 +90,9 @@ const AssetDetail = () => {
   // Configurações da empresa para impressão de termos
   const [config, setConfig] = useState({
     companyName: "Nexus ITAM",
-    cnpj: "00.000.000/0001-00", // Placeholder
+    cnpj: "",
     itManager: "SISTEMA ITAM",
+    supportEmail: "shiadmti@gmail.com",
     termTitle: "TERMO DE ENTREGA E RESPONSABILIDADE",
   });
 
@@ -93,7 +105,6 @@ const AssetDetail = () => {
           setConfig((prev) => ({
             ...prev,
             ...snap.data(),
-            companyName: "Nexus ITAM",
           }));
       } catch (err) {
         console.error(err);
@@ -163,7 +174,7 @@ const AssetDetail = () => {
       </div>
       <div>
         <h1 style="font-size:20px;margin:0;font-weight:900">${config.companyName.toUpperCase()}</h1>
-        <p style="margin:2px 0 0;font-size:10px">CNPJ: 34.249.103/0003-73</p>
+        <p style="margin:2px 0 0;font-size:10px">CNPJ: ${config.cnpj || '00.000.000/0001-00'}</p>
         <p style="margin:0;font-size:10px">Departamento de Tecnologia da Informação</p>
       </div>
     </div>
@@ -171,7 +182,7 @@ const AssetDetail = () => {
   </div>
   <h2 class="title">${config.termTitle}</h2>
 <p class="content">
-    Pelo presente instrumento particular, de um lado a empresa <strong>${config.companyName}</strong>, inscrita no CNPJ sob o nº <strong>34.249.103/0003-73</strong>, e de outro lado o(a) responsável abaixo qualificado(a),
+    Pelo presente instrumento particular, de um lado a empresa <strong>${config.companyName}</strong>, inscrita no CNPJ sob o nº <strong>${config.cnpj || '00.000.000/0001-00'}</strong>, e de outro lado o(a) responsável abaixo qualificado(a),
     celebram o presente termo de responsabilidade e comodato, regido pelas cláusulas e condições seguintes, em conformidade com a legislação civil pertinente e, quando aplicável, com o Art. 462 da CLT.
   </p>
   <div class="box">
@@ -221,6 +232,8 @@ const AssetDetail = () => {
   const handlePrintLabel = () => {
     if (!asset) return;
     const qrSvg = ReactDOMServer.renderToStaticMarkup(<QRCodeSVG value={asset.internalId} size={68} level="M" />);
+    const companyLabel = escapeHtml(getCompanyLabel(config.companyName).toLocaleUpperCase("pt-BR"));
+    const supportEmail = escapeHtml((config.supportEmail || "shiadmti@gmail.com").trim() || "shiadmti@gmail.com");
     const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Etiqueta_${id}</title>
 <style>
@@ -230,7 +243,9 @@ const AssetDetail = () => {
   .label { width: 7cm; height: 3.5cm; padding: 4px; border: 2px solid black; border-radius: 6px; display: flex; align-items: center; gap: 6px; background: white; overflow: hidden; }
   .qr { width: 68px; height: 68px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .info { display: flex; flex-direction: column; height: 100%; flex-grow: 1; justify-content: space-between; overflow: hidden; }
-  .logo-row { height: 32px; display: flex; align-items: center; justify-content: flex-start; border-bottom: 1px solid #eee; padding-bottom: 2px; }
+  .logo-row { min-height: 32px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; border-bottom: 1px solid #eee; padding-bottom: 2px; overflow: hidden; }
+  .brand-line { display: flex; align-items: center; justify-content: flex-start; gap: 4px; color: #4F46E5; font-size: 14px; font-weight: 900; line-height: 1; letter-spacing: -0.5px; }
+  .company-line { width: 100%; margin-top: 2px; font-size: 6px; font-weight: 900; color: #111827; text-transform: uppercase; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .logo-row img { height: 100%; max-height: 28px; }
   .id-section { display: flex; flex-direction: column; justify-content: center; }
   .id-label { font-size: 7px; font-weight: bold; color: #666; text-transform: uppercase; line-height: 1; }
@@ -244,8 +259,11 @@ const AssetDetail = () => {
     <div class="qr">${qrSvg}</div>
     <div class="info">
       <div class="logo-row" style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: flex-start; gap: 4px; color: #4F46E5; font-size: 14px; letter-spacing: -0.5px;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
-            Nexus<span style="color: #111827">ITAM</span>
+        <div class="brand-line">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+          Nexus<span style="color: #111827">ITAM</span>
+        </div>
+        <div class="company-line">${companyLabel}</div>
       </div>
       <div class="id-section">
         <span class="id-label">Patrimônio</span>
@@ -254,7 +272,7 @@ const AssetDetail = () => {
       </div>
       <div class="footer-row">
         <span class="footer-left">SUPORTE TI</span>
-        <span class="footer-right">shiadmti@gmail.com</span>
+        <span class="footer-right">${supportEmail}</span>
       </div>
     </div>
   </div>
@@ -265,6 +283,8 @@ const AssetDetail = () => {
   const handlePrintPeripheral = (item) => {
     if (!asset) return;
     const qrSvg = ReactDOMServer.renderToStaticMarkup(<QRCodeSVG value={asset.internalId} size={42} level="M" />);
+    const companyLabel = escapeHtml(getCompanyLabel(config.companyName).toLocaleUpperCase("pt-BR"));
+    const supportEmail = escapeHtml((config.supportEmail || "shiadmti@gmail.com").trim() || "shiadmti@gmail.com");
     const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Acessorio_${id}</title>
 <style>
@@ -274,7 +294,9 @@ const AssetDetail = () => {
   .label { width: 5cm; height: 2.5cm; padding: 3px; border: 1.5px solid black; border-radius: 4px; display: flex; align-items: center; gap: 4px; overflow: hidden; background: white; }
   .qr { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .info { display: flex; flex-direction: column; height: 100%; flex-grow: 1; justify-content: space-between; overflow: hidden; }
-  .logo-row { height: 18px; display: flex; align-items: center; justify-content: flex-start; border-bottom: 1px solid #eee; padding-bottom: 2px; }
+  .logo-row { min-height: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-bottom: 1px solid #eee; padding-bottom: 1px; overflow: hidden; }
+  .brand-line { display: flex; align-items: center; justify-content: center; gap: 3px; color: #4F46E5; font-size: 8px; font-weight: 900; line-height: 1; letter-spacing: -0.2px; }
+  .company-line { width: 100%; margin-top: 1px; font-size: 4px; font-weight: 900; color: #111827; text-align: center; text-transform: uppercase; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .logo-row img { height: 100%; max-height: 16px; }
   .id-section { display: flex; flex-direction: column; justify-content: center; gap: 1px; }
   .id-label { font-size: 4.5px; font-weight: bold; color: #666; text-transform: uppercase; line-height: 1; }
@@ -288,8 +310,11 @@ const AssetDetail = () => {
     <div class="qr">${qrSvg}</div>
     <div class="info">
       <div class="logo-row" style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: center; gap: 3px; color: #4F46E5; font-size: 8px; letter-spacing: -0.2px;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
-            NEXUS<span style="color: #111827">ITAM</span>
+        <div class="brand-line">
+          <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+          NEXUS<span style="color: #111827">ITAM</span>
+        </div>
+        <div class="company-line">${companyLabel}</div>
       </div>
       <div class="id-section">
         <span class="id-label">Patrimônio / Periférico</span>
@@ -298,7 +323,7 @@ const AssetDetail = () => {
       </div>
       <div class="footer-row">
         <span class="footer-left">SUPORTE TI</span>
-        <span class="footer-right">shiadmti@gmail.com</span>
+        <span class="footer-right">${supportEmail}</span>
       </div>
     </div>
   </div>
@@ -538,6 +563,8 @@ const AssetDetail = () => {
     return "bg-black";
   };
 
+  const companyLabelText = getCompanyLabel(config.companyName).toLocaleUpperCase("pt-BR");
+
   return (
     <div className="max-w-[1920px] mx-auto pb-24 animate-fade-in relative min-h-screen">
       {/* Elementos ocultos desenhados de forma padronizada para geração de impressão visual */}
@@ -584,19 +611,42 @@ const AssetDetail = () => {
           >
             <div
               style={{
-                height: "32px",
+                minHeight: "32px",
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "flex-start",
                 borderBottom: "1px solid #eee",
                 paddingBottom: "2px",
+                overflow: "hidden",
               }}
             >
-              <img
-                src="/logo.png"
-                alt="Nexus ITAM"
-                style={{ height: "100%", maxHeight: "28px" }}
-              />
+              <span
+                style={{
+                  color: "#4F46E5",
+                  fontSize: "14px",
+                  fontWeight: "900",
+                  lineHeight: "1",
+                }}
+              >
+                Nexus<span style={{ color: "#111827" }}>ITAM</span>
+              </span>
+              <span
+                style={{
+                  width: "100%",
+                  marginTop: "2px",
+                  fontSize: "6px",
+                  fontWeight: "900",
+                  color: "#111827",
+                  textTransform: "uppercase",
+                  lineHeight: "1",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {companyLabelText}
+              </span>
             </div>
             <div
               style={{
@@ -711,15 +761,43 @@ const AssetDetail = () => {
           >
             <div
               style={{
-                height: "18px",
+                minHeight: "20px",
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "flex-start",
                 borderBottom: "1px solid #eee",
-                paddingBottom: "2px",
+                paddingBottom: "1px",
+                overflow: "hidden",
               }}
             >
-              <img src="/logo.png" style={{ height: "100%", maxHeight: "16px" }} alt="Logo" />
+              <span
+                style={{
+                  color: "#4F46E5",
+                  fontSize: "8px",
+                  fontWeight: "900",
+                  lineHeight: "1",
+                }}
+              >
+                NEXUS<span style={{ color: "#111827" }}>ITAM</span>
+              </span>
+              <span
+                style={{
+                  width: "100%",
+                  marginTop: "1px",
+                  fontSize: "4px",
+                  fontWeight: "900",
+                  color: "#111827",
+                  textAlign: "center",
+                  textTransform: "uppercase",
+                  lineHeight: "1",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {companyLabelText}
+              </span>
             </div>
             <div
               style={{
