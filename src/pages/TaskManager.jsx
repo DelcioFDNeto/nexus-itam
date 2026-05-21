@@ -1,6 +1,7 @@
 // src/pages/TaskManager.jsx
 import React, { useState, useEffect } from 'react';
 import { getTasks, addTask, updateTask, deleteTask } from '../services/taskService';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   CheckSquare, Plus, Trash2, Calendar, Square, Edit, 
   LayoutGrid, X, AlertCircle, Save, Kanban, List 
@@ -10,6 +11,8 @@ import { toast } from 'sonner';
 const TaskManager = () => {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { currentUser } = useAuth();
+  const tenantId = currentUser?.tenantId;
   const [viewMode, setViewMode] = useState('kanban'); // Define o jeito que o usuário prefere ver: Listinha corrida ou Quadro Kanban
   const [newTaskTitle, setNewTaskTitle] = useState('');
   
@@ -17,24 +20,43 @@ const TaskManager = () => {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
 
-  async function loadTasks() {
-    const data = await getTasks();
+  const loadTasks = React.useCallback(async () => {
+    if (!tenantId) {
+      setTasks([]);
+      setLoading(false);
+      return;
+    }
+    const data = await getTasks(tenantId);
     const sorted = data.sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds);
     setTasks(sorted);
     setLoading(false);
-  }
+  }, [tenantId]);
 
-  useEffect(() => { loadTasks(); }, []); // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    setTimeout(() => {
+      if (tenantId) {
+        loadTasks();
+      } else {
+        setTasks([]);
+        setLoading(false);
+      }
+    }, 0);
+  }, [tenantId, loadTasks]);
 
   const handleQuickAdd = async (e) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
+    if (!tenantId) {
+      toast.error("Sem contexto de tenant.");
+      return;
+    }
     
     await addTask({
         title: newTaskTitle,
         status: 'A Fazer',
         priority: 'Média',
         category: 'Geral',
+        tenantId,
         createdAt: new Date()
     });
     

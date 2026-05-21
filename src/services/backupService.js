@@ -72,7 +72,7 @@ export const generateFullBackup = async () => {
  * @param {Function} onProgress - Callback (percentage, message) para atualizar a UI
  * @returns {Promise<Object>} Estatísticas da importação
  */
-export const restoreBackup = async (backupData, onProgress) => {
+export const restoreBackup = async (backupData, onProgress, targetTenantId = null) => {
   // 1. Validação Básica
   if (!backupData || !backupData.meta || !backupData.data) {
     throw new Error("Arquivo de backup inválido ou corrompido.");
@@ -132,6 +132,11 @@ export const restoreBackup = async (backupData, onProgress) => {
 
          // Adiciona updated_at de restauração para rastreio
          processedData._restoredAt = serverTimestamp();
+
+         // Garante que os dados restaurados pertençam ao tenantId correto do usuário que está importando
+         if (targetTenantId) {
+             processedData.tenantId = targetTenantId;
+         }
 
          // set(docRef, data, { merge: true }) garante que campos novos sejam adicionados e existentes atualizados
          // sem destruir campos que não estão no backup (opcional, pode ser sem merge para overwrite total)

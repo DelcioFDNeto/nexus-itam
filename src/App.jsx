@@ -33,6 +33,8 @@ const ProjectDetails = lazy(() => import('./pages/ProjectDetails'));
 const ServiceManager = lazy(() => import('./pages/ServiceManager'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AgentManager = lazy(() => import('./pages/AgentManager'));
+const Register = lazy(() => import('./pages/Register'));
+const UserManager = lazy(() => import('./pages/UserManager'));
 
 function App() {
   return (
@@ -41,8 +43,10 @@ function App() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
           
-          {/* Rota Pública (Login) */}
+          {/* Rotas Públicas */}
           <Route path="/" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+
 
           {/* --- ROTAS PROTEGIDAS --- */}
           
@@ -106,6 +110,10 @@ function App() {
 
           <Route path="/settings" element={
             <PrivateRoute><Layout><SettingsPage /></Layout></PrivateRoute>
+          } />
+
+          <Route path="/users" element={
+            <PrivateRoute><Layout><UserManager /></Layout></PrivateRoute>
           } />
 
         </Routes>

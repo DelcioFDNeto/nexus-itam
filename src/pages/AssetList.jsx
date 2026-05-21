@@ -1,12 +1,13 @@
 // src/pages/AssetList.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import { db } from "../services/firebase";
-import { collection, query, orderBy, onSnapshot, doc, getDoc } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, doc, getDoc, where } from "firebase/firestore";
 import { updateAsset } from "../services/assetService";
 import { Link, useNavigate } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import ReactDOMServer from "react-dom/server";
 import { toast } from "sonner";
+import { useAuth } from "../contexts/AuthContext";
 import AssetListSkeleton from "../components/assets/AssetListSkeleton";
 import AssetIcon from "../components/AssetIcon";
 import AssetMetrics from "../components/assets/AssetMetrics";
@@ -56,6 +57,8 @@ const escapeHtml = (value) =>
 
 const AssetList = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const tenantId = currentUser?.tenantId;
 
   // Estados que controlam a lista de ativos e o carregamento da tela
   const [assets, setAssets] = useState([]);
@@ -85,8 +88,17 @@ const AssetList = () => {
   const [bulkProcessing, setBulkProcessing] = useState(false);
 
   useEffect(() => {
+    if (!tenantId) {
+      setAssets([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    const q = query(collection(db, "assets"), orderBy("createdAt", "desc"));
+    const q = query(
+      collection(db, "assets"),
+      where("tenantId", "==", tenantId),
+      orderBy("createdAt", "desc")
+    );
 
     const unsubscribe = onSnapshot(
       q,
@@ -105,12 +117,13 @@ const AssetList = () => {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
+    if (!tenantId) return;
     const loadConfig = async () => {
       try {
-        const settingsRef = doc(db, "settings", "general");
+        const settingsRef = doc(db, "settings", tenantId || "general");
         const snap = await getDoc(settingsRef);
         if (snap.exists()) {
           setConfig((prev) => ({
@@ -124,7 +137,7 @@ const AssetList = () => {
     };
 
     loadConfig();
-  }, []);
+  }, [tenantId]);
 
   // Processa a lista de ativos otimizando filtragem e ordenação dependendo das seleções do menu
   const processedAssets = useMemo(() => {

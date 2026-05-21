@@ -3,6 +3,7 @@ import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../services/firebase';
 import { collection, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   UploadCloud, FileSpreadsheet, FileJson, AlertTriangle, Check, ArrowLeft, Save, 
   Users, Server, Layers, FolderGit2, Download, Database, CheckCircle, Info, X, Play
@@ -119,6 +120,8 @@ const normalizeCategory = (cat) => {
 const ImportData = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const { currentUser } = useAuth();
+  const tenantId = currentUser?.tenantId;
   
   const [selectedType, setSelectedType] = useState('assets');
   const [fileAnalysis, setFileAnalysis] = useState(null); // { filename, totalRows, missingCols: [], sample: [] }
@@ -230,14 +233,21 @@ const ImportData = () => {
 
   const confirmImport = async () => {
     if (!fileAnalysis || !fileAnalysis.rawData) return;
+    if (!tenantId) {
+      setError("Inquilino não identificado. Por favor, faça login novamente.");
+      return;
+    }
     
     setLoading(true);
     try {
       const batch = writeBatch(db);
       const collectionRef = collection(db, currentSchema.collection);
       
-      // Converte as colunas irregulares do Excel para a formatação limpa baseada nas regras declaradas no topo do arquivo
-      const formattedData = fileAnalysis.rawData.map(row => currentSchema.transform(row));
+      // Converte as colunas irregulares do Excel para a formatação limpa baseada nas regras declaradas no topo do arquivo e injeta o tenantId
+      const formattedData = fileAnalysis.rawData.map(row => ({
+        ...currentSchema.transform(row),
+        tenantId
+      }));
       
       // Limite cravado do Firebase Firestore para transações em lote visando não explodir a nuvem
       // Pega somente os primeiros registros por segurança; em carga maciça de produção usaríamos o modelo do backupService

@@ -66,6 +66,8 @@ const AssetDetail = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
 
+  const tenantId = currentUser?.tenantId;
+
   // Estados principais da página
   const [asset, setAsset] = useState(null);
   const [history, setHistory] = useState([]);
@@ -99,7 +101,7 @@ const AssetDetail = () => {
   useEffect(() => {
     const loadConfig = async () => {
       try {
-        const settingsRef = doc(db, "settings", "general");
+        const settingsRef = doc(db, "settings", tenantId || "general");
         const snap = await getDoc(settingsRef);
         if (snap.exists())
           setConfig((prev) => ({
@@ -111,7 +113,7 @@ const AssetDetail = () => {
       }
     };
     loadConfig();
-  }, []);
+  }, [tenantId]);
 
   // Sistema de impressão utilizando nova janela para contornar limitações de navegadores móveis
   const printInNewWindow = (htmlContent) => {
@@ -144,6 +146,15 @@ const AssetDetail = () => {
     const peripheralsText = asset.peripherals?.length > 0
       ? asset.peripherals.map(p => p.name).join(', ')
       : '';
+
+    const defaultClauses = `1. DO USO E FINALIDADE: O(a) Responsável declara ter recebido o equipamento acima descrito em perfeito estado de conservação e funcionamento. Compromete-se a utilizá-lo estrita e exclusivamente para fins profissionais, sendo vedado o uso para fins pessoais, empréstimo a terceiros ou instalação de softwares não autorizados pela TI.
+2. DA GUARDA E CONSERVAÇÃO: É responsabilidade do(a) Responsável zelar pela guarda, segurança e conservação do equipamento. O mau uso, negligência, imprudência ou imperícia que resultar em danos ao equipamento sujeitará o(a) Responsável às sanções cíveis e disciplinares previstas em lei.
+3. DA RESTITUIÇÃO: O equipamento deverá ser devolvido imediatamente à Empresa, em perfeito estado (salvo desgaste natural), nas seguintes hipóteses: a) Rescisão do contrato de trabalho ou encerramento da prestação de serviços; b) Mudança de cargo ou função; c) Solicitação expressa da Empresa a qualquer tempo.
+4. DO EXTRAVIO, DANO OU FURTO: Em conformidade com o Art. 186 do Código Civil e, quando aplicável, Art. 462, §1º da CLT, o(a) Responsável AUTORIZA EXPRESSAMENTE o desconto em seus recebimentos (faturas/notas fiscais), folha de pagamento ou verbas rescisórias dos valores correspondentes ao reparo ou reposição do equipamento, caso seja comprovado que os danos ou o extravio decorreram de DOLO (intenção), NEGLIGÊNCIA (falta de cuidado) ou uso em desconformidade com as normas da empresa (mau uso).
+5. DA SEGURANÇA DA INFORMAÇÃO: O(a) Responsável está ciente de que o equipamento é monitorado e que não deve armazenar dados pessoais sensíveis, responsabilizando-se pelo sigilo de suas senhas e cumprimento das normas de LGPD da empresa.`;
+
+    const clausesList = (config.termClauses || defaultClauses).split('\n').filter(c => c.trim().length > 0);
+    const clausesHtml = clausesList.map(c => `<li class="clause-item">${c.trim()}</li>`).join('');
 
     const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Termo_${id}</title>
@@ -208,13 +219,9 @@ const AssetDetail = () => {
   </div>
   <div class="content">
     <p style="font-weight:bold;margin-bottom:5px">CLÁUSULAS CONTRATUAIS:</p>
-    <ol class="clauses">
-      <li class="clause-item"><strong>DO USO E FINALIDADE:</strong> O(a) Responsável declara ter recebido o equipamento acima descrito em perfeito estado de conservação e funcionamento. Compromete-se a utilizá-lo estrita e exclusivamente para fins profissionais, sendo vedado o uso para fins pessoais, empréstimo a terceiros ou instalação de softwares não autorizados pela TI.</li>
-      <li class="clause-item"><strong>DA GUARDA E CONSERVAÇÃO:</strong> É responsabilidade do(a) Responsável zelar pela guarda, segurança e conservação do equipamento. O mau uso, negligência, imprudência ou imperícia que resultar em danos ao equipamento sujeitará o(a) Responsável às sanções cíveis e disciplinares previstas em lei.</li>
-      <li class="clause-item"><strong>DA RESTITUIÇÃO:</strong> O equipamento deverá ser devolvido imediatamente à Empresa, em perfeito estado (salvo desgaste natural), nas seguintes hipóteses: a) Rescisão do contrato de trabalho ou encerramento da prestação de serviços; b) Mudança de cargo ou função; c) Solicitação expressa da Empresa a qualquer tempo.</li>
-      <li class="clause-item"><strong>DO EXTRAVIO, DANO OU FURTO:</strong> Em conformidade com o Art. 186 do Código Civil e, quando aplicável, Art. 462, §1º da CLT, o(a) Responsável <strong>AUTORIZA EXPRESSAMENTE</strong> o desconto em seus recebimentos (faturas/notas fiscais), folha de pagamento ou verbas rescisórias dos valores correspondentes ao reparo ou reposição do equipamento, caso seja comprovado que os danos ou o extravio decorreram de <strong>DOLO</strong> (intenção), <strong>NEGLIGÊNCIA</strong> (falta de cuidado) ou uso em desconformidade com as normas da empresa (mau uso).</li>
-      <li class="clause-item"><strong>DA SEGURANÇA DA INFORMAÇÃO:</strong> O(a) Responsável está ciente de que o equipamento é monitorado e que não deve armazenar dados pessoais sensíveis, responsabilizando-se pelo sigilo de suas senhas e cumprimento das normas de LGPD da empresa.</li>
-    </ol>
+    <ul class="clauses" style="list-style-type: none; padding-left: 0;">
+      ${clausesHtml}
+    </ul>
   </div>
   <div style="margin-top:30px;font-size:11px">
     <p>Li, compreendi e aceito integralmente os termos acima descritos.</p>
@@ -374,25 +381,29 @@ const AssetDetail = () => {
 
   const handleMoveConfirm = async (moveData) => {
     const userEmail = currentUser?.email || "Usuário Desconhecido";
-    await moveAsset(id, asset, moveData, userEmail);
+    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
+    await moveAsset(id, { ...asset, tenantId }, moveData, userEmail);
   };
 
   const handleMaintenanceConfirm = async (maintData) => {
     const userEmail = currentUser?.email || "Usuário Desconhecido";
-    await registerMaintenance(id, maintData, userEmail);
+    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
+    await registerMaintenance(id, { ...maintData, tenantId }, userEmail);
   };
 
   const handleSaveNotes = async () => {
     setIsSavingNotes(true);
     const userEmail = currentUser?.email || "Usuário Desconhecido";
+    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
     await updateAsset(
       id,
-      { notes: notes },
+      { notes: notes, tenantId },
       {
         action: "Nota Técnica",
         details: "Observações técnicas atualizadas.",
         type: "update",
         user: userEmail,
+        tenantId,
       },
     );
     setIsSavingNotes(false);
@@ -404,6 +415,7 @@ const AssetDetail = () => {
       return toast.warning("Preencha o nome e o link!");
     setIsAddingLink(true);
     const userEmail = currentUser?.email || "Usuário Desconhecido";
+    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
     try {
       const currentLinks = asset.attachments || [];
       const newLink = {
@@ -414,11 +426,12 @@ const AssetDetail = () => {
       };
       await updateAsset(
         id,
-        { attachments: [...currentLinks, newLink] },
+        { attachments: [...currentLinks, newLink], tenantId },
         {
           action: "Novo Anexo",
           details: `Adicionado link/documento: ${newLinkName}`,
           user: userEmail,
+          tenantId,
         },
       );
       setNewLinkUrl("");
@@ -435,16 +448,18 @@ const AssetDetail = () => {
   const handleDeleteLink = async (linkToDelete) => {
     if (!confirm("Remover este link?")) return;
     const userEmail = currentUser?.email || "Usuário Desconhecido";
+    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
     try {
       const currentLinks = asset.attachments || [];
       const newLinks = currentLinks.filter((l) => l.url !== linkToDelete.url);
       await updateAsset(
         id,
-        { attachments: newLinks },
+        { attachments: newLinks, tenantId },
         {
           action: "Anexo Removido",
           details: `Removido link/documento: ${linkToDelete.name}`,
           user: userEmail,
+          tenantId,
         },
       );
       toast.success("Link removido.");
@@ -459,16 +474,18 @@ const AssetDetail = () => {
       return toast.warning("Digite o nome do periférico (ex: Carregador)");
     setIsAddingPeripheral(true);
     const userEmail = currentUser?.email || "Usuário Desconhecido";
+    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
     try {
       const currentPeripherals = asset.peripherals || [];
       const newItem = { name: newPeripheral, addedAt: new Date() };
       await updateAsset(
         id,
-        { peripherals: [...currentPeripherals, newItem] },
+        { peripherals: [...currentPeripherals, newItem], tenantId },
         {
           action: "Periférico Vinculado",
           details: `Acessório adicionado: ${newPeripheral}`,
           user: userEmail,
+          tenantId,
         },
       );
       setNewPeripheral("");
@@ -484,6 +501,7 @@ const AssetDetail = () => {
   const handleDeletePeripheral = async (itemToDelete) => {
     if (!confirm(`Remover ${itemToDelete.name}?`)) return;
     const userEmail = currentUser?.email || "Usuário Desconhecido";
+    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
     try {
       const currentPeripherals = asset.peripherals || [];
       const newPeripherals = currentPeripherals.filter(
@@ -491,11 +509,12 @@ const AssetDetail = () => {
       );
       await updateAsset(
         id,
-        { peripherals: newPeripherals },
+        { peripherals: newPeripherals, tenantId },
         {
           action: "Periférico Removido",
           details: `Acessório desvinculado: ${itemToDelete.name}`,
           user: userEmail,
+          tenantId,
         },
       );
       toast.success("Acessório removido.");
@@ -927,12 +946,14 @@ const AssetDetail = () => {
             <Printer size={16} />{" "}
             <span className="hidden sm:inline">Etiqueta</span>
           </button>
-          <button
-            onClick={handleDelete}
-            className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 transition-all ml-auto hover:scale-105"
-          >
-            <Trash2 size={16} />
-          </button>
+          {currentUser?.role !== 'operator' && (
+            <button
+              onClick={handleDelete}
+              className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 transition-all ml-auto hover:scale-105"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -1172,6 +1193,19 @@ const AssetDetail = () => {
               {asset.invoiceNumber && (
                 <SpecItem label="Nota Fiscal" value={asset.invoiceNumber} />
               )}
+
+              {/* Campos Customizados Dinâmicos */}
+              {config.customFields && config.customFields.map(cf => {
+                  const val = asset.customData ? asset.customData[cf.id] : null;
+                  if (!val) return null;
+                  return (
+                      <SpecItem 
+                          key={cf.id} 
+                          label={cf.label} 
+                          value={cf.type === 'date' ? formatDate(val) : val} 
+                      />
+                  );
+              })}
             </div>
           </div>
 

@@ -3,9 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getEmployees } from '../services/employeeService';
 import { createAsset, updateAsset, getAssetById } from '../services/assetService';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
-import { Save, ArrowLeft, Search, Check, Smartphone, Monitor, Printer, Wifi, Server, Box, User, MapPin, Building2, Tag, Calendar, DollarSign, FileText } from 'lucide-react';
+import { Save, ArrowLeft, Search, Check, Smartphone, Monitor, Printer, Wifi, Server, Box, User, MapPin, Building2, Tag, Calendar, DollarSign, FileText, Database } from 'lucide-react';
 import AssetIcon from '../components/AssetIcon';
 
 const AssetForm = () => {
@@ -15,6 +17,7 @@ const AssetForm = () => {
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState([]); 
   const [initialData, setInitialData] = useState(null);
+  const [customFieldsDef, setCustomFieldsDef] = useState([]);
 
   const [formData, setFormData] = useState({
     model: '',
@@ -35,7 +38,8 @@ const AssetForm = () => {
     valor: '',
     notes: '', 
     // Armazena especificações técnicas flexíveis dependendo do tipo do ativo
-    specs: { ip: '', ram: '', storage: '', pageCount: '' }
+    specs: { ip: '', ram: '', storage: '', pageCount: '' },
+    customData: {}
   });
 
   useEffect(() => {
@@ -43,6 +47,13 @@ const AssetForm = () => {
         try {
             const empList = await getEmployees();
             setEmployees(empList);
+
+            if (currentUser?.tenantId) {
+                const settingsSnap = await getDoc(doc(db, 'settings', currentUser.tenantId));
+                if (settingsSnap.exists() && settingsSnap.data().customFields) {
+                    setCustomFieldsDef(settingsSnap.data().customFields);
+                }
+            }
 
             if (id) {
                 const data = await getAssetById(id);
@@ -70,7 +81,8 @@ const AssetForm = () => {
                             ram: data.specs?.ram || '', 
                             storage: data.specs?.storage || '',
                             pageCount: data.specs?.pageCount || '' 
-                        } 
+                        },
+                        customData: data.customData || {}
                     };
                     setFormData(loadedData);
                     setInitialData(loadedData);
@@ -89,6 +101,10 @@ const AssetForm = () => {
     } else {
         setFormData(prev => ({ ...prev, [name]: value }));
     }
+  };
+
+  const handleCustomDataChange = (fieldId, value) => {
+    setFormData(prev => ({ ...prev, customData: { ...prev.customData, [fieldId]: value } }));
   };
 
   const handleEmployeeSelect = (e) => {
@@ -125,15 +141,25 @@ const AssetForm = () => {
             }
 
             const detailsText = diffs.length > 0 ? diffs.join(', ') : 'Dados atualizados sem modificações rastreadas.';
+            const tenantId = currentUser?.tenantId || 'default-tenant';
 
-            await updateAsset(id, cleanData, {
+            await updateAsset(id, { 
+                ...cleanData,
+                tenantId 
+            }, {
                 action: 'Edição de Ativo',
                 details: detailsText,
-                user: userEmail
+                user: userEmail,
+                tenantId
             });
         }
         else {
-            await createAsset({ ...cleanData, createdBy: userEmail });
+            const tenantId = currentUser?.tenantId || 'default-tenant';
+            await createAsset({ 
+                ...cleanData, 
+                createdBy: userEmail,
+                tenantId
+            });
             // Salva as escolhas globais de batch (lote) para a próxima inserção
             localStorage.setItem('itam_last_type', cleanData.type);
             localStorage.setItem('itam_last_category', cleanData.category);
@@ -265,6 +291,34 @@ const AssetForm = () => {
                          <p className="text-sm text-gray-400 italic text-center py-4">Sem campos específicos para este tipo de ativo.</p>
                      )}
                 </div>
+
+                {/* Campos Customizados Dinâmicos */}
+                {customFieldsDef.length > 0 && (
+                    <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-brand/20">
+                         <h3 className="text-xs font-bold text-brand uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 pb-2"><Database size={16}/> Informações Adicionais</h3>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {customFieldsDef.map(cf => (
+                                <div key={cf.id}>
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">{cf.label}</label>
+                                    {cf.type === 'textarea' ? (
+                                        <textarea 
+                                            value={formData.customData[cf.id] || ''} 
+                                            onChange={e => handleCustomDataChange(cf.id, e.target.value)} 
+                                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none text-sm resize-none h-24"
+                                        />
+                                    ) : (
+                                        <input 
+                                            type={cf.type === 'number' ? 'number' : cf.type === 'date' ? 'date' : 'text'}
+                                            value={formData.customData[cf.id] || ''} 
+                                            onChange={e => handleCustomDataChange(cf.id, e.target.value)} 
+                                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none text-sm" 
+                                        />
+                                    )}
+                                </div>
+                            ))}
+                         </div>
+                    </div>
+                )}
 
                 {/* Campo de notas em formato livre para registrar informações adicionais e histórico manual */}
                 <div className="bg-yellow-50 p-6 md:p-8 rounded-[2rem] border border-yellow-100">

@@ -151,8 +151,10 @@ const resolveNextSequenceFromAssets = (assets, namingConfig) => {
 };
 
 export const resolveAgentNamingFromDatabase = async (payload = {}, options = {}) => {
+  const tenantId = options.tenantId || 'default-tenant';
   const assetType = inferAgentAssetType(payload);
-  const snapshot = await getDocs(assetsCollection);
+  const q = query(assetsCollection, where('tenantId', '==', tenantId));
+  const snapshot = await getDocs(q);
   const assets = snapshot.docs.map((assetDoc) => ({ id: assetDoc.id, ...assetDoc.data() }));
   const typeCode = resolveTypeCodeFromAssets(assets, assetType, options.namingConfig);
   const baseConfig = {
@@ -238,12 +240,18 @@ const toAssetData = (normalized) => ({
   },
 });
 
-export const findDuplicateAsset = async ({ internalId, serialNumber }) => {
+export const findDuplicateAsset = async ({ internalId, serialNumber, tenantId }) => {
   const targetInternalId = normalizeComparable(internalId);
   const targetSerialNumber = normalizeComparable(serialNumber);
+  const targetTenantId = tenantId || 'default-tenant';
 
   if (isUsableIdentifier(internalId)) {
-    const byInternalId = query(assetsCollection, where('internalId', '==', internalId), limit(1));
+    const byInternalId = query(
+      assetsCollection,
+      where('tenantId', '==', targetTenantId),
+      where('internalId', '==', internalId),
+      limit(1)
+    );
     const snapshot = await getDocs(byInternalId);
     if (!snapshot.empty) {
       const found = snapshot.docs[0];
@@ -252,7 +260,12 @@ export const findDuplicateAsset = async ({ internalId, serialNumber }) => {
   }
 
   if (isUsableIdentifier(serialNumber)) {
-    const bySerial = query(assetsCollection, where('serialNumber', '==', serialNumber), limit(1));
+    const bySerial = query(
+      assetsCollection,
+      where('tenantId', '==', targetTenantId),
+      where('serialNumber', '==', serialNumber),
+      limit(1)
+    );
     const snapshot = await getDocs(bySerial);
     if (!snapshot.empty) {
       const found = snapshot.docs[0];
@@ -261,7 +274,8 @@ export const findDuplicateAsset = async ({ internalId, serialNumber }) => {
   }
 
   if (targetInternalId || targetSerialNumber) {
-    const snapshot = await getDocs(assetsCollection);
+    const q = query(assetsCollection, where('tenantId', '==', targetTenantId));
+    const snapshot = await getDocs(q);
     const found = snapshot.docs.find((assetDoc) => {
       const data = assetDoc.data();
       return (
@@ -283,6 +297,7 @@ export const findDuplicateAsset = async ({ internalId, serialNumber }) => {
 };
 
 export const previewAgentPayload = async (payload, options = {}) => {
+  const tenantId = options.tenantId || 'default-tenant';
   const explicitId = firstUsable(payload.internalId, payload.internal_id, payload.patrimonio, payload.assetTag);
   const resolved = explicitId ? null : await resolveAgentNamingFromDatabase(payload, options);
   const normalized = normalizeAgentPayload(payload, {
@@ -290,7 +305,7 @@ export const previewAgentPayload = async (payload, options = {}) => {
     assetType: resolved?.assetType,
     namingConfig: resolved?.namingConfig || options.namingConfig,
   });
-  const duplicate = await findDuplicateAsset(normalized);
+  const duplicate = await findDuplicateAsset({ ...normalized, tenantId });
   return {
     normalized,
     resolvedNaming: resolved,
@@ -300,6 +315,7 @@ export const previewAgentPayload = async (payload, options = {}) => {
 };
 
 export const registerAgentAsset = async (payload, options = {}) => {
+  const tenantId = options.tenantId || 'default-tenant';
   const explicitId = firstUsable(payload.internalId, payload.internal_id, payload.patrimonio, payload.assetTag);
   const resolved = explicitId ? null : await resolveAgentNamingFromDatabase(payload, options);
   const normalized = normalizeAgentPayload(payload, {
@@ -308,7 +324,7 @@ export const registerAgentAsset = async (payload, options = {}) => {
     namingConfig: resolved?.namingConfig || options.namingConfig,
   });
   const assetData = toAssetData(normalized);
-  const duplicate = await findDuplicateAsset(normalized);
+  const duplicate = await findDuplicateAsset({ ...normalized, tenantId });
   const user = options.user || 'Agente ITAM';
 
   if (duplicate) {
@@ -326,6 +342,7 @@ export const registerAgentAsset = async (payload, options = {}) => {
     if (!duplicate.location) updateData.location = assetData.location;
 
     await updateAsset(duplicate.id, updateData, {
+      tenantId,
       type: 'agent-sync',
       action: 'Sincronização do Agente',
       details: `Ativo atualizado pelo agente. Correspondência por ${duplicate.matchField}.`,
@@ -342,6 +359,7 @@ export const registerAgentAsset = async (payload, options = {}) => {
 
   const docRef = await createAsset({
     ...assetData,
+    tenantId,
     createdBy: user,
   });
 
@@ -354,8 +372,14 @@ export const registerAgentAsset = async (payload, options = {}) => {
   };
 };
 
-export const getAgentSubmissions = async () => {
-  const q = query(agentInboxCollection, orderBy('createdAt', 'desc'), limit(50));
+export const getAgentSubmissions = async (tenantId) => {
+  if (!tenantId) return [];
+  const q = query(
+    agentInboxCollection,
+    where('tenantId', '==', tenantId),
+    orderBy('createdAt', 'desc'),
+    limit(50)
+  );
   const snapshot = await getDocs(q);
   return snapshot.docs.map((submission) => ({ id: submission.id, ...submission.data() }));
 };
@@ -368,12 +392,13 @@ export const markAgentSubmission = async (submissionId, data) => {
   });
 };
 
-export const enqueueAgentSubmission = async (payload, source = 'manual') => {
+export const enqueueAgentSubmission = async (payload, source = 'manual', tenantId = 'default-tenant') => {
   const normalized = normalizeAgentPayload(payload);
   return addDoc(agentInboxCollection, {
     payload,
     source,
     status: 'pending',
+    tenantId,
     hostname: normalized.hostname,
     internalId: normalized.internalId,
     serialNumber: normalized.serialNumber,

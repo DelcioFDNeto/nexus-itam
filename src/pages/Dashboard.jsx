@@ -13,12 +13,15 @@ import 'chart.js/auto';
 // Services
 import { getAllAssets, getRecentActivity } from '../services/assetService';
 import { getEmployees } from '../services/employeeService';
+import { useAuth } from '../contexts/AuthContext';
 
 // Components
 import DashboardSkeleton from '../components/dashboard/DashboardSkeleton';
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const tenantId = currentUser?.tenantId;
   const [loading, setLoading] = useState(true);
   const [greeting, setGreeting] = useState('');
   
@@ -38,9 +41,9 @@ const Dashboard = () => {
       try {
         setLoading(true);
         const [assetsData, employeesData, historyData] = await Promise.all([
-            getAllAssets(),
+            getAllAssets(tenantId),
             getEmployees(),
-            getRecentActivity(6)
+            getRecentActivity(tenantId, 6)
         ]);
 
         setAssets(assetsData);
@@ -54,8 +57,12 @@ const Dashboard = () => {
       }
     };
 
-    fetchData();
-  }, []);
+    if (tenantId) {
+      fetchData();
+    } else {
+      setLoading(false);
+    }
+  }, [tenantId]);
 
   // Cálculos baseados nos dados carregados para alimentar os quadros de estatísticas
   const totalValue = assets.reduce((acc, asset) => {
@@ -103,7 +110,7 @@ const Dashboard = () => {
           <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
                   <h1 className="text-4xl md:text-5xl font-black text-gray-900 tracking-tight mb-2">
-                      {greeting}, <span className="text-transparent bg-clip-text bg-gradient-to-r from-gray-900 to-gray-600">Admin</span>.
+                      {greeting}, <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-brand-dark">{currentUser?.name || 'Admin'}</span>.
                   </h1>
                   <p className="text-gray-500 font-medium max-w-md">Aqui está o panorama do seu parque tecnológico hoje.</p>
               </div>

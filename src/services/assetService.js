@@ -20,8 +20,13 @@ const historyCollection = collection(db, 'history'); // Coleção Global de Hist
 
 // --- LEITURA (READ) ---
 
-export const getAllAssets = async () => {
-  const q = query(assetsCollection, orderBy('createdAt', 'desc')); 
+export const getAllAssets = async (tenantId) => {
+  if (!tenantId) return [];
+  const q = query(
+    assetsCollection, 
+    where('tenantId', '==', tenantId),
+    orderBy('createdAt', 'desc')
+  ); 
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
@@ -46,8 +51,14 @@ export const getAssetHistory = async (assetId) => {
 
 // --- DASHBOARD & REPORTS ---
 
-export const getRecentActivity = async (limitCount = 8) => {
-  const q = query(historyCollection, orderBy('date', 'desc'), limit(limitCount));
+export const getRecentActivity = async (tenantId, limitCount = 8) => {
+  if (!tenantId) return [];
+  const q = query(
+    historyCollection, 
+    where('tenantId', '==', tenantId),
+    orderBy('date', 'desc'), 
+    limit(limitCount)
+  );
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => {
       const data = doc.data();
@@ -64,6 +75,9 @@ export const getRecentActivity = async (limitCount = 8) => {
 
 // Cria um novo ativo e registra na timeline
 export const createAsset = async (assetData) => {
+  if (!assetData.tenantId) {
+    throw new Error("Não é possível cadastrar um ativo sem especificar o inquilino (tenantId).");
+  }
   const docRef = await addDoc(assetsCollection, {
     ...assetData,
     createdAt: serverTimestamp(),
@@ -73,6 +87,7 @@ export const createAsset = async (assetData) => {
   // Log de Criação
   await addDoc(historyCollection, {
     assetId: docRef.id,
+    tenantId: assetData.tenantId,
     type: 'creation',
     action: 'Ativo Criado',
     date: serverTimestamp(),
@@ -93,10 +108,10 @@ export const updateAsset = async (id, assetData, historyOptions = null) => {
   });
 
   // Log de Edição
-  // Se historyOptions for fornecido, usa ele. Se não, usa o genérico apenas se NÃO for update automático
   if (historyOptions) {
       await addDoc(historyCollection, {
         assetId: id,
+        tenantId: assetData.tenantId || historyOptions.tenantId || 'default-tenant',
         type: historyOptions.type || 'update',
         action: historyOptions.action || 'Dados Editados',
         date: serverTimestamp(),
@@ -104,9 +119,9 @@ export const updateAsset = async (id, assetData, historyOptions = null) => {
         details: historyOptions.details || 'Atualização realizada.'
       });
   } else {
-      // Setup padrão para edições genéricas (opcional: pode ser removido se quiser logar só o explícito)
       await addDoc(historyCollection, {
         assetId: id,
+        tenantId: assetData.tenantId || 'default-tenant',
         type: 'update',
         action: 'Dados Editados',
         date: serverTimestamp(),
@@ -119,7 +134,6 @@ export const updateAsset = async (id, assetData, historyOptions = null) => {
 export const deleteAsset = async (id) => {
   const assetRef = doc(db, 'assets', id);
   await deleteDoc(assetRef);
-  // Opcional: Apagar histórico associado (geralmente mantemos para auditoria)
   return true;
 };
 
@@ -143,11 +157,11 @@ export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema'
   // 2. Grava na Timeline Global
   const historyLog = {
     assetId: assetId,
+    tenantId: currentData.tenantId || 'default-tenant',
     type: 'movimentacao',
     action: 'Transferência',
     date: serverTimestamp(),
     
-    // Dados para exibição no card
     previousLocation: currentData.location || 'N/A',
     newLocation: moveData.newLocation,
     previousHolder: currentData.assignedTo || 'N/A',
@@ -174,6 +188,7 @@ export const registerMaintenance = async (assetId, maintenanceData, user = 'Sist
   // 2. Grava na Timeline Global
   const historyLog = {
     assetId: assetId,
+    tenantId: maintenanceData.tenantId || 'default-tenant',
     type: 'manutencao',
     action: 'Manutenção Iniciada',
     date: serverTimestamp(),

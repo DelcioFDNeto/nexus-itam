@@ -1,9 +1,12 @@
 import { db } from './firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, orderBy, where } from 'firebase/firestore';
 
 const projectCollection = collection(db, 'projects');
 
 export const createProject = async (data) => {
+  if (!data.tenantId) {
+    throw new Error("Não é possível criar um projeto sem especificar o inquilino (tenantId).");
+  }
   return await addDoc(projectCollection, {
     ...data,
     createdAt: new Date(),
@@ -11,8 +14,13 @@ export const createProject = async (data) => {
   });
 };
 
-export const getProjects = async () => {
-  const q = query(projectCollection, orderBy('createdAt', 'desc'));
+export const getProjects = async (tenantId) => {
+  if (!tenantId) return [];
+  const q = query(
+    projectCollection, 
+    where('tenantId', '==', tenantId),
+    orderBy('createdAt', 'desc')
+  );
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };

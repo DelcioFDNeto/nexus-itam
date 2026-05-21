@@ -1,6 +1,7 @@
 // src/pages/ServiceManager.jsx
 import React, { useState, useEffect } from 'react';
 import { getContracts, createContract, deleteContract } from '../services/contractService';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   Globe, Plus, Trash2, Search, Phone, Calendar, DollarSign, Briefcase 
 } from 'lucide-react';
@@ -10,6 +11,8 @@ const ServiceManager = () => {
   const [contracts, setContracts] = useState([]);
   const [, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { currentUser } = useAuth();
+  const tenantId = currentUser?.tenantId;
   
   const [formData, setFormData] = useState({
     provider: '',
@@ -21,19 +24,35 @@ const ServiceManager = () => {
   });
 
   const loadData = async () => {
+    if (!tenantId) {
+      setContracts([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const data = await getContracts();
+      const data = await getContracts(tenantId);
       setContracts(data);
     } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    if (tenantId) {
+      loadData();
+    } else {
+      setContracts([]);
+      setLoading(false);
+    }
+  }, [tenantId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!tenantId) {
+      toast.error("Sem contexto de tenant.");
+      return;
+    }
     try {
-      await createContract(formData);
+      await createContract({ ...formData, tenantId });
       setIsModalOpen(false);
       setFormData({ provider: '', serviceType: 'Internet', monthlyCost: '', renewalDate: '', supportPhone: '', description: '' });
       loadData();

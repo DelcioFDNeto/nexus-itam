@@ -3,16 +3,19 @@ import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   LayoutDashboard, Server, PlusSquare, FileInput, 
   Users, LogOut, ClipboardCheck, X, ShieldCheck, Layers, Globe,
-  FolderGit2, Settings, ChevronLeft, ChevronRight, Menu, Search, Activity
+  FolderGit2, Settings, ChevronLeft, ChevronRight, Menu, Search, Activity, UserCog
 } from 'lucide-react';
+import Logo from './Logo';
 
 
 const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }) => { // Recebe props de colapso
   const location = useLocation();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
 
   const handleLogout = async () => {
     try {
@@ -50,8 +53,14 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
 
   const systemItems = [
     { path: '/import', icon: <FileInput size={isCollapsed ? 24 : 20} />, label: 'Importação' },
-    { path: '/settings', icon: <Settings size={isCollapsed ? 24 : 20} />, label: 'Configurações' },
   ];
+
+  if (currentUser?.role === 'owner') {
+    systemItems.push(
+      { path: '/users', icon: <UserCog size={isCollapsed ? 24 : 20} />, label: 'Acessos' },
+      { path: '/settings', icon: <Settings size={isCollapsed ? 24 : 20} />, label: 'Configurações' }
+    );
+  }
 
   return (
     <>
@@ -81,16 +90,16 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
            
            {!isCollapsed && (
              <div className="flex items-center gap-3 animate-in fade-in duration-300">
-               <div className="w-10 h-10 rounded-xl flex items-center justify-center pt-1 drop-shadow-md cursor-pointer hover:scale-105 transition-transform" onClick={() => navigate('/')}>
-                 <img src="/logo.png" alt="Nexus logo" className="w-full h-full object-contain" />
+               <div className="flex items-center justify-center cursor-pointer hover:scale-105 transition-transform" onClick={() => navigate('/')}>
+                 <Logo size="sm" showText={true} />
+                 <span className="text-[9px] bg-indigo-50 text-brand px-1.5 py-0.5 rounded-full ml-2 border border-indigo-100 font-black relative -top-1 shadow-sm">v2.0</span>
                </div>
-               <span className="font-black text-slate-800 tracking-tight text-lg">Nexus<span className="text-brand">ITAM</span> <span className="text-[9px] bg-indigo-50 text-brand px-1.5 py-0.5 rounded-full ml-1 border border-indigo-100 font-black relative -top-1 shadow-sm">v2.0</span></span>
              </div>
            )}
 
            {isCollapsed && (
-             <div className="w-10 h-10 rounded-xl flex items-center justify-center drop-shadow-lg cursor-pointer hover:scale-110 transition-transform" onClick={toggleCollapse}>
-                 <img src="/logo.png" alt="Nexus logo" className="w-full h-full object-contain" />
+             <div className="flex items-center justify-center cursor-pointer hover:scale-110 transition-transform" onClick={toggleCollapse}>
+                 <Logo size="sm" showText={false} />
              </div>
            )}
            

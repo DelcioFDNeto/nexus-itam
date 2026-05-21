@@ -2,17 +2,20 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../services/firebase';
-import { collection, query, onSnapshot, orderBy, doc, updateDoc, serverTimestamp, addDoc } from 'firebase/firestore'; 
+import { collection, query, onSnapshot, orderBy, doc, updateDoc, serverTimestamp, addDoc, where } from 'firebase/firestore'; 
 import { 
   ClipboardCheck, MapPin, Scan, CheckCircle, XCircle, AlertTriangle, ArrowLeft, 
   ArrowRightLeft, Search, Save, List, Clock, Box, Play, Check, X, AlertOctagon, Volume2, VolumeX, Smartphone
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../contexts/AuthContext';
 import QRScanner from '../components/QRScanner';
 import AssetIcon from '../components/AssetIcon';
 
 const AuditPage = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const tenantId = currentUser?.tenantId;
   
   // Estados principais de dados
   const [assets, setAssets] = useState([]);
@@ -65,14 +68,15 @@ const AuditPage = () => {
 
   // Buscando a lista atualizada de ativos do banco de dados
   useEffect(() => {
-    const q = query(collection(db, 'assets'), orderBy('location', 'asc'));
+    if (!tenantId) return;
+    const q = query(collection(db, 'assets'), where('tenantId', '==', tenantId), orderBy('location', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const assetData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setAssets(assetData);
       setLoading(false);
     }, (err) => { console.error(err); setLoading(false); });
     return () => unsubscribe();
-  }, []);
+  }, [tenantId]);
 
   // Processamento lógico mais custoso, feito apenas quando necessário (Memorizado)
   const locationsData = useMemo(() => {
@@ -172,6 +176,7 @@ const AuditPage = () => {
       if (!confirm(`Finalizar conferência de ${selectedLocation}?`)) return;
       try {
           await addDoc(collection(db, 'audits'), {
+              tenantId,
               location: selectedLocation,
               date: serverTimestamp(),
               stats: {

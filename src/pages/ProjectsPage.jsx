@@ -7,9 +7,12 @@ import {
   GitBranch, CheckSquare, Square, X, Users, LayoutGrid, List, Kanban 
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const ProjectsPage = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const tenantId = currentUser?.tenantId;
   const [projects, setProjects] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,15 +24,20 @@ const ProjectsPage = () => {
     name: '', description: '', status: 'Planejamento', priority: 'Média', leader: '', deadline: '', version: '2.0', team: []
   });
 
-  async function loadProjects() {
+  const loadProjects = React.useCallback(async () => {
+    if (!tenantId) return;
     setLoading(true);
-    const [pData, eData] = await Promise.all([getProjects(), getEmployees()]);
+    const [pData, eData] = await Promise.all([getProjects(tenantId), getEmployees(tenantId)]);
     setProjects(pData);
     setEmployees(eData);
     setLoading(false);
-  }
+  }, [tenantId]);
 
-  useEffect(() => { loadProjects(); }, []); // eslint-disable-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    if (tenantId) {
+      setTimeout(() => loadProjects(), 0);
+    }
+  }, [tenantId, loadProjects]);
 
 
 
@@ -37,6 +45,7 @@ const ProjectsPage = () => {
     e.preventDefault();
     const enrichedData = {
         ...formData,
+        tenantId: tenantId,
         coverImage: `https://ui-avatars.com/api/?name=${formData.name}&background=random&size=128&bold=true`, 
         changelog: [`v${formData.version}: Projeto iniciado.`],
         progress: 0

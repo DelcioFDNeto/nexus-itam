@@ -1,20 +1,28 @@
 // src/services/licenseService.js
 import { db } from './firebase';
 import { 
-  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp, arrayUnion, arrayRemove 
+  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp, arrayUnion, arrayRemove, where 
 } from 'firebase/firestore';
 
 const licenseCollection = collection(db, 'licenses');
 
 // Listar todas as licenças (ordem alfabética)
-export const getLicenses = async () => {
-  const q = query(licenseCollection, orderBy('softwareName', 'asc'));
+export const getLicenses = async (tenantId) => {
+  if (!tenantId) return [];
+  const q = query(
+    licenseCollection, 
+    where('tenantId', '==', tenantId),
+    orderBy('softwareName', 'asc')
+  );
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
 // Criar nova licença
 export const createLicense = async (data) => {
+  if (!data.tenantId) {
+    throw new Error("Não é possível criar uma licença sem especificar o inquilino (tenantId).");
+  }
   return await addDoc(licenseCollection, {
     ...data,
     usedCount: 0, // Começa com 0 ativações

@@ -1,18 +1,26 @@
 // src/services/employeeService.js
 import { db } from './firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from 'firebase/firestore';
 
 const empCollection = collection(db, 'employees');
 const secCollection = collection(db, 'sectors');
 
 // --- COLABORADORES ---
-export const getEmployees = async () => {
-  const q = query(empCollection, orderBy('name', 'asc'));
+export const getEmployees = async (tenantId) => {
+  if (!tenantId) return [];
+  const q = query(
+    empCollection, 
+    where('tenantId', '==', tenantId),
+    orderBy('name', 'asc')
+  );
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
 export const addEmployee = async (employee) => {
+  if (!employee.tenantId) {
+    throw new Error("Não é possível cadastrar um colaborador sem especificar o inquilino (tenantId).");
+  }
   await addDoc(empCollection, employee);
 };
 
@@ -27,17 +35,24 @@ export const deleteEmployee = async (id) => {
 };
 
 // --- SETORES ---
-export const getSectors = async () => {
-  const q = query(secCollection, orderBy('name', 'asc'));
+export const getSectors = async (tenantId) => {
+  if (!tenantId) return [];
+  const q = query(
+    secCollection, 
+    where('tenantId', '==', tenantId),
+    orderBy('name', 'asc')
+  );
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
 export const addSector = async (sector) => {
+  if (!sector.tenantId) {
+    throw new Error("Não é possível cadastrar um setor sem especificar o inquilino (tenantId).");
+  }
   await addDoc(secCollection, sector);
 };
 
-// ADICIONE ESTA FUNÇÃO SE NÃO TIVER
 export const updateSector = async (id, updatedData) => {
   const docRef = doc(db, 'sectors', id);
   await updateDoc(docRef, updatedData);

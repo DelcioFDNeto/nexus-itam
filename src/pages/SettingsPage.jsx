@@ -4,9 +4,11 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { generateFullBackup, restoreBackup } from '../services/backupService';
 import { 
   Settings, Save, Database, Download, AlertTriangle, 
-  UserCog, FileText, CheckCircle, Shield, UploadCloud, RefreshCcw, FileJson, Info, Code, Play, Tag
+  UserCog, FileText, CheckCircle, Shield, UploadCloud, RefreshCcw, FileJson, Info, Code, Play, Tag, Plus, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const CONFIG_FIELDS = [
   { key: 'companyName', label: 'Nome da empresa', placeholder: 'Ex: Shineray do Brasil' },
@@ -14,6 +16,8 @@ const CONFIG_FIELDS = [
   { key: 'itManager', label: 'Gestor de TI', placeholder: 'Nome do responsável' },
   { key: 'supportEmail', label: 'Email de suporte', placeholder: 'suporte@empresa.com' },
   { key: 'termTitle', label: 'Título do termo', placeholder: 'Termo de Responsabilidade' },
+  { key: 'logoUrl', label: 'URL do Logotipo', placeholder: 'https://...', type: 'text' },
+  { key: 'primaryColor', label: 'Cor Principal (HEX)', placeholder: '#000000', type: 'color' },
 ];
 
 const getCompanyLabel = (companyName) =>
@@ -23,6 +27,9 @@ const getSupportEmail = (supportEmail) =>
   (supportEmail || 'shiadmti@gmail.com').trim() || 'shiadmti@gmail.com';
 
 const SettingsPage = () => {
+  const { currentUser } = useAuth();
+  const navigate = useNavigate();
+  const tenantId = currentUser?.tenantId;
   const [loading, setLoading] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
@@ -41,14 +48,25 @@ const SettingsPage = () => {
     itManager: 'Délcio Farias',
     supportEmail: 'shiadmti@gmail.com',
     termTitle: 'Termo de Responsabilidade',
-    locationBranch: 'Matriz - Belém'
+    termClauses: '1. DO USO E FINALIDADE: O(a) Responsável declara ter recebido o equipamento em perfeito estado de conservação e funcionamento. Compromete-se a utilizá-lo estrita e exclusivamente para fins profissionais.\n2. DA GUARDA E CONSERVAÇÃO: É responsabilidade do(a) Responsável zelar pela guarda, segurança e conservação do equipamento.\n3. DA RESTITUIÇÃO: O equipamento deverá ser devolvido imediatamente à Empresa, em perfeito estado, em caso de rescisão, mudança de cargo ou solicitação expressa.',
+    locationBranch: 'Matriz - Belém',
+    logoUrl: '',
+    primaryColor: '#000000',
+    customFields: []
   });
 
   // Busca a identidade visual e dados cadastrais no banco logo na largada da tela
   useEffect(() => {
+    if (currentUser?.role !== 'owner') {
+      toast.error('Acesso negado. Apenas o Líder da TI (Owner) pode acessar as configurações.');
+      navigate('/dashboard');
+      return;
+    }
+    
+    if (!tenantId) return;
     const loadConfig = async () => {
       try {
-        const docRef = doc(db, 'settings', 'general');
+        const docRef = doc(db, 'settings', tenantId || 'general');
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           setConfig(prev => ({ ...prev, ...docSnap.data() }));
@@ -58,14 +76,37 @@ const SettingsPage = () => {
       }
     };
     loadConfig();
-  }, []);
+  }, [tenantId]);
+
+  const addCustomField = () => {
+    setConfig(prev => ({
+      ...prev,
+      customFields: [...(prev.customFields || []), { id: `cf_${Date.now()}`, label: '', type: 'text' }]
+    }));
+  };
+
+  const updateCustomField = (index, key, value) => {
+    const newFields = [...(config.customFields || [])];
+    newFields[index][key] = value;
+    setConfig({ ...config, customFields: newFields });
+  };
+
+  const removeCustomField = (index) => {
+    const newFields = [...(config.customFields || [])];
+    newFields.splice(index, 1);
+    setConfig({ ...config, customFields: newFields });
+  };
 
   // Carimba e documenta (Salva) todo o formulário global alterado
   const handleSave = async (e) => {
     e.preventDefault();
+    if (!tenantId) {
+      toast.error("Sem contexto de tenant.");
+      return;
+    }
     setLoading(true);
     try {
-      await setDoc(doc(db, 'settings', 'general'), config);
+      await setDoc(doc(db, 'settings', tenantId || 'general'), config);
       toast.success("Configurações atualizadas com sucesso!");
     } catch (error) {
       console.error(error);
@@ -181,7 +222,7 @@ const SettingsPage = () => {
           const stats = await restoreBackup(importSummary.rawData, (progress, message) => {
               setRestoreProgress(progress);
               setRestoreStatus(message);
-          });
+          }, tenantId);
           
           toast.success(`Sucesso! Importação finalizada.\n\nColeções: ${stats.collectionsUpdated.join(', ')}\nErros: ${stats.errors.length}`);
           window.location.reload(); 
@@ -223,13 +264,63 @@ const SettingsPage = () => {
                          <div key={field.key}>
                              <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">{field.label}</label>
                              <input 
+                               type={field.type || "text"}
                                value={config[field.key] || ''} 
                                onChange={e => setConfig({...config, [field.key]: e.target.value})} 
-                               className="w-full p-2 border rounded-lg font-bold text-sm text-gray-800 focus:outline-none focus:border-black"
+                               className={`w-full border rounded-lg font-bold text-sm text-gray-800 focus:outline-none focus:border-black ${field.type === 'color' ? 'h-10 p-1 cursor-pointer' : 'p-2'}`}
                                placeholder={field.placeholder}
                              />
                          </div>
                       ))}
+                      <div className="col-span-1 md:col-span-2">
+                           <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Cláusulas do Termo de Responsabilidade</label>
+                           <textarea
+                             value={config.termClauses || ''}
+                             onChange={e => setConfig({...config, termClauses: e.target.value})}
+                             className="w-full border rounded-lg font-bold text-sm text-gray-800 focus:outline-none focus:border-brand p-2 h-32 resize-none"
+                             placeholder="Digite as cláusulas do contrato, uma por linha..."
+                           />
+                       </div>
+                      
+                    {/* Sessão: Campos Customizados para Ativos */}
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                                <Database size={16} className="text-brand" />
+                                <h3 className="text-xs font-black text-gray-700 uppercase">Campos Customizados</h3>
+                            </div>
+                            <button type="button" onClick={addCustomField} className="text-[10px] flex items-center gap-1 bg-brand text-white px-2 py-1 rounded font-bold hover:bg-brand/80 transition-colors">
+                                <Plus size={12}/> Adicionar Campo
+                            </button>
+                        </div>
+                        {(config.customFields || []).map((cf, idx) => (
+                            <div key={cf.id} className="flex items-center gap-2 bg-white p-2 border border-gray-200 rounded-lg shadow-sm">
+                                <input 
+                                    value={cf.label} 
+                                    onChange={e => updateCustomField(idx, 'label', e.target.value)}
+                                    placeholder="Nome do Campo"
+                                    className="flex-1 p-1.5 border rounded text-xs font-bold text-gray-800 focus:border-brand focus:outline-none"
+                                />
+                                <select 
+                                    value={cf.type} 
+                                    onChange={e => updateCustomField(idx, 'type', e.target.value)}
+                                    className="p-1.5 border rounded text-xs font-bold text-gray-600 bg-gray-50 focus:border-brand focus:outline-none"
+                                >
+                                    <option value="text">Texto Curto</option>
+                                    <option value="textarea">Texto Longo</option>
+                                    <option value="date">Data</option>
+                                    <option value="number">Número</option>
+                                </select>
+                                <button type="button" onClick={() => removeCustomField(idx)} className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors">
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
+                        ))}
+                        {(!config.customFields || config.customFields.length === 0) && (
+                            <p className="text-xs text-center text-gray-400 font-medium py-2">Nenhum campo customizado criado.</p>
+                        )}
+                    </div>
+
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                         <div className="flex items-center gap-2 mb-3">
                             <Tag size={16} className="text-brand" />

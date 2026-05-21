@@ -5,17 +5,26 @@ import {
   getAssetById as fetchAssetById, 
   getAssetHistory as fetchHistory 
 } from '../services/assetService';
+import { useAuth } from '../contexts/AuthContext';
 
 export const useAssets = () => {
+  const { currentUser } = useAuth();
+  const tenantId = currentUser?.tenantId;
+
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Carrega lista completa
+  // Carrega lista completa filtrada pelo tenant do usuário logado
   const loadAssets = useCallback(async () => {
+    if (!tenantId) {
+      setAssets([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const data = await getAllAssets();
+      const data = await getAllAssets(tenantId);
       setAssets(data);
     } catch (err) {
       console.error(err);
@@ -23,7 +32,7 @@ export const useAssets = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
     loadAssets();

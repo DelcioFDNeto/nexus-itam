@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    --color-brand: #4F46E5;
     /* PREMIUM PALETTE */
     --brand-dark: #0a0a0a;
     --glass-bg: rgba(255, 255, 255, 0.85);
@@ -56,17 +57,7 @@
   }
 }
 
-@layer utilities {
-  .text-brand {
-    @apply text-[#4F46E5];
-  }
-  .bg-brand {
-    @apply bg-[#4F46E5];
-  }
-  .border-brand {
-    @apply border-[#4F46E5];
-  }
-}
+
 
 /* GLOBAL ANIMATIONS */
 @keyframes fadeIn {

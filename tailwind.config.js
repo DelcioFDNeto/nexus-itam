@@ -9,8 +9,8 @@ export default {
       // ADICIONE ISSO AQUI:
       colors: {
         brand: {
-          DEFAULT: '#4F46E5', // Indigo-600
-          dark: '#4338CA',    // Indigo-700
+          DEFAULT: 'var(--color-brand, #4F46E5)',
+          dark: 'var(--color-brand-dark, #4338CA)',
         }
       }
     },

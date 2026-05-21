@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { getLicenses, createLicense, deleteLicense, assignLicense, unassignLicense } from '../services/licenseService';
 import { useAssets } from '../hooks/useAssets';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Key, ShieldCheck, Plus, Trash2, Search, Monitor,
   X, Copy, CheckCircle, AlertTriangle, Calendar
@@ -11,6 +12,8 @@ import { toast } from 'sonner';
 const LicenseManager = () => {
   const [licenses, setLicenses] = useState([]);
   const { assets } = useAssets();
+  const { currentUser } = useAuth();
+  const tenantId = currentUser?.tenantId;
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -32,9 +35,14 @@ const LicenseManager = () => {
   const [selectedAssetId, setSelectedAssetId] = useState('');
 
   const loadData = async () => {
+    if (!tenantId) {
+      setLicenses([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const data = await getLicenses();
+      const data = await getLicenses(tenantId);
       setLicenses(data);
     } catch (error) {
       console.error(error);
@@ -44,14 +52,23 @@ const LicenseManager = () => {
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (tenantId) {
+      loadData();
+    } else {
+      setLicenses([]);
+      setLoading(false);
+    }
+  }, [tenantId]);
 
   // Central de funções que gravam no banco e processam as regras de cruzamento de dados
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!tenantId) {
+      toast.error("Sem contexto de tenant.");
+      return;
+    }
     try {
-      await createLicense(formData);
+      await createLicense({ ...formData, tenantId });
       toast.success("Licença cadastrada!");
       setIsFormOpen(false);
       setFormData({ softwareName: '', key: '', type: 'Vitalícia', totalSeats: 1, expirationDate: '' });

@@ -9,8 +9,12 @@ import {
   UserCircle, Building2, MapPin, Mail, Save, X, CreditCard 
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../contexts/AuthContext';
 
 const EmployeeManager = () => {
+  const { currentUser } = useAuth();
+  const tenantId = currentUser?.tenantId;
+
   // Armazena as listas puxadas do banco de dados
   const [employees, setEmployees] = useState([]);
   const [sectors, setSectors] = useState([]);
@@ -31,9 +35,10 @@ const EmployeeManager = () => {
 
   // Puxa colaborades e departamentos simultaneamente para tornar a tela mais rápida
   const loadData = async () => {
+    if (!tenantId) return;
     setLoading(true);
     try {
-        const [empData, secData] = await Promise.all([getEmployees(), getSectors()]);
+        const [empData, secData] = await Promise.all([getEmployees(tenantId), getSectors(tenantId)]);
         setEmployees(empData);
         setSectors(secData);
     } catch (error) {
@@ -43,7 +48,11 @@ const EmployeeManager = () => {
     }
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    if (tenantId) {
+      loadData();
+    }
+  }, [tenantId]);
 
   // Funções que preparam ou limpam a janela flutuante antes que ela surja na tela
   
@@ -90,6 +99,7 @@ const EmployeeManager = () => {
                 cpf: formData.cpf,
                 branch: formData.branch,
                 sector: formData.sectorId || 'Geral',
+                tenantId: tenantId,
                 updatedAt: new Date()
             };
 
@@ -103,6 +113,7 @@ const EmployeeManager = () => {
                 name: formData.sectorName,
                 manager: formData.manager,
                 description: formData.description,
+                tenantId: tenantId,
                 updatedAt: new Date()
             };
 

@@ -1,6 +1,6 @@
 // src/pages/Login.jsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Lock, Mail, ArrowRight, AlertCircle, KeyRound, X, CheckCircle } from 'lucide-react';
 import Logo from '../components/Logo';
@@ -130,13 +130,19 @@ const Login = () => {
         </form>
 
         {/* Rota de fuga caso o usuário trave por esquecimento da senha */}
-        <div className="mt-4 text-center">
+        <div className="mt-4 flex justify-between items-center px-1">
             <button 
                 onClick={() => setIsResetOpen(true)}
                 className="text-xs text-gray-400 hover:text-brand font-bold transition-colors"
             >
                 Esqueceu a senha?
             </button>
+            <Link 
+                to="/register"
+                className="text-xs text-brand hover:text-brand-dark font-black transition-colors"
+            >
+                Registrar Empresa
+            </Link>
         </div>
 
         <div className="mt-6 text-center border-t border-gray-100 pt-4">

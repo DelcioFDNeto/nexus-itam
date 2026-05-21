@@ -52,7 +52,7 @@ const normalizeNamingConfig = (config = {}) => ({
   padLength: Number(config.padLength) || DEFAULT_AGENT_NAMING.padLength,
 });
 
-const buildAgentScript = () => {
+const buildAgentScript = (tenantId = 'default-tenant') => {
   const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'SEU_PROJECT_ID';
   const apiKey = import.meta.env.VITE_FIREBASE_API_KEY || 'SUA_API_KEY';
 
@@ -64,6 +64,7 @@ param(
 
 $ProjectId = "${projectId}"
 $ApiKey = "${apiKey}"
+$TenantId = "${tenantId}"
 
 function Get-ItamPayload {
   $ErrorActionPreference = "SilentlyContinue"
@@ -135,6 +136,7 @@ function Send-ItamPayload {
       internalId = @{ stringValue = "" }
       serialNumber = @{ stringValue = [string]$Payload.hardware.bios_serial }
       createdAt = @{ stringValue = (Get-Date).ToString("o") }
+      tenantId = @{ stringValue = $TenantId }
     }
   }
   $body = $document | ConvertTo-Json -Depth 20
@@ -188,6 +190,7 @@ const buildJsonPayload = (currentText) => {
 
 const AgentManager = () => {
   const { currentUser } = useAuth();
+  const tenantId = currentUser?.tenantId || 'default-tenant';
   const [jsonText, setJsonText] = useState(JSON.stringify(samplePayload, null, 2));
   const [preview, setPreview] = useState(null);
   const [submissions, setSubmissions] = useState([]);
@@ -215,7 +218,7 @@ const AgentManager = () => {
   const saveNamingConfig = async (configToSave = normalizedNamingConfig, silent = false) => {
     setSavingConfig(true);
     try {
-      await setDoc(doc(db, 'settings', 'general'), { agentNaming: configToSave }, { merge: true });
+      await setDoc(doc(db, 'settings', tenantId), { agentNaming: configToSave }, { merge: true });
       setNamingConfig(configToSave);
       if (!silent) toast.success('Padrão de nomenclatura salvo.');
     } catch (error) {
@@ -227,9 +230,10 @@ const AgentManager = () => {
   };
 
   const refreshAutoNamingPreview = async () => {
+    if (!tenantId) return;
     try {
       const payload = parsePayload(jsonText);
-      const resolved = await resolveAgentNamingFromDatabase(payload, { namingConfig: normalizedNamingConfig });
+      const resolved = await resolveAgentNamingFromDatabase(payload, { namingConfig: normalizedNamingConfig, tenantId });
       setAutoNamingPreview(resolved);
     } catch {
       setAutoNamingPreview(null);
@@ -240,7 +244,7 @@ const AgentManager = () => {
     setLoadingPreview(true);
     try {
       const payload = parsePayload(jsonText);
-      const result = await previewAgentPayload(payload, { namingConfig: normalizedNamingConfig });
+      const result = await previewAgentPayload(payload, { namingConfig: normalizedNamingConfig, tenantId });
       setPreview({ ...result, payload });
       setAutoNamingPreview(result.resolvedNaming);
       toast.success('Payload analisado.');
@@ -254,13 +258,14 @@ const AgentManager = () => {
   };
 
   const loadInbox = async () => {
+    if (!tenantId) return;
     setLoadingInbox(true);
     try {
-      const data = await getAgentSubmissions();
+      const data = await getAgentSubmissions(tenantId);
       const enriched = await Promise.all(
         data.map(async (submission) => {
           try {
-            const agentPreview = await previewAgentPayload(submission.payload || {}, { namingConfig: normalizedNamingConfig });
+            const agentPreview = await previewAgentPayload(submission.payload || {}, { namingConfig: normalizedNamingConfig, tenantId });
             return { ...submission, preview: agentPreview };
           } catch {
             return submission;
@@ -279,26 +284,36 @@ const AgentManager = () => {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const settingsRef = doc(db, 'settings', 'general');
+        const settingsRef = doc(db, 'settings', tenantId);
         const snap = await getDoc(settingsRef);
         if (snap.exists()) {
           setNamingConfig(normalizeNamingConfig(snap.data().agentNaming || {}));
+        } else {
+          const generalRef = doc(db, 'settings', 'general');
+          const generalSnap = await getDoc(generalRef);
+          if (generalSnap.exists()) {
+            setNamingConfig(normalizeNamingConfig(generalSnap.data().agentNaming || {}));
+          }
         }
       } catch (error) {
         console.error(error);
       }
     };
 
-    loadSettings();
-  }, []);
+    if (tenantId) {
+      loadSettings();
+    }
+  }, [tenantId]);
 
   useEffect(() => {
-    loadInbox();
-  }, [normalizedNamingConfig]);
+    if (tenantId) {
+      loadInbox();
+    }
+  }, [tenantId, normalizedNamingConfig]);
 
   useEffect(() => {
     refreshAutoNamingPreview();
-  }, [jsonText, normalizedNamingConfig]);
+  }, [jsonText, normalizedNamingConfig, tenantId]);
 
   const registerManualPayload = async () => {
     setProcessing(true);
@@ -307,6 +322,7 @@ const AgentManager = () => {
       const result = await registerAgentAsset(payload, {
         user: currentUser?.email || 'Agente ITAM',
         namingConfig: normalizedNamingConfig,
+        tenantId,
       });
       toast.success(result.action === 'created' ? 'Ativo criado pelo agente.' : 'Ativo existente atualizado pelo agente.');
       await analyzeJson();
@@ -324,6 +340,7 @@ const AgentManager = () => {
       const result = await registerAgentAsset(submission.payload, {
         user: currentUser?.email || 'Agente ITAM',
         namingConfig: normalizedNamingConfig,
+        tenantId,
       });
       await markAgentSubmission(submission.id, {
         status: 'processed',
@@ -345,6 +362,7 @@ const AgentManager = () => {
     setProcessing(true);
     try {
       await updateAsset(preview.duplicate.id, { status }, {
+        tenantId,
         type: 'agent-management',
         action: 'Gestão via Agente ITAM',
         details: `Status alterado para ${status} a partir do módulo Agente ITAM.`,
@@ -361,7 +379,7 @@ const AgentManager = () => {
   };
 
   const downloadScript = () => {
-    const blob = new Blob([buildAgentScript()], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([buildAgentScript(tenantId)], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -373,7 +391,7 @@ const AgentManager = () => {
   };
 
   const copyScript = async () => {
-    await navigator.clipboard.writeText(buildAgentScript());
+    await navigator.clipboard.writeText(buildAgentScript(tenantId));
     toast.success('Script do agente copiado.');
   };
 
