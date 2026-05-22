@@ -1,8 +1,52 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    
+    // Funções Helper de Autenticação e Multi-Tenancy
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserTenant() {
+      // Retorna o tenantId do usuário atual buscando-o no Firestore
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId;
+    }
+
+    // Regras específicas de usuários
+    match /users/{userId} {
+      // Usuário pode se ler e alterar. Além disso, pode ser lido se fizer parte do mesmo Tenant.
+      allow read: if isAuthenticated() && (request.auth.uid == userId || resource.data.tenantId == getUserTenant());
+      allow update: if isAuthenticated() && (request.auth.uid == userId || resource.data.tenantId == getUserTenant());
+      // A criação (signup) não restringe de início, mas ideal seria travar em Funções.
+      allow create: if isAuthenticated();
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Regras específicas de tenants
+    match /tenants/{tenantId} {
+      allow read: if isAuthenticated(); // Acesso aberto para listas e admin
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && tenantId == getUserTenant();
+    }
+
+    // Sistema de Convites
+    match /invites/{inviteId} {
+      allow read, update, delete: if isAuthenticated() && resource.data.tenantId == getUserTenant();
+      allow create: if isAuthenticated() && request.resource.data.tenantId == getUserTenant();
+    }
+    
+    // Para todas as outras coleções baseadas em Tenant (assets, projects, tasks, etc)
+    match /{collection}/{document=**} {
+      // Garante que operações de Read/Update/Delete só operem em dados do MESMO tenant.
+      // Se a coleção for genérica e não possuir 'tenantId', ela libera leitura.
+      allow read, update, delete: if isAuthenticated() && (
+        !("tenantId" in resource.data) || resource.data.tenantId == getUserTenant()
+      );
+      
+      // Garante que o usuário só crie registros atrelados à SUA própria empresa.
+      allow create: if isAuthenticated() && (
+        !("tenantId" in request.resource.data) || request.resource.data.tenantId == getUserTenant()
+      );
     }
   }
 }
