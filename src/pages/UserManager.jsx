@@ -19,7 +19,7 @@ const UserManager = () => {
   const [isInviting, setIsInviting] = useState(false);
 
   useEffect(() => {
-    if (currentUser?.role !== 'owner') {
+    if (currentUser?.role !== 'owner' && currentUser?.role !== 'superadmin') {
       toast.error('Acesso negado. Apenas o Líder da TI (Owner) pode acessar esta área.');
       navigate('/dashboard');
       return;

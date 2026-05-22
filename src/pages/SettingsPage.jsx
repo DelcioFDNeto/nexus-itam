@@ -57,7 +57,7 @@ const SettingsPage = () => {
 
   // Busca a identidade visual e dados cadastrais no banco logo na largada da tela
   useEffect(() => {
-    if (currentUser?.role !== 'owner') {
+    if (currentUser?.role !== 'owner' && currentUser?.role !== 'superadmin') {
       toast.error('Acesso negado. Apenas o Líder da TI (Owner) pode acessar as configurações.');
       navigate('/dashboard');
       return;
