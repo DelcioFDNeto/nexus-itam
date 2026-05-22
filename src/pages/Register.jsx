@@ -12,19 +12,19 @@ import {
   CheckCircle,
   ShieldCheck,
   Zap,
-  Sparkles
+  Sparkles,
+  Orbit
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import Logo from '../components/Logo';
 
 const Register = () => {
-  // Dados do Formulário
   const [companyName, setCompanyName] = useState('');
   const [adminName, setAdminName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   
-  // Feedbacks
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -36,9 +36,8 @@ const Register = () => {
     e.preventDefault();
     setError('');
 
-    // Validações básicas
     if (password !== confirmPassword) {
-      return setError('As senhas digitadas não são iguais.');
+      return setError('As senhas digitadas não coincidem.');
     }
     if (password.length < 6) {
       return setError('A senha deve conter no mínimo 6 caracteres.');
@@ -48,231 +47,271 @@ const Register = () => {
       setLoading(true);
       await registerTenant(companyName, adminName, email, password);
       setSuccess(true);
-      // Redireciona para o dashboard após um breve momento para celebrar o onboarding
       setTimeout(() => {
         navigate('/dashboard');
       }, 3000);
     } catch (err) {
       console.error(err);
       if (err.code === 'auth/email-already-in-use') {
-        setError('Este endereço de e-mail já está em uso por outra empresa.');
+        setError('Este endereço de e-mail já está vinculado a outra corporação.');
       } else {
-        setError('Ocorreu um erro ao criar a conta da sua empresa. Tente novamente.');
+        setError('Falha de sistema ao provisionar nova instância. Tente novamente.');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-neutral-900 p-4 relative overflow-hidden font-sans">
-      
-      {/* Decorações do fundo: auréolas e gradientes corporativos premium */}
-      <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-brand-dark via-brand to-brand-dark"></div>
-      <div className="hidden md:block absolute -top-40 -left-40 w-[500px] h-[500px] bg-brand/10 rounded-full blur-3xl pointer-events-none"></div>
-      <div className="hidden md:block absolute -bottom-40 -right-40 w-[500px] h-[500px] bg-blue-600/5 rounded-full blur-3xl pointer-events-none"></div>
+  const calculatePasswordStrength = (pass) => {
+    let strength = 0;
+    if (pass.length > 5) strength += 25;
+    if (pass.length > 8) strength += 25;
+    if (pass.match(/[A-Z]/)) strength += 25;
+    if (pass.match(/[0-9]/) || pass.match(/[^A-Za-z0-9]/)) strength += 25;
+    return strength;
+  };
 
-      <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-12 bg-white rounded-3xl overflow-hidden shadow-2xl border border-gray-100 relative z-10">
-        
-        {/* Painel Lateral - Proposta de Valor do SaaS ITAM */}
-        <div className="hidden md:flex md:col-span-5 bg-gradient-to-br from-neutral-900 to-neutral-950 p-8 flex-col justify-between relative overflow-hidden text-white border-r border-neutral-800">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-brand/10 rounded-full blur-2xl pointer-events-none"></div>
+  const pwdStrength = calculatePasswordStrength(password);
+  
+  let pwdColor = 'bg-red-500';
+  if (pwdStrength > 25) pwdColor = 'bg-orange-500';
+  if (pwdStrength > 50) pwdColor = 'bg-yellow-500';
+  if (pwdStrength > 75) pwdColor = 'bg-green-500';
+
+  const containerVariants = {
+    hidden: { opacity: 0, scale: 0.95 },
+    visible: { 
+      opacity: 1, 
+      scale: 1,
+      transition: { duration: 0.6, ease: "easeOut", staggerChildren: 0.08 }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 15 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.4 } }
+  };
+
+  if (success) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-black/40 backdrop-blur-2xl border border-brand/30 p-10 rounded-3xl max-w-md w-full text-center shadow-[0_0_50px_rgba(79,70,229,0.2)] relative z-10"
+        >
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-green-400 to-transparent opacity-80"></div>
           
-          <div>
-            <div className="flex items-center gap-2 mb-12">
-              <Logo size="sm" />
-              <span className="text-xs font-black uppercase tracking-widest text-brand">Nexus B2B</span>
-            </div>
-            
-            <h3 className="text-2xl font-black leading-tight tracking-tight uppercase">
-              Eleve a gestão de infraestrutura de TI da sua empresa
-            </h3>
-            
-            <div className="space-y-6 mt-8">
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-lg bg-brand/20 flex items-center justify-center text-brand shrink-0">
-                  <ShieldCheck size={18} />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider">Isolamento Multi-Tenant</h4>
-                  <p className="text-xs text-neutral-400 mt-1">Ambiente de nuvem 100% privado e isolado para as informações patrimoniais da sua empresa.</p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-lg bg-brand/20 flex items-center justify-center text-brand shrink-0">
-                  <Zap size={18} />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider">Configuração Instantânea</h4>
-                  <p className="text-xs text-neutral-400 mt-1">Inscreva sua empresa e receba acesso imediato a dashboards de ativos, licenças e controle financeiro.</p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-lg bg-brand/20 flex items-center justify-center text-brand shrink-0">
-                  <Sparkles size={18} />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider">Pronto para Auditar</h4>
-                  <p className="text-xs text-neutral-400 mt-1">Geração dinâmica de etiquetas QR Code inteligentes e controle de auditorias por dispositivo mobile.</p>
-                </div>
-              </div>
-            </div>
-          </div>
+          <motion.div 
+            initial={{ scale: 0 }}
+            animate={{ scale: 1, rotate: 360 }}
+            transition={{ type: "spring", stiffness: 200, damping: 20 }}
+            className="w-20 h-20 bg-green-500/20 border border-green-500/50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(34,197,94,0.4)]"
+          >
+            <ShieldCheck size={40} className="text-green-400" />
+          </motion.div>
           
-          <div className="border-t border-neutral-800 pt-4 mt-8">
-            <p className="text-[10px] text-neutral-500 font-medium">Plataforma Nexus IT Asset Manager • Versão B2B SaaS</p>
+          <h2 className="text-2xl font-black text-white uppercase tracking-tighter mb-2">Instância Criada!</h2>
+          <p className="text-sm text-gray-400 font-medium">A infraestrutura da <span className="text-brand font-bold">{companyName}</span> foi provisionada com sucesso.</p>
+          <div className="mt-8 flex justify-center">
+            <Orbit className="animate-spin text-brand" size={24} />
           </div>
-        </div>
-
-        {/* Formulário Principal de Registro */}
-        <div className="col-span-1 md:col-span-7 p-6 md:p-10 flex flex-col justify-center bg-white">
-          {success ? (
-            <div className="text-center py-10 flex flex-col items-center justify-center space-y-4 animate-in fade-in zoom-in duration-300">
-              <div className="w-20 h-20 bg-green-50 text-green-500 rounded-full flex items-center justify-center shadow-lg shadow-green-100">
-                <CheckCircle size={44} />
-              </div>
-              <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tighter">Conta SaaS Criada!</h2>
-              <p className="text-sm text-gray-500 max-w-sm">
-                A empresa <strong>{companyName}</strong> e seu usuário administrador foram cadastrados. Estamos preparando sua nuvem privada...
-              </p>
-              <div className="flex items-center gap-2 mt-4 text-xs font-black text-brand uppercase tracking-widest animate-pulse">
-                <span>Redirecionando para o Painel</span>
-                <ArrowRight size={14} />
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="mb-6">
-                <div className="md:hidden flex items-center justify-between mb-6">
-                  <Logo size="md" />
-                  <Link to="/" className="text-xs font-bold text-gray-400 hover:text-black">Entrar</Link>
-                </div>
-                <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tighter">Registre sua Empresa</h2>
-                <p className="text-xs font-medium text-gray-400 mt-1">Inicie seu período de testes e configure sua infraestrutura em instantes.</p>
-              </div>
-
-              {error && (
-                <div className="bg-red-50 text-red-600 p-3.5 rounded-xl mb-4 text-xs font-bold flex items-center gap-2 border border-red-100">
-                  <AlertCircle size={16} className="shrink-0" /> {error}
-                </div>
-              )}
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                
-                {/* Seção 1: Dados da Empresa */}
-                <div className="border-b border-gray-100 pb-3 mb-3">
-                  <h3 className="text-[10px] font-black text-brand uppercase tracking-widest mb-3">1. Informações Corporativas</h3>
-                  
-                  <div>
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Razão Social / Nome da Empresa</label>
-                    <div className="relative group">
-                      <Building2 className="absolute left-3 top-3.5 text-gray-400 group-focus-within:text-black transition-colors" size={18} />
-                      <input 
-                        type="text" 
-                        required 
-                        className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:outline-none focus:border-black focus:bg-white transition-all font-bold text-gray-900 text-sm"
-                        placeholder="Ex: Minha Empresa Tecnologia LTDA"
-                        value={companyName}
-                        onChange={(e) => setCompanyName(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Seção 2: Dados do Administrador */}
-                <div className="space-y-4">
-                  <h3 className="text-[10px] font-black text-brand uppercase tracking-widest mb-1">2. Perfil do Administrador Principal</h3>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Seu Nome</label>
-                      <div className="relative group">
-                        <User className="absolute left-3 top-3.5 text-gray-400 group-focus-within:text-black transition-colors" size={18} />
-                        <input 
-                          type="text" 
-                          required 
-                          className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:outline-none focus:border-black focus:bg-white transition-all font-bold text-gray-900 text-sm"
-                          placeholder="Nome Sobrenome"
-                          value={adminName}
-                          onChange={(e) => setAdminName(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">E-mail Corporativo</label>
-                      <div className="relative group">
-                        <Mail className="absolute left-3 top-3.5 text-gray-400 group-focus-within:text-black transition-colors" size={18} />
-                        <input 
-                          type="email" 
-                          required 
-                          className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:outline-none focus:border-black focus:bg-white transition-all font-bold text-gray-900 text-sm"
-                          placeholder="seu.email@empresa.com"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Senha de Acesso</label>
-                      <div className="relative group">
-                        <Lock className="absolute left-3 top-3.5 text-gray-400 group-focus-within:text-black transition-colors" size={18} />
-                        <input 
-                          type="password" 
-                          required 
-                          className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:outline-none focus:border-black focus:bg-white transition-all font-bold text-gray-900 text-sm"
-                          placeholder="Mínimo 6 caracteres"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Confirmar Senha</label>
-                      <div className="relative group">
-                        <Lock className="absolute left-3 top-3.5 text-gray-400 group-focus-within:text-black transition-colors" size={18} />
-                        <input 
-                          type="password" 
-                          required 
-                          className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:outline-none focus:border-black focus:bg-white transition-all font-bold text-gray-900 text-sm"
-                          placeholder="Confirme sua senha"
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <button 
-                    type="submit" 
-                    disabled={loading}
-                    className="w-full bg-brand text-white font-black py-4 rounded-xl hover:bg-brand-dark active:scale-98 transition-all flex items-center justify-center gap-2 shadow-lg shadow-brand/20 text-xs uppercase tracking-widest"
-                  >
-                    {loading ? 'Inicializando Nuvem Privada...' : <>Criar Conta Nexus <ArrowRight size={18} /></>}
-                  </button>
-                </div>
-              </form>
-
-              <div className="mt-6 text-center">
-                <p className="text-xs text-gray-400 font-medium">
-                  Sua empresa já possui uma conta no Nexus?{' '}
-                  <Link to="/" className="text-brand font-black hover:underline">
-                    Fazer Login
-                  </Link>
-                </p>
-              </div>
-            </>
-          )}
-        </div>
+          <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-4 animate-pulse">Redirecionando para o Dashboard Central...</p>
+        </motion.div>
       </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4 relative overflow-hidden font-sans py-12">
+      
+      {/* Background Cyber/Neon */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <motion.div 
+          animate={{ rotate: -360 }} 
+          transition={{ duration: 150, repeat: Infinity, ease: "linear" }}
+          className="absolute top-[10%] -left-[20%] w-[70vw] h-[70vw] rounded-full bg-indigo-600/10 blur-[130px]"
+        />
+        <motion.div 
+          animate={{ rotate: 360 }} 
+          transition={{ duration: 120, repeat: Infinity, ease: "linear" }}
+          className="absolute -bottom-[20%] -right-[10%] w-[60vw] h-[60vw] rounded-full bg-cyan-600/10 blur-[120px]"
+        />
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-5 mix-blend-overlay"></div>
+      </div>
+
+      <motion.div 
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="relative z-10 w-full max-w-xl"
+      >
+        <div className="backdrop-blur-2xl bg-white/[0.03] border border-white/10 p-8 md:p-10 rounded-[2rem] shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] relative overflow-hidden">
+          
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-50"></div>
+
+          <motion.div variants={itemVariants} className="text-center mb-8 relative">
+             <div className="absolute top-0 left-1/2 -translate-x-1/2 -z-10 w-32 h-32 bg-cyan-500/20 blur-3xl rounded-full"></div>
+             <div className="flex justify-center mb-4">
+                 <Logo size="lg" className="drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]" />
+             </div>
+            <h2 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center justify-center gap-2">
+              Deploy <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-brand">Corporativo</span>
+            </h2>
+            <p className="text-xs font-medium text-gray-400 mt-2 tracking-widest uppercase">Provisionamento de Nova Instância SaaS</p>
+          </motion.div>
+
+          <AnimatePresence>
+            {error && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl mb-6 text-xs font-bold flex items-center gap-2"
+              >
+                <AlertCircle size={16} /> {error}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Empresa */}
+              <motion.div variants={itemVariants}>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Razão Social / Fantasia</label>
+                <div className="relative group">
+                  <Building2 className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <input 
+                    type="text" 
+                    required 
+                    className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner"
+                    placeholder="Ex: Nexus Corp"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                  />
+                </div>
+              </motion.div>
+
+              {/* Admin */}
+              <motion.div variants={itemVariants}>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Administrador Master</label>
+                <div className="relative group">
+                  <User className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <input 
+                    type="text" 
+                    required 
+                    className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner"
+                    placeholder="Nome Completo"
+                    value={adminName}
+                    onChange={(e) => setAdminName(e.target.value)}
+                  />
+                </div>
+              </motion.div>
+            </div>
+
+            {/* Email */}
+            <motion.div variants={itemVariants}>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">E-mail de Acesso</label>
+              <div className="relative group">
+                <Mail className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                <input 
+                  type="email" 
+                  required 
+                  className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner"
+                  placeholder="admin@empresa.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+            </motion.div>
+
+            {/* Senhas */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <motion.div variants={itemVariants}>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1 flex justify-between">
+                  <span>Chave de Segurança</span>
+                  {password.length > 0 && (
+                      <span className={`text-[9px] ${pwdStrength > 50 ? 'text-green-400' : 'text-orange-400'}`}>
+                          {pwdStrength > 50 ? 'Forte' : 'Fraca'}
+                      </span>
+                  )}
+                </label>
+                <div className="relative group">
+                  <Lock className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <input 
+                    type="password" 
+                    required 
+                    className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 tracking-widest shadow-inner"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  {/* Barra de Força da Senha */}
+                  {password.length > 0 && (
+                      <div className="absolute bottom-0 left-0 h-0.5 bg-gray-800 w-full rounded-b-xl overflow-hidden">
+                          <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${pwdStrength}%` }}
+                              className={`h-full ${pwdColor} transition-all duration-300`}
+                          />
+                      </div>
+                  )}
+                </div>
+              </motion.div>
+
+              <motion.div variants={itemVariants}>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Confirmar Chave</label>
+                <div className="relative group">
+                  <ShieldCheck className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <input 
+                    type="password" 
+                    required 
+                    className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 tracking-widest shadow-inner"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                </div>
+              </motion.div>
+            </div>
+
+            <motion.div variants={itemVariants} className="pt-4">
+              <motion.button 
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                type="submit" 
+                disabled={loading}
+                className="w-full relative group overflow-hidden bg-white text-black font-black py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_25px_rgba(34,211,238,0.3)]"
+              >
+                <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-cyan-100 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
+                {loading ? (
+                  <Sparkles className="animate-spin text-cyan-600" size={18} />
+                ) : (
+                  <>Inicializar Sistema <Zap size={18} className="text-cyan-600 group-hover:scale-110 transition-transform" /></>
+                )}
+              </motion.button>
+            </motion.div>
+          </form>
+
+          <motion.div variants={itemVariants} className="mt-6 flex justify-center items-center px-1">
+              <span className="text-[11px] text-gray-500 mr-2">Já possui uma instância provisionada?</span>
+              <Link 
+                  to="/login"
+                  className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold transition-colors underline decoration-cyan-400/30 hover:decoration-cyan-400 underline-offset-4"
+              >
+                  Fazer Login Seguro
+              </Link>
+          </motion.div>
+        </div>
+        
+        <motion.div variants={itemVariants} className="mt-8 text-center">
+          <p className="text-[10px] text-gray-500 font-medium tracking-widest uppercase">
+            SaaS Infrastructure Protocol © {new Date().getFullYear()}
+          </p>
+        </motion.div>
+      </motion.div>
+
     </div>
   );
 };

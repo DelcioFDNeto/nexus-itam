@@ -12,6 +12,14 @@ export default {
           DEFAULT: 'var(--color-brand, #4F46E5)',
           dark: 'var(--color-brand-dark, #4338CA)',
         }
+      },
+      keyframes: {
+        shimmer: {
+          '100%': { transform: 'translateX(100%)' },
+        }
+      },
+      animation: {
+        shimmer: 'shimmer 1.5s infinite',
       }
     },
   },

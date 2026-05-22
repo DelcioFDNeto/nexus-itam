@@ -69,35 +69,43 @@ const Dashboard = () => {
         const isSuperadmin = currentUser?.role === 'superadmin';
 
         if (isSuperadmin) {
-          const [assetsData, employeesData, projectsData, historyData, tenantsSnap] = await Promise.all([
+          const results = await Promise.allSettled([
               getGlobalAssets(),
               getGlobalEmployees(),
               getGlobalProjects(),
               getGlobalActivity(6),
               getDocs(collection(db, 'tenants'))
           ]);
-          setAssets(assetsData);
-          setTotalEmployees(employeesData.length);
-          setTotalProjects(projectsData.length);
-          setRecentActivity(historyData);
-          setTotalTenants(tenantsSnap.docs.length);
+          setAssets(results[0].status === 'fulfilled' ? results[0].value : []);
+          setTotalEmployees(results[1].status === 'fulfilled' ? results[1].value.length : 0);
+          setTotalProjects(results[2].status === 'fulfilled' ? results[2].value.length : 0);
+          setRecentActivity(results[3].status === 'fulfilled' ? results[3].value : []);
+          setTotalTenants(results[4].status === 'fulfilled' ? results[4].value.docs.length : 0);
 
-          const tMap = {};
-          tenantsSnap.docs.forEach(doc => {
-            tMap[doc.id] = doc.data().companyName || 'Empresa Desconhecida';
-          });
-          setTenantMap(tMap);
+          if (results[4].status === 'fulfilled') {
+            const tMap = {};
+            results[4].value.docs.forEach(doc => {
+              tMap[doc.id] = doc.data().companyName || 'Empresa Desconhecida';
+            });
+            setTenantMap(tMap);
+          }
+          
+          // Log errors for debugging
+          results.forEach((r, i) => { if (r.status === 'rejected') console.error(`Global Fetch Error [${i}]:`, r.reason); });
+          
         } else if (tenantId) {
-          const [assetsData, employeesData, projectsData, historyData] = await Promise.all([
+          const results = await Promise.allSettled([
               getAllAssets(tenantId),
               getEmployees(tenantId),
               getProjects(tenantId),
               getRecentActivity(tenantId, 6)
           ]);
-          setAssets(assetsData);
-          setTotalEmployees(employeesData.length);
-          setTotalProjects(projectsData.length);
-          setRecentActivity(historyData);
+          setAssets(results[0].status === 'fulfilled' ? results[0].value : []);
+          setTotalEmployees(results[1].status === 'fulfilled' ? results[1].value.length : 0);
+          setTotalProjects(results[2].status === 'fulfilled' ? results[2].value.length : 0);
+          setRecentActivity(results[3].status === 'fulfilled' ? results[3].value : []);
+          
+          results.forEach((r, i) => { if (r.status === 'rejected') console.error(`Tenant Fetch Error [${i}]:`, r.reason); });
         }
       } catch (error) {
         console.error("Erro ao carregar dashboard:", error);
