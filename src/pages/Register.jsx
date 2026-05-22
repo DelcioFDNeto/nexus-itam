@@ -229,7 +229,7 @@ const Register = () => {
             {/* Senhas */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <motion.div variants={itemVariants}>
-                <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1 flex justify-between">
+                <label className="flex  justify-between">
                   <span>Chave de Segurança</span>
                   {password.length > 0 && (
                       <span className={`text-[9px] ${pwdStrength > 50 ? 'text-green-400' : 'text-orange-400'}`}>

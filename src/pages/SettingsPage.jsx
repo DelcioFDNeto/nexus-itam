@@ -248,7 +248,7 @@ const SettingsPage = () => {
         </div>
         <div>
             <h1 className="text-2xl font-black text-gray-900 dark:text-white">Configurações Avançadas</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-400">Backup, Restauração e Parâmetros do Sistema</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Backup, Restauração e Parâmetros do Sistema</p>
         </div>
       </div>
 
@@ -362,7 +362,7 @@ const SettingsPage = () => {
               </div>
               <div className="p-6 space-y-6">
                 <div>
-                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-400 uppercase tracking-widest mb-3">Modo de Exibição</h3>
+                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3">Modo de Exibição</h3>
                   <div className="flex gap-3">
                     <button onClick={() => setTheme('light')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'light' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-600'}`}>
                       <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 shadow-sm"></div>
@@ -380,7 +380,7 @@ const SettingsPage = () => {
                 </div>
 
                 <div>
-                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-400 uppercase tracking-widest mb-3">Cor Destaque (Accent Color)</h3>
+                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3">Cor Destaque (Accent Color)</h3>
                   <div className="flex gap-4">
                     {[
                       { id: 'blue', color: '#4F46E5' },
@@ -421,9 +421,9 @@ const SettingsPage = () => {
                 <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
                     <div>
                         <h2 className="text-lg font-black text-gray-900 dark:text-white mb-1 flex items-center gap-2"><UploadCloud className="text-orange-500"/> Restauração de Dados</h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-400">Importe um arquivo JSON para restaurar ou atualizar dados.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Importe um arquivo JSON para restaurar ou atualizar dados.</p>
                     </div>
-                    <button onClick={() => setShowFormatGuide(!showFormatGuide)} className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-400 hover:text-black dark:hover:text-white flex items-center gap-1 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600">
+                    <button onClick={() => setShowFormatGuide(!showFormatGuide)} className="text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white flex items-center gap-1 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600">
                     </button>
                 </div>
                 
