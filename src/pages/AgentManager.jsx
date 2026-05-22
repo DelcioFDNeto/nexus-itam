@@ -328,10 +328,12 @@ const AgentManager = () => {
     if (tenantId) {
       loadInbox();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, normalizedNamingConfig]);
 
   useEffect(() => {
     refreshAutoNamingPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jsonText, normalizedNamingConfig, tenantId]);
 
   const registerManualPayload = async () => {
@@ -376,6 +378,7 @@ const AgentManager = () => {
     }
   };
 
+  // eslint-disable-next-line no-unused-vars
   const updateDuplicateStatus = async (status) => {
     if (!preview?.duplicate?.id) return;
     setProcessing(true);
@@ -414,6 +417,7 @@ const AgentManager = () => {
     toast.success('Script do agente copiado.');
   };
 
+  // eslint-disable-next-line no-unused-vars
   const generateJson = async () => {
     const payload = buildJsonPayload(jsonText);
     const json = JSON.stringify(payload, null, 2);

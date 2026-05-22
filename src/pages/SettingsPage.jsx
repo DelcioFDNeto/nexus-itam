@@ -78,6 +78,7 @@ const SettingsPage = () => {
       }
     };
     loadConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
   const addCustomField = () => {

@@ -52,6 +52,7 @@ const EmployeeManager = () => {
     if (tenantId) {
       loadData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
   // Funções que preparam ou limpam a janela flutuante antes que ela surja na tela

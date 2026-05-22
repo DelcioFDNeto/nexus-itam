@@ -75,6 +75,7 @@ const GlobalSearch = ({ isOpen, onClose }) => {
     }, 300);
 
     return () => clearTimeout(delayDebounce);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [term]);
 
   const handleSelect = (path) => {

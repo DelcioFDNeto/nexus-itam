@@ -15,7 +15,7 @@ import {
   Sparkles,
   Orbit
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import Logo from '../components/Logo';
 
 const Register = () => {

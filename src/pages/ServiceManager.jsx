@@ -43,6 +43,7 @@ const ServiceManager = () => {
       setContracts([]);
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
   const handleSubmit = async (e) => {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/firebase';
-import { collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { 
   Building2, Users, Calendar, Activity, 
   Search, Shield, AlertTriangle, Play, Pause, ExternalLink, RefreshCcw, UserCog, Mail
@@ -24,6 +24,7 @@ const TenantManager = () => {
       return;
     }
     loadTenants();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
   const loadTenants = async () => {

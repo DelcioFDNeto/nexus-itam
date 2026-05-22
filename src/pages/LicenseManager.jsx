@@ -58,6 +58,7 @@ const LicenseManager = () => {
       setLicenses([]);
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
   // Central de funções que gravam no banco e processam as regras de cruzamento de dados

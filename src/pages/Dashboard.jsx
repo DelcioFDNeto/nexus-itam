@@ -370,7 +370,7 @@ const Dashboard = () => {
 
           {/* Legenda Customizada */}
           <div className="mt-4 grid grid-cols-2 gap-2">
-            {Object.entries(statusCounts).map(([status, count], i) => (
+            {Object.entries(statusCounts).map(([status, count]) => (
               <div key={status} className="flex items-center gap-2 text-xs font-bold text-gray-600">
                 <div className={`w-2.5 h-2.5 rounded-full ${
                   status === 'Em Uso' ? 'bg-green-500' : 
