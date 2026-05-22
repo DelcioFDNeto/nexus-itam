@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 
 const CONFIG_FIELDS = [
@@ -28,6 +29,7 @@ const getSupportEmail = (supportEmail) =>
 
 const SettingsPage = () => {
   const { currentUser } = useAuth();
+  const { theme, setTheme, accentColor, setAccentColor } = useTheme();
   const navigate = useNavigate();
   const tenantId = currentUser?.tenantId;
   const [loading, setLoading] = useState(false);
@@ -253,10 +255,10 @@ const SettingsPage = () => {
         
         {/* COLUNA 1: Textos burocráticos e variáveis que pipocam nos PDFs do sistema */}
         <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden sticky top-8">
-                <div className="bg-gray-50 p-4 border-b border-gray-100 flex items-center gap-2">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden sticky top-8">
+                <div className="bg-gray-50 dark:bg-slate-900 p-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-2">
                     <FileText className="text-brand" size={18}/>
-                    <h2 className="font-bold text-gray-800 text-sm uppercase">Documentos e Etiquetas</h2>
+                    <h2 className="font-bold text-gray-800 dark:text-white text-sm uppercase">Documentos e Etiquetas</h2>
                 </div>
                 <form onSubmit={handleSave} className="p-5 space-y-4">
 {/* Montagem inteligente de loops mapeando todos os inputs das configurações */}
@@ -350,8 +352,57 @@ const SettingsPage = () => {
 
         {/* COLUNA 2 e 3: Área nevrálgica de transplante de órgãos (Dados JSON) */}
         <div className="lg:col-span-2 space-y-6">
+
+          {/* SESSÃO DE APARÊNCIA / THEME */}
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
+              <div className="bg-gray-50 dark:bg-slate-900 p-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-2">
+                  <UserCog className="text-brand" size={18} />
+                  <h2 className="font-bold text-gray-800 dark:text-white text-sm uppercase">Aparência do Sistema</h2>
+              </div>
+              <div className="p-6 space-y-6">
+                <div>
+                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3">Modo de Exibição</h3>
+                  <div className="flex gap-3">
+                    <button onClick={() => setTheme('light')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'light' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-600'}`}>
+                      <div className="w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm"></div>
+                      Claro
+                    </button>
+                    <button onClick={() => setTheme('dark')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'dark' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-600'}`}>
+                      <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 shadow-sm"></div>
+                      Escuro
+                    </button>
+                    <button onClick={() => setTheme('system')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'system' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-600'}`}>
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-slate-900 to-white border border-gray-300 shadow-sm"></div>
+                      Sistema
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3">Cor Destaque (Accent Color)</h3>
+                  <div className="flex gap-4">
+                    {[
+                      { id: 'blue', color: '#4F46E5' },
+                      { id: 'green', color: '#10B981' },
+                      { id: 'purple', color: '#8B5CF6' },
+                      { id: 'orange', color: '#F97316' },
+                      { id: 'cyan', color: '#06B6D4' }
+                    ].map(c => (
+                      <button 
+                        key={c.id} 
+                        onClick={() => setAccentColor(c.id)}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${accentColor === c.id ? 'ring-4 ring-offset-2 ring-brand scale-110' : 'hover:scale-105'}`}
+                        style={{ backgroundColor: c.color }}
+                      >
+                        {accentColor === c.id && <CheckCircle size={16} className="text-white drop-shadow-md" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+          </div>
             
-            {/* CAIXA 1: Ferramenta brutalista de backup global em um clique */}
+          {/* CAIXA 1: Ferramenta brutalista de backup global em um clique */}
             <div className="bg-white rounded-2xl border border-blue-100 shadow-sm overflow-hidden relative group">
                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Database size={100} className="text-blue-500"/></div>
                 <div className="p-6 relative z-10">

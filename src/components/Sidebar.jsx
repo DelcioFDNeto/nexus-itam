@@ -32,7 +32,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
     if (active) {
         return "bg-gradient-to-r from-brand to-indigo-500 text-white shadow-md shadow-brand/30 border-none font-bold translate-x-1";
     }
-    return "text-slate-500 hover:bg-indigo-50 hover:text-brand hover:translate-x-1";
+    return "text-slate-500 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-slate-800 hover:text-brand hover:translate-x-1";
   };
 
   // Organização dos Menus
@@ -75,21 +75,23 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
         .custom-sidebar-scroll::-webkit-scrollbar { width: 0px; }
       `}</style>
       
-      {/* Mobile Overlay */}
-      <div 
-        className={`fixed inset-0 bg-black/80 z-30 md:hidden backdrop-blur-sm transition-opacity duration-300 ${
-          isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-        }`}
-        onClick={onClose}
-      />
+      {/* --- OVERLAY MOBILE --- */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
+          onClick={onClose}
+        />
+      )}
 
-      {/* Sidebar Container - Floating Island */}
+      {/* --- SIDEBAR PRINCIPAL --- */}
       <div className={`
-        fixed z-40 bg-white/70 backdrop-blur-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.06)] 
-        flex flex-col transition-all duration-300 ease-in-out
-        inset-y-0 left-0 md:top-4 md:bottom-4 md:left-4 md:rounded-[2rem]
-        ${isOpen ? 'translate-x-0 w-64' : '-translate-x-full md:translate-x-0'}
-        ${isCollapsed ? 'md:w-20' : 'md:w-[260px]'}
+        fixed md:static inset-y-0 left-0 z-50
+        bg-white dark:bg-slate-900 border-r border-gray-100 dark:border-slate-800 shadow-2xl md:shadow-none
+        flex flex-col
+        transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)
+        ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        ${isCollapsed ? 'w-[100px]' : 'w-[280px]'}
+        h-full
       `}>
         
         {/* --- 1. HEADER (LOGO + TOGGLE) --- */}
@@ -113,7 +115,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
            {/* Botão de Collapse (Desktop) */}
            <button 
              onClick={toggleCollapse} 
-             className={`hidden md:flex w-7 h-7 items-center justify-center rounded-full bg-white text-gray-400 hover:text-brand hover:bg-indigo-50 transition-all absolute -right-3.5 top-8 border border-gray-100 shadow-md z-50`}
+             className={`hidden md:flex w-7 h-7 items-center justify-center rounded-full bg-white dark:bg-slate-800 text-gray-400 dark:text-gray-300 hover:text-brand dark:hover:text-brand hover:bg-indigo-50 dark:hover:bg-slate-700 transition-all absolute -right-3.5 top-8 border border-gray-100 dark:border-slate-700 shadow-md z-50`}
            >
              {isCollapsed ? <ChevronRight size={14} strokeWidth={3} /> : <ChevronLeft size={14} strokeWidth={3} />}
            </button>
@@ -144,11 +146,11 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
           <div className="px-5 mt-3">
              <button 
                 onClick={() => { if(onSearchClick) onSearchClick(); if(onClose) onClose(); }}
-                className={`flex items-center justify-center gap-2 bg-white text-slate-700 hover:text-brand hover:border-brand/30 hover:bg-indigo-50/50 transition-all group overflow-hidden border border-gray-200 shadow-sm ${isCollapsed ? 'rounded-2xl w-12 h-12 mx-auto' : 'rounded-xl px-4 py-3 w-full'}`}
+                className={`flex items-center justify-center gap-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-brand dark:hover:text-brand hover:border-brand/30 hover:bg-indigo-50/50 transition-all group overflow-hidden border border-gray-200 dark:border-slate-700 shadow-sm ${isCollapsed ? 'rounded-2xl w-12 h-12 mx-auto' : 'rounded-xl px-4 py-3 w-full'}`}
                 title="Busca Global (Ctrl+K)"
              >
-                <Search size={18} className="shrink-0 text-slate-400 group-hover:text-brand transition-colors"/> 
-                {!isCollapsed && <div className="flex-1 flex items-center justify-between"><span className="font-bold text-xs">Busca Global</span><span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 font-mono tracking-widest hidden lg:block group-hover:bg-indigo-100 group-hover:border-indigo-200 group-hover:text-brand">Ctrl+K</span></div>}
+                <Search size={18} className="shrink-0 text-slate-400 dark:text-slate-500 group-hover:text-brand transition-colors"/> 
+                {!isCollapsed && <div className="flex-1 flex items-center justify-between"><span className="font-bold text-xs">Busca Global</span><span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-mono tracking-widest hidden lg:block group-hover:bg-indigo-100 group-hover:border-indigo-200 group-hover:text-brand">Ctrl+K</span></div>}
              </button>
           </div>
 
@@ -182,7 +184,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
                    
                    {/* Tooltip Fake no Collapsed */}
                    {isCollapsed && (
-                       <div className="absolute left-full ml-4 px-3 py-1 bg-white text-black text-xs font-bold rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
+                       <div className="absolute left-full ml-4 px-3 py-1 bg-white dark:bg-slate-800 text-black dark:text-white text-xs font-bold rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
                            {item.label}
                        </div>
                    )}
@@ -197,7 +199,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
         <div className={`p-5 bg-transparent shrink-0 mt-auto ${isCollapsed ? 'flex justify-center' : ''}`}>
           <button 
             onClick={handleLogout}
-            className={`flex items-center justify-center gap-2 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-600 transition-all duration-300 group ${isCollapsed ? 'w-12 h-12 p-0' : 'w-full px-4 py-3 bg-gray-50/50 border border-gray-100/50'}`}
+            className={`flex items-center justify-center gap-2 rounded-xl text-slate-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-300 group ${isCollapsed ? 'w-12 h-12 p-0' : 'w-full px-4 py-3 bg-gray-50/50 dark:bg-slate-800/50 border border-gray-100/50 dark:border-slate-700/50'}`}
             title="Sair"
           >
             <LogOut size={18} className="group-hover:scale-110 transition-transform"/>

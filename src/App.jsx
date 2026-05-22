@@ -2,8 +2,9 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
-// Contexto de Autenticação
+// Contextos
 import { AuthProvider } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 // Estrutura Base (Carregamento Imediato)
 import Login from './pages/Login';
@@ -40,7 +41,8 @@ const TenantManager = lazy(() => import('./pages/TenantManager'));
 function App() {
   return (
     <AuthProvider>
-      <Router>
+      <ThemeProvider>
+        <Router>
         <Suspense fallback={<PageLoader />}>
           <Routes>
           
@@ -123,7 +125,8 @@ function App() {
 
         </Routes>
         </Suspense>
-      </Router>
+        </Router>
+      </ThemeProvider>
     </AuthProvider>
   );
 }

@@ -246,7 +246,7 @@ const Dashboard = () => {
           
         {/* Ativos Totais (Highlight) */}
         <div 
-          className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-indigo-200 transition-all cursor-pointer h-32 md:h-40" 
+          className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-indigo-200 transition-all cursor-pointer h-32 md:h-40"
           onClick={() => navigate('/assets')}
         >
           <div className="absolute -right-6 -top-6 bg-indigo-50 w-20 h-20 md:w-24 md:h-24 rounded-full blur-2xl group-hover:bg-indigo-100 transition-colors"></div>
@@ -255,24 +255,24 @@ const Dashboard = () => {
             <ArrowRight size={16} className="text-gray-300 group-hover:text-indigo-600 transition-colors group-hover:translate-x-1 md:w-[18px] md:h-[18px]"/>
           </div>
           <div className="relative z-10">
-            <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-0.5 tracking-tighter">{assets.length}</h2>
+            <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-0.5 tracking-tighter">{assets.length}</h2>
             <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Ativos</p>
           </div>
         </div>
 
         {/* Valor Financeiro Estimado ou Tenants */}
         {currentUser?.role === 'superadmin' ? (
-          <div className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-emerald-200 transition-all h-32 md:h-40" onClick={() => navigate('/tenants')}>
+          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-emerald-200 transition-all h-32 md:h-40" onClick={() => navigate('/tenants')}>
             <div className="flex justify-between items-start relative z-10">
               <div className="p-2 md:p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"><Server size={18} className="md:w-5 md:h-5"/></div>
             </div>
             <div className="relative z-10">
-              <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-0.5 tracking-tighter">{totalTenants}</h2>
+              <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-0.5 tracking-tighter">{totalTenants}</h2>
               <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Empresas</p>
             </div>
           </div>
         ) : (
-          <div className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-emerald-200 transition-all h-32 md:h-40">
+          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-emerald-200 transition-all h-32 md:h-40">
             <div className="flex justify-between items-start relative z-10">
               <div className="p-2 md:p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"><DollarSign size={18} className="md:w-5 md:h-5"/></div>
               <span className="bg-emerald-100 text-emerald-700 text-[8px] md:text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">Estimado</span>
@@ -280,7 +280,7 @@ const Dashboard = () => {
             <div className="relative z-10">
               <div className="flex items-baseline gap-1 mb-0.5">
                 <span className="text-xs md:text-sm font-bold text-gray-400">R$</span>
-                <h2 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tighter">{(totalValue / 1000).toFixed(0)}k</h2>
+                <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white tracking-tighter">{(totalValue / 1000).toFixed(0)}k</h2>
               </div>
               <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Valor</p>
             </div>
@@ -288,13 +288,13 @@ const Dashboard = () => {
         )}
 
         {/* Colaboradores / Usuários */}
-        <div className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-blue-200 transition-all h-32 md:h-40 cursor-pointer" onClick={() => navigate('/employees')}>
+        <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-blue-200 transition-all h-32 md:h-40 cursor-pointer" onClick={() => navigate('/employees')}>
           <div className="flex justify-between items-start relative z-10">
             <div className="p-2 md:p-2.5 bg-blue-50 text-blue-600 rounded-xl"><Users size={18} className="md:w-5 md:h-5"/></div>
             <ArrowRight size={16} className="text-gray-300 group-hover:text-blue-600 transition-colors group-hover:translate-x-1 md:w-[18px] md:h-[18px]"/>
           </div>
           <div className="relative z-10">
-            <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-0.5 tracking-tighter">{totalEmployees}</h2>
+            <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-0.5 tracking-tighter">{totalEmployees}</h2>
             <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Equipe</p>
           </div>
         </div>

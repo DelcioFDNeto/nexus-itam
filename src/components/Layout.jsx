@@ -49,7 +49,7 @@ const Layout = ({ children }) => {
   }, [navigate]);
 
   return (
-    <div className="flex min-h-screen bg-[#F4F4F5] font-sans text-gray-900 selection:bg-red-500 selection:text-white">
+    <div className="flex min-h-screen bg-[#F4F4F5] dark:bg-slate-950 font-sans text-gray-900 dark:text-gray-100 selection:bg-brand selection:text-white transition-colors duration-300">
       <Toaster richColors position="top-right" />
       {/* ----------------------------------------------------- */}
       {/*                  DESKTOP LAYOUT                       */}
@@ -77,12 +77,12 @@ const Layout = ({ children }) => {
       {/*                   MOBILE LAYOUT                       */}
       {/* ----------------------------------------------------- */}
 
-      <div className="md:hidden flex flex-col flex-1 min-h-screen relative w-full bg-[#FAFAFA]">
+      <div className="md:hidden flex flex-col flex-1 min-h-screen relative w-full bg-[#FAFAFA] dark:bg-slate-950">
           
           {/* 1. TOP BAR MOBILE (Sticky & Glass) */}
-          <div className="sticky top-0 z-30 w-full px-5 py-3 glass flex justify-between items-center safe-area-pt">
+          <div className="sticky top-0 z-30 w-full px-5 py-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md flex justify-between items-center safe-area-pt border-b border-gray-100 dark:border-slate-800">
               <div className="flex items-center gap-3">
-                  <button onClick={() => setIsMobileMenuOpen(true)} className="p-1 -ml-1 text-gray-800 hover:text-black">
+                  <button onClick={() => setIsMobileMenuOpen(true)} className="p-1 -ml-1 text-gray-800 dark:text-gray-200 hover:text-black dark:hover:text-white">
                       <Menu size={24} />
                   </button>
                   <div className="flex flex-col">
