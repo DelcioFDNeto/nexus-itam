@@ -1,6 +1,6 @@
 // src/services/employeeService.js
 import { db } from './firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where, collectionGroup } from 'firebase/firestore';
 
 const empCollection = collection(db, 'employees');
 const secCollection = collection(db, 'sectors');
@@ -13,6 +13,12 @@ export const getEmployees = async (tenantId) => {
     where('tenantId', '==', tenantId),
     orderBy('name', 'asc')
   );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const getGlobalEmployees = async () => {
+  const q = query(collectionGroup(db, 'employees'), orderBy('name', 'asc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };

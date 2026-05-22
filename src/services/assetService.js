@@ -12,7 +12,8 @@ import {
   orderBy, 
   where,
   limit,
-  serverTimestamp 
+  serverTimestamp,
+  collectionGroup
 } from 'firebase/firestore';
 
 const assetsCollection = collection(db, 'assets');
@@ -31,6 +32,12 @@ export const getAllAssets = async (tenantId) => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
+export const getGlobalAssets = async () => {
+  const q = query(collectionGroup(db, 'assets'), orderBy('createdAt', 'desc'));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
 export const getAssetById = async (id) => {
   const docRef = doc(db, 'assets', id);
   const docSnap = await getDoc(docRef);
@@ -39,12 +46,19 @@ export const getAssetById = async (id) => {
 };
 
 // Busca histórico na coleção global filtrando pelo ID do ativo
-export const getAssetHistory = async (assetId) => {
+export const getAssetHistory = async (assetId, limitCount = 20) => {
   const q = query(
     historyCollection, 
     where('assetId', '==', assetId), 
-    orderBy('date', 'desc')
+    orderBy('date', 'desc'),
+    limit(limitCount)
   );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const getGlobalActivity = async (limitCount = 20) => {
+  const q = query(historyCollection, orderBy('date', 'desc'), limit(limitCount));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };

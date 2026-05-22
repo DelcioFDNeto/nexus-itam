@@ -31,9 +31,12 @@ ChartJS.register(
 );
 
 // Services
-import { getAllAssets, getRecentActivity } from '../services/assetService';
-import { getEmployees } from '../services/employeeService';
+import { getAllAssets, getRecentActivity, getGlobalAssets, getGlobalActivity } from '../services/assetService';
+import { getEmployees, getGlobalEmployees } from '../services/employeeService';
+import { getProjects, getGlobalProjects } from '../services/projectService';
 import { useAuth } from '../contexts/AuthContext';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../services/firebase';
 
 // Components
 import DashboardSkeleton from '../components/dashboard/DashboardSkeleton';
@@ -49,6 +52,9 @@ const Dashboard = () => {
   const [assets, setAssets] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
   const [totalEmployees, setTotalEmployees] = useState(0);
+  const [totalProjects, setTotalProjects] = useState(0);
+  const [totalTenants, setTotalTenants] = useState(0);
+  const [tenantMap, setTenantMap] = useState({});
 
   useEffect(() => {
     // Time-based greeting
@@ -60,16 +66,39 @@ const Dashboard = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [assetsData, employeesData, historyData] = await Promise.all([
-            getAllAssets(tenantId),
-            getEmployees(),
-            getRecentActivity(tenantId, 6)
-        ]);
+        const isSuperadmin = currentUser?.role === 'superadmin';
 
-        setAssets(assetsData);
-        setTotalEmployees(employeesData.length);
-        setRecentActivity(historyData);
+        if (isSuperadmin) {
+          const [assetsData, employeesData, projectsData, historyData, tenantsSnap] = await Promise.all([
+              getGlobalAssets(),
+              getGlobalEmployees(),
+              getGlobalProjects(),
+              getGlobalActivity(6),
+              getDocs(collection(db, 'tenants'))
+          ]);
+          setAssets(assetsData);
+          setTotalEmployees(employeesData.length);
+          setTotalProjects(projectsData.length);
+          setRecentActivity(historyData);
+          setTotalTenants(tenantsSnap.docs.length);
 
+          const tMap = {};
+          tenantsSnap.docs.forEach(doc => {
+            tMap[doc.id] = doc.data().companyName || 'Empresa Desconhecida';
+          });
+          setTenantMap(tMap);
+        } else if (tenantId) {
+          const [assetsData, employeesData, projectsData, historyData] = await Promise.all([
+              getAllAssets(tenantId),
+              getEmployees(tenantId),
+              getProjects(tenantId),
+              getRecentActivity(tenantId, 6)
+          ]);
+          setAssets(assetsData);
+          setTotalEmployees(employeesData.length);
+          setTotalProjects(projectsData.length);
+          setRecentActivity(historyData);
+        }
       } catch (error) {
         console.error("Erro ao carregar dashboard:", error);
       } finally {
@@ -77,12 +106,12 @@ const Dashboard = () => {
       }
     };
 
-    if (tenantId) {
+    if (tenantId || currentUser?.role === 'superadmin') {
       fetchData();
     } else {
       setLoading(false);
     }
-  }, [tenantId]);
+  }, [tenantId, currentUser]);
 
   // Cálculos baseados nos dados carregados para alimentar os quadros de estatísticas
   const totalValue = assets.reduce((acc, asset) => {
@@ -183,7 +212,7 @@ const Dashboard = () => {
         <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-cyan-300 text-xs font-black uppercase tracking-widest mb-4 backdrop-blur-md">
-              <Zap size={14} className="fill-cyan-300"/> Visão Geral
+              <Zap size={14} className="fill-cyan-300"/> {currentUser?.role === 'superadmin' ? 'Controle Global (SaaS)' : 'Visão Geral'}
             </div>
             <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight mb-2">
               {greeting}, <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-400">{currentUser?.name || 'Admin'}</span>.
@@ -205,7 +234,7 @@ const Dashboard = () => {
       </div>
 
       {/* MÉTRICAS VITAIS (Bento Grid) */}
-      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-6">
           
         {/* Ativos Totais (Highlight) */}
         <div 
@@ -223,20 +252,32 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Valor Financeiro Estimado */}
-        <div className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-emerald-200 transition-all h-32 md:h-40">
-          <div className="flex justify-between items-start relative z-10">
-            <div className="p-2 md:p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"><DollarSign size={18} className="md:w-5 md:h-5"/></div>
-            <span className="bg-emerald-100 text-emerald-700 text-[8px] md:text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">Estimado</span>
-          </div>
-          <div className="relative z-10">
-            <div className="flex items-baseline gap-1 mb-0.5">
-              <span className="text-xs md:text-sm font-bold text-gray-400">R$</span>
-              <h2 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tighter">{(totalValue / 1000).toFixed(0)}k</h2>
+        {/* Valor Financeiro Estimado ou Tenants */}
+        {currentUser?.role === 'superadmin' ? (
+          <div className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-emerald-200 transition-all h-32 md:h-40" onClick={() => navigate('/tenants')}>
+            <div className="flex justify-between items-start relative z-10">
+              <div className="p-2 md:p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"><Server size={18} className="md:w-5 md:h-5"/></div>
             </div>
-            <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Valor</p>
+            <div className="relative z-10">
+              <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-0.5 tracking-tighter">{totalTenants}</h2>
+              <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Empresas</p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-emerald-200 transition-all h-32 md:h-40">
+            <div className="flex justify-between items-start relative z-10">
+              <div className="p-2 md:p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"><DollarSign size={18} className="md:w-5 md:h-5"/></div>
+              <span className="bg-emerald-100 text-emerald-700 text-[8px] md:text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">Estimado</span>
+            </div>
+            <div className="relative z-10">
+              <div className="flex items-baseline gap-1 mb-0.5">
+                <span className="text-xs md:text-sm font-bold text-gray-400">R$</span>
+                <h2 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tighter">{(totalValue / 1000).toFixed(0)}k</h2>
+              </div>
+              <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Valor</p>
+            </div>
+          </div>
+        )}
 
         {/* Colaboradores / Usuários */}
         <div className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-blue-200 transition-all h-32 md:h-40 cursor-pointer" onClick={() => navigate('/employees')}>
@@ -247,6 +288,18 @@ const Dashboard = () => {
           <div className="relative z-10">
             <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-0.5 tracking-tighter">{totalEmployees}</h2>
             <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Equipe</p>
+          </div>
+        </div>
+
+        {/* Projetos Totais */}
+        <div className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-purple-200 transition-all h-32 md:h-40 cursor-pointer" onClick={() => navigate('/projects')}>
+          <div className="flex justify-between items-start relative z-10">
+            <div className="p-2 md:p-2.5 bg-purple-50 text-purple-600 rounded-xl"><ClipboardCheck size={18} className="md:w-5 md:h-5"/></div>
+            <ArrowRight size={16} className="text-gray-300 group-hover:text-purple-600 transition-colors group-hover:translate-x-1 md:w-[18px] md:h-[18px]"/>
+          </div>
+          <div className="relative z-10">
+            <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-0.5 tracking-tighter">{totalProjects}</h2>
+            <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Projetos</p>
           </div>
         </div>
 
@@ -382,12 +435,19 @@ const Dashboard = () => {
                     </div>
                     <p className="text-xs text-gray-600 font-medium">{act.details || "Operação realizada com sucesso."}</p>
                     
-                    {/* Exibe o usuário se existir */}
-                    {act.user && (
-                      <div className="flex items-center gap-1.5 mt-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                        <Users size={10}/> {act.user.split('@')[0]}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      {act.user && (
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-white border border-gray-100 px-2 py-0.5 rounded-md">
+                          <Users size={10}/> {act.user.split('@')[0]}
+                        </div>
+                      )}
+                      
+                      {currentUser?.role === 'superadmin' && act.tenantId && (
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-500 uppercase tracking-widest bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
+                          <Server size={10}/> {tenantMap[act.tenantId] || act.tenantId}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

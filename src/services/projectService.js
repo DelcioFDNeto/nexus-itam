@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, orderBy, where } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, orderBy, where, collectionGroup } from 'firebase/firestore';
 
 const projectCollection = collection(db, 'projects');
 
@@ -21,6 +21,12 @@ export const getProjects = async (tenantId) => {
     where('tenantId', '==', tenantId),
     orderBy('createdAt', 'desc')
   );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const getGlobalProjects = async () => {
+  const q = query(collectionGroup(db, 'projects'), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
