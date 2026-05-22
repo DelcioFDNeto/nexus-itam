@@ -242,12 +242,12 @@ const SettingsPage = () => {
       
       {/* Painel topo da central de controle do sistema */}
       <div className="flex items-center gap-3 mb-8">
-        <div className="p-3 bg-gray-900 text-white rounded-xl">
+        <div className="p-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl">
             <Settings size={28} />
         </div>
         <div>
-            <h1 className="text-2xl font-black text-gray-900">Configurações Avançadas</h1>
-            <p className="text-sm text-gray-500">Backup, Restauração e Parâmetros do Sistema</p>
+            <h1 className="text-2xl font-black text-gray-900 dark:text-white">Configurações Avançadas</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Backup, Restauração e Parâmetros do Sistema</p>
         </div>
       </div>
 
@@ -269,7 +269,7 @@ const SettingsPage = () => {
                                type={field.type || "text"}
                                value={config[field.key] || ''} 
                                onChange={e => setConfig({...config, [field.key]: e.target.value})} 
-                               className={`w-full border rounded-lg font-bold text-sm text-gray-800 focus:outline-none focus:border-black ${field.type === 'color' ? 'h-10 p-1 cursor-pointer' : 'p-2'}`}
+                               className={`w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg font-bold text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-brand dark:focus:border-brand ${field.type === 'color' ? 'h-10 p-1 cursor-pointer' : 'p-2'}`}
                                placeholder={field.placeholder}
                              />
                          </div>
@@ -279,34 +279,34 @@ const SettingsPage = () => {
                            <textarea
                              value={config.termClauses || ''}
                              onChange={e => setConfig({...config, termClauses: e.target.value})}
-                             className="w-full border rounded-lg font-bold text-sm text-gray-800 focus:outline-none focus:border-brand p-2 h-32 resize-none"
+                             className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg font-bold text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-brand dark:focus:border-brand p-2 h-32 resize-none"
                              placeholder="Digite as cláusulas do contrato, uma por linha..."
                            />
                        </div>
                       
                     {/* Sessão: Campos Customizados para Ativos */}
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                    <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4 space-y-3">
                         <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
                                 <Database size={16} className="text-brand" />
-                                <h3 className="text-xs font-black text-gray-700 uppercase">Campos Customizados</h3>
+                                <h3 className="text-xs font-black text-gray-700 dark:text-gray-300 uppercase">Campos Customizados</h3>
                             </div>
                             <button type="button" onClick={addCustomField} className="text-[10px] flex items-center gap-1 bg-brand text-white px-2 py-1 rounded font-bold hover:bg-brand/80 transition-colors">
                                 <Plus size={12}/> Adicionar Campo
                             </button>
                         </div>
                         {(config.customFields || []).map((cf, idx) => (
-                            <div key={cf.id} className="flex items-center gap-2 bg-white p-2 border border-gray-200 rounded-lg shadow-sm">
+                            <div key={cf.id} className="flex items-center gap-2 bg-white dark:bg-slate-800 p-2 border border-gray-200 dark:border-slate-700 rounded-lg shadow-sm">
                                 <input 
                                     value={cf.label} 
                                     onChange={e => updateCustomField(idx, 'label', e.target.value)}
                                     placeholder="Nome do Campo"
-                                    className="flex-1 p-1.5 border rounded text-xs font-bold text-gray-800 focus:border-brand focus:outline-none"
+                                    className="flex-1 p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-800 dark:text-gray-100 focus:border-brand focus:outline-none"
                                 />
                                 <select 
                                     value={cf.type} 
                                     onChange={e => updateCustomField(idx, 'type', e.target.value)}
-                                    className="p-1.5 border rounded text-xs font-bold text-gray-600 bg-gray-50 focus:border-brand focus:outline-none"
+                                    className="p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-slate-900 focus:border-brand focus:outline-none"
                                 >
                                     <option value="text">Texto Curto</option>
                                     <option value="textarea">Texto Longo</option>
@@ -403,12 +403,12 @@ const SettingsPage = () => {
           </div>
             
           {/* CAIXA 1: Ferramenta brutalista de backup global em um clique */}
-            <div className="bg-white rounded-2xl border border-blue-100 shadow-sm overflow-hidden relative group">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-blue-900/50 shadow-sm overflow-hidden relative group">
                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Database size={100} className="text-blue-500"/></div>
                 <div className="p-6 relative z-10">
-                    <h2 className="text-lg font-black text-blue-900 mb-2 flex items-center gap-2"><Download className="text-blue-600"/> Backup do Sistema</h2>
-                    <p className="text-sm text-blue-700/80 mb-6 max-w-md">Gera um arquivo JSON completo contendo todos os dados. Ideal para migração ou segurança.</p>
-                    <button onClick={handleFullBackup} disabled={backupLoading} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 flex items-center gap-2 shadow-lg shadow-blue-200 transition-all hover:scale-105 active:scale-95">
+                    <h2 className="text-lg font-black text-blue-900 dark:text-blue-400 mb-2 flex items-center gap-2"><Download className="text-blue-600 dark:text-blue-500"/> Backup do Sistema</h2>
+                    <p className="text-sm text-blue-700/80 dark:text-blue-300/80 mb-6 max-w-md">Gera um arquivo JSON completo contendo todos os dados. Ideal para migração ou segurança.</p>
+                    <button onClick={handleFullBackup} disabled={backupLoading} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 flex items-center gap-2 shadow-lg shadow-blue-200 dark:shadow-none transition-all hover:scale-105 active:scale-95">
                         {backupLoading ? <RefreshCcw className="animate-spin" size={20}/> : <FileJson size={20}/>}
                         {backupLoading ? 'Gerando Arquivo...' : 'Baixar Backup Completo'}
                     </button>
@@ -416,14 +416,13 @@ const SettingsPage = () => {
             </div>
 
             {/* CAIXA 2: Receptor focado em assimilar vidas passadas de outras bases suportadas */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
                     <div>
-                        <h2 className="text-lg font-black text-gray-900 mb-1 flex items-center gap-2"><UploadCloud className="text-orange-500"/> Restauração de Dados</h2>
-                        <p className="text-sm text-gray-500">Importe um arquivo JSON para restaurar ou atualizar dados.</p>
+                        <h2 className="text-lg font-black text-gray-900 dark:text-white mb-1 flex items-center gap-2"><UploadCloud className="text-orange-500"/> Restauração de Dados</h2>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Importe um arquivo JSON para restaurar ou atualizar dados.</p>
                     </div>
-                    <button onClick={() => setShowFormatGuide(!showFormatGuide)} className="text-xs font-bold text-gray-500 hover:text-black flex items-center gap-1 bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-200">
-                        <Code size={14}/> {showFormatGuide ? 'Ocultar Guia' : 'Guia de Formato'}
+                    <button onClick={() => setShowFormatGuide(!showFormatGuide)} className="text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white flex items-center gap-1 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600">
                     </button>
                 </div>
                 
@@ -507,7 +506,7 @@ const SettingsPage = () => {
                     ) : (
                         // Estado 1: Tela de imã limpa e seca clamando por injeção de arquivo JSON
                         <div 
-                            className={`border-2 border-dashed rounded-xl p-10 text-center transition-all cursor-pointer group ${dragActive ? 'border-orange-500 bg-orange-50 scale-[1.02]' : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'}`}
+                            className={`p-8 border-2 border-dashed ${dragActive ? 'border-brand bg-indigo-50 dark:bg-indigo-900/20' : 'border-gray-200 dark:border-slate-600 bg-gray-50/50 dark:bg-slate-800/50'} transition-all text-center mx-6 mb-6 rounded-xl relative cursor-pointer group`}
                             onDragEnter={handleDrag}
                             onDragLeave={handleDrag}
                             onDragOver={handleDrag}
@@ -515,10 +514,10 @@ const SettingsPage = () => {
                             onClick={() => fileInputRef.current.click()}
                         >
                             <input ref={fileInputRef} type="file" className="hidden" accept=".json" onChange={handleFileChange} />
-                            <div className="w-16 h-16 bg-gray-100 group-hover:bg-white rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400 group-hover:text-orange-500 transition-colors shadow-sm">
+                            <div className="w-16 h-16 bg-white dark:bg-slate-700 group-hover:bg-white rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400 group-hover:text-orange-500 transition-colors shadow-sm border border-gray-100 dark:border-slate-600">
                                 <UploadCloud size={32}/>
                             </div>
-                            <h3 className="font-bold text-gray-700 group-hover:text-gray-900">Clique ou Arraste seu JSON aqui</h3>
+                            <h3 className="font-bold text-gray-700 dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-white">Clique ou Arraste seu JSON aqui</h3>
                             <p className="text-sm text-gray-400 mt-1 max-w-xs mx-auto">Suporta backups completos ou parciais. O sistema validará o arquivo antes de importar.</p>
                         </div>
                     )}

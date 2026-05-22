@@ -23,7 +23,7 @@ const Logo = ({ className = '', size = 'md', showText = true }) => {
         <img src={logoUrl} alt="Logo" className="w-full h-full object-contain drop-shadow-sm" />
       </div>
       {showText && (
-        <span className={`${text} text-gray-900 leading-none truncate max-w-[200px]`}>
+        <span className={`${text} text-gray-900 dark:text-white leading-none truncate max-w-[200px]`}>
           {currentUser?.logoUrl ? companyName : (
             <>Nexus<span className="text-brand">ITAM</span></>
           )}
