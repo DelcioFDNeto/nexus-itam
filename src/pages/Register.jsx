@@ -113,11 +113,11 @@ const Register = () => {
           </motion.div>
           
           <h2 className="text-2xl font-black text-white uppercase tracking-tighter mb-2">Instância Criada!</h2>
-          <p className="text-sm text-gray-400 font-medium">A infraestrutura da <span className="text-brand font-bold">{companyName}</span> foi provisionada com sucesso.</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 font-medium">A infraestrutura da <span className="text-brand font-bold">{companyName}</span> foi provisionada com sucesso.</p>
           <div className="mt-8 flex justify-center">
             <Orbit className="animate-spin text-brand" size={24} />
           </div>
-          <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-4 animate-pulse">Redirecionando para o Dashboard Central...</p>
+          <p className="text-[10px] text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-widest mt-4 animate-pulse">Redirecionando para o Dashboard Central...</p>
         </motion.div>
       </div>
     );
@@ -159,7 +159,7 @@ const Register = () => {
             <h2 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center justify-center gap-2">
               Deploy <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-brand">Corporativo</span>
             </h2>
-            <p className="text-xs font-medium text-gray-400 mt-2 tracking-widest uppercase">Provisionamento de Nova Instância SaaS</p>
+            <p className="text-xs font-medium text-gray-400 dark:text-gray-500 mt-2 tracking-widest uppercase">Provisionamento de Nova Instância SaaS</p>
           </motion.div>
 
           <AnimatePresence>
@@ -179,9 +179,9 @@ const Register = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Empresa */}
               <motion.div variants={itemVariants}>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Razão Social / Fantasia</label>
+                <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Razão Social / Fantasia</label>
                 <div className="relative group">
-                  <Building2 className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <Building2 className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
                   <input 
                     type="text" 
                     required 
@@ -195,9 +195,9 @@ const Register = () => {
 
               {/* Admin */}
               <motion.div variants={itemVariants}>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Administrador Master</label>
+                <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Administrador Master</label>
                 <div className="relative group">
-                  <User className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <User className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
                   <input 
                     type="text" 
                     required 
@@ -212,9 +212,9 @@ const Register = () => {
 
             {/* Email */}
             <motion.div variants={itemVariants}>
-              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">E-mail de Acesso</label>
+              <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">E-mail de Acesso</label>
               <div className="relative group">
-                <Mail className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                <Mail className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
                 <input 
                   type="email" 
                   required 
@@ -229,7 +229,7 @@ const Register = () => {
             {/* Senhas */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <motion.div variants={itemVariants}>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1 flex justify-between">
+                <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1 flex justify-between">
                   <span>Chave de Segurança</span>
                   {password.length > 0 && (
                       <span className={`text-[9px] ${pwdStrength > 50 ? 'text-green-400' : 'text-orange-400'}`}>
@@ -238,7 +238,7 @@ const Register = () => {
                   )}
                 </label>
                 <div className="relative group">
-                  <Lock className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <Lock className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
                   <input 
                     type="password" 
                     required 
@@ -261,9 +261,9 @@ const Register = () => {
               </motion.div>
 
               <motion.div variants={itemVariants}>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Confirmar Chave</label>
+                <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Confirmar Chave</label>
                 <div className="relative group">
-                  <ShieldCheck className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <ShieldCheck className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
                   <input 
                     type="password" 
                     required 
@@ -282,7 +282,7 @@ const Register = () => {
                 whileTap={{ scale: 0.98 }}
                 type="submit" 
                 disabled={loading}
-                className="w-full relative group overflow-hidden bg-white text-black font-black py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_25px_rgba(34,211,238,0.3)]"
+                className="w-full relative group overflow-hidden bg-white dark:bg-slate-800 text-black font-black py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_25px_rgba(34,211,238,0.3)]"
               >
                 <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-cyan-100 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
                 {loading ? (
@@ -295,7 +295,7 @@ const Register = () => {
           </form>
 
           <motion.div variants={itemVariants} className="mt-6 flex justify-center items-center px-1">
-              <span className="text-[11px] text-gray-500 mr-2">Já possui uma instância provisionada?</span>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 dark:text-gray-500 mr-2">Já possui uma instância provisionada?</span>
               <Link 
                   to="/login"
                   className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold transition-colors underline decoration-cyan-400/30 hover:decoration-cyan-400 underline-offset-4"
@@ -306,7 +306,7 @@ const Register = () => {
         </div>
         
         <motion.div variants={itemVariants} className="mt-8 text-center">
-          <p className="text-[10px] text-gray-500 font-medium tracking-widest uppercase">
+          <p className="text-[10px] text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium tracking-widest uppercase">
             SaaS Infrastructure Protocol © {new Date().getFullYear()}
           </p>
         </motion.div>

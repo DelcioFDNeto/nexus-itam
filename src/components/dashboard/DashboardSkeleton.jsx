@@ -19,7 +19,7 @@ const DashboardSkeleton = () => {
       {/* KPI CARDS SKELETON */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {[...Array(4)].map((_, i) => (
-            <div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-32 flex items-center justify-between">
+            <div key={i} className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 h-32 flex items-center justify-between">
                 <div>
                     <div className="h-3 w-20 bg-gray-200 rounded-md mb-2"></div>
                     <div className="h-8 w-16 bg-gray-200 rounded-md mb-2"></div>
@@ -35,15 +35,15 @@ const DashboardSkeleton = () => {
           
           {/* LEFT COL */}
           <div className="lg:col-span-2 space-y-8">
-              <div className="bg-white p-6 rounded-2xl h-80 border border-gray-200"></div>
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl h-80 border border-gray-200 dark:border-slate-600"></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-white p-6 rounded-2xl h-64 border border-gray-200"></div>
-                  <div className="bg-white p-6 rounded-2xl h-64 border border-gray-200"></div>
+                  <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl h-64 border border-gray-200 dark:border-slate-600"></div>
+                  <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl h-64 border border-gray-200 dark:border-slate-600"></div>
               </div>
           </div>
 
           {/* RIGHT COL - TIMELINE */}
-          <div className="bg-white rounded-2xl h-[600px] border border-gray-200 p-6 flex flex-col gap-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl h-[600px] border border-gray-200 dark:border-slate-600 p-6 flex flex-col gap-4">
                <div className="h-6 w-40 bg-gray-200 rounded-md"></div>
                <div className="flex-1 space-y-4 pt-4">
                    {[...Array(5)].map((_, i) => (

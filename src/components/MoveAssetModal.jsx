@@ -50,7 +50,7 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200 dark:border-slate-600">
         
         {/* Header Modal */}
         <div className="bg-brand p-5 flex justify-between items-center text-white shadow-md">
@@ -74,12 +74,12 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
           <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
               
               {/* ORIGEM (ATUAL) */}
-              <div className="bg-gray-100 p-3 rounded-xl border border-gray-200 flex flex-col h-full justify-center opacity-70">
-                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Origem (Atual)</span>
-                  <div className="flex items-center gap-1.5 text-gray-700 font-bold text-xs mb-1">
+              <div className="bg-gray-100 p-3 rounded-xl border border-gray-200 dark:border-slate-600 flex flex-col h-full justify-center opacity-70">
+                  <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Origem (Atual)</span>
+                  <div className="flex items-center gap-1.5 text-gray-700 dark:text-gray-200 font-bold text-xs mb-1">
                       <MapPin size={12}/> <span className="truncate">{asset?.location || "N/A"}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-gray-500 font-medium text-[10px]">
+                  <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium text-[10px]">
                       <User size={12}/> <span className="truncate">{asset?.assignedTo || "Sem resp."}</span>
                   </div>
               </div>
@@ -90,7 +90,7 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
               </div>
 
               {/* DESTINO (NOVO) */}
-              <div className={`p-3 rounded-xl border flex flex-col h-full justify-center transition-all ${formData.newLocation ? 'bg-blue-50 border-blue-200' : 'bg-white border-dashed border-gray-300'}`}>
+              <div className={`p-3 rounded-xl border flex flex-col h-full justify-center transition-all ${formData.newLocation ? 'bg-blue-50 border-blue-200' : 'bg-white dark:bg-slate-800 border-dashed border-gray-300'}`}>
                   <span className={`text-[10px] font-black uppercase tracking-wider mb-1 ${formData.newLocation ? 'text-blue-600' : 'text-gray-300'}`}>Destino (Novo)</span>
                   <div className={`flex items-center gap-1.5 font-bold text-xs mb-1 ${formData.newLocation ? 'text-blue-900' : 'text-gray-300'}`}>
                       <MapPin size={12}/> <span className="truncate">{formData.newLocation || "Selecione..."}</span>
@@ -108,13 +108,13 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
               
               {/* Seleção de Local (LISTA COMPLETA) */}
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Novo Local / Filial</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Novo Local / Filial</label>
                 <div className="relative">
                     <select 
                         required
                         value={formData.newLocation} 
                         onChange={(e) => setFormData({...formData, newLocation: e.target.value})} 
-                        className="w-full p-3 border-2 border-gray-200 rounded-xl outline-none focus:border-red-600 font-bold bg-white text-gray-800 appearance-none text-sm transition-all focus:shadow-md"
+                        className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 rounded-xl outline-none focus:border-red-600 font-bold bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-100 appearance-none text-sm transition-all focus:shadow-md"
                     >
                         <option value="">Selecione o destino...</option>
                         
@@ -155,18 +155,18 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
                             <option value="Em Trânsito">Em Trânsito</option>
                         </optgroup>
                     </select>
-                    <div className="absolute right-4 top-3.5 pointer-events-none text-gray-400">▼</div>
+                    <div className="absolute right-4 top-3.5 pointer-events-none text-gray-400 dark:text-gray-500">▼</div>
                 </div>
               </div>
 
               {/* Novo Responsável */}
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Novo Responsável</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Novo Responsável</label>
                 <div className="relative">
                     <select 
                         value={formData.newResponsible} 
                         onChange={handleResponsibleSelect}
-                        className="w-full p-3 border-2 border-gray-200 rounded-xl outline-none focus:border-red-600 font-medium bg-white text-gray-800 appearance-none pr-10 text-sm"
+                        className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 rounded-xl outline-none focus:border-red-600 font-medium bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-100 appearance-none pr-10 text-sm"
                     >
                         <option value="">Manter atual / Sem responsável</option>
                         {employees.map(emp => (
@@ -174,13 +174,13 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
                         ))}
                         {isCustomResponsible && <option value={formData.newResponsible}>{formData.newResponsible}</option>}
                     </select>
-                    <Search size={16} className="absolute right-4 top-3.5 text-gray-400 pointer-events-none"/>
+                    <Search size={16} className="absolute right-4 top-3.5 text-gray-400 dark:text-gray-500 pointer-events-none"/>
                 </div>
                 {(!formData.newResponsible || isCustomResponsible) && (
                     <input 
                         value={formData.newResponsible} 
                         onChange={(e) => setFormData({...formData, newResponsible: e.target.value})} 
-                        className="w-full p-3 border-2 border-gray-200 rounded-xl outline-none focus:border-red-600 text-sm mt-2 bg-gray-50 placeholder-gray-400 font-bold text-gray-700 animate-in slide-in-from-top-1"
+                        className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 rounded-xl outline-none focus:border-red-600 text-sm mt-2 bg-gray-50 dark:bg-slate-900 placeholder-gray-400 font-bold text-gray-700 dark:text-gray-200 animate-in slide-in-from-top-1"
                         placeholder="Ou digite o nome manualmente..." 
                     />
                 )}
@@ -188,21 +188,21 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
 
               <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Data</label>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Data</label>
                     <input 
                         type="date"
                         required
                         value={formData.date} 
                         onChange={(e) => setFormData({...formData, date: e.target.value})} 
-                        className="w-full p-3 border-2 border-gray-200 rounded-xl outline-none focus:border-red-600 text-sm font-bold text-gray-700"
+                        className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 rounded-xl outline-none focus:border-red-600 text-sm font-bold text-gray-700 dark:text-gray-200"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Motivo</label>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Motivo</label>
                     <input 
                         value={formData.reason} 
                         onChange={(e) => setFormData({...formData, reason: e.target.value})} 
-                        className="w-full p-3 border-2 border-gray-200 rounded-xl outline-none focus:border-red-600 text-sm font-bold text-gray-700"
+                        className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 rounded-xl outline-none focus:border-red-600 text-sm font-bold text-gray-700 dark:text-gray-200"
                         placeholder="Ex: Promoção..." 
                     />
                   </div>

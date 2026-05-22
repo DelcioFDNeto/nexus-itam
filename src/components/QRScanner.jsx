@@ -103,7 +103,7 @@ const QRScanner = ({ onClose, onScan }) => {
             )}
         </div>
         
-        <div className="p-4 text-center bg-gray-800 text-gray-400 text-xs">
+        <div className="p-4 text-center bg-gray-800 text-gray-400 dark:text-gray-500 text-xs">
             {onScan ? "Aponte para o próximo item. O scanner continuará ativo." : "Aponte a câmera para a etiqueta"}
         </div>
       </div>

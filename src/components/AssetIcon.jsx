@@ -14,7 +14,7 @@ const AssetIcon = ({ type, category, model, internalId, className = "", size = 2
       case 'Impressora': return <Printer size={size} className={`text-orange-500 ${className}`} />;
       case 'PGT': return <CreditCard size={size} className={`text-yellow-600 ${className}`} />;
       case 'Computador': return <Monitor size={size} className={`text-purple-500 ${className}`} />;
-      default: return <Network size={size} className={`text-gray-500 ${className}`} />;
+      default: return <Network size={size} className={`text-gray-500 dark:text-gray-400 dark:text-gray-500 ${className}`} />;
     }
 };
 

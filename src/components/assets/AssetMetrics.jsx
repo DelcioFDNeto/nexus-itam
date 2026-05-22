@@ -17,30 +17,30 @@ const AssetMetrics = ({ assets = [] }) => {
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 md:p-8">
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between h-32 md:h-40 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-gray-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform"></div>
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col justify-between h-32 md:h-40 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gray-50 dark:bg-slate-900 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform"></div>
             <div className="relative z-10 p-2 bg-black text-white w-fit rounded-xl"><Package size={20}/></div>
             <div className="relative z-10">
-                <span className="text-3xl font-black text-gray-900">{totalAssets}</span>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-1">Total de Ativos</p>
+                <span className="text-3xl font-black text-gray-900 dark:text-white">{totalAssets}</span>
+                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mt-1">Total de Ativos</p>
             </div>
         </div>
         
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between h-32 md:h-40 relative overflow-hidden group">
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col justify-between h-32 md:h-40 relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-24 h-24 bg-green-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform"></div>
             <div className="relative z-10 p-2 bg-green-100 text-green-700 w-fit rounded-xl"><CreditCard size={20}/></div>
             <div className="relative z-10">
-                <span className="text-2xl font-black text-gray-900">{(totalValue/1000).toFixed(0)}k</span>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-1">Valor Estimado (R$)</p>
+                <span className="text-2xl font-black text-gray-900 dark:text-white">{(totalValue/1000).toFixed(0)}k</span>
+                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mt-1">Valor Estimado (R$)</p>
             </div>
         </div>
 
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between h-32 md:h-40 relative overflow-hidden group">
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col justify-between h-32 md:h-40 relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform"></div>
             <div className="relative z-10 p-2 bg-orange-100 text-orange-700 w-fit rounded-xl"><AlertCircle size={20}/></div>
             <div className="relative z-10">
-                <span className="text-3xl font-black text-gray-900">{maintenanceCount}</span>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-1">Em Manutenção</p>
+                <span className="text-3xl font-black text-gray-900 dark:text-white">{maintenanceCount}</span>
+                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mt-1">Em Manutenção</p>
             </div>
         </div>
 
@@ -53,7 +53,7 @@ const AssetMetrics = ({ assets = [] }) => {
             </div>
             <div className="relative z-10">
                 <span className="text-lg font-bold">Novo Ativo</span>
-                <p className="text-xs font-medium text-gray-400 mt-1">Registrar equipamento</p>
+                <p className="text-xs font-medium text-gray-400 dark:text-gray-500 mt-1">Registrar equipamento</p>
             </div>
         </div>
     </div>

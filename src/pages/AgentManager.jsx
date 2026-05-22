@@ -446,8 +446,8 @@ const AgentManager = () => {
             <Cpu size={28} />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Automação de Agente</h1>
-            <p className="text-sm text-gray-500 font-medium">Coleta ativa e silenciosa com deploy em massa.</p>
+            <h1 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">Automação de Agente</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium">Coleta ativa e silenciosa com deploy em massa.</p>
           </div>
         </div>
       </div>
@@ -458,7 +458,7 @@ const AgentManager = () => {
         <div className="xl:col-span-2 space-y-6">
           
           {/* Card de Configuração e Exportação do Agente */}
-          <section className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden">
+          <section className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-3xl shadow-sm overflow-hidden">
             <div className="p-6 md:p-8 bg-slate-900 text-white relative overflow-hidden">
               <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none"></div>
               <h2 className="font-black text-2xl flex items-center gap-2 mb-2 relative z-10"><Terminal size={24} className="text-cyan-400"/> Gerar Agente Windows</h2>
@@ -469,7 +469,7 @@ const AgentManager = () => {
               <div className="mt-8 flex bg-slate-800/50 p-1.5 rounded-xl border border-white/10 max-w-sm relative z-10">
                 <button 
                   onClick={() => setDeployMode('portable')}
-                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${deployMode === 'portable' ? 'bg-white text-slate-900 shadow-md' : 'text-slate-400 hover:text-white'}`}
+                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${deployMode === 'portable' ? 'bg-white dark:bg-slate-800 text-slate-900 shadow-md' : 'text-slate-400 hover:text-white'}`}
                 >
                   Modo Portátil (1-Click)
                 </button>
@@ -492,8 +492,8 @@ const AgentManager = () => {
             </div>
 
             {/* Documentação de Implantação */}
-            <div className="p-6 md:p-8 bg-white">
-              <h3 className="font-black text-gray-900 text-lg mb-4 flex items-center gap-2">
+            <div className="p-6 md:p-8 bg-white dark:bg-slate-800">
+              <h3 className="font-black text-gray-900 dark:text-white text-lg mb-4 flex items-center gap-2">
                 <Info size={18} className="text-blue-500"/> Guia de Implantação Rápida
               </h3>
               
@@ -503,7 +503,7 @@ const AgentManager = () => {
                   <p><strong>Como usar:</strong> Basta dar dois cliques ou rodar o script no PowerShell da máquina alvo. Ele lerá os dados e os enviará diretamente para a nuvem da sua empresa.</p>
                 </div>
               ) : (
-                <div className="space-y-3 text-sm text-gray-600 bg-slate-50 border border-gray-200 p-5 rounded-2xl">
+                <div className="space-y-3 text-sm text-gray-600 bg-slate-50 border border-gray-200 dark:border-slate-600 p-5 rounded-2xl">
                   <p><strong>Uso ideal:</strong> Active Directory (GPO) ou Microsoft Intune para dezenas/centenas de máquinas.</p>
                   <ol className="list-decimal pl-5 space-y-2 mt-2">
                     <li>Baixe o script <code>Instalar_Agente_Nexus_Background.ps1</code>.</li>
@@ -517,25 +517,25 @@ const AgentManager = () => {
           </section>
 
           {/* Configuração de Padrões e Caixa de Teste */}
-          <section className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden">
-            <div className="p-6 md:p-8 border-b border-gray-100">
+          <section className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-3xl shadow-sm overflow-hidden">
+            <div className="p-6 md:p-8 border-b border-gray-100 dark:border-slate-700">
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h2 className="font-black text-gray-900 flex items-center gap-2 text-xl tracking-tight"><ShieldCheck size={20} className="text-emerald-500"/> Padrão de Etiquetagem Automática</h2>
-                  <p className="text-sm text-gray-500 mt-1">Como os ativos enviados pelo agente serão batizados.</p>
+                  <h2 className="font-black text-gray-900 dark:text-white flex items-center gap-2 text-xl tracking-tight"><ShieldCheck size={20} className="text-emerald-500"/> Padrão de Etiquetagem Automática</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1">Como os ativos enviados pelo agente serão batizados.</p>
                 </div>
                 <button onClick={() => saveNamingConfig()} disabled={savingConfig} className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gray-900 text-white font-bold text-xs hover:bg-gray-800 disabled:opacity-60 shadow-md">
                   {savingConfig ? <RefreshCcw size={14} className="animate-spin" /> : <CheckCircle size={14} />} Salvar Padrão
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-50 p-5 rounded-2xl border border-gray-100">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-50 dark:bg-slate-900 p-5 rounded-2xl border border-gray-100 dark:border-slate-700">
                 <ConfigInput label="Prefixo / Empresa" value={namingConfig.companyPrefix} onChange={(value) => updateNamingField('companyPrefix', value)} maxLength={6} />
                 <ConfigInput label="Sigla Local" value={namingConfig.locationCode} onChange={(value) => updateNamingField('locationCode', value)} maxLength={6} />
                 <ConfigInput label="Qtd. Dígitos" type="number" value={namingConfig.padLength} onChange={(value) => updateNamingField('padLength', value)} min={2} max={8} />
                 <div className="flex flex-col justify-end">
-                  <span className="text-[10px] font-black uppercase text-gray-400 mb-1">Próximo Ticket</span>
-                  <div className="h-[42px] bg-white border border-gray-200 rounded-xl px-3 flex items-center font-mono text-sm font-black text-indigo-600 shadow-sm">
+                  <span className="text-[10px] font-black uppercase text-gray-400 dark:text-gray-500 mb-1">Próximo Ticket</span>
+                  <div className="h-[42px] bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl px-3 flex items-center font-mono text-sm font-black text-indigo-600 shadow-sm">
                     {nextAssetCode}
                   </div>
                 </div>
@@ -543,7 +543,7 @@ const AgentManager = () => {
             </div>
 
             <div className="p-6 md:p-8 bg-slate-50">
-               <h3 className="font-black text-gray-900 flex items-center gap-2 mb-4 text-sm"><FileJson size={16}/> Simulador de Payload (JSON)</h3>
+               <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 mb-4 text-sm"><FileJson size={16}/> Simulador de Payload (JSON)</h3>
                <textarea
                   value={jsonText}
                   onChange={(event) => setJsonText(event.target.value)}
@@ -551,10 +551,10 @@ const AgentManager = () => {
                   spellCheck={false}
                 />
                 <div className="flex gap-3 mt-4">
-                  <button onClick={analyzeJson} disabled={loadingPreview} className="bg-white border border-gray-200 px-4 py-2.5 rounded-xl font-bold text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-all">
+                  <button onClick={analyzeJson} disabled={loadingPreview} className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 px-4 py-2.5 rounded-xl font-bold text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:bg-slate-900 flex items-center gap-2 transition-all">
                     {loadingPreview ? <RefreshCcw size={14} className="animate-spin" /> : <Play size={14} />} Analisar Lógica
                   </button>
-                  <label className="cursor-pointer bg-white border border-gray-200 px-4 py-2.5 rounded-xl font-bold text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-all">
+                  <label className="cursor-pointer bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 px-4 py-2.5 rounded-xl font-bold text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:bg-slate-900 flex items-center gap-2 transition-all">
                     <UploadCloud size={14} /> Importar JSON
                     <input type="file" accept=".json,application/json" onChange={uploadJson} className="hidden" />
                   </label>
@@ -567,13 +567,13 @@ const AgentManager = () => {
         <aside className="space-y-6">
           
           {/* Caixa de Entrada (Fila do Agente) */}
-          <section className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden flex flex-col h-[400px]">
-            <div className="p-5 md:p-6 border-b border-gray-100 flex items-center justify-between bg-slate-50">
+          <section className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-3xl shadow-sm overflow-hidden flex flex-col h-[400px]">
+            <div className="p-5 md:p-6 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-slate-50">
               <div>
-                <h2 className="font-black text-gray-900 text-lg tracking-tight">Fila de Recepção</h2>
-                <p className="text-xs text-gray-500 font-medium mt-0.5">{pendingSubmissions.length} endpoint(s) aguardando</p>
+                <h2 className="font-black text-gray-900 dark:text-white text-lg tracking-tight">Fila de Recepção</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium mt-0.5">{pendingSubmissions.length} endpoint(s) aguardando</p>
               </div>
-              <button onClick={loadInbox} disabled={loadingInbox} className="p-2.5 rounded-xl bg-white border border-gray-200 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 text-gray-400 transition-colors shadow-sm">
+              <button onClick={loadInbox} disabled={loadingInbox} className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 text-gray-400 dark:text-gray-500 transition-colors shadow-sm">
                 <RefreshCcw size={16} className={loadingInbox ? 'animate-spin' : ''} />
               </button>
             </div>
@@ -582,15 +582,15 @@ const AgentManager = () => {
               {submissions.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center p-8 text-center">
                   <Activity size={32} className="text-gray-200 mb-3"/>
-                  <p className="text-sm font-bold text-gray-500">Nenhum endpoint na fila.</p>
-                  <p className="text-xs text-gray-400 mt-1">Os dados enviados pelo agente aparecerão aqui.</p>
+                  <p className="text-sm font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500">Nenhum endpoint na fila.</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Os dados enviados pelo agente aparecerão aqui.</p>
                 </div>
               ) : submissions.map((submission) => (
-                <div key={submission.id} className="p-4 hover:bg-gray-50 rounded-2xl transition-colors m-2 border border-transparent hover:border-gray-100">
+                <div key={submission.id} className="p-4 hover:bg-gray-50 dark:bg-slate-900 rounded-2xl transition-colors m-2 border border-transparent hover:border-gray-100 dark:border-slate-700">
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="min-w-0">
-                      <p className="font-black text-sm text-gray-900 truncate">{submission.hostname || 'Desconhecido'}</p>
-                      <p className="text-[10px] font-mono text-gray-500 truncate mt-0.5">SN: {submission.serialNumber || 'N/A'}</p>
+                      <p className="font-black text-sm text-gray-900 dark:text-white truncate">{submission.hostname || 'Desconhecido'}</p>
+                      <p className="text-[10px] font-mono text-gray-500 dark:text-gray-400 dark:text-gray-500 truncate mt-0.5">SN: {submission.serialNumber || 'N/A'}</p>
                     </div>
                     <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md border ${submission.status === 'processed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
                       {submission.status === 'processed' ? 'OK' : 'Novo'}
@@ -608,13 +608,13 @@ const AgentManager = () => {
 
           {/* Resultado do Simulador */}
           {preview && (
-            <section className="bg-white border border-gray-200 rounded-3xl shadow-sm overflow-hidden animate-fade-in">
-              <div className="p-5 md:p-6 border-b border-gray-100">
-                <h2 className="font-black text-gray-900 flex items-center gap-2"><Laptop size={18} className="text-indigo-500"/> Resultado da Análise</h2>
+            <section className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-3xl shadow-sm overflow-hidden animate-fade-in">
+              <div className="p-5 md:p-6 border-b border-gray-100 dark:border-slate-700">
+                <h2 className="font-black text-gray-900 dark:text-white flex items-center gap-2"><Laptop size={18} className="text-indigo-500"/> Resultado da Análise</h2>
               </div>
               <div className="p-5 md:p-6 space-y-4">
                 <div className={`rounded-2xl p-4 border ${preview.duplicate ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
-                  <div className="flex items-center gap-2 font-black text-sm text-gray-900">
+                  <div className="flex items-center gap-2 font-black text-sm text-gray-900 dark:text-white">
                     {preview.duplicate ? <AlertTriangle size={18} className="text-amber-600" /> : <CheckCircle size={18} className="text-emerald-600" />}
                     {preview.duplicate ? 'Ativo Já Registrado' : 'Ativo Inédito'}
                   </div>
@@ -625,7 +625,7 @@ const AgentManager = () => {
                   </p>
                 </div>
                 
-                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                <div className="bg-gray-50 dark:bg-slate-900 rounded-2xl p-4 border border-gray-100 dark:border-slate-700">
                   <div className="grid grid-cols-1 gap-2.5 text-sm">
                     <InfoRow label="Patrimônio" value={preview.normalized.internalId} />
                     <InfoRow label="Serial" value={preview.normalized.serialNumber} />
@@ -650,20 +650,20 @@ const AgentManager = () => {
 };
 
 const InfoRow = ({ label, value }) => (
-  <div className="flex items-center justify-between gap-3 border-b border-gray-200/60 pb-2.5 last:border-0 last:pb-0">
-    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</span>
-    <span className="text-right font-mono text-xs font-black text-gray-900 truncate">{value || 'N/A'}</span>
+  <div className="flex items-center justify-between gap-3 border-b border-gray-200 dark:border-slate-600/60 pb-2.5 last:border-0 last:pb-0">
+    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">{label}</span>
+    <span className="text-right font-mono text-xs font-black text-gray-900 dark:text-white truncate">{value || 'N/A'}</span>
   </div>
 );
 
 const ConfigInput = ({ label, value, onChange, type = 'text', ...props }) => (
   <label className="block">
-    <span className="text-[10px] font-black uppercase text-gray-500 mb-1.5 block">{label}</span>
+    <span className="text-[10px] font-black uppercase text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-1.5 block">{label}</span>
     <input
       type={type}
       value={value || ''}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-black text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all shadow-sm"
+      className="w-full rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm font-black text-gray-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all shadow-sm"
       {...props}
     />
   </label>

@@ -79,7 +79,7 @@ const TenantManager = () => {
   const getStatusBadge = (status) => {
     if (status === 'active') return <span className="px-2.5 py-1 bg-green-100 text-green-700 text-[10px] font-black uppercase rounded border border-green-200">Ativo</span>;
     if (status === 'suspended') return <span className="px-2.5 py-1 bg-red-100 text-red-700 text-[10px] font-black uppercase rounded border border-red-200">Suspenso</span>;
-    return <span className="px-2.5 py-1 bg-gray-100 text-gray-700 text-[10px] font-black uppercase rounded border border-gray-200">{status}</span>;
+    return <span className="px-2.5 py-1 bg-gray-100 text-gray-700 dark:text-gray-200 text-[10px] font-black uppercase rounded border border-gray-200 dark:border-slate-600">{status}</span>;
   };
 
   return (
@@ -107,50 +107,50 @@ const TenantManager = () => {
 
       {/* DASHBOARD STATS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+        <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm flex items-center gap-4">
             <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Building2 size={24}/></div>
             <div>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Empresas</p>
-                <p className="text-2xl font-black text-gray-900">{tenants.length}</p>
+                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Empresas</p>
+                <p className="text-2xl font-black text-gray-900 dark:text-white">{tenants.length}</p>
             </div>
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+        <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm flex items-center gap-4">
             <div className="p-3 bg-green-50 text-green-600 rounded-xl"><Activity size={24}/></div>
             <div>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Ativas</p>
-                <p className="text-2xl font-black text-gray-900">{tenants.filter(t => t.status === 'active').length}</p>
+                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Ativas</p>
+                <p className="text-2xl font-black text-gray-900 dark:text-white">{tenants.filter(t => t.status === 'active').length}</p>
             </div>
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+        <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm flex items-center gap-4">
             <div className="p-3 bg-red-50 text-red-600 rounded-xl"><AlertTriangle size={24}/></div>
             <div>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Suspensas</p>
-                <p className="text-2xl font-black text-gray-900">{tenants.filter(t => t.status === 'suspended').length}</p>
+                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Suspensas</p>
+                <p className="text-2xl font-black text-gray-900 dark:text-white">{tenants.filter(t => t.status === 'suspended').length}</p>
             </div>
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+        <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm flex items-center gap-4">
             <div className="p-3 bg-purple-50 text-purple-600 rounded-xl"><Users size={24}/></div>
             <div>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Usuários SaaS</p>
-                <p className="text-2xl font-black text-gray-900">{tenants.reduce((acc, t) => acc + (t.usersCount || 0), 0)}</p>
+                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Usuários SaaS</p>
+                <p className="text-2xl font-black text-gray-900 dark:text-white">{tenants.reduce((acc, t) => acc + (t.usersCount || 0), 0)}</p>
             </div>
         </div>
       </div>
 
       {/* LISTAGEM DE EMPRESAS */}
-      <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-200 dark:border-slate-600 shadow-sm overflow-hidden">
         
         {/* Toolbar */}
-        <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
-            <h2 className="font-black text-gray-800 uppercase tracking-wide flex items-center gap-2">
+        <div className="p-5 border-b border-gray-100 dark:border-slate-700 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
+            <h2 className="font-black text-gray-800 dark:text-gray-100 uppercase tracking-wide flex items-center gap-2">
                 <Building2 className="text-indigo-500" size={20}/> Empresas Registradas
             </h2>
             <div className="relative w-full md:w-96">
-                <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                <Search className="absolute left-3 top-2.5 text-gray-400 dark:text-gray-500" size={18} />
                 <input 
                     type="text" 
                     placeholder="Buscar por nome, ID ou email..." 
-                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-slate-600 rounded-xl text-sm font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -161,7 +161,7 @@ const TenantManager = () => {
         <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-gray-50 text-gray-500 text-[10px] uppercase font-black tracking-widest border-b border-gray-100">
+                <tr className="bg-gray-50 dark:bg-slate-900 text-gray-500 dark:text-gray-400 dark:text-gray-500 text-[10px] uppercase font-black tracking-widest border-b border-gray-100 dark:border-slate-700">
                   <th className="p-4 pl-6">Empresa & ID</th>
                   <th className="p-4">Administrador / Owner</th>
                   <th className="p-4 text-center">Usuários</th>
@@ -174,7 +174,7 @@ const TenantManager = () => {
               <tbody className="text-sm">
                 {loading ? (
                     <tr>
-                        <td colSpan="7" className="p-8 text-center text-gray-400 font-bold uppercase tracking-widest">
+                        <td colSpan="7" className="p-8 text-center text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest">
                             <div className="flex flex-col items-center gap-3">
                                 <div className="w-8 h-8 border-4 border-indigo-100 border-t-indigo-500 rounded-full animate-spin"></div>
                                 Carregando Banco Global...
@@ -183,7 +183,7 @@ const TenantManager = () => {
                     </tr>
                 ) : filteredTenants.length === 0 ? (
                     <tr>
-                        <td colSpan="7" className="p-8 text-center text-gray-500 font-medium">Nenhuma empresa encontrada com os termos de busca.</td>
+                        <td colSpan="7" className="p-8 text-center text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium">Nenhuma empresa encontrada com os termos de busca.</td>
                     </tr>
                 ) : (
                     filteredTenants.map(tenant => (
@@ -194,17 +194,17 @@ const TenantManager = () => {
                                         {tenant.companyName ? tenant.companyName.substring(0,2).toUpperCase() : 'NA'}
                                     </div>
                                     <div>
-                                        <p className="font-bold text-gray-900">{tenant.companyName || 'Empresa Sem Nome'}</p>
-                                        <p className="text-[10px] font-mono text-gray-400 font-medium bg-gray-100 px-1.5 py-0.5 rounded inline-block mt-0.5">#{tenant.id}</p>
+                                        <p className="font-bold text-gray-900 dark:text-white">{tenant.companyName || 'Empresa Sem Nome'}</p>
+                                        <p className="text-[10px] font-mono text-gray-400 dark:text-gray-500 font-medium bg-gray-100 px-1.5 py-0.5 rounded inline-block mt-0.5">#{tenant.id}</p>
                                     </div>
                                 </div>
                             </td>
                             <td className="p-4">
-                                <p className="font-bold text-gray-800 flex items-center gap-1.5"><UserCog size={14} className="text-gray-400"/> {tenant.adminName}</p>
-                                <p className="text-xs text-gray-500 flex items-center gap-1.5 mt-0.5"><Mail size={12} className="text-gray-400"/> {tenant.adminEmail}</p>
+                                <p className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-1.5"><UserCog size={14} className="text-gray-400 dark:text-gray-500"/> {tenant.adminName}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 flex items-center gap-1.5 mt-0.5"><Mail size={12} className="text-gray-400 dark:text-gray-500"/> {tenant.adminEmail}</p>
                             </td>
                             <td className="p-4 text-center">
-                                <span className="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-full text-xs font-black border border-gray-200">
+                                <span className="bg-gray-100 text-gray-700 dark:text-gray-200 px-2.5 py-1 rounded-full text-xs font-black border border-gray-200 dark:border-slate-600">
                                     {tenant.usersCount}
                                 </span>
                             </td>
@@ -216,7 +216,7 @@ const TenantManager = () => {
                             <td className="p-4 text-center">
                                 {getStatusBadge(tenant.status)}
                             </td>
-                            <td className="p-4 text-center text-xs font-medium text-gray-500">
+                            <td className="p-4 text-center text-xs font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500">
                                 {tenant.createdAt?.toDate ? new Date(tenant.createdAt.toDate()).toLocaleDateString('pt-BR') : 'N/A'}
                             </td>
                             <td className="p-4 pr-6 text-right">

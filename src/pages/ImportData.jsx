@@ -282,14 +282,14 @@ const ImportData = () => {
       
       {/* Título da ferramenta com opção rápida de dar um salto para trás pelas configurações */}
       <div className="flex items-center gap-4 mb-8">
-        <button onClick={() => navigate('/settings')} className="p-2 bg-white rounded-full hover:bg-gray-100 shadow-sm border border-gray-200 transition-colors">
+        <button onClick={() => navigate('/settings')} className="p-2 bg-white dark:bg-slate-800 rounded-full hover:bg-gray-100 shadow-sm border border-gray-200 dark:border-slate-600 transition-colors">
             <ArrowLeft size={20} className="text-gray-600"/>
         </button>
         <div>
-            <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+            <h1 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
                 Importação de Dados
             </h1>
-            <p className="text-sm text-gray-500">Adicione registros em massa via Excel ou JSON</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Adicione registros em massa via Excel ou JSON</p>
         </div>
       </div>
 
@@ -297,7 +297,7 @@ const ImportData = () => {
           
           {/* Menu lateral de botões criados dinamicamente baseados nos "schemas" lá do topo do arquivo */}
           <div className="lg:col-span-3 space-y-2">
-              <h3 className="font-bold text-gray-400 text-[10px] uppercase tracking-wider mb-2 px-2">Selecione o Tipo</h3>
+              <h3 className="font-bold text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wider mb-2 px-2">Selecione o Tipo</h3>
               {Object.entries(IMPORT_SCHEMAS).map(([key, schema]) => (
                   <button 
                     key={key} 
@@ -305,10 +305,10 @@ const ImportData = () => {
                     className={`w-full p-3 rounded-xl border flex items-center gap-3 transition-all text-left ${
                         selectedType === key 
                         ? 'border-black bg-black text-white shadow-lg shadow-gray-400/20' 
-                        : 'border-transparent bg-white text-gray-600 hover:bg-gray-50 hover:text-black'
+                        : 'border-transparent bg-white dark:bg-slate-800 text-gray-600 hover:bg-gray-50 dark:bg-slate-900 hover:text-black'
                     }`}
                   >
-                      <div className={`${selectedType === key ? 'text-white' : 'text-gray-400 group-hover:text-black'}`}>{schema.icon}</div>
+                      <div className={`${selectedType === key ? 'text-white' : 'text-gray-400 dark:text-gray-500 group-hover:text-black'}`}>{schema.icon}</div>
                       <div>
                           <span className="font-bold text-sm block">{schema.label}</span>
                       </div>
@@ -320,15 +320,15 @@ const ImportData = () => {
           <div className="lg:col-span-9 space-y-6">
               
               {/* Exibe o manual de instruções mínimo alertando o usuário sobre as colunas inegociáveis do Excel */}
-              <div className="bg-white rounded-2xl border border-gray-200 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm">
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm">
                   <div>
-                      <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                      <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                         {currentSchema.icon} Importar {currentSchema.label}
                       </h2>
-                      <p className="text-sm text-gray-500 mt-1">{currentSchema.description}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1">{currentSchema.description}</p>
                       
                       <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                          <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded border border-gray-200 font-medium">Colunas Obrigatórias:</span>
+                          <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded border border-gray-200 dark:border-slate-600 font-medium">Colunas Obrigatórias:</span>
                           {currentSchema.requiredCols.map(col => (
                               <span key={col} className="bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100 font-bold font-mono">{col}</span>
                           ))}
@@ -336,7 +336,7 @@ const ImportData = () => {
                   </div>
                   <button 
                     onClick={handleDownloadTemplate} 
-                    className="shrink-0 flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm"
+                    className="shrink-0 flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-300 rounded-lg text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:bg-slate-900 hover:border-gray-400 transition-all shadow-sm"
                   >
                       <Download size={16}/> Baixar Modelo Excel
                   </button>
@@ -345,7 +345,7 @@ const ImportData = () => {
               {/* Quadros dinâmicos que decidem se mostram o painel de largar arquivos ou a tabela dissecada após análise */}
               {fileAnalysis ? (
                   // Estado Ativo: O navegador conseguiu mastigar o arquivo e exibe a anatomia do que achou de bom ou ruim lá dentro
-                  <div className="bg-white rounded-2xl border border-blue-100 shadow-lg overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 shadow-lg overflow-hidden animate-in zoom-in-95 duration-200">
                       <div className="bg-blue-50/50 p-4 border-b border-blue-100 flex justify-between items-center">
                           <div className="flex items-center gap-3">
                               <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><FileSpreadsheet size={24}/></div>
@@ -366,15 +366,15 @@ const ImportData = () => {
                                 </div>
                                 
                                 <div className="mb-6">
-                                    <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Pré-visualização (Amostra)</h4>
-                                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                                    <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2">Pré-visualização (Amostra)</h4>
+                                    <div className="overflow-x-auto border border-gray-200 dark:border-slate-600 rounded-lg">
                                         <table className="w-full text-left text-xs">
-                                            <thead className="bg-gray-50 text-gray-500 font-bold">
+                                            <thead className="bg-gray-50 dark:bg-slate-900 text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold">
                                                 <tr>
                                                     {Object.keys(fileAnalysis.sample[0] || {}).map(k => <th key={k} className="p-2 border-b">{k}</th>)}
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-gray-100 font-mono text-gray-600 bg-white">
+                                            <tbody className="divide-y divide-gray-100 font-mono text-gray-600 bg-white dark:bg-slate-800">
                                                 {fileAnalysis.sample.map((row, i) => (
                                                     <tr key={i}>
                                                         {Object.values(row).map((v, j) => <td key={j} className="p-2 whitespace-nowrap">{String(v)}</td>)}
@@ -399,8 +399,8 @@ const ImportData = () => {
                           ) : (
                               <div className="text-center py-8">
                                   <div className="inline-flex p-4 bg-red-100 text-red-600 rounded-full mb-4"><AlertTriangle size={32}/></div>
-                                  <h3 className="font-bold text-xl text-gray-900 mb-2">Colunas Obrigatórias Ausentes</h3>
-                                  <p className="text-gray-500 mb-6 max-w-md mx-auto">O arquivo não possui as seguintes colunas exigidas para <strong>{currentSchema.label}</strong>:</p>
+                                  <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Colunas Obrigatórias Ausentes</h3>
+                                  <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-6 max-w-md mx-auto">O arquivo não possui as seguintes colunas exigidas para <strong>{currentSchema.label}</strong>:</p>
                                   
                                   <div className="flex flex-wrap justify-center gap-2 mb-8">
                                       {fileAnalysis.missingCols.map(col => (
@@ -408,7 +408,7 @@ const ImportData = () => {
                                       ))}
                                   </div>
 
-                                  <button onClick={() => setFileAnalysis(null)} className="text-sm font-bold text-gray-500 hover:text-black underline">Tentar outro arquivo</button>
+                                  <button onClick={() => setFileAnalysis(null)} className="text-sm font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black underline">Tentar outro arquivo</button>
                               </div>
                           )}
                       </div>
@@ -419,7 +419,7 @@ const ImportData = () => {
                     className={`border-2 border-dashed rounded-2xl p-12 text-center transition-all cursor-pointer group flex flex-col items-center justify-center min-h-[300px] ${
                         dragActive 
                         ? 'border-blue-500 bg-blue-50 scale-[1.01]' 
-                        : 'border-gray-200 bg-white hover:border-gray-400 hover:bg-gray-50'
+                        : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:border-gray-400 hover:bg-gray-50 dark:bg-slate-900'
                     }`}
                     onDragEnter={handleDrag}
                     onDragLeave={handleDrag}
@@ -429,14 +429,14 @@ const ImportData = () => {
                   >
                       <input ref={fileInputRef} type="file" className="hidden" accept=".xlsx,.xls,.csv,.json" onChange={handleFileChange} />
                       
-                      <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 transition-colors shadow-sm ${dragActive ? 'bg-blue-200 text-blue-600' : 'bg-gray-100 text-gray-400 group-hover:text-blue-600 group-hover:bg-white'}`}>
+                      <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 transition-colors shadow-sm ${dragActive ? 'bg-blue-200 text-blue-600' : 'bg-gray-100 text-gray-400 dark:text-gray-500 group-hover:text-blue-600 group-hover:bg-white dark:bg-slate-800'}`}>
                           {dragActive ? <UploadCloud size={40} className="animate-bounce"/> : <FileSpreadsheet size={40}/>}
                       </div>
                       
-                      <h3 className={`text-xl font-bold mb-2 transition-colors ${dragActive ? 'text-blue-800' : 'text-gray-700 group-hover:text-gray-900'}`}>
+                      <h3 className={`text-xl font-bold mb-2 transition-colors ${dragActive ? 'text-blue-800' : 'text-gray-700 dark:text-gray-200 group-hover:text-gray-900 dark:text-white'}`}>
                           {dragActive ? 'Solte o arquivo agora' : 'Clique ou Arraste seu arquivo aqui'}
                       </h3>
-                      <p className="text-gray-400 text-sm max-w-xs mx-auto mb-6">Suporta arquivos Excel (.xlsx) ou JSON. O sistema analisará a estrutura antes de importar.</p>
+                      <p className="text-gray-400 dark:text-gray-500 text-sm max-w-xs mx-auto mb-6">Suporta arquivos Excel (.xlsx) ou JSON. O sistema analisará a estrutura antes de importar.</p>
                       
                       {error && (
                           <div className="mt-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm font-bold flex items-center gap-2 animate-pulse">

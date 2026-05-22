@@ -87,28 +87,28 @@ const GlobalSearch = ({ isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[15vh] p-4 animate-in fade-in duration-100">
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[70vh]">
+      <div className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[70vh]">
         
         {/* Input Area */}
-        <div className="flex items-center p-4 border-b border-gray-100 gap-3">
-            <Search className="text-gray-400" size={24} />
+        <div className="flex items-center p-4 border-b border-gray-100 dark:border-slate-700 gap-3">
+            <Search className="text-gray-400 dark:text-gray-500" size={24} />
             <input 
                 ref={inputRef}
                 value={term}
                 onChange={e => setTerm(e.target.value)}
-                className="flex-1 text-xl outline-none text-gray-800 placeholder-gray-300 font-medium bg-transparent"
+                className="flex-1 text-xl outline-none text-gray-800 dark:text-gray-100 placeholder-gray-300 font-medium bg-transparent"
                 placeholder="O que você procura?"
             />
-            <button onClick={onClose} className="p-1 bg-gray-100 rounded text-gray-400 text-xs font-bold px-2">ESC</button>
+            <button onClick={onClose} className="p-1 bg-gray-100 rounded text-gray-400 dark:text-gray-500 text-xs font-bold px-2">ESC</button>
         </div>
 
         {/* Results Area */}
         <div className="overflow-y-auto p-2 bg-gray-50/50">
             
-            {loading && <div className="p-4 text-center text-gray-400 text-sm">Buscando...</div>}
+            {loading && <div className="p-4 text-center text-gray-400 dark:text-gray-500 text-sm">Buscando...</div>}
 
             {!loading && !term && (
-                <div className="p-8 text-center text-gray-400 flex flex-col items-center gap-2">
+                <div className="p-8 text-center text-gray-400 dark:text-gray-500 flex flex-col items-center gap-2">
                     <Command size={32} className="opacity-20"/>
                     <p className="text-sm">Digite para buscar ativos, pessoas ou páginas.</p>
                 </div>
@@ -117,9 +117,9 @@ const GlobalSearch = ({ isOpen, onClose }) => {
             {/* Seção Páginas */}
             {results.pages.length > 0 && (
                 <div className="mb-2">
-                    <p className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Acesso Rápido</p>
+                    <p className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Acesso Rápido</p>
                     {results.pages.map(page => (
-                        <button key={page.path} onClick={() => handleSelect(page.path)} className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white hover:shadow-sm hover:text-black text-gray-600 flex items-center gap-3 transition-all group border border-transparent hover:border-gray-100">
+                        <button key={page.path} onClick={() => handleSelect(page.path)} className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white dark:bg-slate-800 hover:shadow-sm hover:text-black text-gray-600 flex items-center gap-3 transition-all group border border-transparent hover:border-gray-100 dark:border-slate-700">
                             <div className="p-1.5 bg-gray-200 rounded-lg group-hover:bg-black group-hover:text-white transition-colors">{page.icon}</div>
                             <span className="font-bold text-sm">{page.name}</span>
                             <ArrowRight size={14} className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity"/>
@@ -131,13 +131,13 @@ const GlobalSearch = ({ isOpen, onClose }) => {
             {/* Seção Ativos */}
             {results.assets.length > 0 && (
                 <div className="mb-2">
-                    <p className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ativos Encontrados</p>
+                    <p className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Ativos Encontrados</p>
                     {results.assets.map(asset => (
-                        <button key={asset.id} onClick={() => handleSelect(`/assets/${asset.id}`)} className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white hover:shadow-sm text-gray-600 flex items-center gap-3 transition-all group border border-transparent hover:border-gray-100">
+                        <button key={asset.id} onClick={() => handleSelect(`/assets/${asset.id}`)} className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white dark:bg-slate-800 hover:shadow-sm text-gray-600 flex items-center gap-3 transition-all group border border-transparent hover:border-gray-100 dark:border-slate-700">
                             <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg"><Monitor size={14}/></div>
                             <div className="flex-1">
-                                <p className="font-bold text-sm text-gray-900">{asset.model}</p>
-                                <p className="text-xs text-gray-400 font-mono">{asset.internalId}</p>
+                                <p className="font-bold text-sm text-gray-900 dark:text-white">{asset.model}</p>
+                                <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{asset.internalId}</p>
                             </div>
                             <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${asset.status === 'Em Uso' ? 'bg-green-100 text-green-700' : 'bg-gray-100'}`}>{asset.status}</span>
                         </button>
@@ -148,13 +148,13 @@ const GlobalSearch = ({ isOpen, onClose }) => {
             {/* Seção Pessoas */}
             {results.employees.length > 0 && (
                 <div className="mb-2">
-                    <p className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Equipe</p>
+                    <p className="px-3 py-2 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Equipe</p>
                     {results.employees.map(emp => (
-                        <button key={emp.id} onClick={() => handleSelect(`/employees`)} className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white hover:shadow-sm text-gray-600 flex items-center gap-3 transition-all group border border-transparent hover:border-gray-100">
+                        <button key={emp.id} onClick={() => handleSelect(`/employees`)} className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white dark:bg-slate-800 hover:shadow-sm text-gray-600 flex items-center gap-3 transition-all group border border-transparent hover:border-gray-100 dark:border-slate-700">
                             <div className="p-1.5 bg-purple-100 text-purple-600 rounded-lg"><User size={14}/></div>
                             <div className="flex-1">
-                                <p className="font-bold text-sm text-gray-900">{emp.name}</p>
-                                <p className="text-xs text-gray-400">{emp.role} - {emp.branch}</p>
+                                <p className="font-bold text-sm text-gray-900 dark:text-white">{emp.name}</p>
+                                <p className="text-xs text-gray-400 dark:text-gray-500">{emp.role} - {emp.branch}</p>
                             </div>
                         </button>
                     ))}
@@ -162,13 +162,13 @@ const GlobalSearch = ({ isOpen, onClose }) => {
             )}
 
             {!loading && term && results.assets.length === 0 && results.employees.length === 0 && results.pages.length === 0 && (
-                <div className="p-8 text-center text-gray-500 text-sm">
+                <div className="p-8 text-center text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">
                     Nenhum resultado para "{term}".
                 </div>
             )}
         </div>
         
-        <div className="bg-gray-100 p-2 text-center text-[10px] text-gray-400 font-mono border-t border-gray-200">
+        <div className="bg-gray-100 p-2 text-center text-[10px] text-gray-400 dark:text-gray-500 font-mono border-t border-gray-200 dark:border-slate-600">
             Use as setas para navegar • Enter para selecionar • ESC para fechar
         </div>
       </div>

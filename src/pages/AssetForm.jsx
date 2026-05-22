@@ -197,14 +197,14 @@ const AssetForm = () => {
         
         {/* Cabeçalho da página de formulário com botão de retorno e título dinâmico */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-            <button onClick={() => navigate('/assets')} className="group flex items-center text-gray-500 hover:text-black transition-colors font-bold text-sm">
+            <button onClick={() => navigate('/assets')} className="group flex items-center text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black transition-colors font-bold text-sm">
                 <div className="p-2 rounded-full group-hover:bg-gray-100 transition-all mr-2"><ArrowLeft size={20} /></div>
                 Cancelar
             </button>
             <div className="flex items-center gap-3">
                  <div className="text-right hidden md:block">
-                     <h1 className="text-2xl font-black text-gray-900">{id ? 'Editar Ativo' : 'Novo Ativo'}</h1>
-                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{id ? `ID: ${id}` : 'Cadastro no Inventário'}</p>
+                     <h1 className="text-2xl font-black text-gray-900 dark:text-white">{id ? 'Editar Ativo' : 'Novo Ativo'}</h1>
+                     <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{id ? `ID: ${id}` : 'Cadastro no Inventário'}</p>
                  </div>
                  <div className="w-12 h-12 bg-black text-white rounded-2xl flex items-center justify-center shadow-lg">
                      {id ? <AssetIcon type={formData.type} size={24} className="text-white"/> : <Box size={24}/>}
@@ -218,37 +218,37 @@ const AssetForm = () => {
             <div className="lg:col-span-2 space-y-8">
                 
                 {/* Agrupamento de campos para identificação primária (Nome, Tag, Serial) */}
-                <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100">
-                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 pb-2"><Tag size={16}/> Identificação & Classificação</h3>
+                <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700">
+                    <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 dark:border-slate-700 pb-2"><Tag size={16}/> Identificação & Classificação</h3>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="md:col-span-2">
-                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Nome / Modelo do Ativo</label>
-                             <input name="model" value={formData.model} onChange={handleChange} className="w-full p-4 bg-gray-50 border-2 border-transparent focus:bg-white focus:border-black rounded-xl outline-none font-bold text-lg transition-all placeholder:font-normal" required placeholder="Ex: Notebook Dell Latitude 3420" />
+                             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Nome / Modelo do Ativo</label>
+                             <input name="model" value={formData.model} onChange={handleChange} className="w-full p-4 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:bg-slate-800 focus:border-black rounded-xl outline-none font-bold text-lg transition-all placeholder:font-normal" required placeholder="Ex: Notebook Dell Latitude 3420" />
                         </div>
 
                         <div>
-                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Patrimônio (Tag)</label>
+                             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Patrimônio (Tag)</label>
                              <div className="relative">
-                                 <Tag size={18} className="absolute left-4 top-4 text-gray-400"/>
-                                 <input name="internalId" value={formData.internalId} onChange={handleChange} className="w-full pl-11 pr-4 py-3.5 bg-gray-50 border-2 border-transparent focus:bg-white focus:border-black rounded-xl outline-none font-mono font-bold text-gray-900 transition-all uppercase" required placeholder="Ex: SHL-NB-001" />
+                                 <Tag size={18} className="absolute left-4 top-4 text-gray-400 dark:text-gray-500"/>
+                                 <input name="internalId" value={formData.internalId} onChange={handleChange} className="w-full pl-11 pr-4 py-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:bg-slate-800 focus:border-black rounded-xl outline-none font-mono font-bold text-gray-900 dark:text-white transition-all uppercase" required placeholder="Ex: SHL-NB-001" />
                              </div>
                         </div>
 
                         <div>
-                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Serial Number</label>
-                             <input name="serialNumber" value={formData.serialNumber} onChange={handleChange} className="w-full p-3.5 bg-gray-50 border-2 border-transparent focus:bg-white focus:border-black rounded-xl outline-none font-mono text-sm font-bold text-gray-900 transition-all" placeholder="N/A" />
+                             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Serial Number</label>
+                             <input name="serialNumber" value={formData.serialNumber} onChange={handleChange} className="w-full p-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:bg-slate-800 focus:border-black rounded-xl outline-none font-mono text-sm font-bold text-gray-900 dark:text-white transition-all" placeholder="N/A" />
                         </div>
                     </div>
 
                     <div className="mt-8">
-                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 block">Tipo de Equipamento</label>
+                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3 block">Tipo de Equipamento</label>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                             {assetTypes.map(t => {
                                 const Icon = t.icon;
                                 const isSelected = formData.type === t.id;
                                 return (
-                                    <button type="button" key={t.id} onClick={() => setFormData({...formData, type: t.id})} className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${isSelected ? 'border-black bg-black text-white shadow-lg scale-105' : 'border-gray-100 bg-white text-gray-500 hover:border-gray-200 hover:bg-gray-50'}`}>
+                                    <button type="button" key={t.id} onClick={() => setFormData({...formData, type: t.id})} className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${isSelected ? 'border-black bg-black text-white shadow-lg scale-105' : 'border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:bg-slate-900'}`}>
                                         <Icon size={20} />
                                         <span className="text-xs font-bold">{t.label}</span>
                                     </button>
@@ -259,59 +259,59 @@ const AssetForm = () => {
                 </div>
 
                 {/* Seção de dados técnicos que muda dinamicamente baseada no tipo escolhido acima */}
-                <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100">
-                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 pb-2"><Server size={16}/> Especificações Técnicas</h3>
+                <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700">
+                     <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 dark:border-slate-700 pb-2"><Server size={16}/> Especificações Técnicas</h3>
                      
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {isMobile && (
                             <>
-                                <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">IMEI 1</label><input name="imei1" value={formData.imei1} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none font-mono text-sm" placeholder="Ex: 3569..." /></div>
-                                <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">IMEI 2 (Opcional)</label><input name="imei2" value={formData.imei2} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none font-mono text-sm" /></div>
+                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">IMEI 1</label><input name="imei1" value={formData.imei1} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none font-mono text-sm" placeholder="Ex: 3569..." /></div>
+                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">IMEI 2 (Opcional)</label><input name="imei2" value={formData.imei2} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none font-mono text-sm" /></div>
                             </>
                         )}
 
                         {isPrinter && (
-                            <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Contador de Páginas</label><input type="number" name="specs.pageCount" value={formData.specs.pageCount} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none font-bold" placeholder="Ex: 15000" /></div>
+                            <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Contador de Páginas</label><input type="number" name="specs.pageCount" value={formData.specs.pageCount} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none font-bold" placeholder="Ex: 15000" /></div>
                         )}
 
                         {(isPC || formData.type === 'Rede' || isPrinter) && (
-                            <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Endereço IP</label><input name="specs.ip" value={formData.specs.ip} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none font-mono text-sm" placeholder="192.168..." /></div>
+                            <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Endereço IP</label><input name="specs.ip" value={formData.specs.ip} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none font-mono text-sm" placeholder="192.168..." /></div>
                         )}
                         
                         {(isPC) && (
                             <>
-                                <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Processador</label><input name="specs.processor" value={formData.specs?.processor || ''} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: i5 1135G7" /></div>
-                                <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Memória RAM</label><input name="specs.ram" value={formData.specs.ram} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: 16GB" /></div>
-                                <div><label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Armazenamento</label><input name="specs.storage" value={formData.specs.storage} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: SSD 512GB" /></div>
+                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Processador</label><input name="specs.processor" value={formData.specs?.processor || ''} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: i5 1135G7" /></div>
+                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Memória RAM</label><input name="specs.ram" value={formData.specs.ram} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: 16GB" /></div>
+                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Armazenamento</label><input name="specs.storage" value={formData.specs.storage} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: SSD 512GB" /></div>
                             </>
                         )}
                      </div>
                      
                      {!isMobile && !isPrinter && !isPC && (
-                         <p className="text-sm text-gray-400 italic text-center py-4">Sem campos específicos para este tipo de ativo.</p>
+                         <p className="text-sm text-gray-400 dark:text-gray-500 italic text-center py-4">Sem campos específicos para este tipo de ativo.</p>
                      )}
                 </div>
 
                 {/* Campos Customizados Dinâmicos */}
                 {customFieldsDef.length > 0 && (
-                    <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm border border-brand/20">
-                         <h3 className="text-xs font-bold text-brand uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 pb-2"><Database size={16}/> Informações Adicionais</h3>
+                    <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-[2rem] shadow-sm border border-brand/20">
+                         <h3 className="text-xs font-bold text-brand uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 dark:border-slate-700 pb-2"><Database size={16}/> Informações Adicionais</h3>
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {customFieldsDef.map(cf => (
                                 <div key={cf.id}>
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">{cf.label}</label>
+                                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">{cf.label}</label>
                                     {cf.type === 'textarea' ? (
                                         <textarea 
                                             value={formData.customData[cf.id] || ''} 
                                             onChange={e => handleCustomDataChange(cf.id, e.target.value)} 
-                                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none text-sm resize-none h-24"
+                                            className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none text-sm resize-none h-24"
                                         />
                                     ) : (
                                         <input 
                                             type={cf.type === 'number' ? 'number' : cf.type === 'date' ? 'date' : 'text'}
                                             value={formData.customData[cf.id] || ''} 
                                             onChange={e => handleCustomDataChange(cf.id, e.target.value)} 
-                                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-black outline-none text-sm" 
+                                            className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none text-sm" 
                                         />
                                     )}
                                 </div>
@@ -323,7 +323,7 @@ const AssetForm = () => {
                 {/* Campo de notas em formato livre para registrar informações adicionais e histórico manual */}
                 <div className="bg-yellow-50 p-6 md:p-8 rounded-[2rem] border border-yellow-100">
                     <h3 className="text-xs font-bold text-yellow-700 uppercase tracking-widest mb-4 flex items-center gap-2"><FileText size={16}/> Notas & Observações</h3>
-                    <textarea name="notes" value={formData.notes} onChange={handleChange} rows="4" className="w-full p-4 bg-white border border-yellow-200 rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 text-gray-700 leading-relaxed resize-none" placeholder="Detalhes adicionais, histórico breve, avarias conhecidas..." />
+                    <textarea name="notes" value={formData.notes} onChange={handleChange} rows="4" className="w-full p-4 bg-white dark:bg-slate-800 border border-yellow-200 rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 text-gray-700 dark:text-gray-200 leading-relaxed resize-none" placeholder="Detalhes adicionais, histórico breve, avarias conhecidas..." />
                 </div>
             </div>
 
@@ -331,13 +331,13 @@ const AssetForm = () => {
             <div className="space-y-6">
                 
                 {/* Definição do estado de uso e a classificação contábil */}
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Status & Categoria</h3>
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700">
+                     <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">Status & Categoria</h3>
                      
                      <div className="mb-4">
-                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Status Atual</label>
+                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Status Atual</label>
                          <div className="relative">
-                             <select name="status" value={formData.status} onChange={handleChange} className="w-full p-3 pl-3 pr-8 bg-gray-50 border border-gray-200 rounded-xl appearance-none font-bold text-sm outline-none focus:border-black cursor-pointer">
+                             <select name="status" value={formData.status} onChange={handleChange} className="w-full p-3 pl-3 pr-8 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl appearance-none font-bold text-sm outline-none focus:border-black cursor-pointer">
                                  <option>Em Uso</option><option>Disponível</option><option>Manutenção</option><option>Entregue</option><option>Defeito</option>
                              </select>
                              <div className={`absolute right-3 top-3.5 w-2 h-2 rounded-full ${formData.status === 'Em Uso' ? 'bg-green-500' : formData.status === 'Disponível' ? 'bg-blue-500' : 'bg-gray-400'}`}></div>
@@ -345,8 +345,8 @@ const AssetForm = () => {
                      </div>
 
                      <div>
-                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Categoria Contábil</label>
-                         <select name="category" value={formData.category} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm outline-none focus:border-black cursor-pointer">
+                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Categoria Contábil</label>
+                         <select name="category" value={formData.category} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl font-bold text-sm outline-none focus:border-black cursor-pointer">
                              <option value="Corporativo">Corporativo (Patrimônio)</option>
                              <option value="Promocional">Promocional (Comodato)</option>
                              <option value="Infra">Infraestrutura</option>
@@ -355,20 +355,20 @@ const AssetForm = () => {
                 </div>
 
                 {/* Associação do equipamento a um colaborador, setor e local específico */}
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><User size={16}/> Responsabilidade</h3>
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700">
+                     <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2"><User size={16}/> Responsabilidade</h3>
                      
                      <div className="mb-4">
-                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 flex justify-between">
+                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 flex justify-between">
                              {isPromotional ? "Cliente / Beneficiário" : "Colaborador"}
                              <button type="button" onClick={() => navigate('/employees')} className="text-brand hover:underline text-[10px]">+ Gerenciar</button>
                          </label>
                          <div className="relative">
-                            <select name="assignedTo" value={formData.assignedTo} onChange={handleEmployeeSelect} className="w-full p-3 pl-3 bg-gray-50 border border-gray-200 rounded-xl appearance-none font-bold text-sm outline-none focus:border-black cursor-pointer text-gray-700">
+                            <select name="assignedTo" value={formData.assignedTo} onChange={handleEmployeeSelect} className="w-full p-3 pl-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl appearance-none font-bold text-sm outline-none focus:border-black cursor-pointer text-gray-700 dark:text-gray-200">
                                 <option value="">Selecione...</option>
                                 {employees.map(emp => (<option key={emp.id} value={emp.name}>{emp.name}</option>))}
                             </select>
-                            <Search size={16} className="absolute right-3 top-3 text-gray-400 pointer-events-none" />
+                            <Search size={16} className="absolute right-3 top-3 text-gray-400 dark:text-gray-500 pointer-events-none" />
                          </div>
                          {/* Exibe temporariamente o nome registrado caso o responsável não faça mais parte da lista padrão */}
                          {(!formData.assignedTo || !employees.find(e => e.name === formData.assignedTo)) && formData.assignedTo !== '' && (
@@ -376,29 +376,29 @@ const AssetForm = () => {
                                 <span className="font-bold">Nome manual:</span> {formData.assignedTo}
                             </div>
                          )}
-                         <input name="assignedTo" value={formData.assignedTo} onChange={handleChange} placeholder="Ou digite o nome..." className="w-full mt-2 p-2 text-xs border-b border-gray-200 focus:border-black outline-none bg-transparent" />
+                         <input name="assignedTo" value={formData.assignedTo} onChange={handleChange} placeholder="Ou digite o nome..." className="w-full mt-2 p-2 text-xs border-b border-gray-200 dark:border-slate-600 focus:border-black outline-none bg-transparent" />
                      </div>
 
                      <div className="mb-4">
-                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">{isPromotional ? "Campanha" : "Setor"}</label>
+                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">{isPromotional ? "Campanha" : "Setor"}</label>
                          <div className="relative">
-                            <Building2 size={16} className="absolute left-3 top-3 text-gray-400"/>
-                            <input name="sector" value={formData.sector} onChange={handleChange} className="w-full pl-9 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:border-black outline-none" placeholder="Ex: Financeiro" />
+                            <Building2 size={16} className="absolute left-3 top-3 text-gray-400 dark:text-gray-500"/>
+                            <input name="sector" value={formData.sector} onChange={handleChange} className="w-full pl-9 p-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl text-sm font-medium focus:border-black outline-none" placeholder="Ex: Financeiro" />
                          </div>
                      </div>
 
                      {isPromotional && (
                          <div className="bg-pink-50 p-3 rounded-xl border border-pink-100 mb-4">
                              <label className="text-[10px] font-bold text-pink-700 uppercase mb-1 block">Vendedor Responsável</label>
-                             <input name="vendedor" value={formData.vendedor} onChange={handleChange} className="w-full p-2 bg-white border border-pink-200 rounded-lg text-sm focus:ring-2 focus:ring-pink-500 outline-none" placeholder="Nome do Vendedor..." />
+                             <input name="vendedor" value={formData.vendedor} onChange={handleChange} className="w-full p-2 bg-white dark:bg-slate-800 border border-pink-200 rounded-lg text-sm focus:ring-2 focus:ring-pink-500 outline-none" placeholder="Nome do Vendedor..." />
                          </div>
                      )}
 
                      <div>
-                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Localização Física</label>
+                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Localização Física</label>
                         <div className="relative">
-                            <MapPin size={16} className="absolute left-3 top-3 text-gray-400"/>
-                            <select name="location" value={formData.location} onChange={handleChange} className="w-full pl-9 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:border-black outline-none cursor-pointer">
+                            <MapPin size={16} className="absolute left-3 top-3 text-gray-400 dark:text-gray-500"/>
+                            <select name="location" value={formData.location} onChange={handleChange} className="w-full pl-9 p-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl text-sm font-bold focus:border-black outline-none cursor-pointer">
                                 <optgroup label="Pará - R. Metropolitana"><option value="Matriz - Belém">Matriz - Belém</option><option value="Fábrica / CD - Ananindeua">Fábrica / CD - Ananindeua</option><option value="Filial Ananindeua">Filial Ananindeua</option><option value="Filial Castanhal">Filial Castanhal</option><option value="Icoaraci">Icoaraci</option><option value="Barcarena">Barcarena</option></optgroup>
                                 <optgroup label="Pará - Interior"><option value="Acará">Acará</option><option value="Bragança">Bragança</option><option value="Breves">Breves</option><option value="Cametá">Cametá</option><option value="Capanema">Capanema</option><option value="Capitão Poço">Capitão Poço</option><option value="Concórdia">Concórdia</option><option value="Curuçá">Curuçá</option><option value="Moju">Moju</option><option value="Igarapé Mirim">Igarapé Mirim</option><option value="São Miguel">São Miguel</option><option value="Soure">Soure</option><option value="Tailândia">Tailândia</option><option value="Tomé-Açu">Tomé-Açu</option></optgroup>
                                 <optgroup label="Ceará"><option value="Aldeota (CE)">Aldeota (CE)</option><option value="Demócrito Rocha (CE)">Demócrito Rocha (CE)</option><option value="Fortaleza (CE)">Fortaleza (CE)</option><option value="Parangaba (CE)">Parangaba (CE)</option></optgroup>
@@ -409,17 +409,17 @@ const AssetForm = () => {
                 </div>
 
                 {/* Registro do valor de custo e data da compra */}
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
-                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><DollarSign size={16}/> Aquisição</h3>
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700">
+                     <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2"><DollarSign size={16}/> Aquisição</h3>
                      
                      <div className="grid grid-cols-2 gap-4">
                          <div>
-                             <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Valor (R$)</label>
-                             <input name="valor" value={formData.valor} onChange={handleChange} className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono focus:border-black outline-none" placeholder="0,00" />
+                             <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1 block">Valor (R$)</label>
+                             <input name="valor" value={formData.valor} onChange={handleChange} className="w-full p-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-lg text-sm font-mono focus:border-black outline-none" placeholder="0,00" />
                          </div>
                          <div>
-                             <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Data</label>
-                             <input type="date" name="purchaseDate" value={formData.purchaseDate} onChange={handleChange} className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:border-black outline-none" />
+                             <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1 block">Data</label>
+                             <input type="date" name="purchaseDate" value={formData.purchaseDate} onChange={handleChange} className="w-full p-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-lg text-sm focus:border-black outline-none" />
                          </div>
                      </div>
                 </div>

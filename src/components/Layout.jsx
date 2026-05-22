@@ -49,7 +49,7 @@ const Layout = ({ children }) => {
   }, [navigate]);
 
   return (
-    <div className="flex min-h-screen bg-[#F4F4F5] dark:bg-slate-950 font-sans text-gray-900 dark:text-gray-100 selection:bg-brand selection:text-white transition-colors duration-300">
+    <div className="flex min-h-screen bg-[#F4F4F5] dark:bg-slate-950 font-sans text-gray-900 dark:text-white dark:text-gray-100 selection:bg-brand selection:text-white transition-colors duration-300">
       <Toaster richColors position="top-right" />
       {/* ----------------------------------------------------- */}
       {/*                  DESKTOP LAYOUT                       */}
@@ -80,14 +80,14 @@ const Layout = ({ children }) => {
       <div className="md:hidden flex flex-col flex-1 min-h-screen relative w-full bg-[#FAFAFA] dark:bg-slate-950">
           
           {/* 1. TOP BAR MOBILE (Sticky & Glass) */}
-          <div className="sticky top-0 z-30 w-full px-5 py-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md flex justify-between items-center safe-area-pt border-b border-gray-100 dark:border-slate-800">
+          <div className="sticky top-0 z-30 w-full px-5 py-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md flex justify-between items-center safe-area-pt border-b border-gray-100 dark:border-slate-700 dark:border-slate-800">
               <div className="flex items-center gap-3">
-                  <button onClick={() => setIsMobileMenuOpen(true)} className="p-1 -ml-1 text-gray-800 dark:text-gray-200 hover:text-black dark:hover:text-white">
+                  <button onClick={() => setIsMobileMenuOpen(true)} className="p-1 -ml-1 text-gray-800 dark:text-gray-100 dark:text-gray-200 hover:text-black dark:hover:text-white">
                       <Menu size={24} />
                   </button>
                   <div className="flex flex-col">
                       <Logo size="sm" />
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5 ml-8">Mobile Manager</p>
+                      <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mt-0.5 ml-8">Mobile Manager</p>
                   </div>
               </div>
               
@@ -110,11 +110,11 @@ const Layout = ({ children }) => {
           <div className="fixed bottom-6 left-4 right-4 z-40">
               <div className="bg-black/90 backdrop-blur-xl text-white rounded-3xl shadow-2xl border border-white/10 p-2 flex justify-between items-center px-6 safe-area-pb">
                   
-                  <Link to="/dashboard" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname.includes('/dashboard') ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+                  <Link to="/dashboard" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname.includes('/dashboard') ? 'text-white' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-300'}`}>
                       <Home size={22} strokeWidth={location.pathname.includes('/dashboard') ? 3 : 2} />
                   </Link>
                   
-                  <Link to="/assets" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname.startsWith('/assets') && location.pathname !== '/assets/new' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+                  <Link to="/assets" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname.startsWith('/assets') && location.pathname !== '/assets/new' ? 'text-white' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-300'}`}>
                       <Box size={22} strokeWidth={location.pathname.startsWith('/assets') ? 3 : 2} />
                   </Link>
 
@@ -125,11 +125,11 @@ const Layout = ({ children }) => {
                        </div>
                   </Link>
 
-                  <Link to="/audit" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/audit' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+                  <Link to="/audit" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/audit' ? 'text-white' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-300'}`}>
                       <QrCode size={22} strokeWidth={location.pathname === '/audit' ? 3 : 2} />
                   </Link>
 
-                  <Link to="/settings" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/settings' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+                  <Link to="/settings" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/settings' ? 'text-white' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-300'}`}>
                       <Settings size={22} strokeWidth={location.pathname === '/settings' ? 3 : 2} />
                   </Link>
 

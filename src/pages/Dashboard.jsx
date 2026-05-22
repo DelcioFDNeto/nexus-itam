@@ -231,7 +231,7 @@ const Dashboard = () => {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button onClick={() => navigate('/assets/new')} className="bg-white text-slate-900 px-5 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-gray-100 transition-all shadow-lg shadow-white/10 active:scale-95 group">
+            <button onClick={() => navigate('/assets/new')} className="bg-white dark:bg-slate-800 text-slate-900 px-5 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-gray-100 transition-all shadow-lg shadow-white/10 active:scale-95 group">
               <Plus size={18} className="group-hover:rotate-90 transition-transform duration-300"/> <span>Novo Ativo</span>
             </button>
             <button onClick={() => navigate('/audit')} className="bg-slate-800/50 backdrop-blur-md border border-white/10 text-white px-5 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-800 hover:border-white/20 transition-all active:scale-95">
@@ -256,7 +256,7 @@ const Dashboard = () => {
           </div>
           <div className="relative z-10">
             <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-0.5 tracking-tighter">{assets.length}</h2>
-            <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Ativos</p>
+            <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Ativos</p>
           </div>
         </div>
 
@@ -268,7 +268,7 @@ const Dashboard = () => {
             </div>
             <div className="relative z-10">
               <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-0.5 tracking-tighter">{totalTenants}</h2>
-              <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Empresas</p>
+              <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Empresas</p>
             </div>
           </div>
         ) : (
@@ -279,10 +279,10 @@ const Dashboard = () => {
             </div>
             <div className="relative z-10">
               <div className="flex items-baseline gap-1 mb-0.5">
-                <span className="text-xs md:text-sm font-bold text-gray-400">R$</span>
+                <span className="text-xs md:text-sm font-bold text-gray-400 dark:text-gray-500">R$</span>
                 <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white tracking-tighter">{(totalValue / 1000).toFixed(0)}k</h2>
               </div>
-              <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Valor</p>
+              <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Valor</p>
             </div>
           </div>
         )}
@@ -295,19 +295,19 @@ const Dashboard = () => {
           </div>
           <div className="relative z-10">
             <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-0.5 tracking-tighter">{totalEmployees}</h2>
-            <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Equipe</p>
+            <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Equipe</p>
           </div>
         </div>
 
         {/* Projetos Totais */}
-        <div className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-purple-200 transition-all h-32 md:h-40 cursor-pointer" onClick={() => navigate('/projects')}>
+        <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:border-purple-200 transition-all h-32 md:h-40 cursor-pointer" onClick={() => navigate('/projects')}>
           <div className="flex justify-between items-start relative z-10">
             <div className="p-2 md:p-2.5 bg-purple-50 text-purple-600 rounded-xl"><ClipboardCheck size={18} className="md:w-5 md:h-5"/></div>
             <ArrowRight size={16} className="text-gray-300 group-hover:text-purple-600 transition-colors group-hover:translate-x-1 md:w-[18px] md:h-[18px]"/>
           </div>
           <div className="relative z-10">
-            <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-0.5 tracking-tighter">{totalProjects}</h2>
-            <p className="text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Projetos</p>
+            <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-0.5 tracking-tighter">{totalProjects}</h2>
+            <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Projetos</p>
           </div>
         </div>
 
@@ -333,13 +333,13 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Gráfico de Distribuição por Tipo (Bar) */}
-        <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm flex flex-col min-h-[300px]">
+        <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col min-h-[300px]">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h3 className="font-black text-gray-900 flex items-center gap-2 text-lg tracking-tight">
+              <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 text-lg tracking-tight">
                 <BarChart3 size={20} className="text-indigo-500"/> Categorias de Ativos
               </h3>
-              <p className="text-xs text-gray-500 font-medium mt-1">Volume por tipo de hardware</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium mt-1">Volume por tipo de hardware</p>
             </div>
             <div className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider">
               Volume
@@ -351,20 +351,20 @@ const Dashboard = () => {
         </div>
 
         {/* Gráfico de Status (Doughnut) */}
-        <div className="bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm flex flex-col min-h-[300px]">
+        <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col min-h-[300px]">
           <div className="mb-4">
-            <h3 className="font-black text-gray-900 flex items-center gap-2 text-lg tracking-tight">
+            <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 text-lg tracking-tight">
               <PieChart size={20} className="text-emerald-500"/> Status Operacional
             </h3>
-            <p className="text-xs text-gray-500 font-medium mt-1">Disponibilidade do parque</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium mt-1">Disponibilidade do parque</p>
           </div>
           
           <div className="flex-1 relative flex items-center justify-center min-h-[160px]">
             <Doughnut data={doughnutData} options={doughnutOptions} />
             {/* Texto centralizado no gráfico */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-3xl font-black text-gray-900">{assets.length}</span>
-              <span className="text-[10px] uppercase font-bold text-gray-400 tracking-widest">Total</span>
+              <span className="text-3xl font-black text-gray-900 dark:text-white">{assets.length}</span>
+              <span className="text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 tracking-widest">Total</span>
             </div>
           </div>
 
@@ -378,7 +378,7 @@ const Dashboard = () => {
                   status === 'Disponível' ? 'bg-blue-500' : 'bg-gray-400'
                 }`}></div>
                 <span className="truncate">{status}</span>
-                <span className="ml-auto text-gray-400">{count}</span>
+                <span className="ml-auto text-gray-400 dark:text-gray-500">{count}</span>
               </div>
             ))}
           </div>
@@ -390,8 +390,8 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Categorias - Quick Access */}
-        <div className="bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm">
-          <h3 className="font-black text-gray-900 mb-6 text-lg tracking-tight">Destaques</h3>
+        <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm">
+          <h3 className="font-black text-gray-900 dark:text-white mb-6 text-lg tracking-tight">Destaques</h3>
           <div className="space-y-3">
             {[
               { l: 'Notebooks', i: <Laptop size={18}/>, c: typeCounts['Notebook'] || 0, color: 'bg-indigo-50 text-indigo-600 border-indigo-100' },
@@ -399,25 +399,25 @@ const Dashboard = () => {
               { l: 'Móveis', i: <Smartphone size={18}/>, c: typeCounts['Celular'] || 0, color: 'bg-emerald-50 text-emerald-600 border-emerald-100' },
               { l: 'Rede/Serv.', i: <Server size={18}/>, c: (typeCounts['Servidor'] || 0) + (typeCounts['Outros'] || 0), color: 'bg-purple-50 text-purple-600 border-purple-100' },
             ].map((cat, idx) => (
-              <div key={idx} className={`flex items-center justify-between p-3.5 rounded-2xl border hover:shadow-md transition-all cursor-pointer group ${cat.color.replace('text-', 'hover:bg-').replace('50', '100')} bg-white`}>
+              <div key={idx} className={`flex items-center justify-between p-3.5 rounded-2xl border hover:shadow-md transition-all cursor-pointer group ${cat.color.replace('text-', 'hover:bg-').replace('50', '100')} bg-white dark:bg-slate-800`}>
                 <div className="flex items-center gap-3">
                   <div className={`p-2.5 rounded-xl ${cat.color.split(' ').slice(0,2).join(' ')}`}>{cat.i}</div>
-                  <span className="font-bold text-gray-700 group-hover:text-gray-900">{cat.l}</span>
+                  <span className="font-bold text-gray-700 dark:text-gray-200 group-hover:text-gray-900 dark:text-white">{cat.l}</span>
                 </div>
-                <span className="font-mono font-black text-lg text-gray-400 group-hover:text-gray-900 transition-colors mr-2">{cat.c}</span>
+                <span className="font-mono font-black text-lg text-gray-400 dark:text-gray-500 group-hover:text-gray-900 dark:text-white transition-colors mr-2">{cat.c}</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* Timeline de Atividades Recentes */}
-        <div className="bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm lg:col-span-2 flex flex-col">
+        <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm lg:col-span-2 flex flex-col">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h3 className="font-black text-gray-900 text-lg flex items-center gap-2 tracking-tight">
+              <h3 className="font-black text-gray-900 dark:text-white text-lg flex items-center gap-2 tracking-tight">
                 <Activity size={20} className="text-brand"/> Log de Operações
               </h3>
-              <p className="text-xs text-gray-500 font-medium mt-1">Rastreabilidade em tempo real</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium mt-1">Rastreabilidade em tempo real</p>
             </div>
             <button className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg uppercase tracking-widest hover:bg-indigo-100 transition-colors">
               Ver Tudo
@@ -434,10 +434,10 @@ const Dashboard = () => {
                   {/* Ponto da timeline */}
                   <div className="w-3 h-3 rounded-full bg-indigo-500 border-4 border-white shadow-sm mt-1 shrink-0 relative z-10 group-hover:scale-125 transition-transform"></div>
                   
-                  <div className="flex-1 min-w-0 bg-gray-50/50 p-3.5 rounded-2xl border border-gray-100 group-hover:border-indigo-100 group-hover:bg-indigo-50/30 transition-colors">
+                  <div className="flex-1 min-w-0 bg-gray-50/50 p-3.5 rounded-2xl border border-gray-100 dark:border-slate-700 group-hover:border-indigo-100 group-hover:bg-indigo-50/30 transition-colors">
                     <div className="flex justify-between items-start gap-2 mb-1">
-                      <p className="font-black text-gray-900 text-sm">{act.action}</p>
-                      <span className="text-[10px] font-bold text-gray-400 bg-white border border-gray-100 px-2 py-0.5 rounded-md whitespace-nowrap shadow-sm">
+                      <p className="font-black text-gray-900 dark:text-white text-sm">{act.action}</p>
+                      <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 px-2 py-0.5 rounded-md whitespace-nowrap shadow-sm">
                         {act.jsDate ? act.jsDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
                       </span>
                     </div>
@@ -445,7 +445,7 @@ const Dashboard = () => {
                     
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
                       {act.user && (
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-white border border-gray-100 px-2 py-0.5 rounded-md">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 px-2 py-0.5 rounded-md">
                           <Users size={10}/> {act.user.split('@')[0]}
                         </div>
                       )}
@@ -461,7 +461,7 @@ const Dashboard = () => {
               ))}
               
               {recentActivity.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+                <div className="flex flex-col items-center justify-center py-10 text-gray-400 dark:text-gray-500">
                   <ClipboardCheck size={32} className="mb-3 opacity-20"/>
                   <p className="font-bold text-sm">Tudo calmo por aqui.</p>
                   <p className="text-xs mt-1">Nenhuma atividade registrada hoje.</p>

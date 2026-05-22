@@ -242,12 +242,12 @@ const SettingsPage = () => {
       
       {/* Painel topo da central de controle do sistema */}
       <div className="flex items-center gap-3 mb-8">
-        <div className="p-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl">
+        <div className="p-3 bg-gray-900 dark:bg-white dark:bg-slate-800 text-white dark:text-gray-900 dark:text-white rounded-xl">
             <Settings size={28} />
         </div>
         <div>
             <h1 className="text-2xl font-black text-gray-900 dark:text-white">Configurações Avançadas</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Backup, Restauração e Parâmetros do Sistema</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">Backup, Restauração e Parâmetros do Sistema</p>
         </div>
       </div>
 
@@ -255,58 +255,58 @@ const SettingsPage = () => {
         
         {/* COLUNA 1: Textos burocráticos e variáveis que pipocam nos PDFs do sistema */}
         <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden sticky top-8">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 dark:border-slate-700 shadow-sm overflow-hidden sticky top-8">
                 <div className="bg-gray-50 dark:bg-slate-900 p-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-2">
                     <FileText className="text-brand" size={18}/>
-                    <h2 className="font-bold text-gray-800 dark:text-white text-sm uppercase">Documentos e Etiquetas</h2>
+                    <h2 className="font-bold text-gray-800 dark:text-gray-100 dark:text-white text-sm uppercase">Documentos e Etiquetas</h2>
                 </div>
                 <form onSubmit={handleSave} className="p-5 space-y-4">
 {/* Montagem inteligente de loops mapeando todos os inputs das configurações */}
                       {CONFIG_FIELDS.map(field => (
                          <div key={field.key}>
-                             <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">{field.label}</label>
+                             <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">{field.label}</label>
                              <input 
                                type={field.type || "text"}
                                value={config[field.key] || ''} 
                                onChange={e => setConfig({...config, [field.key]: e.target.value})} 
-                               className={`w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg font-bold text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-brand dark:focus:border-brand ${field.type === 'color' ? 'h-10 p-1 cursor-pointer' : 'p-2'}`}
+                               className={`w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg font-bold text-sm text-gray-800 dark:text-gray-100 dark:text-gray-100 focus:outline-none focus:border-brand dark:focus:border-brand ${field.type === 'color' ? 'h-10 p-1 cursor-pointer' : 'p-2'}`}
                                placeholder={field.placeholder}
                              />
                          </div>
                       ))}
                       <div className="col-span-1 md:col-span-2">
-                           <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">Cláusulas do Termo de Responsabilidade</label>
+                           <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Cláusulas do Termo de Responsabilidade</label>
                            <textarea
                              value={config.termClauses || ''}
                              onChange={e => setConfig({...config, termClauses: e.target.value})}
-                             className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg font-bold text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-brand dark:focus:border-brand p-2 h-32 resize-none"
+                             className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg font-bold text-sm text-gray-800 dark:text-gray-100 dark:text-gray-100 focus:outline-none focus:border-brand dark:focus:border-brand p-2 h-32 resize-none"
                              placeholder="Digite as cláusulas do contrato, uma por linha..."
                            />
                        </div>
                       
                     {/* Sessão: Campos Customizados para Ativos */}
-                    <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4 space-y-3">
+                    <div className="rounded-xl border border-gray-200 dark:border-slate-600 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4 space-y-3">
                         <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
                                 <Database size={16} className="text-brand" />
-                                <h3 className="text-xs font-black text-gray-700 dark:text-gray-300 uppercase">Campos Customizados</h3>
+                                <h3 className="text-xs font-black text-gray-700 dark:text-gray-200 dark:text-gray-300 uppercase">Campos Customizados</h3>
                             </div>
                             <button type="button" onClick={addCustomField} className="text-[10px] flex items-center gap-1 bg-brand text-white px-2 py-1 rounded font-bold hover:bg-brand/80 transition-colors">
                                 <Plus size={12}/> Adicionar Campo
                             </button>
                         </div>
                         {(config.customFields || []).map((cf, idx) => (
-                            <div key={cf.id} className="flex items-center gap-2 bg-white dark:bg-slate-800 p-2 border border-gray-200 dark:border-slate-700 rounded-lg shadow-sm">
+                            <div key={cf.id} className="flex items-center gap-2 bg-white dark:bg-slate-800 p-2 border border-gray-200 dark:border-slate-600 dark:border-slate-700 rounded-lg shadow-sm">
                                 <input 
                                     value={cf.label} 
                                     onChange={e => updateCustomField(idx, 'label', e.target.value)}
                                     placeholder="Nome do Campo"
-                                    className="flex-1 p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-800 dark:text-gray-100 focus:border-brand focus:outline-none"
+                                    className="flex-1 p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-800 dark:text-gray-100 dark:text-gray-100 focus:border-brand focus:outline-none"
                                 />
                                 <select 
                                     value={cf.type} 
                                     onChange={e => updateCustomField(idx, 'type', e.target.value)}
-                                    className="p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-slate-900 focus:border-brand focus:outline-none"
+                                    className="p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-600 dark:text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-slate-900 focus:border-brand focus:outline-none"
                                 >
                                     <option value="text">Texto Curto</option>
                                     <option value="textarea">Texto Longo</option>
@@ -319,27 +319,27 @@ const SettingsPage = () => {
                             </div>
                         ))}
                         {(!config.customFields || config.customFields.length === 0) && (
-                            <p className="text-xs text-center text-gray-400 font-medium py-2">Nenhum campo customizado criado.</p>
+                            <p className="text-xs text-center text-gray-400 dark:text-gray-500 font-medium py-2">Nenhum campo customizado criado.</p>
                         )}
                     </div>
 
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div className="rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 p-4">
                         <div className="flex items-center gap-2 mb-3">
                             <Tag size={16} className="text-brand" />
-                            <h3 className="text-xs font-black text-gray-700 uppercase">Identidade das Etiquetas</h3>
+                            <h3 className="text-xs font-black text-gray-700 dark:text-gray-200 uppercase">Identidade das Etiquetas</h3>
                         </div>
-                        <div className="rounded-lg border-2 border-gray-900 bg-white p-3 font-sans">
-                            <div className="border-b border-gray-200 pb-2">
-                                <p className="text-sm font-black leading-none text-brand">Nexus<span className="text-gray-900">ITAM</span></p>
-                                <p className="mt-1 truncate text-[10px] font-black uppercase text-gray-900">{getCompanyLabel(config.companyName)}</p>
+                        <div className="rounded-lg border-2 border-gray-900 bg-white dark:bg-slate-800 p-3 font-sans">
+                            <div className="border-b border-gray-200 dark:border-slate-600 pb-2">
+                                <p className="text-sm font-black leading-none text-brand">Nexus<span className="text-gray-900 dark:text-white">ITAM</span></p>
+                                <p className="mt-1 truncate text-[10px] font-black uppercase text-gray-900 dark:text-white">{getCompanyLabel(config.companyName)}</p>
                             </div>
                             <div className="pt-3">
-                                <p className="text-[9px] font-black uppercase text-gray-500">Patrimônio</p>
+                                <p className="text-[9px] font-black uppercase text-gray-500 dark:text-gray-400 dark:text-gray-500">Patrimônio</p>
                                 <p className="font-mono text-xl font-black text-gray-950">TAG-001</p>
                             </div>
                             <div className="mt-2 flex items-center justify-between border-t border-gray-900 pt-1">
                                 <span className="text-[8px] font-black text-gray-600">SUPORTE TI</span>
-                                <span className="max-w-[120px] truncate text-[9px] font-black text-gray-900">{getSupportEmail(config.supportEmail)}</span>
+                                <span className="max-w-[120px] truncate text-[9px] font-black text-gray-900 dark:text-white">{getSupportEmail(config.supportEmail)}</span>
                             </div>
                         </div>
                     </div>
@@ -354,24 +354,24 @@ const SettingsPage = () => {
         <div className="lg:col-span-2 space-y-6">
 
           {/* SESSÃO DE APARÊNCIA / THEME */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 dark:border-slate-700 shadow-sm overflow-hidden">
               <div className="bg-gray-50 dark:bg-slate-900 p-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-2">
                   <UserCog className="text-brand" size={18} />
-                  <h2 className="font-bold text-gray-800 dark:text-white text-sm uppercase">Aparência do Sistema</h2>
+                  <h2 className="font-bold text-gray-800 dark:text-gray-100 dark:text-white text-sm uppercase">Aparência do Sistema</h2>
               </div>
               <div className="p-6 space-y-6">
                 <div>
-                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3">Modo de Exibição</h3>
+                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">Modo de Exibição</h3>
                   <div className="flex gap-3">
-                    <button onClick={() => setTheme('light')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'light' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-600'}`}>
-                      <div className="w-8 h-8 rounded-full bg-white border border-gray-200 shadow-sm"></div>
+                    <button onClick={() => setTheme('light')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'light' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 dark:border-slate-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-slate-600'}`}>
+                      <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 shadow-sm"></div>
                       Claro
                     </button>
-                    <button onClick={() => setTheme('dark')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'dark' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-600'}`}>
+                    <button onClick={() => setTheme('dark')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'dark' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 dark:border-slate-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-slate-600'}`}>
                       <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 shadow-sm"></div>
                       Escuro
                     </button>
-                    <button onClick={() => setTheme('system')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'system' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-600'}`}>
+                    <button onClick={() => setTheme('system')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'system' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 dark:border-slate-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-slate-600'}`}>
                       <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-slate-900 to-white border border-gray-300 shadow-sm"></div>
                       Sistema
                     </button>
@@ -379,7 +379,7 @@ const SettingsPage = () => {
                 </div>
 
                 <div>
-                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3">Cor Destaque (Accent Color)</h3>
+                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">Cor Destaque (Accent Color)</h3>
                   <div className="flex gap-4">
                     {[
                       { id: 'blue', color: '#4F46E5' },
@@ -416,22 +416,22 @@ const SettingsPage = () => {
             </div>
 
             {/* CAIXA 2: Receptor focado em assimilar vidas passadas de outras bases suportadas */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 dark:border-slate-700 shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
                     <div>
                         <h2 className="text-lg font-black text-gray-900 dark:text-white mb-1 flex items-center gap-2"><UploadCloud className="text-orange-500"/> Restauração de Dados</h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Importe um arquivo JSON para restaurar ou atualizar dados.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">Importe um arquivo JSON para restaurar ou atualizar dados.</p>
                     </div>
-                    <button onClick={() => setShowFormatGuide(!showFormatGuide)} className="text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white flex items-center gap-1 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600">
+                    <button onClick={() => setShowFormatGuide(!showFormatGuide)} className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white flex items-center gap-1 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600">
                     </button>
                 </div>
                 
                 {/* Aba retrátil agindo como um instrutor chato porém necessário para formats de injeção */}
                 {showFormatGuide && (
-                    <div className="bg-gray-50 p-6 border-b border-gray-200 text-sm">
+                    <div className="bg-gray-50 dark:bg-slate-900 p-6 border-b border-gray-200 dark:border-slate-600 text-sm">
                         <div className="flex justify-between items-start mb-4">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2"><Info size={16} className="text-blue-500"/> Estrutura JSON Esperada</h3>
-                            <button onClick={handleDownloadTemplate} className="text-xs bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-100 font-bold text-gray-700">Baixar Modelo Vazio</button>
+                            <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><Info size={16} className="text-blue-500"/> Estrutura JSON Esperada</h3>
+                            <button onClick={handleDownloadTemplate} className="text-xs bg-white dark:bg-slate-800 border border-gray-300 px-2 py-1 rounded hover:bg-gray-100 font-bold text-gray-700 dark:text-gray-200">Baixar Modelo Vazio</button>
                         </div>
                         <p className="text-gray-600 mb-3">O arquivo deve conter um objeto raiz com as chaves <code>meta</code> e <code>data</code>. Os dados são agrupados por coleção.</p>
                         <pre className="bg-gray-900 text-gray-100 p-4 rounded-xl overflow-x-auto font-mono text-xs shadow-inner border border-gray-700">
@@ -470,24 +470,24 @@ const SettingsPage = () => {
                             <h3 className="font-bold text-blue-900 text-lg mb-4 flex items-center gap-2"><FileJson className="text-blue-600"/> Arquivo Analisado</h3>
                             
                             <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
-                                <div><p className="text-gray-500 text-xs uppercase font-bold">Nome</p><p className="font-mono font-bold text-gray-800 truncate">{importSummary.filename}</p></div>
-                                <div><p className="text-gray-500 text-xs uppercase font-bold">Data (Meta)</p><p className="font-bold text-gray-800">{importSummary.date}</p></div>
+                                <div><p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-xs uppercase font-bold">Nome</p><p className="font-mono font-bold text-gray-800 dark:text-gray-100 truncate">{importSummary.filename}</p></div>
+                                <div><p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-xs uppercase font-bold">Data (Meta)</p><p className="font-bold text-gray-800 dark:text-gray-100">{importSummary.date}</p></div>
                             </div>
 
-                            <div className="bg-white rounded-lg border border-blue-100 p-4 mb-6">
-                                <p className="text-xs font-bold text-gray-400 uppercase mb-2">Conteúdo Encontrado</p>
+                            <div className="bg-white dark:bg-slate-800 rounded-lg border border-blue-100 p-4 mb-6">
+                                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2">Conteúdo Encontrado</p>
                                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                                     {Object.entries(importSummary.counts).map(([key, count]) => (
-                                        <div key={key} className="bg-gray-50 p-2 rounded text-center border border-gray-100">
-                                            <span className="block text-lg font-black text-gray-800">{count}</span>
-                                            <span className="text-[10px] text-gray-500 uppercase font-bold">{key}</span>
+                                        <div key={key} className="bg-gray-50 dark:bg-slate-900 p-2 rounded text-center border border-gray-100 dark:border-slate-700">
+                                            <span className="block text-lg font-black text-gray-800 dark:text-gray-100">{count}</span>
+                                            <span className="text-[10px] text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase font-bold">{key}</span>
                                         </div>
                                     ))}
                                 </div>
                             </div>
 
                             <div className="flex gap-3">
-                                <button onClick={() => setImportSummary(null)} className="flex-1 py-3 bg-white border border-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-50">Cancelar</button>
+                                <button onClick={() => setImportSummary(null)} className="flex-1 py-3 bg-white dark:bg-slate-800 border border-gray-300 text-gray-700 dark:text-gray-200 font-bold rounded-lg hover:bg-gray-50 dark:bg-slate-900">Cancelar</button>
                                 <button onClick={confirmRestore} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-lg shadow-blue-200 flex items-center justify-center gap-2">
                                     <Play size={18}/> Confirmar Importação
                                 </button>
@@ -497,8 +497,8 @@ const SettingsPage = () => {
                         // Estado 3: Turbinas trabalhando. Barra progressiva acalma a ansiedade avisando que não travou
                         <div className="text-center py-8">
                             <div className="w-16 h-16 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-4"></div>
-                            <h3 className="font-bold text-xl text-gray-800">{restoreProgress}%</h3>
-                            <p className="text-gray-500 font-medium">{restoreStatus}</p>
+                            <h3 className="font-bold text-xl text-gray-800 dark:text-gray-100">{restoreProgress}%</h3>
+                            <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium">{restoreStatus}</p>
                             <div className="w-full bg-gray-100 rounded-full h-2 mt-4 overflow-hidden">
                                 <div className="bg-orange-500 h-2 transition-all duration-300" style={{ width: `${restoreProgress}%` }}></div>
                             </div>
@@ -514,11 +514,11 @@ const SettingsPage = () => {
                             onClick={() => fileInputRef.current.click()}
                         >
                             <input ref={fileInputRef} type="file" className="hidden" accept=".json" onChange={handleFileChange} />
-                            <div className="w-16 h-16 bg-white dark:bg-slate-700 group-hover:bg-white rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400 group-hover:text-orange-500 transition-colors shadow-sm border border-gray-100 dark:border-slate-600">
+                            <div className="w-16 h-16 bg-white dark:bg-slate-800 dark:bg-slate-700 group-hover:bg-white dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400 dark:text-gray-500 group-hover:text-orange-500 transition-colors shadow-sm border border-gray-100 dark:border-slate-700 dark:border-slate-600">
                                 <UploadCloud size={32}/>
                             </div>
-                            <h3 className="font-bold text-gray-700 dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-white">Clique ou Arraste seu JSON aqui</h3>
-                            <p className="text-sm text-gray-400 mt-1 max-w-xs mx-auto">Suporta backups completos ou parciais. O sistema validará o arquivo antes de importar.</p>
+                            <h3 className="font-bold text-gray-700 dark:text-gray-200 group-hover:text-gray-900 dark:text-white dark:group-hover:text-white">Clique ou Arraste seu JSON aqui</h3>
+                            <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 max-w-xs mx-auto">Suporta backups completos ou parciais. O sistema validará o arquivo antes de importar.</p>
                         </div>
                     )}
                 </div>
@@ -533,7 +533,7 @@ const SettingsPage = () => {
                         <p className="text-[10px] text-red-700">Apenas desenvolvedores</p>
                     </div>
                 </div>
-                <div className="text-xs font-mono text-red-400 bg-white px-2 py-1 rounded border border-red-100">Action Blocked</div>
+                <div className="text-xs font-mono text-red-400 bg-white dark:bg-slate-800 px-2 py-1 rounded border border-red-100">Action Blocked</div>
             </div>
 
         </div>

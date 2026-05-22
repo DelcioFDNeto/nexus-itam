@@ -112,7 +112,7 @@ const Login = () => {
             <h2 className="text-3xl font-black text-white uppercase tracking-tighter mt-4 flex items-center gap-2">
               Nexus <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-cyan-400">ITAM</span>
             </h2>
-            <p className="text-xs font-medium text-gray-400 mt-2 tracking-widest uppercase">Portal de Acesso Seguro</p>
+            <p className="text-xs font-medium text-gray-400 dark:text-gray-500 mt-2 tracking-widest uppercase">Portal de Acesso Seguro</p>
           </motion.div>
 
           <AnimatePresence>
@@ -130,9 +130,9 @@ const Login = () => {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <motion.div variants={itemVariants}>
-              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">ID Corporativo (E-mail)</label>
+              <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">ID Corporativo (E-mail)</label>
               <div className="relative group">
-                <Mail className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-brand transition-colors" size={18} />
+                <Mail className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-brand transition-colors" size={18} />
                 <input 
                   type="email" 
                   required 
@@ -145,9 +145,9 @@ const Login = () => {
             </motion.div>
 
             <motion.div variants={itemVariants}>
-              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Chave de Segurança</label>
+              <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Chave de Segurança</label>
               <div className="relative group">
-                <Lock className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-brand transition-colors" size={18} />
+                <Lock className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-brand transition-colors" size={18} />
                 <input 
                   type="password" 
                   required 
@@ -165,7 +165,7 @@ const Login = () => {
                 whileTap={{ scale: 0.98 }}
                 type="submit" 
                 disabled={loading}
-                className="w-full relative group overflow-hidden bg-white text-black font-black py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_25px_rgba(255,255,255,0.2)]"
+                className="w-full relative group overflow-hidden bg-white dark:bg-slate-800 text-black font-black py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_25px_rgba(255,255,255,0.2)]"
               >
                 <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-gray-200 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
                 {loading ? (
@@ -180,7 +180,7 @@ const Login = () => {
           <motion.div variants={itemVariants} className="mt-6 flex flex-col sm:flex-row justify-between items-center px-1 gap-4 sm:gap-0">
               <button 
                   onClick={() => setIsResetOpen(true)}
-                  className="text-[11px] text-gray-400 hover:text-white font-medium transition-colors border-b border-transparent hover:border-white pb-0.5"
+                  className="text-[11px] text-gray-400 dark:text-gray-500 hover:text-white font-medium transition-colors border-b border-transparent hover:border-white pb-0.5"
               >
                   Recuperar credenciais
               </button>
@@ -194,7 +194,7 @@ const Login = () => {
         </div>
         
         <motion.div variants={itemVariants} className="mt-8 text-center">
-          <p className="text-[10px] text-gray-500 font-medium tracking-widest uppercase">
+          <p className="text-[10px] text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium tracking-widest uppercase">
             Nexus ITAM Security Protocol © {new Date().getFullYear()}
           </p>
         </motion.div>
@@ -217,14 +217,14 @@ const Login = () => {
               >
                   <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-brand to-transparent opacity-50"></div>
                   
-                  <button onClick={() => setIsResetOpen(false)} className="absolute top-5 right-5 text-gray-500 hover:text-white transition-colors bg-white/5 p-1 rounded-full"><X size={18}/></button>
+                  <button onClick={() => setIsResetOpen(false)} className="absolute top-5 right-5 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-white transition-colors bg-white/5 p-1 rounded-full"><X size={18}/></button>
                   
                   <div className="mb-8 text-center relative z-10">
                       <div className="w-14 h-14 bg-brand/20 border border-brand/30 text-brand rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-[0_0_15px_rgba(79,70,229,0.3)]">
                           <KeyRound size={24} />
                       </div>
                       <h3 className="font-black text-white text-xl tracking-tight">Recuperação Segura</h3>
-                      <p className="text-xs text-gray-400 mt-2 px-2 leading-relaxed">Insira a chave de e-mail vinculada à conta. As instruções serão criptografadas e enviadas.</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 px-2 leading-relaxed">Insira a chave de e-mail vinculada à conta. As instruções serão criptografadas e enviadas.</p>
                   </div>
 
                   {resetMessage ? (
@@ -239,7 +239,7 @@ const Login = () => {
                   ) : (
                       <form onSubmit={handleResetPassword} className="space-y-5 relative z-10">
                           <div>
-                              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">E-mail Vinculado</label>
+                              <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">E-mail Vinculado</label>
                               <input 
                                   type="email" 
                                   required 

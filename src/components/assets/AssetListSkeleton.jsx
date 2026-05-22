@@ -34,7 +34,7 @@ const AssetListSkeleton = () => {
       {/* MOBILE LIST SKELETON */}
       <div className="grid grid-cols-1 gap-3 md:hidden">
           {[...Array(5)].map((_, i) => (
-              <div key={i} className="bg-white p-4 rounded-xl border border-gray-200 h-28 flex flex-col justify-between">
+              <div key={i} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-600 h-28 flex flex-col justify-between">
                   <div className="flex gap-4">
                       <div className="w-10 h-10 bg-gray-200 rounded-xl"></div>
                       <div className="flex-1 space-y-2">
@@ -47,8 +47,8 @@ const AssetListSkeleton = () => {
       </div>
 
       {/* DESKTOP TABLE SKELETON */}
-      <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-5 border-b border-gray-100 flex gap-4">
+      <div className="hidden md:block bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-600 overflow-hidden">
+          <div className="p-5 border-b border-gray-100 dark:border-slate-700 flex gap-4">
               <div className="h-6 w-6 bg-gray-200 rounded"></div>
               <div className="h-6 w-1/4 bg-gray-200 rounded"></div>
               <div className="h-6 w-1/4 bg-gray-200 rounded"></div>

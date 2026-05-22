@@ -129,10 +129,10 @@ const LicenseManager = () => {
       {/* Área superior com o título e o botão de partida para registrar novas compras */}
       <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div>
-          <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+          <h1 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
             <ShieldCheck className="text-brand" /> Licenças & Software
           </h1>
-          <p className="text-sm text-gray-500">Gestão de chaves, contratos e ativações.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Gestão de chaves, contratos e ativações.</p>
         </div>
         <button onClick={() => setIsFormOpen(true)} className="bg-black text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-gray-800 transition shadow-lg hover:scale-105 active:scale-95">
           <Plus size={20} /> Nova Licença
@@ -140,8 +140,8 @@ const LicenseManager = () => {
       </div>
 
       {/* Barra fixa na tela dedicada à localização de pacotes específicos rapidamente */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex items-center gap-3 sticky top-0 z-10"> {/* Preso no topo para sempre estar à mão */}
-        <Search className="text-gray-400" size={20} />
+      <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-slate-600 mb-6 flex items-center gap-3 sticky top-0 z-10"> {/* Preso no topo para sempre estar à mão */}
+        <Search className="text-gray-400 dark:text-gray-500" size={20} />
         <input
           type="text"
           placeholder="Buscar software (Office, Windows, Adobe...)"
@@ -150,7 +150,7 @@ const LicenseManager = () => {
           onChange={(e) => setSearchTerm(e.target.value)}
         />
         {searchTerm && (
-            <button onClick={() => setSearchTerm('')} className="text-gray-400 hover:text-gray-600">
+            <button onClick={() => setSearchTerm('')} className="text-gray-400 dark:text-gray-500 hover:text-gray-600">
                 <X size={16} />
             </button>
         )}
@@ -161,10 +161,10 @@ const LicenseManager = () => {
         {loading ? (
             <div className="col-span-full text-center py-10">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-                <p className="mt-2 text-gray-500">Carregando licenças...</p>
+                <p className="mt-2 text-gray-500 dark:text-gray-400 dark:text-gray-500">Carregando licenças...</p>
             </div>
         ) : filteredLicenses.length === 0 ? (
-            <div className="col-span-full text-center py-10 text-gray-500">
+            <div className="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 dark:text-gray-500">
                 Nenhuma licença encontrada.
             </div>
         ) : (
@@ -177,7 +177,7 @@ const LicenseManager = () => {
 
 
             return (
-              <div key={license.id} className={`bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all flex flex-col justify-between ${isExpired ? 'border-red-300 bg-red-50' : ''}`}>
+              <div key={license.id} className={`bg-white dark:bg-slate-800 p-5 rounded-xl border border-gray-200 dark:border-slate-600 shadow-sm hover:shadow-md transition-all flex flex-col justify-between ${isExpired ? 'border-red-300 bg-red-50' : ''}`}>
                 
                 {/* Título do software e os rótulos dinâmicos alertando prazos de vencimento */}
                 <div>
@@ -187,9 +187,9 @@ const LicenseManager = () => {
                                 <Key size={20} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-lg text-gray-900 line-clamp-1" title={license.softwareName}>{license.softwareName}</h3>
+                                <h3 className="font-bold text-lg text-gray-900 dark:text-white line-clamp-1" title={license.softwareName}>{license.softwareName}</h3>
                                 <div className="flex gap-2 text-xs mt-1">
-                                    <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded border border-gray-200">{license.type}</span>
+                                    <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded border border-gray-200 dark:border-slate-600">{license.type}</span>
                                     {isExpired ? (
                                         <span className="bg-red-100 text-red-700 font-bold px-2 py-0.5 rounded flex items-center gap-1"><AlertTriangle size={10}/> VENCIDA</span>
                                     ) : daysToExpire !== null && daysToExpire <= 30 ? (
@@ -204,12 +204,12 @@ const LicenseManager = () => {
                     </div>
 
                     {/* A serial key em si, destacada e com acesso de um clique para cópia */}
-                    <div className="flex items-center gap-2 text-sm font-mono bg-gray-50 p-2 rounded border border-gray-200 mb-4 select-all relative group">
-                        <span className="text-gray-500 font-bold text-xs select-none">KEY:</span>
-                        <span className="font-bold text-gray-800 truncate flex-1" title={license.key}>{license.key}</span>
+                    <div className="flex items-center gap-2 text-sm font-mono bg-gray-50 dark:bg-slate-900 p-2 rounded border border-gray-200 dark:border-slate-600 mb-4 select-all relative group">
+                        <span className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold text-xs select-none">KEY:</span>
+                        <span className="font-bold text-gray-800 dark:text-gray-100 truncate flex-1" title={license.key}>{license.key}</span>
                         <button 
                             onClick={() => { navigator.clipboard.writeText(license.key); toast.success("Chave copiada para a área de transferência!"); }} 
-                            className="text-gray-400 hover:text-blue-600 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity absolute right-1 bg-gray-50"
+                            className="text-gray-400 dark:text-gray-500 hover:text-blue-600 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity absolute right-1 bg-gray-50 dark:bg-slate-900"
                             title="Copiar Chave"
                         >
                             <Copy size={14} />
@@ -218,11 +218,11 @@ const LicenseManager = () => {
 
                     {/* Termômetro visual para ver de longe a porcentagem de instalações executadas vs compradas */}
                     <div className="mb-4">
-                        <div className="flex justify-between text-xs font-bold uppercase mb-1 text-gray-500">
+                        <div className="flex justify-between text-xs font-bold uppercase mb-1 text-gray-500 dark:text-gray-400 dark:text-gray-500">
                             <span>Utilização</span>
                             <span className={`${used >= total ? 'text-red-600' : 'text-green-600'}`}>{used} / {total}</span>
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden border border-gray-100">
+                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden border border-gray-100 dark:border-slate-700">
                             <div className={`h-full rounded-full transition-all duration-500 ${getUsageColor(used, total)}`} style={{ width: `${percentage}%` }}></div>
                         </div>
                     </div>
@@ -231,25 +231,25 @@ const LicenseManager = () => {
                     <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar mb-4 pr-1">
                         {license.assignedAssets?.length > 0 ? (
                             license.assignedAssets.map((asset, idx) => (
-                                <div key={idx} className="flex items-center justify-between bg-gray-50 px-2 py-1.5 rounded text-xs border border-gray-100 group/item hover:border-gray-300 transition-colors">
+                                <div key={idx} className="flex items-center justify-between bg-gray-50 dark:bg-slate-900 px-2 py-1.5 rounded text-xs border border-gray-100 dark:border-slate-700 group/item hover:border-gray-300 transition-colors">
                                     <div className="flex items-center gap-2 truncate">
-                                        <Monitor size={12} className="text-gray-400" />
-                                        <span className="font-medium text-gray-700 truncate" title={asset.name}>{asset.name}</span>
+                                        <Monitor size={12} className="text-gray-400 dark:text-gray-500" />
+                                        <span className="font-medium text-gray-700 dark:text-gray-200 truncate" title={asset.name}>{asset.name}</span>
                                     </div>
-                                    <button onClick={() => handleUnassign(license, asset)} className="text-gray-400 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-opacity" title="Desvincular">
+                                    <button onClick={() => handleUnassign(license, asset)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-opacity" title="Desvincular">
                                         <X size={12} />
                                     </button>
                                 </div>
                             ))
                         ) : (
-                            <p className="text-xs text-gray-400 italic text-center py-2">Nenhum ativo vinculado.</p>
+                            <p className="text-xs text-gray-400 dark:text-gray-500 italic text-center py-2">Nenhum ativo vinculado.</p>
                         )}
                     </div>
                 </div>
 
                 {/* Fechamento do cartão reforçando validades e deixando engatilhado o botão de adicionar mais computadores */}
-                <div className="pt-3 border-t border-gray-100 flex justify-between items-center mt-auto">
-                    <div className="text-xs text-gray-400 flex items-center gap-1">
+                <div className="pt-3 border-t border-gray-100 dark:border-slate-700 flex justify-between items-center mt-auto">
+                    <div className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
                         {license.expirationDate ? (
                             <>
                                 <Calendar size={12}/> Vence em {new Date(license.expirationDate).toLocaleDateString('pt-BR')}
@@ -280,41 +280,41 @@ const LicenseManager = () => {
       {/* Formulário principal que cadastra o coração do software adquirido (Nota: Fica oculto até pedirem) */}
       {isFormOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+          <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">
             <div className="bg-black p-4 text-white flex justify-between items-center">
               <h3 className="font-bold flex items-center gap-2 text-lg"><Key size={20} /> Cadastrar Software</h3>
               <button onClick={() => setIsFormOpen(false)} className="hover:bg-gray-800 p-1 rounded transition-colors"><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nome do Software</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Nome do Software</label>
                   <input required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none transition-all" placeholder="Ex: Microsoft Office 2021 Home & Business" value={formData.softwareName} onChange={e => setFormData({ ...formData, softwareName: e.target.value })} />
               </div>
               <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Chave de Ativação (Key)</label>
-                  <input required className="w-full p-3 border border-gray-300 rounded-lg font-mono bg-gray-50 text-sm focus:ring-2 focus:ring-black outline-none transition-all" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" value={formData.key} onChange={e => setFormData({ ...formData, key: e.target.value })} />
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Chave de Ativação (Key)</label>
+                  <input required className="w-full p-3 border border-gray-300 rounded-lg font-mono bg-gray-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-black outline-none transition-all" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" value={formData.key} onChange={e => setFormData({ ...formData, key: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tipo</label>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Tipo</label>
                     <div className="relative">
-                        <select className="w-full p-3 border border-gray-300 rounded-lg bg-white appearance-none focus:ring-2 focus:ring-black outline-none transition-all cursor-pointer" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })}>
+                        <select className="w-full p-3 border border-gray-300 rounded-lg bg-white dark:bg-slate-800 appearance-none focus:ring-2 focus:ring-black outline-none transition-all cursor-pointer" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })}>
                             <option>Vitalícia</option>
                             <option>Assinatura Anual</option>
                             <option>Assinatura Mensal</option>
                             <option>OEM</option>
                             <option>Open License (Volume)</option>
                         </select>
-                        <div className="absolute right-3 top-3.5 pointer-events-none text-gray-400 text-xs">▼</div>
+                        <div className="absolute right-3 top-3.5 pointer-events-none text-gray-400 dark:text-gray-500 text-xs">▼</div>
                     </div>
                 </div>
                 <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Quantidade (Seats)</label>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Quantidade (Seats)</label>
                     <input type="number" min="1" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none transition-all" value={formData.totalSeats} onChange={e => setFormData({ ...formData, totalSeats: e.target.value })} />
                 </div>
               </div>
               <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Expiração (Opcional)</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Expiração (Opcional)</label>
                   <input type="date" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none transition-all text-gray-600" value={formData.expirationDate} onChange={e => setFormData({ ...formData, expirationDate: e.target.value })} />
               </div>
               <div className="pt-2">
@@ -330,7 +330,7 @@ const LicenseManager = () => {
       {/* Caixinha rápida focada em fazer o encontro do Hardware escolhido com a Licença atual */}
       {isAssignOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+          <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">
             <div className="bg-black p-4 text-white flex justify-between items-center">
               <h3 className="font-bold text-lg">Vincular a Ativo</h3>
               <button onClick={() => setIsAssignOpen(false)} className="hover:bg-gray-800 p-1 rounded transition-colors"><X size={20} /></button>
@@ -342,7 +342,7 @@ const LicenseManager = () => {
               
               <div className="relative mb-6">
                   <select 
-                    className="w-full p-3 border border-gray-300 rounded-xl bg-white appearance-none focus:ring-2 focus:ring-black outline-none transition-all cursor-pointer font-medium text-gray-700" 
+                    className="w-full p-3 border border-gray-300 rounded-xl bg-white dark:bg-slate-800 appearance-none focus:ring-2 focus:ring-black outline-none transition-all cursor-pointer font-medium text-gray-700 dark:text-gray-200" 
                     value={selectedAssetId} 
                     onChange={e => setSelectedAssetId(e.target.value)}
                   >
@@ -351,7 +351,7 @@ const LicenseManager = () => {
                       <option key={asset.id} value={asset.id}>{asset.model} ({asset.internalId})</option>
                     ))}
                   </select>
-                  <div className="absolute right-3 top-3.5 pointer-events-none text-gray-400 text-xs">▼</div>
+                  <div className="absolute right-3 top-3.5 pointer-events-none text-gray-400 dark:text-gray-500 text-xs">▼</div>
               </div>
 
               <button 

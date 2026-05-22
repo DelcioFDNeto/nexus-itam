@@ -199,17 +199,17 @@ const AuditPage = () => {
 
   // ---------------- Interface Gráfica e Componentes ----------------
 
-  if (loading) return <div className="flex h-screen items-center justify-center bg-gray-50"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-black"></div></div>;
+  if (loading) return <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-slate-900"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-black"></div></div>;
 
   // Tela inicial pedindo para escolher qual local vai ser auditado agora
   if (!selectedLocation) {
       return (
-        <div className="p-4 md:p-8 min-h-screen bg-gray-50">
+        <div className="p-4 md:p-8 min-h-screen bg-gray-50 dark:bg-slate-900">
             <header className="flex items-center gap-4 mb-8">
-                <button onClick={() => navigate('/')} className="p-3 bg-white rounded-xl shadow-sm hover:scale-105 transition-transform"><ArrowLeft size={24}/></button>
+                <button onClick={() => navigate('/')} className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm hover:scale-105 transition-transform"><ArrowLeft size={24}/></button>
                 <div>
-                   <h1 className="text-3xl font-black text-gray-900 tracking-tight">Nova Auditoria</h1>
-                   <p className="text-gray-500">Selecione o local para iniciar a conferência.</p>
+                   <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Nova Auditoria</h1>
+                   <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500">Selecione o local para iniciar a conferência.</p>
                 </div>
             </header>
 
@@ -218,12 +218,12 @@ const AuditPage = () => {
                     <button 
                         key={loc.name}
                         onClick={() => setSelectedLocation(loc.name)}
-                        className="group relative overflow-hidden bg-white p-6 rounded-3xl border border-gray-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all text-left"
+                        className="group relative overflow-hidden bg-white dark:bg-slate-800 p-6 rounded-3xl border border-gray-200 dark:border-slate-600 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all text-left"
                     >
                         <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                             <MapPin size={64} className="text-black transform rotate-12"/>
                         </div>
-                        <h3 className="text-xl font-black text-gray-900 mb-2">{loc.name}</h3>
+                        <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2">{loc.name}</h3>
                         <div className="flex items-center gap-2">
                              <span className="bg-black text-white px-3 py-1 rounded-lg text-xs font-bold">{loc.count} Ativos</span>
                              {loc.count === 0 && <span className="text-xs text-red-500 font-bold">Vazio</span>}
@@ -231,7 +231,7 @@ const AuditPage = () => {
                     </button>
                 ))}
             </div>
-            {locationsData.length === 0 && <div className="text-center py-20 text-gray-400">Nenhum local com ativos encontrado.</div>}
+            {locationsData.length === 0 && <div className="text-center py-20 text-gray-400 dark:text-gray-500">Nenhum local com ativos encontrado.</div>}
         </div>
       );
   }
@@ -243,13 +243,13 @@ const AuditPage = () => {
         {/* Barra fixa superior mostrando onde estamos e controle do som do "bipe" */}
         <div className="px-4 py-4 bg-gray-900 border-b border-gray-800 flex justify-between items-center shrink-0">
              <div className="flex items-center gap-3">
-                 <button onClick={() => { if(confirm('Sair da auditoria?')) setSelectedLocation(null); }} className="p-2 rounded-full bg-gray-800 text-gray-400 hover:text-white"><ArrowLeft size={20}/></button>
+                 <button onClick={() => { if(confirm('Sair da auditoria?')) setSelectedLocation(null); }} className="p-2 rounded-full bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-white"><ArrowLeft size={20}/></button>
                  <div>
                      <h2 className="font-bold text-lg leading-none">{selectedLocation}</h2>
-                     <p className="text-[10px] text-gray-400 uppercase tracking-widest">{expectedAssets.length} ITENS ESPERADOS</p>
+                     <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-widest">{expectedAssets.length} ITENS ESPERADOS</p>
                  </div>
              </div>
-             <button onClick={() => setSoundEnabled(!soundEnabled)} className={`p-3 rounded-full ${soundEnabled ? 'bg-gray-800 text-green-400' : 'bg-gray-800 text-gray-500'}`}>
+             <button onClick={() => setSoundEnabled(!soundEnabled)} className={`p-3 rounded-full ${soundEnabled ? 'bg-gray-800 text-green-400' : 'bg-gray-800 text-gray-500 dark:text-gray-400 dark:text-gray-500'}`}>
                  {soundEnabled ? <Volume2 size={20}/> : <VolumeX size={20}/>}
              </button>
         </div>
@@ -277,7 +277,7 @@ const AuditPage = () => {
                         {!lastScanResult ? (
                             <>
                                 <Scan size={64} className="text-gray-600 mb-4 opacity-50"/>
-                                <p className="text-gray-500 font-bold text-lg">Aguardando Leitura...</p>
+                                <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold text-lg">Aguardando Leitura...</p>
                                 <p className="text-gray-600 text-sm mt-2">Use o scanner ou digite abaixo</p>
                             </>
                         ) : (
@@ -301,12 +301,12 @@ const AuditPage = () => {
                             placeholder="Digitar código..."
                             className="w-full bg-gray-800 border-2 border-gray-700 text-white p-4 pl-12 rounded-2xl outline-none focus:border-brand font-mono text-lg transition-all"
                         />
-                        <Search className="absolute left-4 top-5 text-gray-500" size={20}/>
+                        <Search className="absolute left-4 top-5 text-gray-500 dark:text-gray-400 dark:text-gray-500" size={20}/>
                     </form>
 
                     {/* Botões para alternar ferramentas visuais durante o inventário */}
                     <div className="grid grid-cols-2 gap-4 w-full max-w-sm">
-                        <button onClick={() => setIsScannerOpen(true)} className="bg-white text-black py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-gray-200 active:scale-95 transition-all">
+                        <button onClick={() => setIsScannerOpen(true)} className="bg-white dark:bg-slate-800 text-black py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-gray-200 active:scale-95 transition-all">
                             <Smartphone size={20}/> Câmera
                         </button>
                         <button onClick={() => setViewMode('list')} className="bg-gray-800 text-white py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-gray-700 active:scale-95 transition-all border border-gray-700">
@@ -323,15 +323,15 @@ const AuditPage = () => {
                     {/* Placar numérico de contadores da auditoria atual para tomada de decisão */}
                     <div className="grid grid-cols-3 gap-2">
                         <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
-                            <p className="text-[10px] text-gray-400 uppercase font-black">Faltam</p>
+                            <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-black">Faltam</p>
                             <p className="text-2xl font-black text-red-500">{auditResult.missing.length}</p>
                         </div>
                         <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
-                            <p className="text-[10px] text-gray-400 uppercase font-black">Achados</p>
+                            <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-black">Achados</p>
                             <p className="text-2xl font-black text-green-500">{auditResult.found.length}</p>
                         </div>
                         <div className="bg-gray-800 p-3 rounded-xl border border-gray-700 text-center">
-                            <p className="text-[10px] text-gray-400 uppercase font-black">Intrusos</p>
+                            <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-black">Intrusos</p>
                             <p className="text-2xl font-black text-yellow-500">{auditResult.intruders.length}</p>
                         </div>
                     </div>
@@ -358,7 +358,7 @@ const AuditPage = () => {
                          {auditResult.missing.map(asset => (
                              <div key={asset.id} className="bg-gray-800 border border-gray-700 p-3 rounded-xl flex justify-between items-center opacity-80">
                                  <div className="flex items-center gap-3">
-                                     <div className="w-8 h-8 rounded bg-gray-700 flex items-center justify-center text-gray-400"><Box size={14}/></div>
+                                     <div className="w-8 h-8 rounded bg-gray-700 flex items-center justify-center text-gray-400 dark:text-gray-500"><Box size={14}/></div>
                                      <div>
                                          <p className="text-gray-300 font-bold text-sm">{asset.model}</p>
                                          <p className="text-gray-600 text-xs font-mono">{asset.internalId}</p>
@@ -379,7 +379,7 @@ const AuditPage = () => {
         {/* Rodapé retalhado com o percentual vivo e o grande botão para arquivar o resultado */}
         <div className="p-4 bg-gray-900 border-t border-gray-800 shrink-0 flex gap-4">
             <div className="flex-1 bg-gray-800 rounded-xl px-4 flex items-center justify-between">
-                <span className="text-xs text-gray-400 font-bold uppercase">Progresso</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 font-bold uppercase">Progresso</span>
                 <span className="font-mono text-white text-lg font-bold">{progress}%</span>
             </div>
             <button 

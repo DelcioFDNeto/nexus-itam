@@ -902,7 +902,7 @@ const AssetDetail = () => {
       <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <button
           onClick={() => navigate("/assets")}
-          className="group flex items-center text-gray-500 hover:text-black transition-colors font-bold text-sm"
+          className="group flex items-center text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black transition-colors font-bold text-sm"
         >
           <div className="p-2 rounded-full group-hover:bg-gray-100 transition-all mr-2">
             <ArrowLeft size={20} />
@@ -920,28 +920,28 @@ const AssetDetail = () => {
           </button>
           <button
             onClick={() => setIsMoveModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:bg-slate-900 transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
           >
             <ArrowRightLeft size={16} />{" "}
             <span className="hidden sm:inline">Movimentar</span>
           </button>
           <button
             onClick={() => setIsMaintModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:bg-slate-900 transition-all whitespace-nowrap"
           >
             <Wrench size={16} />{" "}
             <span className="hidden sm:inline">Manutenção</span>
           </button>
           <button
             onClick={handlePrintTerm}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:bg-slate-900 transition-all whitespace-nowrap"
           >
             <FileText size={16} />{" "}
             <span className="hidden sm:inline">Termo</span>
           </button>
           <button
             onClick={handlePrintLabel}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:bg-slate-900 transition-all whitespace-nowrap"
           >
             <Printer size={16} />{" "}
             <span className="hidden sm:inline">Etiqueta</span>
@@ -958,14 +958,14 @@ const AssetDetail = () => {
       </div>
 
       {/* Quadro de destaque no topo, exibindo a visão geral principal do equipamento */}
-      <div className="bg-white rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100 relative overflow-hidden mb-8 group">
+      <div className="bg-white dark:bg-slate-800 rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100 dark:border-slate-700 relative overflow-hidden mb-8 group">
         <div
           className={`absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-gray-50 to-gray-100 rounded-bl-full -mr-16 -mt-16 opacity-50 pointer-events-none transition-all duration-700 group-hover:scale-110`}
         ></div>
 
         <div className="flex flex-col md:flex-row gap-8 relative z-10">
           <div className="flex-shrink-0">
-            <div className="w-24 h-24 md:w-32 md:h-32 bg-gray-50 rounded-3xl flex items-center justify-center text-gray-900 shadow-inner border border-gray-100">
+            <div className="w-24 h-24 md:w-32 md:h-32 bg-gray-50 dark:bg-slate-900 rounded-3xl flex items-center justify-center text-gray-900 dark:text-white shadow-inner border border-gray-100 dark:border-slate-700">
               <AssetIcon
                 type={asset.type}
                 category={asset.category}
@@ -983,36 +983,36 @@ const AssetDetail = () => {
               >
                 {asset.status}
               </div>
-              <span className="text-sm font-mono text-gray-400 font-bold">
+              <span className="text-sm font-mono text-gray-400 dark:text-gray-500 font-bold">
                 {asset.category}
               </span>
             </div>
 
-            <h1 className="text-3xl md:text-5xl font-black text-gray-900 tracking-tight mb-2 leading-tight">
+            <h1 className="text-3xl md:text-5xl font-black text-gray-900 dark:text-white tracking-tight mb-2 leading-tight">
               {asset.model}
             </h1>
 
-            <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-sm font-medium text-gray-500">
-              <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100 group">
+            <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-sm font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500">
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-gray-100 dark:border-slate-700 group">
                 <Tag size={16} className="text-black" />
-                <span className="font-mono font-bold text-gray-900">
+                <span className="font-mono font-bold text-gray-900 dark:text-white">
                   {asset.internalId}
                 </span>
-                <button onClick={() => { navigator.clipboard.writeText(asset.internalId); toast.success("Patrimônio copiado!"); }} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-black transition-all" title="Copiar Patrimônio">
+                <button onClick={() => { navigator.clipboard.writeText(asset.internalId); toast.success("Patrimônio copiado!"); }} className="opacity-0 group-hover:opacity-100 text-gray-400 dark:text-gray-500 hover:text-black transition-all" title="Copiar Patrimônio">
                   <Copy size={14} />
                 </button>
               </div>
               {asset.serialNumber && (
                 <div className="flex items-center gap-2 px-2 py-1.5 group">
-                  <BarcodeIcon className="text-gray-400" />
+                  <BarcodeIcon className="text-gray-400 dark:text-gray-500" />
                   <span className="font-mono">SN: {asset.serialNumber}</span>
-                  <button onClick={() => { navigator.clipboard.writeText(asset.serialNumber); toast.success("Serial copiado!"); }} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-black transition-all" title="Copiar Serial">
+                  <button onClick={() => { navigator.clipboard.writeText(asset.serialNumber); toast.success("Serial copiado!"); }} className="opacity-0 group-hover:opacity-100 text-gray-400 dark:text-gray-500 hover:text-black transition-all" title="Copiar Serial">
                     <Copy size={14} />
                   </button>
                 </div>
               )}
               <div className="flex items-center gap-2 px-2 py-1.5">
-                <Clock size={16} className="text-gray-400" />
+                <Clock size={16} className="text-gray-400 dark:text-gray-500" />
                 <span>Atualizado: {formatDate(asset.updatedAt)}</span>
               </div>
             </div>
@@ -1024,13 +1024,13 @@ const AssetDetail = () => {
       <div className="md:hidden flex mb-6 bg-gray-100 p-1 rounded-xl">
         <button
           onClick={() => setActiveTab("details")}
-          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "details" ? "bg-white shadow-sm text-black" : "text-gray-500"}`}
+          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "details" ? "bg-white dark:bg-slate-800 shadow-sm text-black" : "text-gray-500 dark:text-gray-400 dark:text-gray-500"}`}
         >
           Detalhes
         </button>
         <button
           onClick={() => setActiveTab("history")}
-          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "history" ? "bg-white shadow-sm text-black" : "text-gray-500"}`}
+          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "history" ? "bg-white dark:bg-slate-800 shadow-sm text-black" : "text-gray-500 dark:text-gray-400 dark:text-gray-500"}`}
         >
           Histórico
         </button>
@@ -1042,35 +1042,35 @@ const AssetDetail = () => {
           className={`lg:col-span-2 space-y-8 ${activeTab === "history" ? "hidden lg:block" : ""}`}
         >
           {/* Card com os dados do usuário atual em posse da máquina e sua localização física */}
-          <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm relative overflow-hidden">
-            <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm relative overflow-hidden">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
               <User size={20} /> Responsabilidade e Localização
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100">
-                <p className="text-xs font-bold text-gray-400 uppercase mb-1">
+              <div className="bg-gray-50 dark:bg-slate-900 p-5 rounded-2xl border border-gray-100 dark:border-slate-700">
+                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">
                   Responsável Atual
                 </p>
-                <p className="font-bold text-gray-900 text-lg">
+                <p className="font-bold text-gray-900 dark:text-white text-lg">
                   {responsibleName}
                 </p>
-                <div className="flex items-center gap-2 mt-2 text-xs font-medium text-gray-500">
+                <div className="flex items-center gap-2 mt-2 text-xs font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500">
                   <Building2 size={12} /> {derivedSector}
                 </div>
                 {asset.clientCpf && (
-                  <div className="flex items-center gap-2 mt-2 text-xs font-mono font-medium text-gray-500">
+                  <div className="flex items-center gap-2 mt-2 text-xs font-mono font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500">
                     <FileText size={12} /> CPF: {asset.clientCpf}
                   </div>
                 )}
               </div>
-              <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100">
-                <p className="text-xs font-bold text-gray-400 uppercase mb-1">
+              <div className="bg-gray-50 dark:bg-slate-900 p-5 rounded-2xl border border-gray-100 dark:border-slate-700">
+                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">
                   Localização Física
                 </p>
-                <p className="font-bold text-gray-900 text-lg">
+                <p className="font-bold text-gray-900 dark:text-white text-lg">
                   {expandLocation(asset.location)}
                 </p>
-                <div className="flex items-center gap-2 mt-2 text-xs font-medium text-gray-500">
+                <div className="flex items-center gap-2 mt-2 text-xs font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500">
                   <MapPin size={12} />{" "}
                   {asset.locationDetails || "Sem detalhes de sala/mesa"}
                 </div>
@@ -1078,8 +1078,8 @@ const AssetDetail = () => {
             </div>
 
             {/* Campo editável para adicionar ou alterar o CPF do responsável pelo ativo */}
-            <div className="mt-6 bg-gray-50 p-4 rounded-2xl border border-gray-100">
-              <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">
+            <div className="mt-6 bg-gray-50 dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-700">
+              <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2 block">
                 CPF do Responsável
               </label>
               <div className="flex gap-2">
@@ -1087,7 +1087,7 @@ const AssetDetail = () => {
                   type="text"
                   placeholder="000.000.000-00"
                   defaultValue={asset.clientCpf || ""}
-                  className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-xl font-mono font-bold text-sm text-gray-800 outline-none focus:border-black transition-colors"
+                  className="flex-1 px-4 py-2.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl font-mono font-bold text-sm text-gray-800 dark:text-gray-100 outline-none focus:border-black transition-colors"
                   onKeyDown={async (e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -1121,14 +1121,14 @@ const AssetDetail = () => {
                   <Save size={14} /> Salvar
                 </button>
               </div>
-              <p className="text-[10px] text-gray-400 mt-2">Este CPF será usado automaticamente no Termo de Responsabilidade.</p>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2">Este CPF será usado automaticamente no Termo de Responsabilidade.</p>
             </div>
           </div>
 
           {/* Card listando todas as chaves técnicas do hardware como identificadores e valores de componentes */}
-          <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <Monitor size={20} /> Especificações
               </h3>
             </div>
@@ -1210,8 +1210,8 @@ const AssetDetail = () => {
           </div>
 
           {/* Lista gerenciável de pequenos acessórios extras fornecidos em conjunto com o equipamento */}
-          <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm">
-            <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
               <Plug size={20} /> Periféricos & Acessórios
             </h3>
 
@@ -1220,9 +1220,9 @@ const AssetDetail = () => {
                 asset.peripherals.map((item, idx) => (
                   <div
                     key={idx}
-                    className="group flex items-center gap-2 bg-gray-50 border border-gray-100 pl-3 pr-2 py-2 rounded-xl transition-all hover:border-gray-300 hover:bg-white hover:shadow-sm"
+                    className="group flex items-center gap-2 bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 pl-3 pr-2 py-2 rounded-xl transition-all hover:border-gray-300 hover:bg-white dark:bg-slate-800 hover:shadow-sm"
                   >
-                    <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
                       {item.name}
                     </span>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
@@ -1242,13 +1242,13 @@ const AssetDetail = () => {
                   </div>
                 ))
               ) : (
-                <span className="text-sm text-gray-400 italic">
+                <span className="text-sm text-gray-400 dark:text-gray-500 italic">
                   Nenhum periférico vinculado.
                 </span>
               )}
             </div>
 
-            <div className="bg-gray-50 rounded-2xl p-2 flex gap-2">
+            <div className="bg-gray-50 dark:bg-slate-900 rounded-2xl p-2 flex gap-2">
               <input
                 type="text"
                 placeholder="Adicionar (ex: Mouse Logitech, Base Dell...)"
@@ -1269,9 +1269,9 @@ const AssetDetail = () => {
 
           {/* Agrupamento final para notas detalhadas e armazenamento de links e arquivos digitais */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm flex flex-col">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                   <StickyNote size={20} /> Notas
                 </h3>
                 <button
@@ -1289,15 +1289,15 @@ const AssetDetail = () => {
                 </button>
               </div>
               <textarea
-                className="w-full flex-1 bg-yellow-50/50 border border-yellow-100 rounded-xl p-4 text-sm text-gray-700 leading-relaxed focus:bg-white focus:border-yellow-300 focus:ring-4 focus:ring-yellow-50 outline-none transition-all resize-none min-h-[150px]"
+                className="w-full flex-1 bg-yellow-50/50 border border-yellow-100 rounded-xl p-4 text-sm text-gray-700 dark:text-gray-200 leading-relaxed focus:bg-white dark:bg-slate-800 focus:border-yellow-300 focus:ring-4 focus:ring-yellow-50 outline-none transition-all resize-none min-h-[150px]"
                 placeholder="Digite observações importantes sobre o ativo..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               ></textarea>
             </div>
 
-            <div className="bg-white rounded-3xl p-6 md:p-8 border border-gray-100 shadow-sm flex flex-col">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                 <LinkIcon size={20} /> Anexos & Links
               </h3>
 
@@ -1305,7 +1305,7 @@ const AssetDetail = () => {
                 {asset.attachments?.map((link, i) => (
                   <div
                     key={i}
-                    className="flex justify-between items-center p-3 rounded-xl bg-gray-50 border border-gray-100 hover:border-blue-200 transition-colors group"
+                    className="flex justify-between items-center p-3 rounded-xl bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 hover:border-blue-200 transition-colors group"
                   >
                     <a
                       href={link.url}
@@ -1313,29 +1313,29 @@ const AssetDetail = () => {
                       rel="noopener noreferrer"
                       className="flex items-center gap-3 text-sm font-medium text-blue-600 hover:underline truncate"
                     >
-                      <FileText size={14} className="text-gray-400" />{" "}
+                      <FileText size={14} className="text-gray-400 dark:text-gray-500" />{" "}
                       {link.name}
                     </a>
                     <button
                       onClick={() => handleDeleteLink(link)}
-                      className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all ml-2"
+                      className="text-gray-400 dark:text-gray-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all ml-2"
                     >
                       <Trash2 size={14} />
                     </button>
                   </div>
                 ))}
                 {(!asset.attachments || asset.attachments.length === 0) && (
-                  <p className="text-sm text-gray-400 italic text-center py-4">
+                  <p className="text-sm text-gray-400 dark:text-gray-500 italic text-center py-4">
                     Nenhum link adicionado.
                   </p>
                 )}
               </div>
 
-              <div className="flex flex-col gap-2 bg-gray-50 p-3 rounded-2xl">
+              <div className="flex flex-col gap-2 bg-gray-50 dark:bg-slate-900 p-3 rounded-2xl">
                 <input
                   type="text"
                   placeholder="Nome (ex: Manual PDF)"
-                  className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-black"
+                  className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-black"
                   value={newLinkName}
                   onChange={(e) => setNewLinkName(e.target.value)}
                 />
@@ -1343,7 +1343,7 @@ const AssetDetail = () => {
                   <input
                     type="url"
                     placeholder="https://..."
-                    className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-black"
+                    className="flex-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg px-3 py-2 text-xs outline-none focus:border-black"
                     value={newLinkUrl}
                     onChange={(e) => setNewLinkUrl(e.target.value)}
                   />
@@ -1364,14 +1364,14 @@ const AssetDetail = () => {
         <div
           className={`lg:col-span-1 space-y-6 ${activeTab === "details" ? "hidden lg:block" : ""}`}
         >
-          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm h-full flex flex-col">
-            <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm h-full flex flex-col">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
               <History size={20} /> Linha do Tempo
             </h3>
 
-            <div className="relative border-l-2 border-gray-100 ml-3 space-y-8 pb-8">
+            <div className="relative border-l-2 border-gray-100 dark:border-slate-700 ml-3 space-y-8 pb-8">
               {history.length === 0 && (
-                <p className="text-sm text-gray-400 pl-6 italic">
+                <p className="text-sm text-gray-400 dark:text-gray-500 pl-6 italic">
                   Sem histórico registrado.
                 </p>
               )}
@@ -1380,16 +1380,16 @@ const AssetDetail = () => {
                   <div
                     className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-sm ${item.action?.includes("Manutenção") ? "bg-orange-500" : item.action?.includes("Entrega") ? "bg-green-500" : "bg-gray-400"} group-hover:scale-125 transition-transform`}
                   ></div>
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5 block">
+                  <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-0.5 block">
                     {formatDate(item.date)}
                   </span>
-                  <h4 className="text-sm font-bold text-gray-900">
+                  <h4 className="text-sm font-bold text-gray-900 dark:text-white">
                     {item.action}
                   </h4>
 
                   {/* Mostra em lista organizada caso existam múltiplas alterações geradas no processo de edição */}
                   {item.details && (
-                    <div className="text-xs text-gray-600 mt-1 leading-relaxed bg-gray-50 p-3 rounded-xl border border-gray-100">
+                    <div className="text-xs text-gray-600 mt-1 leading-relaxed bg-gray-50 dark:bg-slate-900 p-3 rounded-xl border border-gray-100 dark:border-slate-700">
                       {item.action === "Edição de Ativo" &&
                       item.details.includes(", Alterou ") ? (
                         <ul className="list-disc pl-4 space-y-1">
@@ -1403,7 +1403,7 @@ const AssetDetail = () => {
                     </div>
                   )}
 
-                  <p className="text-[10px] text-gray-400 mt-2 font-medium flex items-center gap-1">
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2 font-medium flex items-center gap-1">
                     <User size={10} /> {item.user || "Sistema"}
                   </p>
                 </div>
@@ -1437,12 +1437,12 @@ const AssetDetail = () => {
 // Componentes minimalistas e locais que evitam muita repetição na exibição das especificações
 const SpecItem = ({ label, value, fontMono, copyable }) => (
   <div className="flex flex-col">
-    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+    <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
       {label}
     </span>
     <div className="flex items-center gap-2">
       <span
-        className={`text-sm font-medium text-gray-800 ${fontMono ? "font-mono" : ""} truncate max-w-full`}
+        className={`text-sm font-medium text-gray-800 dark:text-gray-100 ${fontMono ? "font-mono" : ""} truncate max-w-full`}
         title={value}
       >
         {value || "---"}

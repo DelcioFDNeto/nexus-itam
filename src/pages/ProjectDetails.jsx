@@ -154,7 +154,7 @@ const ProjectDetails = () => {
       case 'Em Andamento': return 'bg-blue-100 text-blue-700 border-blue-200';
       case 'Concluído': return 'bg-green-100 text-green-700 border-green-200';
       case 'Pausado': return 'bg-orange-100 text-orange-700 border-orange-200';
-      default: return 'bg-gray-100 text-gray-700 border-gray-200';
+      default: return 'bg-gray-100 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-slate-600';
     }
   };
 
@@ -179,32 +179,32 @@ const ProjectDetails = () => {
       
       {/* Topo da página contendo controles básicos de retorno e edição */}
       <div className="flex justify-between items-center mb-6">
-        <button onClick={() => navigate('/projects')} className="flex items-center gap-2 text-gray-500 hover:text-black font-bold text-sm transition-colors">
+        <button onClick={() => navigate('/projects')} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black font-bold text-sm transition-colors">
             <ArrowLeft size={18}/> Voltar
         </button>
-        <button onClick={openEditModal} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold hover:bg-gray-50 shadow-sm transition-all">
+        <button onClick={openEditModal} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl text-xs font-bold hover:bg-gray-50 dark:bg-slate-900 shadow-sm transition-all">
             <Edit3 size={16}/> Editar Projeto
         </button>
       </div>
       
       {/* Quadro dinâmico de apresentação das informações essenciais de progressão */}
-      <div className="bg-white rounded-3xl border border-gray-200 shadow-sm mb-8 overflow-hidden relative">
+      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-200 dark:border-slate-600 shadow-sm mb-8 overflow-hidden relative">
           <div className="h-32 w-full bg-cover bg-center absolute top-0 left-0 opacity-10" style={{ backgroundImage: `url(${project.coverImage || 'https://ui-avatars.com/api/?background=random'})` }}></div>
           <div className="relative z-10 p-8 pt-12 flex flex-col md:flex-row gap-8 items-start">
-              <img src={project.coverImage || `https://ui-avatars.com/api/?name=${project.name}&background=random`} className="w-24 h-24 rounded-2xl object-cover shadow-lg border-4 border-white bg-white" alt="Logo"/>
+              <img src={project.coverImage || `https://ui-avatars.com/api/?name=${project.name}&background=random`} className="w-24 h-24 rounded-2xl object-cover shadow-lg border-4 border-white bg-white dark:bg-slate-800" alt="Logo"/>
               <div className="flex-1 space-y-3 mt-2">
                   <div className="flex flex-wrap items-center gap-3">
-                      <h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight leading-none">{project.name}</h1>
+                      <h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white tracking-tight leading-none">{project.name}</h1>
                       <span className="px-3 py-1 bg-black text-white text-xs font-mono font-bold rounded-lg shadow-sm">v{project.version || '1.0'}</span>
                   </div>
                   <div className="flex flex-wrap gap-3 text-sm text-gray-600">
                       <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase border ${getStatusColor(project.status)}`}>{project.status}</span>
-                      <div className="flex items-center gap-2 bg-gray-50 px-3 py-1 rounded-lg border border-gray-100"><User size={14} className="text-gray-400"/><span className="font-bold">{getLeaderName(project.leader)}</span></div>
-                      <div className="flex items-center gap-2 bg-gray-50 px-3 py-1 rounded-lg border border-gray-100"><Calendar size={14} className="text-gray-400"/><span className="font-bold">{project.deadline ? new Date(project.deadline).toLocaleDateString('pt-BR') : "Sem prazo"}</span></div>
+                      <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-900 px-3 py-1 rounded-lg border border-gray-100 dark:border-slate-700"><User size={14} className="text-gray-400 dark:text-gray-500"/><span className="font-bold">{getLeaderName(project.leader)}</span></div>
+                      <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-900 px-3 py-1 rounded-lg border border-gray-100 dark:border-slate-700"><Calendar size={14} className="text-gray-400 dark:text-gray-500"/><span className="font-bold">{project.deadline ? new Date(project.deadline).toLocaleDateString('pt-BR') : "Sem prazo"}</span></div>
                   </div>
               </div>
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm min-w-[160px] text-center hidden md:block">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">Progresso</p>
+              <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm min-w-[160px] text-center hidden md:block">
+                  <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Progresso</p>
                   <div className="flex justify-center items-end gap-1"><span className={`text-4xl font-black ${project.progress === 100 ? 'text-green-600' : 'text-blue-600'}`}>{project.progress || 0}%</span></div>
                   <div className="w-full bg-gray-100 h-1.5 rounded-full mt-2 overflow-hidden"><div className={`h-full ${project.progress === 100 ? 'bg-green-500' : 'bg-blue-600'}`} style={{ width: `${project.progress || 0}%` }}></div></div>
               </div>
@@ -214,8 +214,8 @@ const ProjectDetails = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           <div className="lg:col-span-1 space-y-6">
-              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-                  <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"><Target size={18} className="text-brand"/> Escopo</h3>
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-200 dark:border-slate-600 shadow-sm">
+                  <h3 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"><Target size={18} className="text-brand"/> Escopo</h3>
                   <p className="text-sm text-gray-600 leading-relaxed text-justify">{project.description || "Nenhuma descrição."}</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -228,21 +228,21 @@ const ProjectDetails = () => {
                       <p className="text-lg font-black">{project.priority || 'Média'}</p>
                   </div>
               </div>
-              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-                  <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"><Users size={18} className="text-brand"/> Equipe</h3>
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-200 dark:border-slate-600 shadow-sm">
+                  <h3 className="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"><Users size={18} className="text-brand"/> Equipe</h3>
                   <div className="flex -space-x-2 overflow-hidden mb-2">
                       <div className="h-8 w-8 rounded-full ring-2 ring-white bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600">{getLeaderName(project.leader).substring(0,2)}</div>
                       <div className="h-8 w-8 rounded-full ring-2 ring-white bg-gray-800 flex items-center justify-center text-xs font-bold text-white">+</div>
                   </div>
-                  <p className="text-xs text-gray-400">Gerido por {project.leader || 'TI'}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Gerido por {project.leader || 'TI'}</p>
               </div>
           </div>
 
           <div className="lg:col-span-2">
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 shadow-sm overflow-hidden flex flex-col">
                   
-                  <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                      <h3 className="font-black text-gray-900 flex items-center gap-2">
+                  <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50/50">
+                      <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2">
                           <FileText size={20} className="text-brand"/> Diário de Bordo
                       </h3>
                       {!isAddingLog && (
@@ -259,12 +259,12 @@ const ProjectDetails = () => {
                               autoFocus
                               value={newLog}
                               onChange={e => setNewLog(e.target.value)}
-                              className="w-full p-4 border-2 border-yellow-200 rounded-xl text-sm focus:outline-none focus:border-yellow-500 bg-white shadow-sm"
+                              className="w-full p-4 border-2 border-yellow-200 rounded-xl text-sm focus:outline-none focus:border-yellow-500 bg-white dark:bg-slate-800 shadow-sm"
                               rows="5"
                               placeholder="Status:&#10;O que foi feito:"
                           />
                           <div className="flex justify-end gap-3 mt-3">
-                              <button onClick={() => setIsAddingLog(false)} className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-black">Cancelar</button>
+                              <button onClick={() => setIsAddingLog(false)} className="px-4 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black">Cancelar</button>
                               <button onClick={handleAddLog} className="px-5 py-2 bg-yellow-500 text-white rounded-lg text-xs font-bold hover:bg-yellow-600 shadow-md flex items-center gap-2">
                                   <Save size={16}/> Salvar
                               </button>
@@ -275,7 +275,7 @@ const ProjectDetails = () => {
                   {/* Percorre o histórico e exibe a linha do tempo do projeto */}
                   <div className="p-6 space-y-8">
                       {totalLogs === 0 ? (
-                          <div className="text-center py-12 text-gray-400">
+                          <div className="text-center py-12 text-gray-400 dark:text-gray-500">
                               <BarChart3 size={48} className="mx-auto mb-3 opacity-20"/>
                               <p className="text-sm">Nenhum histórico registrado.</p>
                           </div>
@@ -285,7 +285,7 @@ const ProjectDetails = () => {
                               return (
                                   <div key={index} className="flex gap-5 group/item">
                                       <div className="flex flex-col items-center">
-                                          <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center border-2 border-gray-100 group-hover/item:border-blue-500 group-hover/item:text-blue-600 text-gray-300 transition-colors shadow-sm z-10">
+                                          <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center border-2 border-gray-100 dark:border-slate-700 group-hover/item:border-blue-500 group-hover/item:text-blue-600 text-gray-300 transition-colors shadow-sm z-10">
                                               <CheckCircle size={18} />
                                           </div>
                                           {/* Traço conectivo visual desabilitado apenas no último registro */}
@@ -293,7 +293,7 @@ const ProjectDetails = () => {
                                       </div>
 
                                       <div className="pb-8 flex-1 min-w-0">
-                                          <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 group-hover/item:border-blue-200 group-hover/item:shadow-md transition-all relative">
+                                          <div className="bg-gray-50 dark:bg-slate-900 p-5 rounded-2xl border border-gray-100 dark:border-slate-700 group-hover/item:border-blue-200 group-hover/item:shadow-md transition-all relative">
                                               <button 
                                                   onClick={() => handleDeleteLog(log)}
                                                   className="absolute top-4 right-4 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover/item:opacity-100 transition-all z-20"
@@ -302,16 +302,16 @@ const ProjectDetails = () => {
                                                   <Trash2 size={14}/>
                                               </button>
 
-                                              <div className="flex flex-wrap justify-between items-center mb-3 pb-3 border-b border-gray-200 pr-8">
+                                              <div className="flex flex-wrap justify-between items-center mb-3 pb-3 border-b border-gray-200 dark:border-slate-600 pr-8">
                                                   <div className="flex items-center gap-2">
                                                       {version && <span className="text-[10px] font-black bg-black text-white px-2 py-1 rounded shadow-sm">{version}</span>}
-                                                      <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider flex items-center gap-1">
+                                                      <span className="text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 tracking-wider flex items-center gap-1">
                                                           <Clock size={12}/> {date || "Data desconhecida"}
                                                       </span>
                                                   </div>
                                               </div>
 
-                                              <div className="text-sm text-gray-700 font-medium leading-relaxed whitespace-pre-wrap font-sans">
+                                              <div className="text-sm text-gray-700 dark:text-gray-200 font-medium leading-relaxed whitespace-pre-wrap font-sans">
                                                   {content}
                                               </div>
                                           </div>
@@ -324,10 +324,10 @@ const ProjectDetails = () => {
 
                   {/* Controle de expansão do painel de atividades */}
                   {totalLogs > 3 && (
-                      <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-center">
+                      <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 flex justify-center">
                           <button 
                               onClick={() => setShowAllLogs(!showAllLogs)}
-                              className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-black bg-white px-4 py-2 rounded-full border border-gray-200 shadow-sm hover:shadow-md transition-all"
+                              className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black bg-white dark:bg-slate-800 px-4 py-2 rounded-full border border-gray-200 dark:border-slate-600 shadow-sm hover:shadow-md transition-all"
                           >
                               {showAllLogs ? (
                                   <><ChevronUp size={14}/> Recolher Histórico ({totalLogs})</>
@@ -343,48 +343,48 @@ const ProjectDetails = () => {
 
       {isEditModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-black text-gray-900 flex items-center gap-2"><Edit3 size={20}/> Editar Projeto</h2>
+                <h2 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2"><Edit3 size={20}/> Editar Projeto</h2>
                 <button onClick={() => setIsEditModalOpen(false)}><X size={20}/></button>
             </div>
             
             <form onSubmit={handleSaveChanges} className="space-y-4">
               <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase">Nome do Projeto</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Nome do Projeto</label>
                   <input required value={editFormData.name} onChange={e => setEditFormData({...editFormData, name: e.target.value})} className="w-full p-3 border rounded-xl font-bold mt-1 outline-none focus:border-black" />
               </div>
               <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase">URL da Capa (Logo)</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">URL da Capa (Logo)</label>
                   <div className="flex gap-2">
                       <input value={editFormData.coverImage} onChange={e => setEditFormData({...editFormData, coverImage: e.target.value})} className="w-full p-3 border rounded-xl mt-1 text-sm text-blue-600 outline-none focus:border-black" placeholder="https://..." />
-                      <div className="p-3 bg-gray-100 rounded-xl mt-1 border border-gray-200"><ImageIcon size={20} className="text-gray-400"/></div>
+                      <div className="p-3 bg-gray-100 rounded-xl mt-1 border border-gray-200 dark:border-slate-600"><ImageIcon size={20} className="text-gray-400 dark:text-gray-500"/></div>
                   </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                   <div>
-                      <label className="text-xs font-bold text-gray-500 uppercase">Versão Atual</label>
+                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Versão Atual</label>
                       <input value={editFormData.version} onChange={e => setEditFormData({...editFormData, version: e.target.value})} className="w-full p-3 border rounded-xl mt-1 font-mono text-sm" />
                   </div>
                   <div>
-                      <label className="text-xs font-bold text-gray-500 uppercase">Progresso (%)</label>
+                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Progresso (%)</label>
                       <input type="number" value={editFormData.progress} onChange={e => setEditFormData({...editFormData, progress: e.target.value})} className="w-full p-3 border rounded-xl mt-1 text-sm" />
                   </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                   <div>
-                      <label className="text-xs font-bold text-gray-500 uppercase">Líder</label>
+                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Líder</label>
                       <input value={editFormData.leader} onChange={e => setEditFormData({...editFormData, leader: e.target.value})} className="w-full p-3 border rounded-xl mt-1 text-sm" />
                   </div>
                   <div>
-                      <label className="text-xs font-bold text-gray-500 uppercase">Orçamento (R$)</label>
+                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Orçamento (R$)</label>
                       <input value={editFormData.budget} onChange={e => setEditFormData({...editFormData, budget: e.target.value})} className="w-full p-3 border rounded-xl mt-1 text-sm" placeholder="0,00" />
                   </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                   <div>
-                      <label className="text-xs font-bold text-gray-500 uppercase">Status</label>
-                      <select value={editFormData.status} onChange={e => setEditFormData({...editFormData, status: e.target.value})} className="w-full p-3 border rounded-xl mt-1 bg-white text-sm">
+                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Status</label>
+                      <select value={editFormData.status} onChange={e => setEditFormData({...editFormData, status: e.target.value})} className="w-full p-3 border rounded-xl mt-1 bg-white dark:bg-slate-800 text-sm">
                           <option>Planejamento</option>
                           <option>Em Andamento</option>
                           <option>Pausado</option>
@@ -392,8 +392,8 @@ const ProjectDetails = () => {
                       </select>
                   </div>
                   <div>
-                      <label className="text-xs font-bold text-gray-500 uppercase">Prioridade</label>
-                      <select value={editFormData.priority} onChange={e => setEditFormData({...editFormData, priority: e.target.value})} className="w-full p-3 border rounded-xl mt-1 bg-white text-sm">
+                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Prioridade</label>
+                      <select value={editFormData.priority} onChange={e => setEditFormData({...editFormData, priority: e.target.value})} className="w-full p-3 border rounded-xl mt-1 bg-white dark:bg-slate-800 text-sm">
                           <option>Baixa</option>
                           <option>Média</option>
                           <option>Alta</option>
@@ -402,7 +402,7 @@ const ProjectDetails = () => {
                   </div>
               </div>
               <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase">Descrição</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Descrição</label>
                   <textarea value={editFormData.description} onChange={e => setEditFormData({...editFormData, description: e.target.value})} className="w-full p-3 border rounded-xl mt-1 text-sm" rows="3"></textarea>
               </div>
               <div className="pt-2">
