@@ -35,6 +35,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AgentManager = lazy(() => import('./pages/AgentManager'));
 const Register = lazy(() => import('./pages/Register'));
 const UserManager = lazy(() => import('./pages/UserManager'));
+const TenantManager = lazy(() => import('./pages/TenantManager'));
 
 function App() {
   return (
@@ -114,6 +115,10 @@ function App() {
 
           <Route path="/users" element={
             <PrivateRoute><Layout><UserManager /></Layout></PrivateRoute>
+          } />
+
+          <Route path="/admin/tenants" element={
+            <PrivateRoute><Layout><TenantManager /></Layout></PrivateRoute>
           } />
 
         </Routes>

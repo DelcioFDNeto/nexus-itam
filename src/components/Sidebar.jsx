@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { 
   LayoutDashboard, Server, PlusSquare, FileInput, 
   Users, LogOut, ClipboardCheck, X, ShieldCheck, Layers, Globe,
-  FolderGit2, Settings, ChevronLeft, ChevronRight, Menu, Search, Activity, UserCog
+  FolderGit2, Settings, ChevronLeft, ChevronRight, Menu, Search, Activity, UserCog, Building2
 } from 'lucide-react';
 import Logo from './Logo';
 
@@ -55,10 +55,17 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
     { path: '/import', icon: <FileInput size={isCollapsed ? 24 : 20} />, label: 'Importação' },
   ];
 
-  if (currentUser?.role === 'owner') {
+  if (currentUser?.role === 'owner' || currentUser?.role === 'superadmin') {
     systemItems.push(
       { path: '/users', icon: <UserCog size={isCollapsed ? 24 : 20} />, label: 'Acessos' },
       { path: '/settings', icon: <Settings size={isCollapsed ? 24 : 20} />, label: 'Configurações' }
+    );
+  }
+
+  const superAdminItems = [];
+  if (currentUser?.role === 'superadmin') {
+    superAdminItems.push(
+      { path: '/admin/tenants', icon: <Building2 size={isCollapsed ? 24 : 20} />, label: 'Empresas' }
     );
   }
 
@@ -149,7 +156,8 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
           {[
               { title: 'Visão Geral', items: mainItems },
               { title: 'Gestão', items: manageItems },
-              { title: 'Sistema', items: systemItems }
+              { title: 'Sistema', items: systemItems },
+              ...(superAdminItems.length > 0 ? [{ title: 'Admin Global', items: superAdminItems }] : [])
           ].map((group, idx) => (
              <div key={idx} className="space-y-1 mt-6">
                {!isCollapsed && <p className="px-7 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{group.title}</p>}
