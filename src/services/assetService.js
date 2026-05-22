@@ -60,7 +60,14 @@ export const getAssetHistory = async (assetId, limitCount = 20) => {
 export const getGlobalActivity = async (limitCount = 20) => {
   const q = query(historyCollection, orderBy('date', 'desc'), limit(limitCount));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return { 
+          id: doc.id, 
+          ...data,
+          jsDate: data.date?.toDate ? data.date.toDate() : new Date(data.date)
+      };
+  });
 };
 
 // --- DASHBOARD & REPORTS ---
