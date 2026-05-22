@@ -256,7 +256,7 @@ const Dashboard = () => {
           </div>
           <div className="relative z-10">
             <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-0.5 tracking-tighter">{assets.length}</h2>
-            <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Ativos</p>
+            <p className="text-gray-500 dark:text-gray-400 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Ativos</p>
           </div>
         </div>
 
@@ -268,7 +268,7 @@ const Dashboard = () => {
             </div>
             <div className="relative z-10">
               <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-0.5 tracking-tighter">{totalTenants}</h2>
-              <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Empresas</p>
+              <p className="text-gray-500 dark:text-gray-400 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Empresas</p>
             </div>
           </div>
         ) : (
@@ -282,7 +282,7 @@ const Dashboard = () => {
                 <span className="text-xs md:text-sm font-bold text-gray-400 dark:text-gray-500">R$</span>
                 <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white tracking-tighter">{(totalValue / 1000).toFixed(0)}k</h2>
               </div>
-              <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Valor</p>
+              <p className="text-gray-500 dark:text-gray-400 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Valor</p>
             </div>
           </div>
         )}
@@ -295,7 +295,7 @@ const Dashboard = () => {
           </div>
           <div className="relative z-10">
             <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-0.5 tracking-tighter">{totalEmployees}</h2>
-            <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Equipe</p>
+            <p className="text-gray-500 dark:text-gray-400 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Equipe</p>
           </div>
         </div>
 
@@ -307,7 +307,7 @@ const Dashboard = () => {
           </div>
           <div className="relative z-10">
             <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-0.5 tracking-tighter">{totalProjects}</h2>
-            <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Projetos</p>
+            <p className="text-gray-500 dark:text-gray-400 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Projetos</p>
           </div>
         </div>
 
@@ -339,7 +339,7 @@ const Dashboard = () => {
               <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 text-lg tracking-tight">
                 <BarChart3 size={20} className="text-indigo-500"/> Categorias de Ativos
               </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium mt-1">Volume por tipo de hardware</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">Volume por tipo de hardware</p>
             </div>
             <div className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider">
               Volume
@@ -356,7 +356,7 @@ const Dashboard = () => {
             <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 text-lg tracking-tight">
               <PieChart size={20} className="text-emerald-500"/> Status Operacional
             </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium mt-1">Disponibilidade do parque</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">Disponibilidade do parque</p>
           </div>
           
           <div className="flex-1 relative flex items-center justify-center min-h-[160px]">
@@ -417,7 +417,7 @@ const Dashboard = () => {
               <h3 className="font-black text-gray-900 dark:text-white text-lg flex items-center gap-2 tracking-tight">
                 <Activity size={20} className="text-brand"/> Log de Operações
               </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium mt-1">Rastreabilidade em tempo real</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">Rastreabilidade em tempo real</p>
             </div>
             <button className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg uppercase tracking-widest hover:bg-indigo-100 transition-colors">
               Ver Tudo

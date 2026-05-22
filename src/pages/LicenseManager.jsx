@@ -133,7 +133,7 @@ const LicenseManager = () => {
           <h1 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
             <ShieldCheck className="text-brand" /> Licenças & Software
           </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Gestão de chaves, contratos e ativações.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Gestão de chaves, contratos e ativações.</p>
         </div>
         <button onClick={() => setIsFormOpen(true)} className="bg-black text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-gray-800 transition shadow-lg hover:scale-105 active:scale-95">
           <Plus size={20} /> Nova Licença
@@ -162,10 +162,10 @@ const LicenseManager = () => {
         {loading ? (
             <div className="col-span-full text-center py-10">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-                <p className="mt-2 text-gray-500 dark:text-gray-400 dark:text-gray-500">Carregando licenças...</p>
+                <p className="mt-2 text-gray-500 dark:text-gray-400">Carregando licenças...</p>
             </div>
         ) : filteredLicenses.length === 0 ? (
-            <div className="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 dark:text-gray-500">
+            <div className="col-span-full text-center py-10 text-gray-500 dark:text-gray-400">
                 Nenhuma licença encontrada.
             </div>
         ) : (
@@ -206,7 +206,7 @@ const LicenseManager = () => {
 
                     {/* A serial key em si, destacada e com acesso de um clique para cópia */}
                     <div className="flex items-center gap-2 text-sm font-mono bg-gray-50 dark:bg-slate-900 p-2 rounded border border-gray-200 dark:border-slate-600 mb-4 select-all relative group">
-                        <span className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold text-xs select-none">KEY:</span>
+                        <span className="text-gray-500 dark:text-gray-400 font-bold text-xs select-none">KEY:</span>
                         <span className="font-bold text-gray-800 dark:text-gray-100 truncate flex-1" title={license.key}>{license.key}</span>
                         <button 
                             onClick={() => { navigator.clipboard.writeText(license.key); toast.success("Chave copiada para a área de transferência!"); }} 
@@ -219,7 +219,7 @@ const LicenseManager = () => {
 
                     {/* Termômetro visual para ver de longe a porcentagem de instalações executadas vs compradas */}
                     <div className="mb-4">
-                        <div className="flex justify-between text-xs font-bold uppercase mb-1 text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                        <div className="flex justify-between text-xs font-bold uppercase mb-1 text-gray-500 dark:text-gray-400">
                             <span>Utilização</span>
                             <span className={`${used >= total ? 'text-red-600' : 'text-green-600'}`}>{used} / {total}</span>
                         </div>
@@ -288,16 +288,16 @@ const LicenseManager = () => {
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Nome do Software</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Nome do Software</label>
                   <input required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none transition-all" placeholder="Ex: Microsoft Office 2021 Home & Business" value={formData.softwareName} onChange={e => setFormData({ ...formData, softwareName: e.target.value })} />
               </div>
               <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Chave de Ativação (Key)</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Chave de Ativação (Key)</label>
                   <input required className="w-full p-3 border border-gray-300 rounded-lg font-mono bg-gray-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-black outline-none transition-all" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" value={formData.key} onChange={e => setFormData({ ...formData, key: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Tipo</label>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Tipo</label>
                     <div className="relative">
                         <select className="w-full p-3 border border-gray-300 rounded-lg bg-white dark:bg-slate-800 appearance-none focus:ring-2 focus:ring-black outline-none transition-all cursor-pointer" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })}>
                             <option>Vitalícia</option>
@@ -310,12 +310,12 @@ const LicenseManager = () => {
                     </div>
                 </div>
                 <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Quantidade (Seats)</label>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Quantidade (Seats)</label>
                     <input type="number" min="1" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none transition-all" value={formData.totalSeats} onChange={e => setFormData({ ...formData, totalSeats: e.target.value })} />
                 </div>
               </div>
               <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Expiração (Opcional)</label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Expiração (Opcional)</label>
                   <input type="date" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none transition-all text-gray-600" value={formData.expirationDate} onChange={e => setFormData({ ...formData, expirationDate: e.target.value })} />
               </div>
               <div className="pt-2">

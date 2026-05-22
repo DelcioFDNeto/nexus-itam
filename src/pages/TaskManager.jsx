@@ -130,7 +130,7 @@ const TaskManager = () => {
              {/* Botões microscópicos de atalho pra jogar a tarefa pra lá e pra cá num clique */}
              <div className="flex gap-1">
                  {task.status !== 'A Fazer' && (
-                     <button onClick={() => moveTask(task, 'A Fazer')} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-[10px] text-gray-500 dark:text-gray-400 dark:text-gray-500" title="Mover para A Fazer">←</button>
+                     <button onClick={() => moveTask(task, 'A Fazer')} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-[10px] text-gray-500 dark:text-gray-400" title="Mover para A Fazer">←</button>
                  )}
                  {task.status !== 'Concluído' && (
                      <button onClick={() => moveTask(task, 'Concluído')} className="w-6 h-6 rounded-full bg-green-100 hover:bg-green-200 flex items-center justify-center text-[10px] text-green-700 font-bold" title="Concluir">✓</button>
@@ -149,7 +149,7 @@ const TaskManager = () => {
               <h1 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
                   <CheckSquare className="text-brand"/> Gestão de Tarefas
               </h1>
-              <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">Organize o fluxo de trabalho diário.</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Organize o fluxo de trabalho diário.</p>
           </div>
           
           <div className="flex items-center gap-2 bg-white dark:bg-slate-800 p-1 rounded-xl border border-gray-200 dark:border-slate-600 shadow-sm">
@@ -181,7 +181,7 @@ const TaskManager = () => {
                       <div key={col.id} className="min-w-[280px] w-full flex-1 flex flex-col bg-gray-50/80 rounded-2xl border border-gray-200 dark:border-slate-600">
                           <div className={`p-3 border-b ${col.color.split(' ')[1]} rounded-t-2xl flex justify-between items-center bg-white/50 backdrop-blur-sm`}>
                               <h3 className="font-bold text-gray-700 dark:text-gray-200 text-sm uppercase tracking-wide">{col.label}</h3>
-                              <span className="bg-white dark:bg-slate-800 px-2 py-0.5 rounded text-xs font-bold border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-gray-400 dark:text-gray-500">{getTasksByStatus(col.id).length}</span>
+                              <span className="bg-white dark:bg-slate-800 px-2 py-0.5 rounded text-xs font-bold border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-gray-400">{getTasksByStatus(col.id).length}</span>
                           </div>
                           <div className="p-2 space-y-2 overflow-y-auto max-h-[60vh] custom-scrollbar">
                               {getTasksByStatus(col.id).map(task => <TaskCard key={task.id} task={task} />)}
@@ -210,8 +210,8 @@ const TaskManager = () => {
                               <div className="flex-1">
                                   <p className={`font-bold text-sm ${task.status === 'Concluído' ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>{task.title}</p>
                                   <div className="flex gap-2 mt-1">
-                                      <span className="text-[10px] bg-gray-100 text-gray-500 dark:text-gray-400 dark:text-gray-500 px-1.5 rounded">{task.priority}</span>
-                                      <span className="text-[10px] bg-gray-100 text-gray-500 dark:text-gray-400 dark:text-gray-500 px-1.5 rounded">{task.category || 'Geral'}</span>
+                                      <span className="text-[10px] bg-gray-100 text-gray-500 dark:text-gray-400 px-1.5 rounded">{task.priority}</span>
+                                      <span className="text-[10px] bg-gray-100 text-gray-500 dark:text-gray-400 px-1.5 rounded">{task.category || 'Geral'}</span>
                                   </div>
                               </div>
                               <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -236,12 +236,12 @@ const TaskManager = () => {
                   
                   <form onSubmit={handleUpdateTask} className="space-y-4">
                       <div>
-                          <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Título</label>
+                          <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Título</label>
                           <input required value={editingTask.title} onChange={e => setEditingTask({...editingTask, title: e.target.value})} className="w-full p-3 border rounded-xl font-bold outline-none focus:border-black mt-1" />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                           <div>
-                              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Status</label>
+                              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Status</label>
                               <select value={editingTask.status} onChange={e => setEditingTask({...editingTask, status: e.target.value})} className="w-full p-3 border rounded-xl bg-white dark:bg-slate-800 outline-none mt-1 text-sm">
                                   <option>A Fazer</option>
                                   <option>Em Andamento</option>
@@ -250,7 +250,7 @@ const TaskManager = () => {
                               </select>
                           </div>
                           <div>
-                              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Prioridade</label>
+                              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Prioridade</label>
                               <select value={editingTask.priority} onChange={e => setEditingTask({...editingTask, priority: e.target.value})} className="w-full p-3 border rounded-xl bg-white dark:bg-slate-800 outline-none mt-1 text-sm">
                                   <option>Baixa</option>
                                   <option>Média</option>

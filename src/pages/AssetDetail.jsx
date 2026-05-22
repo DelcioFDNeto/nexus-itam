@@ -902,7 +902,7 @@ const AssetDetail = () => {
       <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <button
           onClick={() => navigate("/assets")}
-          className="group flex items-center text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black transition-colors font-bold text-sm"
+          className="group flex items-center text-gray-500 dark:text-gray-400 hover:text-black transition-colors font-bold text-sm"
         >
           <div className="p-2 rounded-full group-hover:bg-gray-100 transition-all mr-2">
             <ArrowLeft size={20} />
@@ -992,7 +992,7 @@ const AssetDetail = () => {
               {asset.model}
             </h1>
 
-            <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-sm font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500">
+            <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-sm font-medium text-gray-500 dark:text-gray-400">
               <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-gray-100 dark:border-slate-700 group">
                 <Tag size={16} className="text-black" />
                 <span className="font-mono font-bold text-gray-900 dark:text-white">
@@ -1024,13 +1024,13 @@ const AssetDetail = () => {
       <div className="md:hidden flex mb-6 bg-gray-100 p-1 rounded-xl">
         <button
           onClick={() => setActiveTab("details")}
-          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "details" ? "bg-white dark:bg-slate-800 shadow-sm text-black" : "text-gray-500 dark:text-gray-400 dark:text-gray-500"}`}
+          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "details" ? "bg-white dark:bg-slate-800 shadow-sm text-black" : "text-gray-500 dark:text-gray-400"}`}
         >
           Detalhes
         </button>
         <button
           onClick={() => setActiveTab("history")}
-          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "history" ? "bg-white dark:bg-slate-800 shadow-sm text-black" : "text-gray-500 dark:text-gray-400 dark:text-gray-500"}`}
+          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "history" ? "bg-white dark:bg-slate-800 shadow-sm text-black" : "text-gray-500 dark:text-gray-400"}`}
         >
           Histórico
         </button>
@@ -1054,11 +1054,11 @@ const AssetDetail = () => {
                 <p className="font-bold text-gray-900 dark:text-white text-lg">
                   {responsibleName}
                 </p>
-                <div className="flex items-center gap-2 mt-2 text-xs font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                <div className="flex items-center gap-2 mt-2 text-xs font-medium text-gray-500 dark:text-gray-400">
                   <Building2 size={12} /> {derivedSector}
                 </div>
                 {asset.clientCpf && (
-                  <div className="flex items-center gap-2 mt-2 text-xs font-mono font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                  <div className="flex items-center gap-2 mt-2 text-xs font-mono font-medium text-gray-500 dark:text-gray-400">
                     <FileText size={12} /> CPF: {asset.clientCpf}
                   </div>
                 )}
@@ -1070,7 +1070,7 @@ const AssetDetail = () => {
                 <p className="font-bold text-gray-900 dark:text-white text-lg">
                   {expandLocation(asset.location)}
                 </p>
-                <div className="flex items-center gap-2 mt-2 text-xs font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                <div className="flex items-center gap-2 mt-2 text-xs font-medium text-gray-500 dark:text-gray-400">
                   <MapPin size={12} />{" "}
                   {asset.locationDetails || "Sem detalhes de sala/mesa"}
                 </div>

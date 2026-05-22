@@ -92,7 +92,7 @@ const ProjectsPage = () => {
                 <img src={project.coverImage || `https://ui-avatars.com/api/?name=${project.name || 'Projeto'}&background=random`} alt="Logo" className="w-10 h-10 rounded-lg object-cover shadow-sm bg-gray-100" />
                 <div>
                     <h3 className="font-bold text-gray-900 dark:text-white leading-tight group-hover:text-blue-600 transition-colors line-clamp-1">{project.name}</h3>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400 dark:text-gray-500 font-mono uppercase mt-0.5">v{project.version}</p>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400 font-mono uppercase mt-0.5">v{project.version}</p>
                 </div>
             </div>
             {viewMode === 'grid' && (
@@ -102,7 +102,7 @@ const ProjectsPage = () => {
             )}
         </div>
 
-        <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 leading-relaxed line-clamp-2 mb-4 flex-1">{project.description}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2 mb-4 flex-1">{project.description}</p>
 
         <div className="mt-auto space-y-3">
             {/* Termômetro pintado dinamicamente que corre de 0 a 100% */}
@@ -152,7 +152,7 @@ const ProjectsPage = () => {
           <h1 className="text-3xl font-black text-gray-900 dark:text-white flex items-center gap-3">
             <FolderGit2 className="text-brand" size={32} /> Central de Projetos
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1">Gerencie iniciativas, prazos e entregas de forma visual.</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Gerencie iniciativas, prazos e entregas de forma visual.</p>
         </div>
         
         <div className="flex items-center gap-3 bg-white dark:bg-slate-800 p-1 rounded-xl border border-gray-200 dark:border-slate-600 shadow-sm">
@@ -189,7 +189,7 @@ const ProjectsPage = () => {
                         <div key={col.id} className="min-w-[320px] w-[350px] flex-shrink-0 flex flex-col bg-gray-50/50 rounded-2xl border border-gray-200 dark:border-slate-600/60 max-h-full">
                             <div className={`p-4 border-b ${col.color.split(' ')[1]} rounded-t-2xl flex justify-between items-center sticky top-0 bg-white/50 backdrop-blur-sm z-10`}>
                                 <h3 className="font-bold text-gray-700 dark:text-gray-200">{col.label}</h3>
-                                <span className="bg-white dark:bg-slate-800 px-2 py-0.5 rounded-full text-xs font-bold border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-gray-400 dark:text-gray-500 shadow-sm">
+                                <span className="bg-white dark:bg-slate-800 px-2 py-0.5 rounded-full text-xs font-bold border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-gray-400 shadow-sm">
                                     {getProjectsByStatus(col.id).length}
                                 </span>
                             </div>

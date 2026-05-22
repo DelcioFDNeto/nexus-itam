@@ -474,7 +474,7 @@ const AssetList = () => {
                   onClick={() =>
                     setFilterStatus(filterStatus === st ? "Todos" : st)
                   }
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${filterStatus === st ? "bg-black text-white shadow-md" : "text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-200"}`}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${filterStatus === st ? "bg-black text-white shadow-md" : "text-gray-500 dark:text-gray-400 hover:bg-gray-200"}`}
                 >
                   {st}
                 </button>
@@ -483,7 +483,7 @@ const AssetList = () => {
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="bg-transparent text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 outline-none cursor-pointer hover:text-black"
+                className="bg-transparent text-xs font-bold text-gray-500 dark:text-gray-400 outline-none cursor-pointer hover:text-black"
               >
                 <option value="Todos">Mais Filtros</option>
                 {statusOptions.slice(3).map((st) => (
@@ -548,7 +548,7 @@ const AssetList = () => {
               setSortBy(nextSort);
               setSortOrder(nextSort === "createdAt" ? "desc" : "asc");
             }}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${sortBy === "createdAt" ? "bg-black text-white border-black shadow-lg scale-105" : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 dark:text-gray-500 border-gray-200 dark:border-slate-600 hover:border-gray-300 hover:bg-gray-50 dark:bg-slate-900"}`}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${sortBy === "createdAt" ? "bg-black text-white border-black shadow-lg scale-105" : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-slate-600 hover:border-gray-300 hover:bg-gray-50 dark:bg-slate-900"}`}
           >
             <Clock size={16} /> Recentes
           </button>
@@ -556,7 +556,7 @@ const AssetList = () => {
             <button
               key={f.value}
               onClick={() => setFilterType(f.value)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${filterType === f.value ? "bg-black text-white border-black shadow-lg scale-105" : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 dark:text-gray-500 border-gray-200 dark:border-slate-600 hover:border-gray-300 hover:bg-gray-50 dark:bg-slate-900"}`}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${filterType === f.value ? "bg-black text-white border-black shadow-lg scale-105" : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-slate-600 hover:border-gray-300 hover:bg-gray-50 dark:bg-slate-900"}`}
             >
               {f.icon} {f.label}
             </button>
@@ -627,7 +627,7 @@ const AssetList = () => {
                     </div>
                   </div>
 
-                  <div className="mt-5 pt-4 border-t border-gray-100 dark:border-slate-700 flex items-center justify-between text-xs font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500 relative z-10">
+                  <div className="mt-5 pt-4 border-t border-gray-100 dark:border-slate-700 flex items-center justify-between text-xs font-medium text-gray-500 dark:text-gray-400 relative z-10">
                     <div className="flex items-center gap-2 truncate max-w-[60%]">
                       <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center">
                         <User size={12} />
@@ -746,7 +746,7 @@ const AssetList = () => {
                             </div>
                           </td>
                           <td className="py-3 px-3">
-                            <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 text-[11px] xl:text-sm">
+                            <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-[11px] xl:text-sm">
                               <MapPin size={12} className="text-gray-400 dark:text-gray-500 shrink-0" />
                               <span className="truncate max-w-[90px] xl:max-w-[150px] font-medium" title={asset.location || "---"}>
                                 {asset.location || "---"}
@@ -844,7 +844,7 @@ const AssetList = () => {
               </button>
             </div>
             <div className="p-4">
-              <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-6 font-medium px-2">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 font-medium px-2">
                 Alterar status de <strong>{selectedIds.length}</strong> itens
                 selecionados:
               </p>

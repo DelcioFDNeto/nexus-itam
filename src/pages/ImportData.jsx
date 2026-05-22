@@ -289,7 +289,7 @@ const ImportData = () => {
             <h1 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
                 Importação de Dados
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Adicione registros em massa via Excel ou JSON</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Adicione registros em massa via Excel ou JSON</p>
         </div>
       </div>
 
@@ -325,7 +325,7 @@ const ImportData = () => {
                       <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                         {currentSchema.icon} Importar {currentSchema.label}
                       </h2>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1">{currentSchema.description}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{currentSchema.description}</p>
                       
                       <div className="mt-3 flex flex-wrap gap-2 text-xs">
                           <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded border border-gray-200 dark:border-slate-600 font-medium">Colunas Obrigatórias:</span>
@@ -369,7 +369,7 @@ const ImportData = () => {
                                     <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2">Pré-visualização (Amostra)</h4>
                                     <div className="overflow-x-auto border border-gray-200 dark:border-slate-600 rounded-lg">
                                         <table className="w-full text-left text-xs">
-                                            <thead className="bg-gray-50 dark:bg-slate-900 text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold">
+                                            <thead className="bg-gray-50 dark:bg-slate-900 text-gray-500 dark:text-gray-400 font-bold">
                                                 <tr>
                                                     {Object.keys(fileAnalysis.sample[0] || {}).map(k => <th key={k} className="p-2 border-b">{k}</th>)}
                                                 </tr>
@@ -400,7 +400,7 @@ const ImportData = () => {
                               <div className="text-center py-8">
                                   <div className="inline-flex p-4 bg-red-100 text-red-600 rounded-full mb-4"><AlertTriangle size={32}/></div>
                                   <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Colunas Obrigatórias Ausentes</h3>
-                                  <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-6 max-w-md mx-auto">O arquivo não possui as seguintes colunas exigidas para <strong>{currentSchema.label}</strong>:</p>
+                                  <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">O arquivo não possui as seguintes colunas exigidas para <strong>{currentSchema.label}</strong>:</p>
                                   
                                   <div className="flex flex-wrap justify-center gap-2 mb-8">
                                       {fileAnalysis.missingCols.map(col => (
@@ -408,7 +408,7 @@ const ImportData = () => {
                                       ))}
                                   </div>
 
-                                  <button onClick={() => setFileAnalysis(null)} className="text-sm font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black underline">Tentar outro arquivo</button>
+                                  <button onClick={() => setFileAnalysis(null)} className="text-sm font-bold text-gray-500 dark:text-gray-400 hover:text-black underline">Tentar outro arquivo</button>
                               </div>
                           )}
                       </div>

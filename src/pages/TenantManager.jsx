@@ -162,7 +162,7 @@ const TenantManager = () => {
         <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-gray-50 dark:bg-slate-900 text-gray-500 dark:text-gray-400 dark:text-gray-500 text-[10px] uppercase font-black tracking-widest border-b border-gray-100 dark:border-slate-700">
+                <tr className="bg-gray-50 dark:bg-slate-900 text-gray-500 dark:text-gray-400 text-[10px] uppercase font-black tracking-widest border-b border-gray-100 dark:border-slate-700">
                   <th className="p-4 pl-6">Empresa & ID</th>
                   <th className="p-4">Administrador / Owner</th>
                   <th className="p-4 text-center">Usuários</th>
@@ -184,7 +184,7 @@ const TenantManager = () => {
                     </tr>
                 ) : filteredTenants.length === 0 ? (
                     <tr>
-                        <td colSpan="7" className="p-8 text-center text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium">Nenhuma empresa encontrada com os termos de busca.</td>
+                        <td colSpan="7" className="p-8 text-center text-gray-500 dark:text-gray-400 font-medium">Nenhuma empresa encontrada com os termos de busca.</td>
                     </tr>
                 ) : (
                     filteredTenants.map(tenant => (
@@ -202,7 +202,7 @@ const TenantManager = () => {
                             </td>
                             <td className="p-4">
                                 <p className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-1.5"><UserCog size={14} className="text-gray-400 dark:text-gray-500"/> {tenant.adminName}</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 flex items-center gap-1.5 mt-0.5"><Mail size={12} className="text-gray-400 dark:text-gray-500"/> {tenant.adminEmail}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mt-0.5"><Mail size={12} className="text-gray-400 dark:text-gray-500"/> {tenant.adminEmail}</p>
                             </td>
                             <td className="p-4 text-center">
                                 <span className="bg-gray-100 text-gray-700 dark:text-gray-200 px-2.5 py-1 rounded-full text-xs font-black border border-gray-200 dark:border-slate-600">
@@ -217,7 +217,7 @@ const TenantManager = () => {
                             <td className="p-4 text-center">
                                 {getStatusBadge(tenant.status)}
                             </td>
-                            <td className="p-4 text-center text-xs font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                            <td className="p-4 text-center text-xs font-medium text-gray-500 dark:text-gray-400">
                                 {tenant.createdAt?.toDate ? new Date(tenant.createdAt.toDate()).toLocaleDateString('pt-BR') : 'N/A'}
                             </td>
                             <td className="p-4 pr-6 text-right">

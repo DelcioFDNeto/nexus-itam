@@ -198,7 +198,7 @@ const AssetForm = () => {
         
         {/* Cabeçalho da página de formulário com botão de retorno e título dinâmico */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-            <button onClick={() => navigate('/assets')} className="group flex items-center text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black transition-colors font-bold text-sm">
+            <button onClick={() => navigate('/assets')} className="group flex items-center text-gray-500 dark:text-gray-400 hover:text-black transition-colors font-bold text-sm">
                 <div className="p-2 rounded-full group-hover:bg-gray-100 transition-all mr-2"><ArrowLeft size={20} /></div>
                 Cancelar
             </button>
@@ -224,12 +224,12 @@ const AssetForm = () => {
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="md:col-span-2">
-                             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Nome / Modelo do Ativo</label>
+                             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Nome / Modelo do Ativo</label>
                              <input name="model" value={formData.model} onChange={handleChange} className="w-full p-4 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:bg-slate-800 focus:border-black rounded-xl outline-none font-bold text-lg transition-all placeholder:font-normal" required placeholder="Ex: Notebook Dell Latitude 3420" />
                         </div>
 
                         <div>
-                             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Patrimônio (Tag)</label>
+                             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Patrimônio (Tag)</label>
                              <div className="relative">
                                  <Tag size={18} className="absolute left-4 top-4 text-gray-400 dark:text-gray-500"/>
                                  <input name="internalId" value={formData.internalId} onChange={handleChange} className="w-full pl-11 pr-4 py-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:bg-slate-800 focus:border-black rounded-xl outline-none font-mono font-bold text-gray-900 dark:text-white transition-all uppercase" required placeholder="Ex: SHL-NB-001" />
@@ -237,19 +237,19 @@ const AssetForm = () => {
                         </div>
 
                         <div>
-                             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Serial Number</label>
+                             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Serial Number</label>
                              <input name="serialNumber" value={formData.serialNumber} onChange={handleChange} className="w-full p-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:bg-slate-800 focus:border-black rounded-xl outline-none font-mono text-sm font-bold text-gray-900 dark:text-white transition-all" placeholder="N/A" />
                         </div>
                     </div>
 
                     <div className="mt-8">
-                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3 block">Tipo de Equipamento</label>
+                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3 block">Tipo de Equipamento</label>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                             {assetTypes.map(t => {
                                 const Icon = t.icon;
                                 const isSelected = formData.type === t.id;
                                 return (
-                                    <button type="button" key={t.id} onClick={() => setFormData({...formData, type: t.id})} className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${isSelected ? 'border-black bg-black text-white shadow-lg scale-105' : 'border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:bg-slate-900'}`}>
+                                    <button type="button" key={t.id} onClick={() => setFormData({...formData, type: t.id})} className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${isSelected ? 'border-black bg-black text-white shadow-lg scale-105' : 'border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 hover:border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:bg-slate-900'}`}>
                                         <Icon size={20} />
                                         <span className="text-xs font-bold">{t.label}</span>
                                     </button>
@@ -266,24 +266,24 @@ const AssetForm = () => {
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {isMobile && (
                             <>
-                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">IMEI 1</label><input name="imei1" value={formData.imei1} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none font-mono text-sm" placeholder="Ex: 3569..." /></div>
-                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">IMEI 2 (Opcional)</label><input name="imei2" value={formData.imei2} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none font-mono text-sm" /></div>
+                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">IMEI 1</label><input name="imei1" value={formData.imei1} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none font-mono text-sm" placeholder="Ex: 3569..." /></div>
+                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">IMEI 2 (Opcional)</label><input name="imei2" value={formData.imei2} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none font-mono text-sm" /></div>
                             </>
                         )}
 
                         {isPrinter && (
-                            <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Contador de Páginas</label><input type="number" name="specs.pageCount" value={formData.specs.pageCount} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none font-bold" placeholder="Ex: 15000" /></div>
+                            <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Contador de Páginas</label><input type="number" name="specs.pageCount" value={formData.specs.pageCount} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none font-bold" placeholder="Ex: 15000" /></div>
                         )}
 
                         {(isPC || formData.type === 'Rede' || isPrinter) && (
-                            <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Endereço IP</label><input name="specs.ip" value={formData.specs.ip} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none font-mono text-sm" placeholder="192.168..." /></div>
+                            <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Endereço IP</label><input name="specs.ip" value={formData.specs.ip} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none font-mono text-sm" placeholder="192.168..." /></div>
                         )}
                         
                         {(isPC) && (
                             <>
-                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Processador</label><input name="specs.processor" value={formData.specs?.processor || ''} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: i5 1135G7" /></div>
-                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Memória RAM</label><input name="specs.ram" value={formData.specs.ram} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: 16GB" /></div>
-                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Armazenamento</label><input name="specs.storage" value={formData.specs.storage} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: SSD 512GB" /></div>
+                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Processador</label><input name="specs.processor" value={formData.specs?.processor || ''} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: i5 1135G7" /></div>
+                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Memória RAM</label><input name="specs.ram" value={formData.specs.ram} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: 16GB" /></div>
+                                <div><label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Armazenamento</label><input name="specs.storage" value={formData.specs.storage} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl focus:border-black outline-none text-sm" placeholder="Ex: SSD 512GB" /></div>
                             </>
                         )}
                      </div>
@@ -300,7 +300,7 @@ const AssetForm = () => {
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {customFieldsDef.map(cf => (
                                 <div key={cf.id}>
-                                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">{cf.label}</label>
+                                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">{cf.label}</label>
                                     {cf.type === 'textarea' ? (
                                         <textarea 
                                             value={formData.customData[cf.id] || ''} 
@@ -336,7 +336,7 @@ const AssetForm = () => {
                      <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">Status & Categoria</h3>
                      
                      <div className="mb-4">
-                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Status Atual</label>
+                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Status Atual</label>
                          <div className="relative">
                              <select name="status" value={formData.status} onChange={handleChange} className="w-full p-3 pl-3 pr-8 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl appearance-none font-bold text-sm outline-none focus:border-black cursor-pointer">
                                  <option>Em Uso</option><option>Disponível</option><option>Manutenção</option><option>Entregue</option><option>Defeito</option>
@@ -346,7 +346,7 @@ const AssetForm = () => {
                      </div>
 
                      <div>
-                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Categoria Contábil</label>
+                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Categoria Contábil</label>
                          <select name="category" value={formData.category} onChange={handleChange} className="w-full p-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl font-bold text-sm outline-none focus:border-black cursor-pointer">
                              <option value="Corporativo">Corporativo (Patrimônio)</option>
                              <option value="Promocional">Promocional (Comodato)</option>
@@ -360,7 +360,7 @@ const AssetForm = () => {
                      <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2"><User size={16}/> Responsabilidade</h3>
                      
                      <div className="mb-4">
-                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 flex justify-between">
+                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 flex justify-between">
                              {isPromotional ? "Cliente / Beneficiário" : "Colaborador"}
                              <button type="button" onClick={() => navigate('/employees')} className="text-brand hover:underline text-[10px]">+ Gerenciar</button>
                          </label>
@@ -381,7 +381,7 @@ const AssetForm = () => {
                      </div>
 
                      <div className="mb-4">
-                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">{isPromotional ? "Campanha" : "Setor"}</label>
+                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">{isPromotional ? "Campanha" : "Setor"}</label>
                          <div className="relative">
                             <Building2 size={16} className="absolute left-3 top-3 text-gray-400 dark:text-gray-500"/>
                             <input name="sector" value={formData.sector} onChange={handleChange} className="w-full pl-9 p-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl text-sm font-medium focus:border-black outline-none" placeholder="Ex: Financeiro" />
@@ -396,7 +396,7 @@ const AssetForm = () => {
                      )}
 
                      <div>
-                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Localização Física</label>
+                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Localização Física</label>
                         <div className="relative">
                             <MapPin size={16} className="absolute left-3 top-3 text-gray-400 dark:text-gray-500"/>
                             <select name="location" value={formData.location} onChange={handleChange} className="w-full pl-9 p-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl text-sm font-bold focus:border-black outline-none cursor-pointer">
@@ -415,11 +415,11 @@ const AssetForm = () => {
                      
                      <div className="grid grid-cols-2 gap-4">
                          <div>
-                             <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1 block">Valor (R$)</label>
+                             <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Valor (R$)</label>
                              <input name="valor" value={formData.valor} onChange={handleChange} className="w-full p-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-lg text-sm font-mono focus:border-black outline-none" placeholder="0,00" />
                          </div>
                          <div>
-                             <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1 block">Data</label>
+                             <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 block">Data</label>
                              <input type="date" name="purchaseDate" value={formData.purchaseDate} onChange={handleChange} className="w-full p-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-lg text-sm focus:border-black outline-none" />
                          </div>
                      </div>

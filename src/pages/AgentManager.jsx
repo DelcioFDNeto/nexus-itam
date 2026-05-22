@@ -451,7 +451,7 @@ const AgentManager = () => {
           </div>
           <div>
             <h1 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">Automação de Agente</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium">Coleta ativa e silenciosa com deploy em massa.</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">Coleta ativa e silenciosa com deploy em massa.</p>
           </div>
         </div>
       </div>
@@ -526,7 +526,7 @@ const AgentManager = () => {
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <h2 className="font-black text-gray-900 dark:text-white flex items-center gap-2 text-xl tracking-tight"><ShieldCheck size={20} className="text-emerald-500"/> Padrão de Etiquetagem Automática</h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1">Como os ativos enviados pelo agente serão batizados.</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Como os ativos enviados pelo agente serão batizados.</p>
                 </div>
                 <button onClick={() => saveNamingConfig()} disabled={savingConfig} className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gray-900 text-white font-bold text-xs hover:bg-gray-800 disabled:opacity-60 shadow-md">
                   {savingConfig ? <RefreshCcw size={14} className="animate-spin" /> : <CheckCircle size={14} />} Salvar Padrão
@@ -575,7 +575,7 @@ const AgentManager = () => {
             <div className="p-5 md:p-6 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-slate-50">
               <div>
                 <h2 className="font-black text-gray-900 dark:text-white text-lg tracking-tight">Fila de Recepção</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium mt-0.5">{pendingSubmissions.length} endpoint(s) aguardando</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-0.5">{pendingSubmissions.length} endpoint(s) aguardando</p>
               </div>
               <button onClick={loadInbox} disabled={loadingInbox} className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 text-gray-400 dark:text-gray-500 transition-colors shadow-sm">
                 <RefreshCcw size={16} className={loadingInbox ? 'animate-spin' : ''} />
@@ -586,7 +586,7 @@ const AgentManager = () => {
               {submissions.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center p-8 text-center">
                   <Activity size={32} className="text-gray-200 mb-3"/>
-                  <p className="text-sm font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500">Nenhum endpoint na fila.</p>
+                  <p className="text-sm font-bold text-gray-500 dark:text-gray-400">Nenhum endpoint na fila.</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Os dados enviados pelo agente aparecerão aqui.</p>
                 </div>
               ) : submissions.map((submission) => (
@@ -594,7 +594,7 @@ const AgentManager = () => {
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="min-w-0">
                       <p className="font-black text-sm text-gray-900 dark:text-white truncate">{submission.hostname || 'Desconhecido'}</p>
-                      <p className="text-[10px] font-mono text-gray-500 dark:text-gray-400 dark:text-gray-500 truncate mt-0.5">SN: {submission.serialNumber || 'N/A'}</p>
+                      <p className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate mt-0.5">SN: {submission.serialNumber || 'N/A'}</p>
                     </div>
                     <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md border ${submission.status === 'processed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
                       {submission.status === 'processed' ? 'OK' : 'Novo'}
@@ -662,7 +662,7 @@ const InfoRow = ({ label, value }) => (
 
 const ConfigInput = ({ label, value, onChange, type = 'text', ...props }) => (
   <label className="block">
-    <span className="text-[10px] font-black uppercase text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-1.5 block">{label}</span>
+    <span className="text-[10px] font-black uppercase text-gray-500 dark:text-gray-400 mb-1.5 block">{label}</span>
     <input
       type={type}
       value={value || ''}

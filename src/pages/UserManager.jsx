@@ -138,7 +138,7 @@ const UserManager = () => {
                     </div>
                     <div>
                       <p className="text-sm font-bold text-gray-900 dark:text-white">{user.name || 'Usuário Nexus'}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium">{user.email}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">{user.email}</p>
                     </div>
                   </div>
                   
@@ -164,7 +164,7 @@ const UserManager = () => {
 
           {invites.length > 0 && (
             <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm">
-              <h3 className="text-sm font-black text-gray-900 dark:text-white mb-6 uppercase tracking-wider text-gray-500 dark:text-gray-400 dark:text-gray-500">Convites Pendentes</h3>
+              <h3 className="text-sm font-black text-gray-900 dark:text-white mb-6 uppercase tracking-wider text-gray-500 dark:text-gray-400">Convites Pendentes</h3>
               <div className="space-y-3">
                 {invites.map(invite => (
                   <div key={invite.id} className="flex items-center justify-between p-3 border border-gray-100 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-900">
@@ -230,21 +230,21 @@ const UserManager = () => {
                 <ShieldCheck size={16} className="text-black shrink-0"/>
                 <div>
                   <p className="text-xs font-bold text-gray-900 dark:text-white">Owner</p>
-                  <p className="text-[10px] text-gray-500 dark:text-gray-400 dark:text-gray-500">Acesso total. O único que pode acessar as configurações, cores da marca e gestão de usuários.</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400">Acesso total. O único que pode acessar as configurações, cores da marca e gestão de usuários.</p>
                 </div>
               </li>
               <li className="flex gap-2">
                 <Shield size={16} className="text-brand shrink-0"/>
                 <div>
                   <p className="text-xs font-bold text-gray-900 dark:text-white">Manager</p>
-                  <p className="text-[10px] text-gray-500 dark:text-gray-400 dark:text-gray-500">Pode criar, editar e excluir ativos. Gerencia funcionários e licenças.</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400">Pode criar, editar e excluir ativos. Gerencia funcionários e licenças.</p>
                 </div>
               </li>
               <li className="flex gap-2">
                 <CheckCircle2 size={16} className="text-gray-400 dark:text-gray-500 shrink-0"/>
                 <div>
                   <p className="text-xs font-bold text-gray-900 dark:text-white">Operator</p>
-                  <p className="text-[10px] text-gray-500 dark:text-gray-400 dark:text-gray-500">Nível mais básico. Não pode excluir ativos ou gerenciar contratos.</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400">Nível mais básico. Não pode excluir ativos ou gerenciar contratos.</p>
                 </div>
               </li>
             </ul>

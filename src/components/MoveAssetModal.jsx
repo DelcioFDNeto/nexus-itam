@@ -79,7 +79,7 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
                   <div className="flex items-center gap-1.5 text-gray-700 dark:text-gray-200 font-bold text-xs mb-1">
                       <MapPin size={12}/> <span className="truncate">{asset?.location || "N/A"}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium text-[10px]">
+                  <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 font-medium text-[10px]">
                       <User size={12}/> <span className="truncate">{asset?.assignedTo || "Sem resp."}</span>
                   </div>
               </div>
@@ -108,7 +108,7 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
               
               {/* Seleção de Local (LISTA COMPLETA) */}
               <div>
-                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Novo Local / Filial</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Novo Local / Filial</label>
                 <div className="relative">
                     <select 
                         required
@@ -161,7 +161,7 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
 
               {/* Novo Responsável */}
               <div>
-                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Novo Responsável</label>
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Novo Responsável</label>
                 <div className="relative">
                     <select 
                         value={formData.newResponsible} 
@@ -188,7 +188,7 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
 
               <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Data</label>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Data</label>
                     <input 
                         type="date"
                         required
@@ -198,7 +198,7 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Motivo</label>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Motivo</label>
                     <input 
                         value={formData.reason} 
                         onChange={(e) => setFormData({...formData, reason: e.target.value})} 

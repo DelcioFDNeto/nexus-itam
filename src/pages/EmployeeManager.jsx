@@ -154,7 +154,7 @@ const EmployeeManager = () => {
             <h1 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
                 <Users className="text-brand" size={28}/> Gestão de Pessoas & Áreas
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Mantenha a estrutura organizacional atualizada</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Mantenha a estrutura organizacional atualizada</p>
         </div>
         <button onClick={openCreateModal} className="bg-black text-white px-5 py-2.5 rounded-xl font-bold hover:bg-gray-800 flex items-center gap-2 shadow-lg transition-all active:scale-95">
             <Plus size={20}/> {activeTab === 'employees' ? 'Novo Colaborador' : 'Novo Setor'}
@@ -165,13 +165,13 @@ const EmployeeManager = () => {
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full md:w-fit mb-6">
           <button 
             onClick={() => setActiveTab('employees')} 
-            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'employees' ? 'bg-white dark:bg-slate-800 text-black shadow-sm' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-200'}`}
+            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'employees' ? 'bg-white dark:bg-slate-800 text-black shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-200'}`}
           >
               <UserCircle size={18}/> Colaboradores
           </button>
           <button 
             onClick={() => setActiveTab('sectors')} 
-            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'sectors' ? 'bg-white dark:bg-slate-800 text-black shadow-sm' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-200'}`}
+            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'sectors' ? 'bg-white dark:bg-slate-800 text-black shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-200'}`}
           >
               <Briefcase size={18}/> Setores / Deptos
           </button>
@@ -204,7 +204,7 @@ const EmployeeManager = () => {
                               </div>
                               <div>
                                   <h3 className="font-bold text-gray-900 dark:text-white leading-tight">{emp.name}</h3>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium">{emp.role || "Cargo não inf."}</p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">{emp.role || "Cargo não inf."}</p>
                               </div>
                           </div>
                           <div className="flex gap-1">
@@ -222,12 +222,12 @@ const EmployeeManager = () => {
                               <MapPin size={14} className="text-gray-400 dark:text-gray-500"/> {emp.branch}
                           </div>
                           {emp.email && (
-                              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 truncate" title={emp.email}>
+                              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 truncate" title={emp.email}>
                                   <Mail size={14} className="text-gray-400 dark:text-gray-500"/> {emp.email}
                               </div>
                           )}
                           {emp.cpf && (
-                              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 font-mono" title={emp.cpf}>
+                              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 font-mono" title={emp.cpf}>
                                   <CreditCard size={14} className="text-gray-400 dark:text-gray-500"/> {emp.cpf}
                               </div>
                           )}
@@ -249,7 +249,7 @@ const EmployeeManager = () => {
                       </div>
                       
                       <h3 className="text-xl font-black text-gray-900 dark:text-white mb-1">{sec.name}</h3>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-4 line-clamp-2 h-10">{sec.description || "Sem descrição."}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 line-clamp-2 h-10">{sec.description || "Sem descrição."}</p>
                       
                       <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-100 dark:border-slate-700">
                           <UserCircle size={16} className="text-gray-400 dark:text-gray-500"/>
@@ -287,16 +287,16 @@ const EmployeeManager = () => {
                   // Campos moldados individualmente focado apenas para montar a ficha do peão
                   <>
                     <div>
-                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Nome Completo</label>
+                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Nome Completo</label>
                         <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 border rounded-xl font-bold outline-none focus:border-black" />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Cargo</label>
+                            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Cargo</label>
                             <input value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full p-3 border rounded-xl outline-none focus:border-black" />
                         </div>
                         <div>
-                            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Setor</label>
+                            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Setor</label>
                             <select value={formData.sectorId} onChange={e => setFormData({...formData, sectorId: e.target.value})} className="w-full p-3 border rounded-xl bg-white dark:bg-slate-800 outline-none focus:border-black cursor-pointer">
                                 <option value="">Selecione...</option>
                                 {/* Extrai os setores já consolidados do banco e cria uma listinha rápida */}
@@ -306,15 +306,15 @@ const EmployeeManager = () => {
                         </div>
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Email</label>
+                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Email</label>
                         <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-3 border rounded-xl outline-none focus:border-black" />
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">CPF</label>
+                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">CPF</label>
                         <input value={formData.cpf} onChange={e => setFormData({...formData, cpf: e.target.value})} placeholder="000.000.000-00" className="w-full p-3 border rounded-xl outline-none focus:border-black font-mono" />
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Unidade / Base</label>
+                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Unidade / Base</label>
                         <select value={formData.branch} onChange={e => setFormData({...formData, branch: e.target.value})} className="w-full p-3 border rounded-xl bg-white dark:bg-slate-800 outline-none focus:border-black">
                             <option>Matriz - Belém</option>
                             <option>Fábrica / CD - Ananindeua</option>
@@ -329,11 +329,11 @@ const EmployeeManager = () => {
                   // Config para criar áreas independentemente das pessoas
                   <>
                     <div>
-                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Nome do Setor</label>
+                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Nome do Setor</label>
                         <input required value={formData.sectorName} onChange={e => setFormData({...formData, sectorName: e.target.value})} className="w-full p-3 border rounded-xl font-bold outline-none focus:border-black" placeholder="Ex: Financeiro, TI..." />
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Gestor Responsável</label>
+                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Gestor Responsável</label>
                         <select value={formData.manager} onChange={e => setFormData({...formData, manager: e.target.value})} className="w-full p-3 border rounded-xl bg-white dark:bg-slate-800 outline-none focus:border-black cursor-pointer">
                             <option value="">Selecione um colaborador...</option>
                             {/* Permite usar a lista de funcionários para atrelar a liderança de forma amarrada */}
@@ -341,7 +341,7 @@ const EmployeeManager = () => {
                         </select>
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Descrição</label>
+                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Descrição</label>
                         <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-3 border rounded-xl outline-none focus:border-black" rows="3" placeholder="Função deste departamento..."></textarea>
                     </div>
                   </>

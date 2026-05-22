@@ -86,7 +86,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
       {/* --- SIDEBAR PRINCIPAL --- */}
       <div className={`
         fixed md:static inset-y-0 left-0 z-50
-        bg-white dark:bg-slate-800 dark:bg-slate-900 border-r border-gray-100 dark:border-slate-700 dark:border-slate-800 shadow-2xl md:shadow-none
+        bg-white dark:bg-slate-800 border-r border-gray-100 dark:border-slate-700 shadow-2xl md:shadow-none
         flex flex-col
         transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)
         ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
@@ -115,13 +115,13 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
            {/* Botão de Collapse (Desktop) */}
            <button 
              onClick={toggleCollapse} 
-             className={`hidden md:flex w-7 h-7 items-center justify-center rounded-full bg-white dark:bg-slate-800 text-gray-400 dark:text-gray-500 dark:text-gray-300 hover:text-brand dark:hover:text-brand hover:bg-indigo-50 dark:hover:bg-slate-700 transition-all absolute -right-3.5 top-8 border border-gray-100 dark:border-slate-700 shadow-md z-50`}
+             className={`hidden md:flex w-7 h-7 items-center justify-center rounded-full bg-white dark:bg-slate-800 text-gray-400 dark:text-gray-300 hover:text-brand dark:hover:text-brand hover:bg-indigo-50 dark:hover:bg-slate-700 transition-all absolute -right-3.5 top-8 border border-gray-100 dark:border-slate-700 shadow-md z-50`}
            >
              {isCollapsed ? <ChevronRight size={14} strokeWidth={3} /> : <ChevronLeft size={14} strokeWidth={3} />}
            </button>
 
            {/* Botão Fechar (Mobile) */}
-           <button onClick={onClose} className="md:hidden text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-white">
+           <button onClick={onClose} className="md:hidden text-gray-500 dark:text-gray-400 hover:text-white">
              <X size={24} />
            </button>
         </div>
@@ -146,7 +146,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
           <div className="px-5 mt-3">
              <button 
                 onClick={() => { if(onSearchClick) onSearchClick(); if(onClose) onClose(); }}
-                className={`flex items-center justify-center gap-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-brand dark:hover:text-brand hover:border-brand/30 hover:bg-indigo-50/50 transition-all group overflow-hidden border border-gray-200 dark:border-slate-600 dark:border-slate-700 shadow-sm ${isCollapsed ? 'rounded-2xl w-12 h-12 mx-auto' : 'rounded-xl px-4 py-3 w-full'}`}
+                className={`flex items-center justify-center gap-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-brand dark:hover:text-brand hover:border-brand/30 hover:bg-indigo-50/50 transition-all group overflow-hidden border border-gray-200 dark:border-slate-600 shadow-sm ${isCollapsed ? 'rounded-2xl w-12 h-12 mx-auto' : 'rounded-xl px-4 py-3 w-full'}`}
                 title="Busca Global (Ctrl+K)"
              >
                 <Search size={18} className="shrink-0 text-slate-400 dark:text-slate-500 group-hover:text-brand transition-colors"/> 

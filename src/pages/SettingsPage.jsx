@@ -248,7 +248,7 @@ const SettingsPage = () => {
         </div>
         <div>
             <h1 className="text-2xl font-black text-gray-900 dark:text-white">Configurações Avançadas</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">Backup, Restauração e Parâmetros do Sistema</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-400">Backup, Restauração e Parâmetros do Sistema</p>
         </div>
       </div>
 
@@ -256,10 +256,10 @@ const SettingsPage = () => {
         
         {/* COLUNA 1: Textos burocráticos e variáveis que pipocam nos PDFs do sistema */}
         <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 dark:border-slate-700 shadow-sm overflow-hidden sticky top-8">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 shadow-sm overflow-hidden sticky top-8">
                 <div className="bg-gray-50 dark:bg-slate-900 p-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-2">
                     <FileText className="text-brand" size={18}/>
-                    <h2 className="font-bold text-gray-800 dark:text-gray-100 dark:text-white text-sm uppercase">Documentos e Etiquetas</h2>
+                    <h2 className="font-bold text-gray-800 dark:text-white text-sm uppercase">Documentos e Etiquetas</h2>
                 </div>
                 <form onSubmit={handleSave} className="p-5 space-y-4">
 {/* Montagem inteligente de loops mapeando todos os inputs das configurações */}
@@ -276,7 +276,7 @@ const SettingsPage = () => {
                          </div>
                       ))}
                       <div className="col-span-1 md:col-span-2">
-                           <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5 block">Cláusulas do Termo de Responsabilidade</label>
+                           <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Cláusulas do Termo de Responsabilidade</label>
                            <textarea
                              value={config.termClauses || ''}
                              onChange={e => setConfig({...config, termClauses: e.target.value})}
@@ -286,7 +286,7 @@ const SettingsPage = () => {
                        </div>
                       
                     {/* Sessão: Campos Customizados para Ativos */}
-                    <div className="rounded-xl border border-gray-200 dark:border-slate-600 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-4 space-y-3">
+                    <div className="rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 p-4 space-y-3">
                         <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
                                 <Database size={16} className="text-brand" />
@@ -297,7 +297,7 @@ const SettingsPage = () => {
                             </button>
                         </div>
                         {(config.customFields || []).map((cf, idx) => (
-                            <div key={cf.id} className="flex items-center gap-2 bg-white dark:bg-slate-800 p-2 border border-gray-200 dark:border-slate-600 dark:border-slate-700 rounded-lg shadow-sm">
+                            <div key={cf.id} className="flex items-center gap-2 bg-white dark:bg-slate-800 p-2 border border-gray-200 dark:border-slate-600 rounded-lg shadow-sm">
                                 <input 
                                     value={cf.label} 
                                     onChange={e => updateCustomField(idx, 'label', e.target.value)}
@@ -307,7 +307,7 @@ const SettingsPage = () => {
                                 <select 
                                     value={cf.type} 
                                     onChange={e => updateCustomField(idx, 'type', e.target.value)}
-                                    className="p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-600 dark:text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-slate-900 focus:border-brand focus:outline-none"
+                                    className="p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-slate-900 focus:border-brand focus:outline-none"
                                 >
                                     <option value="text">Texto Curto</option>
                                     <option value="textarea">Texto Longo</option>
@@ -335,7 +335,7 @@ const SettingsPage = () => {
                                 <p className="mt-1 truncate text-[10px] font-black uppercase text-gray-900 dark:text-white">{getCompanyLabel(config.companyName)}</p>
                             </div>
                             <div className="pt-3">
-                                <p className="text-[9px] font-black uppercase text-gray-500 dark:text-gray-400 dark:text-gray-500">Patrimônio</p>
+                                <p className="text-[9px] font-black uppercase text-gray-500 dark:text-gray-400">Patrimônio</p>
                                 <p className="font-mono text-xl font-black text-gray-950">TAG-001</p>
                             </div>
                             <div className="mt-2 flex items-center justify-between border-t border-gray-900 pt-1">
@@ -355,24 +355,24 @@ const SettingsPage = () => {
         <div className="lg:col-span-2 space-y-6">
 
           {/* SESSÃO DE APARÊNCIA / THEME */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 shadow-sm overflow-hidden">
               <div className="bg-gray-50 dark:bg-slate-900 p-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-2">
                   <UserCog className="text-brand" size={18} />
-                  <h2 className="font-bold text-gray-800 dark:text-gray-100 dark:text-white text-sm uppercase">Aparência do Sistema</h2>
+                  <h2 className="font-bold text-gray-800 dark:text-white text-sm uppercase">Aparência do Sistema</h2>
               </div>
               <div className="p-6 space-y-6">
                 <div>
-                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">Modo de Exibição</h3>
+                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-400 uppercase tracking-widest mb-3">Modo de Exibição</h3>
                   <div className="flex gap-3">
-                    <button onClick={() => setTheme('light')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'light' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 dark:border-slate-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-slate-600'}`}>
+                    <button onClick={() => setTheme('light')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'light' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-600'}`}>
                       <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 shadow-sm"></div>
                       Claro
                     </button>
-                    <button onClick={() => setTheme('dark')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'dark' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 dark:border-slate-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-slate-600'}`}>
+                    <button onClick={() => setTheme('dark')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'dark' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-600'}`}>
                       <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 shadow-sm"></div>
                       Escuro
                     </button>
-                    <button onClick={() => setTheme('system')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'system' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 dark:border-slate-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-slate-600'}`}>
+                    <button onClick={() => setTheme('system')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'system' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-600'}`}>
                       <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-slate-900 to-white border border-gray-300 shadow-sm"></div>
                       Sistema
                     </button>
@@ -380,7 +380,7 @@ const SettingsPage = () => {
                 </div>
 
                 <div>
-                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">Cor Destaque (Accent Color)</h3>
+                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-400 uppercase tracking-widest mb-3">Cor Destaque (Accent Color)</h3>
                   <div className="flex gap-4">
                     {[
                       { id: 'blue', color: '#4F46E5' },
@@ -417,13 +417,13 @@ const SettingsPage = () => {
             </div>
 
             {/* CAIXA 2: Receptor focado em assimilar vidas passadas de outras bases suportadas */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 dark:border-slate-700 shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
                     <div>
                         <h2 className="text-lg font-black text-gray-900 dark:text-white mb-1 flex items-center gap-2"><UploadCloud className="text-orange-500"/> Restauração de Dados</h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">Importe um arquivo JSON para restaurar ou atualizar dados.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-400">Importe um arquivo JSON para restaurar ou atualizar dados.</p>
                     </div>
-                    <button onClick={() => setShowFormatGuide(!showFormatGuide)} className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white flex items-center gap-1 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600">
+                    <button onClick={() => setShowFormatGuide(!showFormatGuide)} className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-400 hover:text-black dark:hover:text-white flex items-center gap-1 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600">
                     </button>
                 </div>
                 
@@ -471,8 +471,8 @@ const SettingsPage = () => {
                             <h3 className="font-bold text-blue-900 text-lg mb-4 flex items-center gap-2"><FileJson className="text-blue-600"/> Arquivo Analisado</h3>
                             
                             <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
-                                <div><p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-xs uppercase font-bold">Nome</p><p className="font-mono font-bold text-gray-800 dark:text-gray-100 truncate">{importSummary.filename}</p></div>
-                                <div><p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-xs uppercase font-bold">Data (Meta)</p><p className="font-bold text-gray-800 dark:text-gray-100">{importSummary.date}</p></div>
+                                <div><p className="text-gray-500 dark:text-gray-400 text-xs uppercase font-bold">Nome</p><p className="font-mono font-bold text-gray-800 dark:text-gray-100 truncate">{importSummary.filename}</p></div>
+                                <div><p className="text-gray-500 dark:text-gray-400 text-xs uppercase font-bold">Data (Meta)</p><p className="font-bold text-gray-800 dark:text-gray-100">{importSummary.date}</p></div>
                             </div>
 
                             <div className="bg-white dark:bg-slate-800 rounded-lg border border-blue-100 p-4 mb-6">
@@ -481,7 +481,7 @@ const SettingsPage = () => {
                                     {Object.entries(importSummary.counts).map(([key, count]) => (
                                         <div key={key} className="bg-gray-50 dark:bg-slate-900 p-2 rounded text-center border border-gray-100 dark:border-slate-700">
                                             <span className="block text-lg font-black text-gray-800 dark:text-gray-100">{count}</span>
-                                            <span className="text-[10px] text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase font-bold">{key}</span>
+                                            <span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase font-bold">{key}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -499,7 +499,7 @@ const SettingsPage = () => {
                         <div className="text-center py-8">
                             <div className="w-16 h-16 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-4"></div>
                             <h3 className="font-bold text-xl text-gray-800 dark:text-gray-100">{restoreProgress}%</h3>
-                            <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium">{restoreStatus}</p>
+                            <p className="text-gray-500 dark:text-gray-400 font-medium">{restoreStatus}</p>
                             <div className="w-full bg-gray-100 rounded-full h-2 mt-4 overflow-hidden">
                                 <div className="bg-orange-500 h-2 transition-all duration-300" style={{ width: `${restoreProgress}%` }}></div>
                             </div>
@@ -515,7 +515,7 @@ const SettingsPage = () => {
                             onClick={() => fileInputRef.current.click()}
                         >
                             <input ref={fileInputRef} type="file" className="hidden" accept=".json" onChange={handleFileChange} />
-                            <div className="w-16 h-16 bg-white dark:bg-slate-800 dark:bg-slate-700 group-hover:bg-white dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400 dark:text-gray-500 group-hover:text-orange-500 transition-colors shadow-sm border border-gray-100 dark:border-slate-700 dark:border-slate-600">
+                            <div className="w-16 h-16 bg-white dark:bg-slate-800 dark:bg-slate-700 group-hover:bg-white dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400 dark:text-gray-500 group-hover:text-orange-500 transition-colors shadow-sm border border-gray-100 dark:border-slate-700">
                                 <UploadCloud size={32}/>
                             </div>
                             <h3 className="font-bold text-gray-700 dark:text-gray-200 group-hover:text-gray-900 dark:text-white dark:group-hover:text-white">Clique ou Arraste seu JSON aqui</h3>

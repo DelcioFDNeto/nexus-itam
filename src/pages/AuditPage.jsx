@@ -209,7 +209,7 @@ const AuditPage = () => {
                 <button onClick={() => navigate('/')} className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm hover:scale-105 transition-transform"><ArrowLeft size={24}/></button>
                 <div>
                    <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Nova Auditoria</h1>
-                   <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500">Selecione o local para iniciar a conferência.</p>
+                   <p className="text-gray-500 dark:text-gray-400">Selecione o local para iniciar a conferência.</p>
                 </div>
             </header>
 
@@ -249,7 +249,7 @@ const AuditPage = () => {
                      <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-widest">{expectedAssets.length} ITENS ESPERADOS</p>
                  </div>
              </div>
-             <button onClick={() => setSoundEnabled(!soundEnabled)} className={`p-3 rounded-full ${soundEnabled ? 'bg-gray-800 text-green-400' : 'bg-gray-800 text-gray-500 dark:text-gray-400 dark:text-gray-500'}`}>
+             <button onClick={() => setSoundEnabled(!soundEnabled)} className={`p-3 rounded-full ${soundEnabled ? 'bg-gray-800 text-green-400' : 'bg-gray-800 text-gray-500 dark:text-gray-400'}`}>
                  {soundEnabled ? <Volume2 size={20}/> : <VolumeX size={20}/>}
              </button>
         </div>
@@ -277,7 +277,7 @@ const AuditPage = () => {
                         {!lastScanResult ? (
                             <>
                                 <Scan size={64} className="text-gray-600 mb-4 opacity-50"/>
-                                <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-bold text-lg">Aguardando Leitura...</p>
+                                <p className="text-gray-500 dark:text-gray-400 font-bold text-lg">Aguardando Leitura...</p>
                                 <p className="text-gray-600 text-sm mt-2">Use o scanner ou digite abaixo</p>
                             </>
                         ) : (
@@ -301,7 +301,7 @@ const AuditPage = () => {
                             placeholder="Digitar código..."
                             className="w-full bg-gray-800 border-2 border-gray-700 text-white p-4 pl-12 rounded-2xl outline-none focus:border-brand font-mono text-lg transition-all"
                         />
-                        <Search className="absolute left-4 top-5 text-gray-500 dark:text-gray-400 dark:text-gray-500" size={20}/>
+                        <Search className="absolute left-4 top-5 text-gray-500 dark:text-gray-400" size={20}/>
                     </form>
 
                     {/* Botões para alternar ferramentas visuais durante o inventário */}

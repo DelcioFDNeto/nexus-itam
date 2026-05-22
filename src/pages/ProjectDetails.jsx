@@ -179,7 +179,7 @@ const ProjectDetails = () => {
       
       {/* Topo da página contendo controles básicos de retorno e edição */}
       <div className="flex justify-between items-center mb-6">
-        <button onClick={() => navigate('/projects')} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black font-bold text-sm transition-colors">
+        <button onClick={() => navigate('/projects')} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-black font-bold text-sm transition-colors">
             <ArrowLeft size={18}/> Voltar
         </button>
         <button onClick={openEditModal} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl text-xs font-bold hover:bg-gray-50 dark:bg-slate-900 shadow-sm transition-all">
@@ -264,7 +264,7 @@ const ProjectDetails = () => {
                               placeholder="Status:&#10;O que foi feito:"
                           />
                           <div className="flex justify-end gap-3 mt-3">
-                              <button onClick={() => setIsAddingLog(false)} className="px-4 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black">Cancelar</button>
+                              <button onClick={() => setIsAddingLog(false)} className="px-4 py-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-black">Cancelar</button>
                               <button onClick={handleAddLog} className="px-5 py-2 bg-yellow-500 text-white rounded-lg text-xs font-bold hover:bg-yellow-600 shadow-md flex items-center gap-2">
                                   <Save size={16}/> Salvar
                               </button>
@@ -327,7 +327,7 @@ const ProjectDetails = () => {
                       <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 flex justify-center">
                           <button 
                               onClick={() => setShowAllLogs(!showAllLogs)}
-                              className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-black bg-white dark:bg-slate-800 px-4 py-2 rounded-full border border-gray-200 dark:border-slate-600 shadow-sm hover:shadow-md transition-all"
+                              className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-black bg-white dark:bg-slate-800 px-4 py-2 rounded-full border border-gray-200 dark:border-slate-600 shadow-sm hover:shadow-md transition-all"
                           >
                               {showAllLogs ? (
                                   <><ChevronUp size={14}/> Recolher Histórico ({totalLogs})</>
@@ -351,11 +351,11 @@ const ProjectDetails = () => {
             
             <form onSubmit={handleSaveChanges} className="space-y-4">
               <div>
-                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Nome do Projeto</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Nome do Projeto</label>
                   <input required value={editFormData.name} onChange={e => setEditFormData({...editFormData, name: e.target.value})} className="w-full p-3 border rounded-xl font-bold mt-1 outline-none focus:border-black" />
               </div>
               <div>
-                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">URL da Capa (Logo)</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">URL da Capa (Logo)</label>
                   <div className="flex gap-2">
                       <input value={editFormData.coverImage} onChange={e => setEditFormData({...editFormData, coverImage: e.target.value})} className="w-full p-3 border rounded-xl mt-1 text-sm text-blue-600 outline-none focus:border-black" placeholder="https://..." />
                       <div className="p-3 bg-gray-100 rounded-xl mt-1 border border-gray-200 dark:border-slate-600"><ImageIcon size={20} className="text-gray-400 dark:text-gray-500"/></div>
@@ -363,27 +363,27 @@ const ProjectDetails = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                   <div>
-                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Versão Atual</label>
+                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Versão Atual</label>
                       <input value={editFormData.version} onChange={e => setEditFormData({...editFormData, version: e.target.value})} className="w-full p-3 border rounded-xl mt-1 font-mono text-sm" />
                   </div>
                   <div>
-                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Progresso (%)</label>
+                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Progresso (%)</label>
                       <input type="number" value={editFormData.progress} onChange={e => setEditFormData({...editFormData, progress: e.target.value})} className="w-full p-3 border rounded-xl mt-1 text-sm" />
                   </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                   <div>
-                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Líder</label>
+                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Líder</label>
                       <input value={editFormData.leader} onChange={e => setEditFormData({...editFormData, leader: e.target.value})} className="w-full p-3 border rounded-xl mt-1 text-sm" />
                   </div>
                   <div>
-                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Orçamento (R$)</label>
+                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Orçamento (R$)</label>
                       <input value={editFormData.budget} onChange={e => setEditFormData({...editFormData, budget: e.target.value})} className="w-full p-3 border rounded-xl mt-1 text-sm" placeholder="0,00" />
                   </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                   <div>
-                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Status</label>
+                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Status</label>
                       <select value={editFormData.status} onChange={e => setEditFormData({...editFormData, status: e.target.value})} className="w-full p-3 border rounded-xl mt-1 bg-white dark:bg-slate-800 text-sm">
                           <option>Planejamento</option>
                           <option>Em Andamento</option>
@@ -392,7 +392,7 @@ const ProjectDetails = () => {
                       </select>
                   </div>
                   <div>
-                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Prioridade</label>
+                      <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Prioridade</label>
                       <select value={editFormData.priority} onChange={e => setEditFormData({...editFormData, priority: e.target.value})} className="w-full p-3 border rounded-xl mt-1 bg-white dark:bg-slate-800 text-sm">
                           <option>Baixa</option>
                           <option>Média</option>
@@ -402,7 +402,7 @@ const ProjectDetails = () => {
                   </div>
               </div>
               <div>
-                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Descrição</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Descrição</label>
                   <textarea value={editFormData.description} onChange={e => setEditFormData({...editFormData, description: e.target.value})} className="w-full p-3 border rounded-xl mt-1 text-sm" rows="3"></textarea>
               </div>
               <div className="pt-2">

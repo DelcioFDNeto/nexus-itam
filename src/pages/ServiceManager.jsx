@@ -75,7 +75,7 @@ const ServiceManager = () => {
           <h1 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
             <Globe className="text-brand" /> Contas & Serviços
           </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Links, Hospedagem, Outsourcing e Assinaturas.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Links, Hospedagem, Outsourcing e Assinaturas.</p>
         </div>
         <button onClick={() => setIsModalOpen(true)} className="bg-black text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-gray-800 shadow-lg">
           <Plus size={20} /> Novo Contrato
@@ -103,7 +103,7 @@ const ServiceManager = () => {
                     </div>
                     <div>
                         <h3 className="font-bold text-gray-900 dark:text-white text-lg leading-tight">{contract.provider}</h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wider">{contract.serviceType}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wider">{contract.serviceType}</p>
                     </div>
                 </div>
 
@@ -124,7 +124,7 @@ const ServiceManager = () => {
                     </div>
                 </div>
                 {contract.description && (
-                    <div className="mt-4 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 italic">
+                    <div className="mt-4 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg text-xs text-gray-500 dark:text-gray-400 italic">
                         "{contract.description}"
                     </div>
                 )}
@@ -142,12 +142,12 @@ const ServiceManager = () => {
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
                 <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Fornecedor / Empresa</label>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Fornecedor / Empresa</label>
                     <input required className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-black" placeholder="Ex: VIVO Fibra" value={formData.provider} onChange={e => setFormData({...formData, provider: e.target.value})} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Tipo</label>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Tipo</label>
                         <select className="w-full p-3 border rounded-xl bg-white dark:bg-slate-800" value={formData.serviceType} onChange={e => setFormData({...formData, serviceType: e.target.value})}>
                             <option>Internet</option>
                             <option>Hospedagem/Web</option>
@@ -158,22 +158,22 @@ const ServiceManager = () => {
                         </select>
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Valor Mensal (R$)</label>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Valor Mensal (R$)</label>
                         <input type="number" className="w-full p-3 border rounded-xl outline-none" placeholder="0.00" value={formData.monthlyCost} onChange={e => setFormData({...formData, monthlyCost: e.target.value})} />
                     </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Telefone Suporte</label>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Telefone Suporte</label>
                         <input className="w-full p-3 border rounded-xl outline-none" placeholder="0800..." value={formData.supportPhone} onChange={e => setFormData({...formData, supportPhone: e.target.value})} />
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Data Renovação</label>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Data Renovação</label>
                         <input type="date" className="w-full p-3 border rounded-xl outline-none" value={formData.renewalDate} onChange={e => setFormData({...formData, renewalDate: e.target.value})} />
                     </div>
                 </div>
                 <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-1">Descrição do Plano</label>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Descrição do Plano</label>
                     <textarea className="w-full p-3 border rounded-xl outline-none" rows="2" placeholder="Ex: Link Dedicado 100MB + IP Fixo" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}></textarea>
                 </div>
                 <button type="submit" className="w-full bg-brand hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-colors mt-2">Salvar Contrato</button>

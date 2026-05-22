@@ -132,7 +132,7 @@ const Login = () => {
             <motion.div variants={itemVariants}>
               <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">ID Corporativo (E-mail)</label>
               <div className="relative group">
-                <Mail className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-brand transition-colors" size={18} />
+                <Mail className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-brand transition-colors" size={18} />
                 <input 
                   type="email" 
                   required 
@@ -147,7 +147,7 @@ const Login = () => {
             <motion.div variants={itemVariants}>
               <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Chave de Segurança</label>
               <div className="relative group">
-                <Lock className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-brand transition-colors" size={18} />
+                <Lock className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-brand transition-colors" size={18} />
                 <input 
                   type="password" 
                   required 
@@ -194,7 +194,7 @@ const Login = () => {
         </div>
         
         <motion.div variants={itemVariants} className="mt-8 text-center">
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium tracking-widest uppercase">
+          <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium tracking-widest uppercase">
             Nexus ITAM Security Protocol © {new Date().getFullYear()}
           </p>
         </motion.div>
@@ -217,7 +217,7 @@ const Login = () => {
               >
                   <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-brand to-transparent opacity-50"></div>
                   
-                  <button onClick={() => setIsResetOpen(false)} className="absolute top-5 right-5 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-white transition-colors bg-white/5 p-1 rounded-full"><X size={18}/></button>
+                  <button onClick={() => setIsResetOpen(false)} className="absolute top-5 right-5 text-gray-500 dark:text-gray-400 hover:text-white transition-colors bg-white/5 p-1 rounded-full"><X size={18}/></button>
                   
                   <div className="mb-8 text-center relative z-10">
                       <div className="w-14 h-14 bg-brand/20 border border-brand/30 text-brand rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-[0_0_15px_rgba(79,70,229,0.3)]">

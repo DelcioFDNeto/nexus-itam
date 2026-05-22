@@ -117,7 +117,7 @@ const Register = () => {
           <div className="mt-8 flex justify-center">
             <Orbit className="animate-spin text-brand" size={24} />
           </div>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-widest mt-4 animate-pulse">Redirecionando para o Dashboard Central...</p>
+          <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-widest mt-4 animate-pulse">Redirecionando para o Dashboard Central...</p>
         </motion.div>
       </div>
     );
@@ -181,7 +181,7 @@ const Register = () => {
               <motion.div variants={itemVariants}>
                 <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Razão Social / Fantasia</label>
                 <div className="relative group">
-                  <Building2 className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <Building2 className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-cyan-400 transition-colors" size={18} />
                   <input 
                     type="text" 
                     required 
@@ -197,7 +197,7 @@ const Register = () => {
               <motion.div variants={itemVariants}>
                 <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Administrador Master</label>
                 <div className="relative group">
-                  <User className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <User className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-cyan-400 transition-colors" size={18} />
                   <input 
                     type="text" 
                     required 
@@ -214,7 +214,7 @@ const Register = () => {
             <motion.div variants={itemVariants}>
               <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">E-mail de Acesso</label>
               <div className="relative group">
-                <Mail className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                <Mail className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-cyan-400 transition-colors" size={18} />
                 <input 
                   type="email" 
                   required 
@@ -238,7 +238,7 @@ const Register = () => {
                   )}
                 </label>
                 <div className="relative group">
-                  <Lock className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <Lock className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-cyan-400 transition-colors" size={18} />
                   <input 
                     type="password" 
                     required 
@@ -263,7 +263,7 @@ const Register = () => {
               <motion.div variants={itemVariants}>
                 <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Confirmar Chave</label>
                 <div className="relative group">
-                  <ShieldCheck className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 dark:text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <ShieldCheck className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-cyan-400 transition-colors" size={18} />
                   <input 
                     type="password" 
                     required 
@@ -295,7 +295,7 @@ const Register = () => {
           </form>
 
           <motion.div variants={itemVariants} className="mt-6 flex justify-center items-center px-1">
-              <span className="text-[11px] text-gray-500 dark:text-gray-400 dark:text-gray-500 mr-2">Já possui uma instância provisionada?</span>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 mr-2">Já possui uma instância provisionada?</span>
               <Link 
                   to="/login"
                   className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold transition-colors underline decoration-cyan-400/30 hover:decoration-cyan-400 underline-offset-4"
@@ -306,7 +306,7 @@ const Register = () => {
         </div>
         
         <motion.div variants={itemVariants} className="mt-8 text-center">
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium tracking-widest uppercase">
+          <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium tracking-widest uppercase">
             SaaS Infrastructure Protocol © {new Date().getFullYear()}
           </p>
         </motion.div>
