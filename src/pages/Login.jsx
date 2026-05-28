@@ -65,12 +65,12 @@ const Login = () => {
       
       {/* Background Animado - CSS Puro */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-[30%] -right-[10%] w-[70vw] h-[70vw] rounded-full bg-brand/10 blur-[120px] animate-[spin_120s_linear_infinite]" />
-        <div className="absolute -bottom-[30%] -left-[10%] w-[60vw] h-[60vw] rounded-full bg-cyan-600/10 blur-[100px] animate-[spin_150s_linear_infinite_reverse]" />
+        <div className="absolute -top-[30%] -right-[10%] w-[70vw] h-[70vw] rounded-full bg-brand/10 blur-[120px]" />
+        <div className="absolute -bottom-[30%] -left-[10%] w-[60vw] h-[60vw] rounded-full bg-cyan-600/10 blur-[100px]" />
         <div className="absolute inset-0 bg-[url('/carbon-fibre.png')] opacity-5 mix-blend-overlay"></div>
       </div>
 
-      <div className="relative z-10 w-full max-w-md animate-[loginFadeUp_0.6s_ease-out_both]">
+      <div className="relative z-10 w-full max-w-md">
         {/* Painel Glassmorphism */}
         <div className="backdrop-blur-2xl bg-white/[0.03] border border-white/10 p-8 rounded-[2rem] shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] relative overflow-hidden">
           
