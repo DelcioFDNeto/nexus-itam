@@ -100,7 +100,7 @@ const Register = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4 relative overflow-hidden font-sans py-12">
+    <main className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4 relative overflow-hidden font-sans py-12">
       
       {/* Background Cyber/Neon — CSS puro */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -270,7 +270,7 @@ const Register = () => {
         </div>
       </div>
 
-    </div>
+    </main>
   );
 };
 

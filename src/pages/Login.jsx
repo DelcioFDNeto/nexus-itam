@@ -61,7 +61,7 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4 relative overflow-hidden font-sans">
+    <main className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4 relative overflow-hidden font-sans">
       
       {/* Background Animado - CSS Puro */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -215,7 +215,7 @@ const Login = () => {
         </div>
       )}
 
-    </div>
+    </main>
   );
 };
 
