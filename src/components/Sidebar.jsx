@@ -67,7 +67,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
   const menuGroups = isSuperadmin 
     ? [
         {
-          title: 'SaaS Master',
+          title: 'Nexus Master',
           items: [
             { path: '/dashboard', icon: <LayoutDashboard size={isCollapsed ? 24 : 20} />, label: 'Painel Geral' },
             { path: '/admin/tenants', icon: <Building2 size={isCollapsed ? 24 : 20} />, label: 'Empresas' },

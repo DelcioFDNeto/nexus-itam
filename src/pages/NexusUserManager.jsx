@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-const SaaSUserManager = () => {
+const NexusUserManager = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   
@@ -64,7 +64,7 @@ const SaaSUserManager = () => {
         return {
           id: doc.id,
           ...data,
-          companyName: tenantMap[data.tenantId] || (data.tenantId === 'nexus-master' ? 'Nexus ITAM (SaaS)' : 'Sem Empresa')
+          companyName: tenantMap[data.tenantId] || (data.tenantId === 'nexus-master' ? 'Nexus ITAM (Master)' : 'Sem Empresa')
         };
       });
 
@@ -140,7 +140,7 @@ const SaaSUserManager = () => {
 
   const getRoleBadge = (role) => {
     const r = role ? role.toLowerCase() : 'member';
-    if (r === 'superadmin') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] font-black border border-blue-500/20"><ShieldAlert size={12}/> SUPER ADMIN</span>;
+    if (r === 'superadmin') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] font-black border border-blue-500/20"><ShieldAlert size={12}/> MASTER ADMIN</span>;
     if (r === 'owner') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 text-[10px] font-black border border-purple-500/20"><ShieldCheck size={12}/> OWNER</span>;
     if (r === 'admin') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-[10px] font-black border border-indigo-500/20"><Shield size={12}/> ADMIN</span>;
     return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-500/10 text-slate-400 text-[10px] font-black border border-white/5">MEMBRO</span>;
@@ -187,7 +187,7 @@ const SaaSUserManager = () => {
       </div>
 
       {/* FILTER BAR */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-150 dark:border-slate-750 p-4 shadow-sm flex flex-col md:flex-row gap-3 items-center">
+      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-150 dark:border-slate-755 p-4 shadow-sm flex flex-col md:flex-row gap-3 items-center">
         <div className="relative w-full md:flex-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -207,7 +207,7 @@ const SaaSUserManager = () => {
             className="text-xs bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-2.5 font-bold text-gray-600 dark:text-slate-350 cursor-pointer focus:outline-none"
           >
             <option value="ALL">Todas as Permissões</option>
-            <option value="superadmin">Super Admin</option>
+            <option value="superadmin">Master Admin</option>
             <option value="owner">Owner (Dono)</option>
             <option value="admin">Admin</option>
             <option value="member">Membro</option>
@@ -220,7 +220,7 @@ const SaaSUserManager = () => {
             className="text-xs bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-2.5 font-bold text-gray-600 dark:text-slate-350 cursor-pointer focus:outline-none max-w-[200px]"
           >
             <option value="ALL">Todas as Empresas</option>
-            <option value="nexus-master">Nexus ITAM (SaaS)</option>
+            <option value="nexus-master">Nexus ITAM (Master)</option>
             {tenants.map(t => (
               <option key={t.id} value={t.id}>{t.companyName}</option>
             ))}
@@ -229,7 +229,7 @@ const SaaSUserManager = () => {
       </div>
 
       {/* TABLE */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-150 dark:border-slate-750 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-150 dark:border-slate-755 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -257,7 +257,7 @@ const SaaSUserManager = () => {
                 </tr>
               ) : (
                 filteredUsers.map(user => (
-                  <tr key={user.id} className="border-b border-gray-50 dark:border-slate-750 hover:bg-gray-50/50 dark:hover:bg-slate-900/30 transition-colors">
+                  <tr key={user.id} className="border-b border-gray-50 dark:border-slate-755 hover:bg-gray-50/50 dark:hover:bg-slate-900/30 transition-colors">
                     <td className="p-4 pl-6">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-gray-55 dark:bg-slate-900 flex items-center justify-center font-black border border-gray-200 dark:border-slate-700 shrink-0">
@@ -355,7 +355,7 @@ const SaaSUserManager = () => {
                   <option value="member">Membro / Usuário Padrão</option>
                   <option value="admin">Administrador Local</option>
                   <option value="owner">Dono da Instância (Owner)</option>
-                  <option value="superadmin">Administrador Global (SaaS)</option>
+                  <option value="superadmin">Administrador Global (Nexus)</option>
                 </select>
               </div>
 
@@ -366,7 +366,7 @@ const SaaSUserManager = () => {
                   onChange={e => setEditForm({ ...editForm, tenantId: e.target.value })}
                   className="w-full px-3 py-2.5 bg-black/50 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500 text-sm font-semibold text-white cursor-pointer font-bold"
                 >
-                  <option value="nexus-master">Nexus ITAM (SaaS)</option>
+                  <option value="nexus-master">Nexus ITAM (Master)</option>
                   {tenants.map(t => (
                     <option key={t.id} value={t.id}>{t.companyName}</option>
                   ))}
@@ -424,4 +424,4 @@ const SaaSUserManager = () => {
   );
 };
 
-export default SaaSUserManager;
+export default NexusUserManager;

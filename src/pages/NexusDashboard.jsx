@@ -12,7 +12,7 @@ import { getGlobalAssets, getGlobalActivity } from '../services/assetService';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
 
-const SaaSDashboard = () => {
+const NexusDashboard = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -30,7 +30,7 @@ const SaaSDashboard = () => {
   const [tenantsList, setTenantsList] = useState([]);
 
   useEffect(() => {
-    const fetchSaaSData = async () => {
+    const fetchNexusData = async () => {
       try {
         setLoading(true);
         // 1. Fetch tenants
@@ -84,14 +84,14 @@ const SaaSDashboard = () => {
         setTenantsByPlan(plans);
 
       } catch (error) {
-        console.error("Erro ao carregar dados SaaS:", error);
-        toast.error("Falha ao carregar métricas do SaaS.");
+        console.error("Erro ao carregar dados globais:", error);
+        toast.error("Falha ao carregar métricas da infraestrutura.");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchSaaSData();
+    fetchNexusData();
   }, []);
 
   const barData = {
@@ -157,7 +157,7 @@ const SaaSDashboard = () => {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh]">
         <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-500 rounded-full animate-spin"></div>
-        <p className="mt-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest animate-pulse">Carregando Plataforma SaaS...</p>
+        <p className="mt-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest animate-pulse">Carregando Plataforma Nexus...</p>
       </div>
     );
   }
@@ -173,10 +173,10 @@ const SaaSDashboard = () => {
         <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-indigo-400 text-xs font-black uppercase tracking-widest mb-4">
-              <ShieldAlert size={14}/> SaaS Master Console
+              <ShieldAlert size={14}/> Nexus Master Console
             </div>
             <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight mb-2">
-              Gestão Global <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-400">Nexus SaaS</span>
+              Gestão Global <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-400">Nexus ITAM</span>
             </h1>
             <p className="text-slate-400 font-medium text-sm max-w-lg leading-relaxed">
               Painel analítico consolidado para monitoramento de inquilinos, volume de ativos, licenças contratadas e atividades da rede.
@@ -198,7 +198,7 @@ const SaaSDashboard = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
         
         {/* Total Tenants */}
-        <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col justify-between h-36 relative overflow-hidden group hover:border-indigo-200 transition-all cursor-pointer" onClick={() => navigate('/admin/tenants')}>
+        <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-150 dark:border-slate-700 shadow-sm flex flex-col justify-between h-36 relative overflow-hidden group hover:border-indigo-200 transition-all cursor-pointer" onClick={() => navigate('/admin/tenants')}>
           <div className="absolute -right-6 -top-6 bg-indigo-50 w-16 h-16 rounded-full blur-2xl group-hover:bg-indigo-100 transition-colors"></div>
           <div className="flex justify-between items-start relative z-10">
             <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl"><Building2 size={18}/></div>
@@ -211,7 +211,7 @@ const SaaSDashboard = () => {
         </div>
 
         {/* Active vs Suspended */}
-        <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col justify-between h-36 relative overflow-hidden group hover:border-emerald-200 transition-all">
+        <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-150 dark:border-slate-700 shadow-sm flex flex-col justify-between h-36 relative overflow-hidden group hover:border-emerald-200 transition-all">
           <div className="flex justify-between items-start">
             <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"><TrendingUp size={18}/></div>
             <div className="flex gap-1.5">
@@ -230,7 +230,7 @@ const SaaSDashboard = () => {
         </div>
 
         {/* Total Users */}
-        <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col justify-between h-36 relative overflow-hidden group hover:border-purple-200 transition-all cursor-pointer" onClick={() => navigate('/admin/users')}>
+        <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-150 dark:border-slate-700 shadow-sm flex flex-col justify-between h-36 relative overflow-hidden group hover:border-purple-200 transition-all cursor-pointer" onClick={() => navigate('/admin/users')}>
           <div className="flex justify-between items-start">
             <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl"><Users size={18}/></div>
             <ArrowRight size={16} className="text-gray-300 group-hover:text-purple-600 transition-transform group-hover:translate-x-1"/>
@@ -242,7 +242,7 @@ const SaaSDashboard = () => {
         </div>
 
         {/* Total Global Assets */}
-        <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col justify-between h-36 relative overflow-hidden group hover:border-amber-200 transition-all">
+        <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-150 dark:border-slate-700 shadow-sm flex flex-col justify-between h-36 relative overflow-hidden group hover:border-amber-200 transition-all">
           <div className="flex justify-between items-start">
             <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl"><Server size={18}/></div>
             <div className="flex items-baseline gap-1 text-gray-400">
@@ -257,11 +257,11 @@ const SaaSDashboard = () => {
 
       </div>
 
-      {/* 3. SAAS CHARTS SECTION */}
+      {/* 3. NEXUS CHARTS SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Assets Global Distribution (Bar Chart) */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col min-h-[320px]">
+        <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-150 dark:border-slate-700 shadow-sm flex flex-col min-h-[320px]">
           <div className="flex justify-between items-center mb-6">
             <div>
               <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 text-lg tracking-tight">
@@ -279,7 +279,7 @@ const SaaSDashboard = () => {
         </div>
 
         {/* Plan Distribution (Doughnut Chart) */}
-        <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col min-h-[320px]">
+        <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-150 dark:border-slate-700 shadow-sm flex flex-col min-h-[320px]">
           <div className="mb-4">
             <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 text-lg tracking-tight">
               <PieChart size={20} className="text-emerald-500"/> Distribuição de Planos
@@ -316,7 +316,7 @@ const SaaSDashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Tier Pricing Quick View */}
-        <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-150 dark:border-slate-700 shadow-sm flex flex-col justify-between">
           <div>
             <h3 className="font-black text-gray-900 dark:text-white mb-6 text-lg tracking-tight flex items-center gap-2">
               <Layers size={20} className="text-indigo-500"/> Resumo de Limites
@@ -343,11 +343,11 @@ const SaaSDashboard = () => {
         </div>
 
         {/* Global Operations Logs */}
-        <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm lg:col-span-2 flex flex-col">
+        <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-150 dark:border-slate-700 shadow-sm lg:col-span-2 flex flex-col">
           <div className="flex justify-between items-center mb-6">
             <div>
               <h3 className="font-black text-gray-900 dark:text-white text-lg flex items-center gap-2 tracking-tight">
-                <Activity size={20} className="text-indigo-500"/> Atividade SaaS em Tempo Real
+                <Activity size={20} className="text-indigo-500"/> Atividade Nexus em Tempo Real
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">Auditoria de operações efetuadas pelos inquilinos</p>
             </div>
@@ -407,4 +407,4 @@ const SaaSDashboard = () => {
   );
 };
 
-export default SaaSDashboard;
+export default NexusDashboard;

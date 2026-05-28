@@ -37,8 +37,8 @@ const AgentManager = lazy(() => import('./pages/AgentManager'));
 const Register = lazy(() => import('./pages/Register'));
 const UserManager = lazy(() => import('./pages/UserManager'));
 const TenantManager = lazy(() => import('./pages/TenantManager'));
-const SaaSUserManager = lazy(() => import('./pages/SaaSUserManager'));
-const SaaSPlansManager = lazy(() => import('./pages/SaaSPlansManager'));
+const NexusUserManager = lazy(() => import('./pages/NexusUserManager'));
+const NexusPlansManager = lazy(() => import('./pages/NexusPlansManager'));
 
 function App() {
   return (
@@ -126,11 +126,11 @@ function App() {
           } />
 
           <Route path="/admin/users" element={
-            <PrivateRoute><Layout><SaaSUserManager /></Layout></PrivateRoute>
+            <PrivateRoute><Layout><NexusUserManager /></Layout></PrivateRoute>
           } />
 
           <Route path="/admin/plans" element={
-            <PrivateRoute><Layout><SaaSPlansManager /></Layout></PrivateRoute>
+            <PrivateRoute><Layout><NexusPlansManager /></Layout></PrivateRoute>
           } />
 
         </Routes>

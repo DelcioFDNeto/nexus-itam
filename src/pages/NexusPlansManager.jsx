@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/firebase';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { 
   Layers, Settings, Shield, Zap, Edit3, Save, X, RefreshCcw, 
-  HelpCircle, CheckCircle, XCircle, DollarSign, Layout, Users, Server
+  CheckCircle, XCircle, Users, Server
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
@@ -39,7 +39,7 @@ const defaultPlans = {
   }
 };
 
-const SaaSPlansManager = () => {
+const NexusPlansManager = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   
@@ -133,7 +133,7 @@ const SaaSPlansManager = () => {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh]">
         <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-500 rounded-full animate-spin"></div>
-        <p className="mt-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Tiers Comerciais...</p>
+        <p className="mt-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Níveis Comerciais...</p>
       </div>
     );
   }
@@ -150,7 +150,7 @@ const SaaSPlansManager = () => {
           </div>
           <div>
             <h1 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tight">Planos & Níveis</h1>
-            <p className="text-slate-400 font-medium text-sm mt-1">Configure planos de assinatura, defina limites de ativos/usuários e libere recursos.</p>
+            <p className="text-slate-400 font-medium text-sm mt-1">Configure planos de licenciamento, defina limites de ativos/usuários e libere recursos.</p>
           </div>
         </div>
 
@@ -312,7 +312,7 @@ const SaaSPlansManager = () => {
 
               <div className="space-y-2.5 bg-white/5 rounded-2xl p-4 border border-white/5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-gray-300">🎮 Integração com Agente Nexus</span>
+                  <span className="text-xs font-bold text-gray-300">⚙️ Integração com Agente Nexus</span>
                   <input 
                     type="checkbox"
                     checked={editForm.agentIntegration}
@@ -322,7 +322,7 @@ const SaaSPlansManager = () => {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-gray-300">🏆 Acesso Whitelabel</span>
+                  <span className="text-xs font-bold text-gray-300">⚙️ Acesso Whitelabel</span>
                   <input 
                     type="checkbox"
                     checked={editForm.whitelabel}
@@ -347,4 +347,4 @@ const SaaSPlansManager = () => {
   );
 };
 
-export default SaaSPlansManager;
+export default NexusPlansManager;

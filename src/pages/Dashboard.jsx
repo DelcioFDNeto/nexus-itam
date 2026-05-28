@@ -40,7 +40,7 @@ import { db } from '../services/firebase';
 
 // Components
 import DashboardSkeleton from '../components/dashboard/DashboardSkeleton';
-import SaaSDashboard from './SaaSDashboard';
+import NexusDashboard from './NexusDashboard';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -210,7 +210,7 @@ const Dashboard = () => {
   if (loading) return <DashboardSkeleton />;
 
   if (currentUser?.role === 'superadmin') {
-    return <SaaSDashboard />;
+    return <NexusDashboard />;
   }
 
   return (
