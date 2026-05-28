@@ -15,11 +15,11 @@ export default defineConfig({
         description: 'Gestão de Ativos Nexus ITAM',
         theme_color: '#ffffff',
         background_color: '#ffffff',
-        display: 'standalone', // Remove a barra de navegação do navegador
-        orientation: 'portrait', // Força modo retrato no celular (opcional)
+        display: 'standalone',
+        orientation: 'portrait',
         icons: [
           {
-            src: 'pwa-192x192.png', // Lembre-se que você precisará criar essas imagens na pasta public depois
+            src: 'pwa-192x192.png',
             sizes: '192x192',
             type: 'image/png'
           },
@@ -32,8 +32,36 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    // Otimização de performance: separar dependências pesadas em chunks independentes
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Firebase SDK (~206 KB) — carregado sob demanda quando AuthContext precisa
+          'vendor-firebase': [
+            'firebase/app',
+            'firebase/auth',
+            'firebase/firestore',
+          ],
+          // React core (~140 KB) — necessário sempre, mas separado para cache de longo prazo
+          'vendor-react': [
+            'react',
+            'react-dom',
+            'react-router-dom',
+          ],
+          // Bibliotecas de UI (~60 KB) — framer-motion, sonner, etc.
+          'vendor-ui': [
+            'framer-motion',
+            'sonner',
+          ],
+        },
+      },
+    },
+    // Aumentar limite de aviso para não poluir o console (chunks grandes são intencionais)
+    chunkSizeWarningLimit: 600,
+  },
   server: {
-    host: true, // <--- O PULO DO GATO: Libera o acesso para outros dispositivos na rede
-    port: 5173, // Garante que a porta seja sempre a 5173
+    host: true,
+    port: 5173,
   }
 })

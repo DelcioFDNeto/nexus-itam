@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
-import QRScanner from '../components/QRScanner';
+const QRScanner = React.lazy(() => import('../components/QRScanner'));
 import AssetIcon from '../components/AssetIcon';
 
 const AuditPage = () => {
@@ -391,7 +391,16 @@ const AuditPage = () => {
             </button>
         </div>
 
-        {isScannerOpen && <QRScanner onClose={() => setIsScannerOpen(false)} onScan={(code) => { setIsScannerOpen(false); handleScan(code); }} />}
+        {isScannerOpen && (
+          <React.Suspense fallback={
+            <div className="fixed inset-0 bg-black/95 z-[9999] flex flex-col items-center justify-center text-white">
+              <div className="animate-spin h-8 w-8 border-4 border-brand border-t-transparent rounded-full mb-4"></div>
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Acessando Câmera...</p>
+            </div>
+          }>
+            <QRScanner onClose={() => setIsScannerOpen(false)} onScan={(code) => { setIsScannerOpen(false); handleScan(code); }} />
+          </React.Suspense>
+        )}
     </div>
   );
 };

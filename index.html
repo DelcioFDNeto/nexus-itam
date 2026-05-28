@@ -2,13 +2,25 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/logo.png" />
-    <link rel="manifest" href="/manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#F4F4F5" />
+    <meta name="description" content="Nexus ITAM — Plataforma SaaS de Gestão de Ativos de TI. Controle patrimônio, licenças, auditorias e muito mais." />
+    <meta name="theme-color" content="#0a0a0c" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <title>Nexus ITAM</title>
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <title>Nexus ITAM — Gestão Inteligente de Ativos</title>
+
+    <!-- Favicon otimizado -->
+    <link rel="icon" type="image/webp" href="/logo.webp" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/pwa-192x192.png" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Preconnect para Firebase (reduz latência de autenticação) -->
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
+    <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
+    <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com" />
   </head>
   <body>
     <div id="root"></div>

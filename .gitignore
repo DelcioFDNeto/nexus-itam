@@ -19,7 +19,6 @@ dist-ssr
 .firebase/
 
 # Documentação Interna
-ANALISE_SISTEMA.md
 
 # Diretórios e Metadados do Sistema/Editor
 .vscode/*

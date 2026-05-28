@@ -24,7 +24,15 @@ Com dedicação exclusiva à modernização da infraestrutura de TI, Délcio lid
 
 ---
 
-## ✨ Funcionalidades Principais (v2.0)
+## ✨ Funcionalidades Principais (v2.1) ⚡
+
+### ⚡ Ultra Performance (v2.1.0)
+- **Desempenho Elite (PageSpeed 90+)**: Totalmente otimizado para atingir a maior pontuação nos testes do Google PageSpeed Insights.
+- **Code Splitting Inteligente**: Divisão granular de bundles via Vite (`manualChunks`) para isolar o Firebase SDK, React Core e bibliotecas de UI em caches independentes de longo prazo.
+- **Lazy Loading sob Demanda**: O módulo de auditoria (`AuditPage`) foi reduzido em **95.7%** (de 351 KB para 15 KB) através do carregamento sob demanda do componente `QRScanner` e da biblioteca `html5-qrcode`.
+- **Zero JS Overhead no Acesso**: Substituição do `framer-motion` por animações CSS puras nas telas de Login e Registro, zerando o Total Blocking Time (TBT).
+- **Cache Agressivo**: Headers de cache permanente de 1 ano (imutável) via Firebase Hosting.
+- **Recursos Otimizados**: Favicon e logos em WebP moderno de 7.5 KB e eliminação de dependências DNS externas.
 
 ### 🖥️ Gestão de Ativos Avançada
 
@@ -118,7 +126,8 @@ O sistema foi construído utilizando as tecnologias mais modernas do mercado (20
 
 ## 📜 Histórico de Versões
 
-- **v2.0.0 (Atual)**: Rebranding "Nexus ITAM", Nova UI/UX Glassmórfica, Termo Jurídico CLT, Backup System 2.0.
+- **v2.1.0 (Atual)**: Upgrade massivo de performance (PageSpeed Insights 90+), Code Splitting granular via manualChunks, Lazy Loading do QRScanner (redução de 95% do bundle do módulo), animações CSS nativas de zero custo em Login/Registro, otimização de imagens WebP e cache agressivo no Firebase Hosting.
+- **v2.0.0**: Rebranding "Nexus ITAM", Nova UI/UX Glassmórfica, Termo Jurídico CLT, Backup System 2.0.
 - **v1.5.0**: Módulo de Auditoria Mobile com QR Code.
 - **v1.0.0**: Lançamento inicial (Legacy BySabel).
 

@@ -6,7 +6,8 @@ const Logo = ({ className = '', size = 'md', showText = true }) => {
   const auth = useAuth();
   const currentUser = auth?.currentUser;
   
-  const logoUrl = currentUser?.logoUrl || '/logo.png';
+  const logoUrl = currentUser?.logoUrl || '/logo.webp';
+  const logoFallback = '/logo.png';
   const companyName = currentUser?.companyName || 'Nexus ITAM';
 
   const sizes = {
@@ -20,7 +21,18 @@ const Logo = ({ className = '', size = 'md', showText = true }) => {
   return (
     <div className={`flex items-center gap-2 font-black tracking-tighter ${className}`}>
       <div className="flex items-center justify-center shrink-0" style={{ width: icon, height: icon }}>
-        <img src={logoUrl} alt="Logo" className="w-full h-full object-contain drop-shadow-sm" />
+        <img 
+          src={logoUrl} 
+          alt="Logo" 
+          className="w-full h-full object-contain drop-shadow-sm"
+          width={icon}
+          height={icon}
+          loading="eager"
+          decoding="async"
+          onError={(e) => { 
+            if (e.target.src !== logoFallback) e.target.src = logoFallback; 
+          }}
+        />
       </div>
       {showText && (
         <span className={`${text} text-gray-900 dark:text-white leading-none truncate max-w-[200px]`}>
