@@ -225,20 +225,20 @@ const AssetForm = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="md:col-span-2">
                              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Nome / Modelo do Ativo</label>
-                             <input name="model" value={formData.model} onChange={handleChange} className="w-full p-4 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:bg-slate-800 focus:border-black rounded-xl outline-none font-bold text-lg transition-all placeholder:font-normal" required placeholder="Ex: Notebook Dell Latitude 3420" />
+                             <input name="model" value={formData.model} onChange={handleChange} className="w-full p-4 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:focus:bg-slate-800 focus:border-black rounded-xl outline-none font-bold text-lg transition-all placeholder:font-normal" required placeholder="Ex: Notebook Dell Latitude 3420" />
                         </div>
 
                         <div>
                              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Patrimônio (Tag)</label>
                              <div className="relative">
                                  <Tag size={18} className="absolute left-4 top-4 text-gray-400 dark:text-gray-500"/>
-                                 <input name="internalId" value={formData.internalId} onChange={handleChange} className="w-full pl-11 pr-4 py-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:bg-slate-800 focus:border-black rounded-xl outline-none font-mono font-bold text-gray-900 dark:text-white transition-all uppercase" required placeholder="Ex: SHL-NB-001" />
+                                 <input name="internalId" value={formData.internalId} onChange={handleChange} className="w-full pl-11 pr-4 py-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:focus:bg-slate-800 focus:border-black rounded-xl outline-none font-mono font-bold text-gray-900 dark:text-white transition-all uppercase" required placeholder="Ex: SHL-NB-001" />
                              </div>
                         </div>
 
                         <div>
                              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Serial Number</label>
-                             <input name="serialNumber" value={formData.serialNumber} onChange={handleChange} className="w-full p-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:bg-slate-800 focus:border-black rounded-xl outline-none font-mono text-sm font-bold text-gray-900 dark:text-white transition-all" placeholder="N/A" />
+                             <input name="serialNumber" value={formData.serialNumber} onChange={handleChange} className="w-full p-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:focus:bg-slate-800 focus:border-black rounded-xl outline-none font-mono text-sm font-bold text-gray-900 dark:text-white transition-all" placeholder="N/A" />
                         </div>
                     </div>
 
@@ -249,7 +249,7 @@ const AssetForm = () => {
                                 const Icon = t.icon;
                                 const isSelected = formData.type === t.id;
                                 return (
-                                    <button type="button" key={t.id} onClick={() => setFormData({...formData, type: t.id})} className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${isSelected ? 'border-black bg-black text-white shadow-lg scale-105' : 'border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 hover:border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:bg-slate-900'}`}>
+                                    <button type="button" key={t.id} onClick={() => setFormData({...formData, type: t.id})} className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${isSelected ? 'border-black bg-black text-white shadow-lg scale-105' : 'border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 hover:border-gray-200 dark:hover:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-900'}`}>
                                         <Icon size={20} />
                                         <span className="text-xs font-bold">{t.label}</span>
                                     </button>

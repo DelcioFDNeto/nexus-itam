@@ -555,10 +555,10 @@ const AgentManager = () => {
                   spellCheck={false}
                 />
                 <div className="flex gap-3 mt-4">
-                  <button onClick={analyzeJson} disabled={loadingPreview} className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 px-4 py-2.5 rounded-xl font-bold text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:bg-slate-900 flex items-center gap-2 transition-all">
+                  <button onClick={analyzeJson} disabled={loadingPreview} className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 px-4 py-2.5 rounded-xl font-bold text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-900 flex items-center gap-2 transition-all">
                     {loadingPreview ? <RefreshCcw size={14} className="animate-spin" /> : <Play size={14} />} Analisar Lógica
                   </button>
-                  <label className="cursor-pointer bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 px-4 py-2.5 rounded-xl font-bold text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:bg-slate-900 flex items-center gap-2 transition-all">
+                  <label className="cursor-pointer bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 px-4 py-2.5 rounded-xl font-bold text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-900 flex items-center gap-2 transition-all">
                     <UploadCloud size={14} /> Importar JSON
                     <input type="file" accept=".json,application/json" onChange={uploadJson} className="hidden" />
                   </label>

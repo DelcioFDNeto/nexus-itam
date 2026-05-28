@@ -20,6 +20,36 @@
     <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
     <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
     <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com" />
+
+    <!-- Cache buster automático para PWA e Service Workers -->
+    <script>
+      (function() {
+        const CURRENT_VERSION = '2.0.1';
+        if (localStorage.getItem('NEXUS_VERSION') !== CURRENT_VERSION) {
+          localStorage.setItem('NEXUS_VERSION', CURRENT_VERSION);
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+              for (let registration of registrations) {
+                registration.unregister();
+              }
+              if ('caches' in window) {
+                caches.keys().then(function(names) {
+                  return Promise.all(names.map(name => caches.delete(name)));
+                }).then(function() {
+                  window.location.reload(true);
+                });
+              } else {
+                window.location.reload(true);
+              }
+            }).catch(function() {
+              window.location.reload(true);
+            });
+          } else {
+            window.location.reload(true);
+          }
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

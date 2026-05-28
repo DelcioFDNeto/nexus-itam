@@ -5,14 +5,14 @@ import {
 } from 'firebase/firestore';
 import { 
   Users, Search, Filter, ShieldCheck, CheckCircle, XCircle, 
-  Trash2, Edit, Save, X, RefreshCcw, Building2, ShieldAlert, Shield, Mail
+  Trash2, Edit, Save, X, RefreshCcw, Building2, ShieldAlert, Shield, Mail, Pause, Play, Key
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 const NexusUserManager = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, resetPassword } = useAuth();
   const navigate = useNavigate();
   
   const [users, setUsers] = useState([]);
@@ -64,7 +64,7 @@ const NexusUserManager = () => {
         return {
           id: doc.id,
           ...data,
-          companyName: tenantMap[data.tenantId] || (data.tenantId === 'nexus-master' ? 'Nexus ITAM (Master)' : 'Sem Empresa')
+          companyName: tenantMap[data.tenantId] || (data.tenantId === 'nexus-master' ? 'Nexus ITAM' : 'Sem Empresa')
         };
       });
 
@@ -75,6 +75,16 @@ const NexusUserManager = () => {
       toast.error("Falha ao carregar lista de acessos.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSendPasswordReset = async (email) => {
+    try {
+      await resetPassword(email);
+      toast.success(`E-mail de redefinição de senha enviado para ${email}`);
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao enviar e-mail de redefinição de senha.");
     }
   };
 
@@ -220,7 +230,7 @@ const NexusUserManager = () => {
             className="text-xs bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-2.5 font-bold text-gray-600 dark:text-slate-350 cursor-pointer focus:outline-none max-w-[200px]"
           >
             <option value="ALL">Todas as Empresas</option>
-            <option value="nexus-master">Nexus ITAM (Master)</option>
+            <option value="nexus-master">Nexus ITAM</option>
             {tenants.map(t => (
               <option key={t.id} value={t.id}>{t.companyName}</option>
             ))}
@@ -296,6 +306,13 @@ const NexusUserManager = () => {
                             >
                               {user.status === 'active' ? <Pause size={14}/> : <Play size={14}/>}
                             </button>
+                             <button 
+                              onClick={() => handleSendPasswordReset(user.email)}
+                              className="p-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-400 hover:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-900/10 transition-all"
+                              title="Redefinir Senha"
+                            >
+                              <Key size={14}/>
+                            </button>
                             <button 
                               onClick={() => handleOpenEdit(user)}
                               className="p-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-all"
@@ -366,7 +383,7 @@ const NexusUserManager = () => {
                   onChange={e => setEditForm({ ...editForm, tenantId: e.target.value })}
                   className="w-full px-3 py-2.5 bg-black/50 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500 text-sm font-semibold text-white cursor-pointer font-bold"
                 >
-                  <option value="nexus-master">Nexus ITAM (Master)</option>
+                  <option value="nexus-master">Nexus ITAM</option>
                   {tenants.map(t => (
                     <option key={t.id} value={t.id}>{t.companyName}</option>
                   ))}

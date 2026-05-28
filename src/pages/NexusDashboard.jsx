@@ -368,7 +368,7 @@ const NexusDashboard = () => {
                     <div className="flex justify-between items-start gap-2 mb-1">
                       <p className="font-black text-gray-900 dark:text-white text-sm">{act.action}</p>
                       <span className="text-[10px] font-bold text-gray-400 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 px-2 py-0.5 rounded-md whitespace-nowrap">
-                        {act.jsDate ? act.jsDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
+                        {act.jsDate ? act.jsDate.toLocaleString([], {day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit'}) : '--:--'}
                       </span>
                     </div>
                     <p className="text-xs text-gray-600 dark:text-gray-400 font-medium">{act.details || "Operação efetuada na instância."}</p>

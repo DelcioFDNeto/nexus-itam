@@ -84,7 +84,7 @@ export const AuthProvider = ({ children }) => {
               userData = {
                 id: user.uid,
                 email: user.email,
-                name: 'Délcio Farias (SaaS Admin)',
+                name: 'Délcio Farias',
                 tenantId: 'nexus-master',
                 role: 'superadmin',
                 status: 'active',
@@ -92,9 +92,10 @@ export const AuthProvider = ({ children }) => {
                 updatedAt: serverTimestamp()
               };
               needsUpdate = true;
-            } else if (userData.role !== 'superadmin' || userData.tenantId !== 'nexus-master') {
+            } else if (userData.role !== 'superadmin' || userData.tenantId !== 'nexus-master' || userData.name !== 'Délcio Farias') {
               userData.role = 'superadmin';
               userData.tenantId = 'nexus-master';
+              userData.name = 'Délcio Farias';
               userData.updatedAt = serverTimestamp();
               needsUpdate = true;
             }
@@ -103,18 +104,20 @@ export const AuthProvider = ({ children }) => {
               await setDoc(userDocRef, userData, { merge: true });
             }
 
-            // Garante que o tenant 'nexus-master' existe
+            // Garante que o tenant 'nexus-master' existe e tem o nome correto
             const tenantDocRef = doc(db, 'tenants', 'nexus-master');
             const tenantDoc = await getDoc(tenantDocRef);
             if (!tenantDoc.exists()) {
               await setDoc(tenantDocRef, {
                 id: 'nexus-master',
-                companyName: 'Nexus ITAM (SaaS)',
+                companyName: 'Nexus ITAM',
                 status: 'active',
                 plan: 'enterprise',
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp()
               });
+            } else if (tenantDoc.data().companyName !== 'Nexus ITAM') {
+              await setDoc(tenantDocRef, { companyName: 'Nexus ITAM' }, { merge: true });
             }
           }
 

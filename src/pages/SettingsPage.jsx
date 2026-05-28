@@ -243,7 +243,7 @@ const SettingsPage = () => {
       
       {/* Painel topo da central de controle do sistema */}
       <div className="flex items-center gap-3 mb-8">
-        <div className="p-3 bg-gray-900 dark:bg-white dark:bg-slate-800 text-white dark:text-gray-900 dark:text-white rounded-xl">
+        <div className="p-3 bg-gray-900 dark:bg-slate-800 text-white rounded-xl">
             <Settings size={28} />
         </div>
         <div>
@@ -270,7 +270,7 @@ const SettingsPage = () => {
                                type={field.type || "text"}
                                value={config[field.key] || ''} 
                                onChange={e => setConfig({...config, [field.key]: e.target.value})} 
-                               className={`w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg font-bold text-sm text-gray-800 dark:text-gray-100 dark:text-gray-100 focus:outline-none focus:border-brand dark:focus:border-brand ${field.type === 'color' ? 'h-10 p-1 cursor-pointer' : 'p-2'}`}
+                               className={`w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg font-bold text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-brand dark:focus:border-brand ${field.type === 'color' ? 'h-10 p-1 cursor-pointer' : 'p-2'}`}
                                placeholder={field.placeholder}
                              />
                          </div>
@@ -280,7 +280,7 @@ const SettingsPage = () => {
                            <textarea
                              value={config.termClauses || ''}
                              onChange={e => setConfig({...config, termClauses: e.target.value})}
-                             className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg font-bold text-sm text-gray-800 dark:text-gray-100 dark:text-gray-100 focus:outline-none focus:border-brand dark:focus:border-brand p-2 h-32 resize-none"
+                             className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg font-bold text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-brand dark:focus:border-brand p-2 h-32 resize-none"
                              placeholder="Digite as cláusulas do contrato, uma por linha..."
                            />
                        </div>
@@ -290,7 +290,7 @@ const SettingsPage = () => {
                         <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
                                 <Database size={16} className="text-brand" />
-                                <h3 className="text-xs font-black text-gray-700 dark:text-gray-200 dark:text-gray-300 uppercase">Campos Customizados</h3>
+                                <h3 className="text-xs font-black text-gray-700 dark:text-gray-200 uppercase">Campos Customizados</h3>
                             </div>
                             <button type="button" onClick={addCustomField} className="text-[10px] flex items-center gap-1 bg-brand text-white px-2 py-1 rounded font-bold hover:bg-brand/80 transition-colors">
                                 <Plus size={12}/> Adicionar Campo
@@ -302,12 +302,12 @@ const SettingsPage = () => {
                                     value={cf.label} 
                                     onChange={e => updateCustomField(idx, 'label', e.target.value)}
                                     placeholder="Nome do Campo"
-                                    className="flex-1 p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-800 dark:text-gray-100 dark:text-gray-100 focus:border-brand focus:outline-none"
+                                    className="flex-1 p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-800 dark:text-gray-100 focus:border-brand focus:outline-none"
                                 />
                                 <select 
                                     value={cf.type} 
                                     onChange={e => updateCustomField(idx, 'type', e.target.value)}
-                                    className="p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-slate-900 focus:border-brand focus:outline-none"
+                                    className="p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-600 dark:text-gray-400 bg-gray-50 focus:border-brand focus:outline-none"
                                 >
                                     <option value="text">Texto Curto</option>
                                     <option value="textarea">Texto Longo</option>
@@ -488,7 +488,7 @@ const SettingsPage = () => {
                             </div>
 
                             <div className="flex gap-3">
-                                <button onClick={() => setImportSummary(null)} className="flex-1 py-3 bg-white dark:bg-slate-800 border border-gray-300 text-gray-700 dark:text-gray-200 font-bold rounded-lg hover:bg-gray-50 dark:bg-slate-900">Cancelar</button>
+                                <button onClick={() => setImportSummary(null)} className="flex-1 py-3 bg-white dark:bg-slate-800 border border-gray-300 text-gray-700 dark:text-gray-200 font-bold rounded-lg hover:bg-gray-50 dark:hover:bg-slate-900">Cancelar</button>
                                 <button onClick={confirmRestore} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-lg shadow-blue-200 flex items-center justify-center gap-2">
                                     <Play size={18}/> Confirmar Importação
                                 </button>
@@ -507,18 +507,18 @@ const SettingsPage = () => {
                     ) : (
                         // Estado 1: Tela de imã limpa e seca clamando por injeção de arquivo JSON
                         <div 
-                            className={`p-8 border-2 border-dashed ${dragActive ? 'border-brand bg-indigo-50 dark:bg-indigo-900/20' : 'border-gray-200 dark:border-slate-600 bg-gray-50/50 dark:bg-slate-800/50'} transition-all text-center mx-6 mb-6 rounded-xl relative cursor-pointer group`}
-                            onDragEnter={handleDrag}
-                            onDragLeave={handleDrag}
-                            onDragOver={handleDrag}
-                            onDrop={handleDrop}
-                            onClick={() => fileInputRef.current.click()}
-                        >
-                            <input ref={fileInputRef} type="file" className="hidden" accept=".json" onChange={handleFileChange} />
-                            <div className="w-16 h-16 bg-white dark:bg-slate-800 dark:bg-slate-700 group-hover:bg-white dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400 dark:text-gray-500 group-hover:text-orange-500 transition-colors shadow-sm border border-gray-100 dark:border-slate-700">
-                                <UploadCloud size={32}/>
-                            </div>
-                            <h3 className="font-bold text-gray-700 dark:text-gray-200 group-hover:text-gray-900 dark:text-white dark:group-hover:text-white">Clique ou Arraste seu JSON aqui</h3>
+                                className={`p-8 border-2 border-dashed ${dragActive ? 'border-brand bg-indigo-50 dark:bg-indigo-900/20' : 'border-gray-200 dark:border-slate-600 bg-gray-50/50 dark:bg-slate-800/50'} transition-all text-center mx-6 mb-6 rounded-xl relative cursor-pointer group`}
+                                onDragEnter={handleDrag}
+                                onDragLeave={handleDrag}
+                                onDragOver={handleDrag}
+                                onDrop={handleDrop}
+                                onClick={() => fileInputRef.current.click()}
+                            >
+                                <input ref={fileInputRef} type="file" className="hidden" accept=".json" onChange={handleFileChange} />
+                                <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400 dark:text-gray-500 group-hover:text-orange-500 transition-colors shadow-sm border border-gray-100 dark:border-slate-700">
+                                    <UploadCloud size={32}/>
+                                </div>
+                                <h3 className="font-bold text-gray-700 dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-white">Clique ou Arraste seu JSON aqui</h3>
                             <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 max-w-xs mx-auto">Suporta backups completos ou parciais. O sistema validará o arquivo antes de importar.</p>
                         </div>
                     )}

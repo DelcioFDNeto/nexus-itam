@@ -2,50 +2,101 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Funções Helper de Autenticação e Multi-Tenancy
+    // Funções Helper de Autenticação e Multi-Tenancy Seguras
     function isAuthenticated() {
       return request.auth != null;
     }
     
     function getUserTenant() {
-      // Retorna o tenantId do usuário atual buscando-o no Firestore
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId;
+      // Retorna o tenantId do usuário atual buscando-o no Firestore com checagem de existência prévia
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(userPath) ? get(userPath).data.tenantId : 'no-tenant';
     }
 
     // Regras específicas de usuários
     match /users/{userId} {
-      // Usuário pode se ler e alterar. Além disso, pode ser lido se fizer parte do mesmo Tenant.
-      allow read: if isAuthenticated() && (request.auth.uid == userId || resource.data.tenantId == getUserTenant());
-      allow update: if isAuthenticated() && (request.auth.uid == userId || resource.data.tenantId == getUserTenant());
-      // A criação (signup) não restringe de início, mas ideal seria travar em Funções.
+      // Regras de leitura e escrita seguras que previnem recursão infinita usando short-circuit
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        getUserTenant() == 'nexus-master' ||
+        (request.auth.uid != userId && resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
+      );
+      allow update: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        getUserTenant() == 'nexus-master' ||
+        (request.auth.uid != userId && resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
+      );
       allow create: if isAuthenticated();
-      allow delete: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if isAuthenticated() && (request.auth.uid == userId || getUserTenant() == 'nexus-master');
     }
 
     // Regras específicas de tenants
     match /tenants/{tenantId} {
       allow read: if isAuthenticated(); // Acesso aberto para listas e admin
       allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && tenantId == getUserTenant();
+      allow update, delete: if isAuthenticated() && (tenantId == getUserTenant() || getUserTenant() == 'nexus-master');
+    }
+
+    // Regras de Planos & Níveis Comerciais
+    match /plans/{planId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && getUserTenant() == 'nexus-master';
+    }
+
+    // Regras específicas de configurações (Whitelabel)
+    match /settings/{tenantId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (tenantId == getUserTenant() || getUserTenant() == 'nexus-master');
     }
 
     // Sistema de Convites
     match /invites/{inviteId} {
-      allow read, update, delete: if isAuthenticated() && resource.data.tenantId == getUserTenant();
-      allow create: if isAuthenticated() && request.resource.data.tenantId == getUserTenant();
+      allow read, update, delete: if isAuthenticated() && (resource.data.tenantId == getUserTenant() || getUserTenant() == 'nexus-master');
+      allow create: if isAuthenticated() && (request.resource.data.tenantId == getUserTenant() || getUserTenant() == 'nexus-master');
+    }
+
+    // Regras para consultas de Collection Group globais (Superadmin ou do próprio Tenant)
+    match /{path=**}/assets/{assetId} {
+      allow read: if isAuthenticated() && (
+        getUserTenant() == 'nexus-master' ||
+        (resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
+      );
+    }
+    match /{path=**}/employees/{employeeId} {
+      allow read: if isAuthenticated() && (
+        getUserTenant() == 'nexus-master' ||
+        (resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
+      );
+    }
+    match /{path=**}/projects/{projectId} {
+      allow read: if isAuthenticated() && (
+        getUserTenant() == 'nexus-master' ||
+        (resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
+      );
+    }
+    match /{path=**}/history/{historyId} {
+      allow read: if isAuthenticated() && (
+        getUserTenant() == 'nexus-master' ||
+        (resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
+      );
     }
     
     // Para todas as outras coleções baseadas em Tenant (assets, projects, tasks, etc)
     match /{collection}/{document=**} {
-      // Garante que operações de Read/Update/Delete só operem em dados do MESMO tenant.
+      // Garante que operações de Read/Update/Delete só operem em dados do MESMO tenant ou para superadmin.
       // Se a coleção for genérica e não possuir 'tenantId', ela libera leitura.
       allow read, update, delete: if isAuthenticated() && (
-        !("tenantId" in resource.data) || resource.data.tenantId == getUserTenant()
+        (collection != 'users' && collection != 'tenants' && collection != 'plans' && collection != 'settings' && collection != 'invites' && getUserTenant() == 'nexus-master') ||
+        resource == null || 
+        !("tenantId" in resource.data) || 
+        resource.data.tenantId == getUserTenant()
       );
       
-      // Garante que o usuário só crie registros atrelados à SUA própria empresa.
+      // Garante que o usuário só crie registros atrelados à SUA própria empresa ou para superadmin.
       allow create: if isAuthenticated() && (
-        !("tenantId" in request.resource.data) || request.resource.data.tenantId == getUserTenant()
+        (collection != 'users' && collection != 'tenants' && collection != 'plans' && collection != 'settings' && collection != 'invites' && getUserTenant() == 'nexus-master') ||
+        !("tenantId" in request.resource.data) || 
+        request.resource.data.tenantId == getUserTenant()
       );
     }
   }

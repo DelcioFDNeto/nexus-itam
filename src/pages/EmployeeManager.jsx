@@ -165,13 +165,13 @@ const EmployeeManager = () => {
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full md:w-fit mb-6">
           <button 
             onClick={() => setActiveTab('employees')} 
-            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'employees' ? 'bg-white dark:bg-slate-800 text-black shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-200'}`}
+            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'employees' ? 'bg-white dark:bg-slate-800 text-black shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
           >
               <UserCircle size={18}/> Colaboradores
           </button>
           <button 
             onClick={() => setActiveTab('sectors')} 
-            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'sectors' ? 'bg-white dark:bg-slate-800 text-black shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-200'}`}
+            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'sectors' ? 'bg-white dark:bg-slate-800 text-black shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
           >
               <Briefcase size={18}/> Setores / Deptos
           </button>
@@ -348,7 +348,7 @@ const EmployeeManager = () => {
               )}
 
               <div className="flex gap-3 pt-4 border-t border-gray-50 mt-2">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl font-bold text-gray-600 hover:bg-gray-50 dark:bg-slate-900">Cancelar</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl font-bold text-gray-600 hover:bg-gray-50 dark:hover:bg-slate-900">Cancelar</button>
                 <button type="submit" className="flex-1 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 shadow-lg flex justify-center items-center gap-2">
                     <Save size={18}/> Salvar
                 </button>

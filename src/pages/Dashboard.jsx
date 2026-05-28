@@ -71,12 +71,14 @@ const Dashboard = () => {
           if (!tenantDoc.exists()) {
             await setDoc(tenantDocRef, {
               id: 'nexus-master',
-              companyName: 'Nexus ITAM (Master)',
+              companyName: 'Nexus ITAM',
               status: 'active',
               plan: 'enterprise',
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             });
+          } else if (tenantDoc.data().companyName !== 'Nexus ITAM') {
+            await setDoc(tenantDocRef, { companyName: 'Nexus ITAM' }, { merge: true });
           }
           window.location.reload();
         } catch (err) {
@@ -437,9 +439,9 @@ const Dashboard = () => {
               <div key={idx} className={`flex items-center justify-between p-3.5 rounded-2xl border hover:shadow-md transition-all cursor-pointer group ${cat.color.replace('text-', 'hover:bg-').replace('50', '100')} bg-white dark:bg-slate-800`}>
                 <div className="flex items-center gap-3">
                   <div className={`p-2.5 rounded-xl ${cat.color.split(' ').slice(0,2).join(' ')}`}>{cat.i}</div>
-                  <span className="font-bold text-gray-700 dark:text-gray-200 group-hover:text-gray-900 dark:text-white">{cat.l}</span>
+                  <span className="font-bold text-gray-700 dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-white">{cat.l}</span>
                 </div>
-                <span className="font-mono font-black text-lg text-gray-400 dark:text-gray-500 group-hover:text-gray-900 dark:text-white transition-colors mr-2">{cat.c}</span>
+                <span className="font-mono font-black text-lg text-gray-400 dark:text-gray-500 group-hover:text-gray-900 dark:group-hover:text-white transition-colors mr-2">{cat.c}</span>
               </div>
             ))}
           </div>
@@ -473,7 +475,7 @@ const Dashboard = () => {
                     <div className="flex justify-between items-start gap-2 mb-1">
                       <p className="font-black text-gray-900 dark:text-white text-sm">{act.action}</p>
                       <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 px-2 py-0.5 rounded-md whitespace-nowrap shadow-sm">
-                        {act.jsDate ? act.jsDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}
+                        {act.jsDate ? act.jsDate.toLocaleString([], {day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit'}) : '--:--'}
                       </span>
                     </div>
                     <p className="text-xs text-gray-600 font-medium">{act.details || "Operação realizada com sucesso."}</p>

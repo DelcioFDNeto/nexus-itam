@@ -81,14 +81,25 @@ const TenantManager = () => {
       const assetsData = assetsSnap.docs.map(doc => doc.data());
 
       // Faz o join
+      const planLimits = {
+        starter: { maxUsers: 10, maxAssets: 100 },
+        pro: { maxUsers: 50, maxAssets: 1000 },
+        enterprise: { maxUsers: Infinity, maxAssets: Infinity }
+      };
+
       const enrichedTenants = tenantsData.map(tenant => {
-        const adminUser = usersData.find(u => u.tenantId === tenant.id && (u.role === 'owner' || u.role === 'admin'));
+        const adminUser = usersData.find(u => u.tenantId === tenant.id && (u.role === 'owner' || u.role === 'admin' || u.role === 'superadmin'));
+        const planKey = tenant.plan?.toLowerCase() || 'starter';
+        const limits = planLimits[planKey] || planLimits.starter;
+        
         return {
           ...tenant,
           adminName: adminUser ? adminUser.name : 'N/A',
           adminEmail: adminUser ? adminUser.email : 'N/A',
           usersCount: usersData.filter(u => u.tenantId === tenant.id).length,
-          assetsCount: assetsData.filter(a => a.tenantId === tenant.id).length
+          assetsCount: assetsData.filter(a => a.tenantId === tenant.id).length,
+          maxUsers: limits.maxUsers,
+          maxAssets: limits.maxAssets
         };
       });
 
@@ -400,14 +411,34 @@ const TenantManager = () => {
                       <p className="text-[10px] text-gray-400 font-medium flex items-center gap-1.5 mt-0.5"><Mail size={11} className="text-gray-400"/> {tenant.adminEmail}</p>
                     </td>
                     <td className="p-4 text-center">
-                      <span className="bg-gray-100 dark:bg-slate-900 text-gray-700 dark:text-gray-300 px-2.5 py-1 rounded-full text-[10px] font-black border border-gray-200 dark:border-slate-700">
-                        {tenant.usersCount}
-                      </span>
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="bg-gray-100 dark:bg-slate-900 text-gray-700 dark:text-gray-300 px-2.5 py-0.5 rounded-full text-[10px] font-black border border-gray-200 dark:border-slate-700">
+                          {tenant.usersCount} {tenant.maxUsers !== Infinity ? `/ ${tenant.maxUsers}` : ' (Ilimitado)'}
+                        </span>
+                        {tenant.maxUsers !== Infinity && (
+                          <div className="w-16 h-1 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden mt-1" title={`${((tenant.usersCount / tenant.maxUsers) * 100).toFixed(0)}% utilizado`}>
+                            <div 
+                              className={`h-full rounded-full transition-all ${tenant.usersCount / tenant.maxUsers >= 0.85 ? 'bg-rose-500' : tenant.usersCount / tenant.maxUsers >= 0.6 ? 'bg-amber-500' : 'bg-green-500'}`}
+                              style={{ width: `${Math.min(100, (tenant.usersCount / tenant.maxUsers) * 100)}%` }}
+                            ></div>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4 text-center">
-                      <span className="bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 px-2.5 py-1 rounded-full text-[10px] font-black border border-indigo-100/50 dark:border-indigo-900/30">
-                        {tenant.assetsCount}
-                      </span>
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 px-2.5 py-0.5 rounded-full text-[10px] font-black border border-indigo-100/50 dark:border-indigo-900/30">
+                          {tenant.assetsCount} {tenant.maxAssets !== Infinity ? `/ ${tenant.maxAssets}` : ' (Ilimitado)'}
+                        </span>
+                        {tenant.maxAssets !== Infinity && (
+                          <div className="w-16 h-1 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden mt-1" title={`${((tenant.assetsCount / tenant.maxAssets) * 100).toFixed(0)}% utilizado`}>
+                            <div 
+                              className={`h-full rounded-full transition-all ${tenant.assetsCount / tenant.maxAssets >= 0.85 ? 'bg-rose-500' : tenant.assetsCount / tenant.maxAssets >= 0.6 ? 'bg-amber-500' : 'bg-indigo-500'}`}
+                              style={{ width: `${Math.min(100, (tenant.assetsCount / tenant.maxAssets) * 100)}%` }}
+                            ></div>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4 text-center">
                       {getPlanBadge(tenant.plan)}
