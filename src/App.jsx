@@ -37,6 +37,8 @@ const AgentManager = lazy(() => import('./pages/AgentManager'));
 const Register = lazy(() => import('./pages/Register'));
 const UserManager = lazy(() => import('./pages/UserManager'));
 const TenantManager = lazy(() => import('./pages/TenantManager'));
+const SaaSUserManager = lazy(() => import('./pages/SaaSUserManager'));
+const SaaSPlansManager = lazy(() => import('./pages/SaaSPlansManager'));
 
 function App() {
   return (
@@ -121,6 +123,14 @@ function App() {
 
           <Route path="/admin/tenants" element={
             <PrivateRoute><Layout><TenantManager /></Layout></PrivateRoute>
+          } />
+
+          <Route path="/admin/users" element={
+            <PrivateRoute><Layout><SaaSUserManager /></Layout></PrivateRoute>
+          } />
+
+          <Route path="/admin/plans" element={
+            <PrivateRoute><Layout><SaaSPlansManager /></Layout></PrivateRoute>
           } />
 
         </Routes>

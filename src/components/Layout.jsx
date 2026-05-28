@@ -5,11 +5,15 @@ import Sidebar from './Sidebar';
 import GlobalSearch from './GlobalSearch';
 import { Toaster } from 'sonner';
 import { 
-  Home, Box, QrCode, Search, Plus, Settings, Menu, Bell, User
+  Home, Box, QrCode, Search, Plus, Settings, Menu, Bell, User,
+  Building2, Users, Layers, LayoutDashboard
 } from 'lucide-react';
 import Logo from './Logo';
+import { useAuth } from '../contexts/AuthContext';
 
 const Layout = ({ children }) => {
+  const { currentUser } = useAuth();
+  const isSuperadmin = currentUser?.role === 'superadmin';
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     const savedState = localStorage.getItem('sidebar_collapsed');
@@ -110,28 +114,50 @@ const Layout = ({ children }) => {
           <div className="fixed bottom-6 left-4 right-4 z-40">
               <div className="bg-black/90 backdrop-blur-xl text-white rounded-3xl shadow-2xl border border-white/10 p-2 flex justify-between items-center px-6 safe-area-pb">
                   
-                  <Link to="/dashboard" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname.includes('/dashboard') ? 'text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-300'}`}>
-                      <Home size={22} strokeWidth={location.pathname.includes('/dashboard') ? 3 : 2} />
-                  </Link>
-                  
-                  <Link to="/assets" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname.startsWith('/assets') && location.pathname !== '/assets/new' ? 'text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-300'}`}>
-                      <Box size={22} strokeWidth={location.pathname.startsWith('/assets') ? 3 : 2} />
-                  </Link>
+                  {isSuperadmin ? (
+                    <>
+                      <Link to="/dashboard" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/dashboard' ? 'text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-300'}`}>
+                          <LayoutDashboard size={22} strokeWidth={location.pathname === '/dashboard' ? 3 : 2} />
+                      </Link>
+                      
+                      <Link to="/admin/tenants" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/admin/tenants' ? 'text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-300'}`}>
+                          <Building2 size={22} strokeWidth={location.pathname === '/admin/tenants' ? 3 : 2} />
+                      </Link>
 
-                  {/* CENTER ACTION BUTTON */}
-                  <Link to="/assets/new" className="-mt-8">
-                       <div className="w-14 h-14 bg-brand rounded-full flex items-center justify-center shadow-lg shadow-brand/50 border-4 border-[#FAFAFA] transform active:scale-90 transition-transform">
-                           <Plus size={28} className="text-white" />
-                       </div>
-                  </Link>
+                      <Link to="/admin/users" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/admin/users' ? 'text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-300'}`}>
+                          <Users size={22} strokeWidth={location.pathname === '/admin/users' ? 3 : 2} />
+                      </Link>
 
-                  <Link to="/audit" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/audit' ? 'text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-300'}`}>
-                      <QrCode size={22} strokeWidth={location.pathname === '/audit' ? 3 : 2} />
-                  </Link>
+                      <Link to="/admin/plans" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/admin/plans' ? 'text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-300'}`}>
+                          <Layers size={22} strokeWidth={location.pathname === '/admin/plans' ? 3 : 2} />
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <Link to="/dashboard" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname.includes('/dashboard') ? 'text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-300'}`}>
+                          <Home size={22} strokeWidth={location.pathname.includes('/dashboard') ? 3 : 2} />
+                      </Link>
+                      
+                      <Link to="/assets" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname.startsWith('/assets') && location.pathname !== '/assets/new' ? 'text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-300'}`}>
+                          <Box size={22} strokeWidth={location.pathname.startsWith('/assets') ? 3 : 2} />
+                      </Link>
 
-                  <Link to="/settings" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/settings' ? 'text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-300'}`}>
-                      <Settings size={22} strokeWidth={location.pathname === '/settings' ? 3 : 2} />
-                  </Link>
+                      {/* CENTER ACTION BUTTON */}
+                      <Link to="/assets/new" className="-mt-8">
+                           <div className="w-14 h-14 bg-brand rounded-full flex items-center justify-center shadow-lg shadow-brand/50 border-4 border-[#FAFAFA] transform active:scale-90 transition-transform">
+                               <Plus size={28} className="text-white" />
+                           </div>
+                      </Link>
+
+                      <Link to="/audit" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/audit' ? 'text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-300'}`}>
+                          <QrCode size={22} strokeWidth={location.pathname === '/audit' ? 3 : 2} />
+                      </Link>
+
+                      <Link to="/settings" className={`flex flex-col items-center gap-1 p-2 transition-all ${location.pathname === '/settings' ? 'text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-300'}`}>
+                          <Settings size={22} strokeWidth={location.pathname === '/settings' ? 3 : 2} />
+                      </Link>
+                    </>
+                  )}
 
               </div>
           </div>

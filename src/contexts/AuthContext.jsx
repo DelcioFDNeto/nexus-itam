@@ -73,11 +73,52 @@ export const AuthProvider = ({ children }) => {
         try {
           // Busca o perfil do usuário no Firestore
           const userDocRef = doc(db, 'users', user.uid);
-          const userDoc = await getDoc(userDocRef);
-          
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
+          let userDoc = await getDoc(userDocRef);
+          let userData = userDoc.exists() ? userDoc.data() : null;
+
+          // Promoção automática de delciofarias04@gmail.com para superadmin
+          if (user.email === 'delciofarias04@gmail.com') {
+            let needsUpdate = false;
             
+            if (!userData) {
+              userData = {
+                id: user.uid,
+                email: user.email,
+                name: 'Délcio Farias (SaaS Admin)',
+                tenantId: 'nexus-master',
+                role: 'superadmin',
+                status: 'active',
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              };
+              needsUpdate = true;
+            } else if (userData.role !== 'superadmin' || userData.tenantId !== 'nexus-master') {
+              userData.role = 'superadmin';
+              userData.tenantId = 'nexus-master';
+              userData.updatedAt = serverTimestamp();
+              needsUpdate = true;
+            }
+
+            if (needsUpdate) {
+              await setDoc(userDocRef, userData, { merge: true });
+            }
+
+            // Garante que o tenant 'nexus-master' existe
+            const tenantDocRef = doc(db, 'tenants', 'nexus-master');
+            const tenantDoc = await getDoc(tenantDocRef);
+            if (!tenantDoc.exists()) {
+              await setDoc(tenantDocRef, {
+                id: 'nexus-master',
+                companyName: 'Nexus ITAM (SaaS)',
+                status: 'active',
+                plan: 'enterprise',
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              });
+            }
+          }
+
+          if (userData) {
             // Busca as customizações visuais do inquilino
             let tenantConfig = {};
             if (userData.tenantId) {

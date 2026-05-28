@@ -35,6 +35,8 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
     return "text-slate-500 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-slate-800 hover:text-brand hover:translate-x-1";
   };
 
+  const isSuperadmin = currentUser?.role === 'superadmin';
+
   // Organização dos Menus
   const mainItems = [
     { path: '/dashboard', icon: <LayoutDashboard size={isCollapsed ? 24 : 20} />, label: 'Dashboard' },
@@ -62,12 +64,23 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
     );
   }
 
-  const superAdminItems = [];
-  if (currentUser?.role === 'superadmin') {
-    superAdminItems.push(
-      { path: '/admin/tenants', icon: <Building2 size={isCollapsed ? 24 : 20} />, label: 'Empresas' }
-    );
-  }
+  const menuGroups = isSuperadmin 
+    ? [
+        {
+          title: 'SaaS Master',
+          items: [
+            { path: '/dashboard', icon: <LayoutDashboard size={isCollapsed ? 24 : 20} />, label: 'Painel Geral' },
+            { path: '/admin/tenants', icon: <Building2 size={isCollapsed ? 24 : 20} />, label: 'Empresas' },
+            { path: '/admin/users', icon: <Users size={isCollapsed ? 24 : 20} />, label: 'Acessos Global' },
+            { path: '/admin/plans', icon: <Layers size={isCollapsed ? 24 : 20} />, label: 'Planos & Limites' }
+          ]
+        }
+      ]
+    : [
+        { title: 'Visão Geral', items: mainItems },
+        { title: 'Gestão', items: manageItems },
+        { title: 'Sistema', items: systemItems }
+      ];
 
   return (
     <>
@@ -130,37 +143,36 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
         <nav className="flex-1 py-6 space-y-6 overflow-y-auto custom-sidebar-scroll">
           
           {/* BOTÃO NOVO (CONDENSADO SE COLAPSADO) */}
-          <div className="px-5">
-             <Link 
-                to="/assets/new"
-                onClick={onClose}
-                className={`flex items-center justify-center gap-2 bg-slate-900 text-white hover:bg-slate-800 transition-all group overflow-hidden shadow-lg shadow-slate-900/20 active:scale-95 ${isCollapsed ? 'rounded-2xl w-12 h-12 mx-auto' : 'rounded-xl px-4 py-3.5'}`}
-                title="Novo Cadastro"
-             >
-                <PlusSquare size={20} className="shrink-0 text-indigo-300"/> 
-                {!isCollapsed && <span className="font-black text-xs uppercase tracking-wider whitespace-nowrap">Novo Item</span>}
-             </Link>
-          </div>
+          {!isSuperadmin && (
+            <div className="px-5">
+               <Link 
+                  to="/assets/new"
+                  onClick={onClose}
+                  className={`flex items-center justify-center gap-2 bg-slate-900 text-white hover:bg-slate-800 transition-all group overflow-hidden shadow-lg shadow-slate-900/20 active:scale-95 ${isCollapsed ? 'rounded-2xl w-12 h-12 mx-auto' : 'rounded-xl px-4 py-3.5'}`}
+                  title="Novo Cadastro"
+               >
+                  <PlusSquare size={20} className="shrink-0 text-indigo-300"/> 
+                  {!isCollapsed && <span className="font-black text-xs uppercase tracking-wider whitespace-nowrap">Novo Item</span>}
+               </Link>
+            </div>
+          )}
 
           {/* BOTÃO BUSCA GLOBAL (COM ATALHO) */}
-          <div className="px-5 mt-3">
-             <button 
-                onClick={() => { if(onSearchClick) onSearchClick(); if(onClose) onClose(); }}
-                className={`flex items-center justify-center gap-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-brand dark:hover:text-brand hover:border-brand/30 hover:bg-indigo-50/50 transition-all group overflow-hidden border border-gray-200 dark:border-slate-600 shadow-sm ${isCollapsed ? 'rounded-2xl w-12 h-12 mx-auto' : 'rounded-xl px-4 py-3 w-full'}`}
-                title="Busca Global (Ctrl+K)"
-             >
-                <Search size={18} className="shrink-0 text-slate-400 dark:text-slate-500 group-hover:text-brand transition-colors"/> 
-                {!isCollapsed && <div className="flex-1 flex items-center justify-between"><span className="font-bold text-xs">Busca Global</span><span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-mono tracking-widest hidden lg:block group-hover:bg-indigo-100 group-hover:border-indigo-200 group-hover:text-brand">Ctrl+K</span></div>}
-             </button>
-          </div>
+          {!isSuperadmin && (
+            <div className="px-5 mt-3">
+               <button 
+                  onClick={() => { if(onSearchClick) onSearchClick(); if(onClose) onClose(); }}
+                  className={`flex items-center justify-center gap-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-brand dark:hover:text-brand hover:border-brand/30 hover:bg-indigo-50/50 transition-all group overflow-hidden border border-gray-200 dark:border-slate-600 shadow-sm ${isCollapsed ? 'rounded-2xl w-12 h-12 mx-auto' : 'rounded-xl px-4 py-3 w-full'}`}
+                  title="Busca Global (Ctrl+K)"
+               >
+                  <Search size={18} className="shrink-0 text-slate-400 dark:text-slate-500 group-hover:text-brand transition-colors"/> 
+                  {!isCollapsed && <div className="flex-1 flex items-center justify-between"><span className="font-bold text-xs">Busca Global</span><span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-mono tracking-widest hidden lg:block group-hover:bg-indigo-100 group-hover:border-indigo-200 group-hover:text-brand">Ctrl+K</span></div>}
+               </button>
+            </div>
+          )}
 
           {/* MENUS LOOP */}
-          {[
-              { title: 'Visão Geral', items: mainItems },
-              { title: 'Gestão', items: manageItems },
-              { title: 'Sistema', items: systemItems },
-              ...(superAdminItems.length > 0 ? [{ title: 'Admin Global', items: superAdminItems }] : [])
-          ].map((group, idx) => (
+          {menuGroups.map((group, idx) => (
              <div key={idx} className="space-y-1 mt-6">
                {!isCollapsed && <p className="px-7 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{group.title}</p>}
                {isCollapsed && <div className="h-[1px] bg-gray-100 mx-6 my-4"></div>}

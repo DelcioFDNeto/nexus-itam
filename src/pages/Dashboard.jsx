@@ -40,6 +40,7 @@ import { db } from '../services/firebase';
 
 // Components
 import DashboardSkeleton from '../components/dashboard/DashboardSkeleton';
+import SaaSDashboard from './SaaSDashboard';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -207,6 +208,10 @@ const Dashboard = () => {
   };
 
   if (loading) return <DashboardSkeleton />;
+
+  if (currentUser?.role === 'superadmin') {
+    return <SaaSDashboard />;
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-fade-in pb-24">
