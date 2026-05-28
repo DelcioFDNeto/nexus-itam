@@ -141,6 +141,7 @@ const Register = () => {
                   <input 
                     type="text" 
                     required 
+                    autoComplete="organization"
                     className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner"
                     placeholder="Ex: Nexus Corp"
                     value={companyName}
@@ -157,6 +158,7 @@ const Register = () => {
                   <input 
                     type="text" 
                     required 
+                    autoComplete="name"
                     className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner"
                     placeholder="Nome Completo"
                     value={adminName}
@@ -174,6 +176,7 @@ const Register = () => {
                 <input 
                   type="email" 
                   required 
+                  autoComplete="username"
                   className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner"
                   placeholder="admin@empresa.com"
                   value={email}
@@ -198,6 +201,7 @@ const Register = () => {
                   <input 
                     type="password" 
                     required 
+                    autoComplete="new-password"
                     className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 tracking-widest shadow-inner"
                     placeholder="••••••••"
                     value={password}
@@ -222,6 +226,7 @@ const Register = () => {
                   <input 
                     type="password" 
                     required 
+                    autoComplete="new-password"
                     className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 tracking-widest shadow-inner"
                     placeholder="••••••••"
                     value={confirmPassword}

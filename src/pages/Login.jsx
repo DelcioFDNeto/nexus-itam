@@ -97,11 +97,12 @@ const Login = () => {
               <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">ID Corporativo (E-mail)</label>
               <div className="relative group">
                 <Mail className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-brand transition-colors" size={18} />
-                <input 
-                  type="email" 
-                  required 
-                  className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner"
-                  placeholder="acesso@nexusitam.com"
+                  <input 
+                    type="email" 
+                    required 
+                    autoComplete="username"
+                    className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner"
+                    placeholder="acesso@nexusitam.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -112,11 +113,12 @@ const Login = () => {
               <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Chave de Segurança</label>
               <div className="relative group">
                 <Lock className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-brand transition-colors" size={18} />
-                <input 
-                  type="password" 
-                  required 
-                  className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner tracking-widest"
-                  placeholder="••••••••"
+                  <input 
+                    type="password" 
+                    required 
+                    autoComplete="current-password"
+                    className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner tracking-widest"
+                    placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
