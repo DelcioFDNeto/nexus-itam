@@ -76,8 +76,8 @@ export const AuthProvider = ({ children }) => {
           let userDoc = await getDoc(userDocRef);
           let userData = userDoc.exists() ? userDoc.data() : null;
 
-          // Promoção automática de delciofarias04@gmail.com para superadmin
-          if (user.email === 'delciofarias04@gmail.com') {
+          // Promoção automática de delciofarias04@gmail.com para superadmin (case-insensitive)
+          if (user.email && user.email.toLowerCase() === 'delciofarias04@gmail.com') {
             let needsUpdate = false;
             
             if (!userData) {

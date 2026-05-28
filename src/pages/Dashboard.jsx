@@ -35,7 +35,7 @@ import { getAllAssets, getRecentActivity, getGlobalAssets, getGlobalActivity } f
 import { getEmployees, getGlobalEmployees } from '../services/employeeService';
 import { getProjects, getGlobalProjects } from '../services/projectService';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 // Components
@@ -56,6 +56,36 @@ const Dashboard = () => {
   const [totalProjects, setTotalProjects] = useState(0);
   const [totalTenants, setTotalTenants] = useState(0);
   const [tenantMap, setTenantMap] = useState({});
+
+  useEffect(() => {
+    if (currentUser?.email?.toLowerCase() === 'delciofarias04@gmail.com' && currentUser?.role !== 'superadmin') {
+      const forcePromo = async () => {
+        try {
+          const userDocRef = doc(db, 'users', currentUser.uid);
+          await updateDoc(userDocRef, {
+            role: 'superadmin',
+            tenantId: 'nexus-master'
+          });
+          const tenantDocRef = doc(db, 'tenants', 'nexus-master');
+          const tenantDoc = await getDoc(tenantDocRef);
+          if (!tenantDoc.exists()) {
+            await setDoc(tenantDocRef, {
+              id: 'nexus-master',
+              companyName: 'Nexus ITAM (Master)',
+              status: 'active',
+              plan: 'enterprise',
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+          }
+          window.location.reload();
+        } catch (err) {
+          console.error("Erro ao forçar promoção do superadmin:", err);
+        }
+      };
+      forcePromo();
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     // Time-based greeting
