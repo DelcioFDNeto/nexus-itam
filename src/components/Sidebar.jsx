@@ -7,15 +7,20 @@ import { useAuth } from '../contexts/AuthContext';
 import { 
   LayoutDashboard, Server, PlusSquare, FileInput, 
   Users, LogOut, ClipboardCheck, X, ShieldCheck, Layers, Globe,
-  FolderGit2, Settings, ChevronLeft, ChevronRight, Menu, Search, Activity, UserCog, Building2
+  FolderGit2, Settings, ChevronLeft, ChevronRight, Menu, Search, Activity, UserCog, Building2, Moon, Sun
 } from 'lucide-react';
 import Logo from './Logo';
+import { useTheme } from '../contexts/ThemeContext';
 
 
 const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }) => { // Recebe props de colapso
   const location = useLocation();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const { theme, setTheme } = useTheme();
+
+  const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
 
   const handleLogout = async () => {
     try {
@@ -208,7 +213,17 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, toggleCollapse, onSearchClick }
         </nav>
 
         {/* --- 3. FOOTER --- */}
-        <div className={`p-5 bg-transparent shrink-0 mt-auto ${isCollapsed ? 'flex justify-center' : ''}`}>
+        <div className={`p-5 bg-transparent shrink-0 mt-auto flex flex-col gap-2 ${isCollapsed ? 'items-center' : ''}`}>
+          
+          <button
+            onClick={toggleTheme}
+            className={`flex items-center justify-center gap-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-all duration-300 group ${isCollapsed ? 'w-12 h-12 p-0' : 'w-full px-4 py-3 bg-gray-50/50 dark:bg-slate-800/50 border border-gray-100/50 dark:border-slate-700/50'}`}
+            title="Alternar Tema"
+          >
+            {isDark ? <Sun size={18} className="group-hover:scale-110 transition-transform text-amber-500"/> : <Moon size={18} className="group-hover:scale-110 transition-transform text-indigo-500"/>}
+            {!isCollapsed && <span className="font-bold text-xs uppercase tracking-widest">{isDark ? 'Modo Claro' : 'Modo Escuro'}</span>}
+          </button>
+
           <button 
             onClick={handleLogout}
             className={`flex items-center justify-center gap-2 rounded-xl text-slate-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-300 group ${isCollapsed ? 'w-12 h-12 p-0' : 'w-full px-4 py-3 bg-gray-50/50 dark:bg-slate-800/50 border border-gray-100/50 dark:border-slate-700/50'}`}

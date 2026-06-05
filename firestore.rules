@@ -8,9 +8,11 @@ service cloud.firestore {
     }
     
     function getUserTenant() {
-      // Retorna o tenantId do usuário atual buscando-o no Firestore com checagem de existência prévia
-      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
-      return exists(userPath) ? get(userPath).data.tenantId : 'no-tenant';
+      // Prioridade 1: Custom Claim (request.auth.token.tenantId) gerado pelo backend (Performance ideal, sem leitura a mais)
+      // Prioridade 2: Fallback temporário usando a leitura do usuário caso as claims não estejam ativas.
+      return ('tenantId' in request.auth.token) 
+        ? request.auth.token.tenantId 
+        : (exists(/databases/$(database)/documents/users/$(request.auth.uid)) ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId : 'no-tenant');
     }
 
     // Regras específicas de usuários
@@ -19,12 +21,12 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (
         request.auth.uid == userId || 
         getUserTenant() == 'nexus-master' ||
-        (request.auth.uid != userId && resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
+        (resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
       );
       allow update: if isAuthenticated() && (
         request.auth.uid == userId || 
         getUserTenant() == 'nexus-master' ||
-        (request.auth.uid != userId && resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
+        (resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
       );
       allow create: if isAuthenticated();
       allow delete: if isAuthenticated() && (request.auth.uid == userId || getUserTenant() == 'nexus-master');

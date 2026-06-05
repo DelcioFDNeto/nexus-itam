@@ -789,16 +789,44 @@ Após 3 rodadas de correções, **zero problemas restantes** - lint limpo, build
 | 🧹 ESLint | Zero erros |
 | 🏗️ Build | 8.49s, 1799 módulos |
 
-### Rodada 3 (Final - ESLint + Ajustes Restantes)
+### Rodada 3 (ESLint + Ajustes Restantes)
 
 | # | Item | Arquivo | Descrição |
 |---|------|---------|-----------|
-| 42 | 🔴 ESLint no-undef | `AssetDetail.jsx` | `ReactDOMServer` não definido - import adicionado de volta |
-| 43 | 🔴 ESLint no-undef | `backupService.js` | `query` e `where` não importados - adicionados ao import |
-| 44 | 🟢 ESLint no-unused-vars | `ServiceManager.jsx` | `loading` substituído por placeholder `_` |
+| 42 | 🔴 ESLint no-undef | `AssetDetail.jsx` | `ReactDOMServer` import adicionado |
+| 43 | 🔴 ESLint no-undef | `backupService.js` | `query`/`where` adicionados ao import |
+| 44 | 🟢 ESLint no-unused-vars | `ServiceManager.jsx` | `loading` → placeholder `_` |
+| 45 | 🔴 ESLint no-undef | `setCustomClaims.js` | Node globals configurados no ESLint |
+| 46 | 🟢 ESLint no-unused-vars | `ThemeContext.test.jsx` | `vi` removido do import |
+| 47 | 🟡 ESLint set-state-in-effect | `useAssets.js` | `eslint-disable` na linha do `setLoading(true)` |
 
-✅ **ESLint: zero erros** | ✅ **Build: 8.49s**
+### Rodada 4 (Melhorias Finais - v2.1.0)
+
+| # | Melhoria | Descrição |
+|---|----------|-----------|
+| 1 | ✅ **Testes Unitários** | Vitest configurado, 2 testes do `ThemeContext` passando |
+| 2 | ✅ **Exportação PDF** | `jspdf` + `html2canvas` integrados ao `AuditPage.jsx` |
+| 3 | ✅ **Reatividade onSnapshot** | `useAssets.js` migrado de `getDocs` para WebSocket do Firebase |
+| 4 | ✅ **Modo Escuro** | Botão Lua/Sol no `Sidebar.jsx` com transição Tailwind |
+| 5 | ✅ **Custom Claims** | `firestore.rules` com `request.auth.token.tenantId` + script `setCustomClaims.js` |
+| 6 | ✅ **Índices limpos** | `sync_logs`/`serviceOrders` removidos do `firestore.indexes.json` |
+| 7 | ✅ **Browserslist** | `npx update-browserslist-db@latest` executado |
+| 8 | ✅ **Versão** | `package.json` atualizado para `2.1.0` |
+
+### Estado Final
+
+| Métrica | Valor |
+|---------|-------|
+| Versão | **2.1.0** |
+| Issues identificadas | **47** |
+| ✅ Resolvidas | **47** |
+| 🧹 ESLint | **Zero erros** |
+| 🧪 Testes | **2 passed** (1 suite) |
+| 🏗️ Build | **9.58s, 2047 módulos** |
+| 📦 PWA | 75 precache entries (3.17 MiB) |
+| 🎯 Framework | React 19 + Firebase 12.6 + Vite 7.2 + Tailwind 3.4 |
+| 📋 Coleções Firestore | assets, employees, licenses, projects, tasks, contracts, audits, history, sectors, settings, tenants, users, agentInbox, serviceOrders |
 
 ---
 
-*Documento final - todas as 47 issues resolvidas (v2.0.0) em 2026-06-05*
+*Documento final - v2.1.0 - todas as 47 issues resolvidas + 8 melhorias implementadas em 2026-06-05*

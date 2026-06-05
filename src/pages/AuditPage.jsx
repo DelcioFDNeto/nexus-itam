@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 const QRScanner = React.lazy(() => import('../components/QRScanner'));
 import AssetIcon from '../components/AssetIcon';
 
@@ -197,6 +199,34 @@ const AuditPage = () => {
       } catch (err) { console.error(err); toast.error("Erro ao salvar."); }
   };
 
+  const exportToPDF = () => {
+    if (!selectedLocation) return;
+    const doc = new jsPDF();
+    doc.text(`Relatório de Auditoria - Nexus ITAM`, 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Local: ${selectedLocation}`, 14, 22);
+    doc.text(`Data: ${new Date().toLocaleString()}`, 14, 28);
+    doc.text(`Progresso: ${progress}% (${auditResult.found.length}/${expectedAssets.length})`, 14, 34);
+
+    const tableColumn = ["Status", "Ativo", "Identificação", "Local Original"];
+    const tableRows = [];
+
+    auditResult.found.forEach(asset => tableRows.push(["Encontrado", asset.model, asset.internalId, asset.location]));
+    auditResult.missing.forEach(asset => tableRows.push(["Faltante", asset.model, asset.internalId, asset.location]));
+    auditResult.intruders.forEach(asset => tableRows.push(["Intruso", asset.model, asset.internalId, asset.location]));
+
+    doc.autoTable({
+      head: [tableColumn],
+      body: tableRows,
+      startY: 40,
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [79, 70, 229] } // Tailwind Indigo-600
+    });
+
+    doc.save(`Auditoria_${selectedLocation}_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success("Relatório PDF exportado com sucesso!");
+  };
+
   // ---------------- Interface Gráfica e Componentes ----------------
 
   if (loading) return <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-slate-900"><div className="animate-spin rounded-full h-12 w-12 border-b-4 border-black"></div></div>;
@@ -377,15 +407,21 @@ const AuditPage = () => {
         </div>
 
         {/* Rodapé retalhado com o percentual vivo e o grande botão para arquivar o resultado */}
-        <div className="p-4 bg-gray-900 border-t border-gray-800 shrink-0 flex gap-4">
-            <div className="flex-1 bg-gray-800 rounded-xl px-4 flex items-center justify-between">
+        <div className="p-4 bg-gray-900 border-t border-gray-800 shrink-0 flex gap-4 overflow-x-auto">
+            <div className="flex-1 bg-gray-800 rounded-xl px-4 py-2 flex items-center justify-between min-w-[120px]">
                 <span className="text-xs text-gray-400 dark:text-gray-500 font-bold uppercase">Progresso</span>
                 <span className="font-mono text-white text-lg font-bold">{progress}%</span>
             </div>
             <button 
+                onClick={exportToPDF}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-black uppercase tracking-wider transition-all shadow-lg flex items-center gap-2 whitespace-nowrap"
+            >
+                <ClipboardCheck size={18}/> Exportar PDF
+            </button>
+            <button 
                 onClick={handleFinishAudit} 
                 disabled={progress === 0} 
-                className="bg-brand hover:bg-red-600 disabled:opacity-50 disabled:bg-gray-700 text-white px-8 py-3 rounded-xl font-black uppercase tracking-wider transition-all shadow-lg shadow-red-900/20 flex items-center gap-2"
+                className="bg-brand hover:bg-red-600 disabled:opacity-50 disabled:bg-gray-700 text-white px-6 py-3 rounded-xl font-black uppercase tracking-wider transition-all shadow-lg shadow-red-900/20 flex items-center gap-2 whitespace-nowrap"
             >
                 <Save size={18}/> Salvar
             </button>

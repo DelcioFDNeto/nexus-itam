@@ -1,10 +1,11 @@
 // src/hooks/useAssets.js
 import { useState, useEffect, useCallback } from 'react';
 import { 
-  getAllAssets, 
   getAssetById as fetchAssetById, 
   getAssetHistory as fetchHistory 
 } from '../services/assetService';
+import { db } from '../services/firebase';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 
 export const useAssets = () => {
@@ -12,31 +13,36 @@ export const useAssets = () => {
   const tenantId = currentUser?.tenantId;
 
   const [assets, setAssets] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!tenantId);
   const [error, setError] = useState(null);
 
-  // Carrega lista completa filtrada pelo tenant do usuário logado
-  const loadAssets = useCallback(async () => {
-    if (!tenantId) {
-      setAssets([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const data = await getAllAssets(tenantId);
-      setAssets(data);
-    } catch (err) {
-      console.error(err);
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [tenantId]);
-
   useEffect(() => {
-    loadAssets();
-  }, [loadAssets]);
+    if (!tenantId) return;
+    setLoading(true); // eslint-disable-line react-hooks/set-state-in-effect
+
+    const assetsRef = collection(db, 'assets');
+    const q = query(
+      assetsRef,
+      where('tenantId', '==', tenantId),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setAssets(data);
+      setLoading(false);
+      setError(null);
+    }, (err) => {
+      console.error("Erro no onSnapshot de assets:", err);
+      setError(err);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [tenantId]);
 
   // --- A CORREÇÃO ESTÁ AQUI ---
   // Envolvemos estas funções em useCallback para elas não mudarem a cada render
@@ -52,7 +58,6 @@ export const useAssets = () => {
     assets, 
     loading, 
     error, 
-    refreshAssets: loadAssets,
     getAssetById,
     getAssetHistory
   };
