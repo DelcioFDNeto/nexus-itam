@@ -234,7 +234,7 @@ itam-shineray/
 
 ### Firebase Config (`.env`)
 - **Project ID**: `itam-nexus`
-- **API Key**: `REDACTED`
+- **API Key**: `AIzaSy... (Redacted)`
 - **Auth Domain**: `itam-nexus.firebaseapp.com`
 - **Storage Bucket**: `itam-nexus.firebasestorage.app`
 - ⚠️ **Credenciais expostas no `.env` do repositório**
@@ -604,14 +604,14 @@ itam-shineray/
 ## 10. Configurações
 
 ### Firebase (`.env`)
-```
-VITE_FIREBASE_API_KEY=REDACTED
+```env
+VITE_FIREBASE_API_KEY=AIzaSy... (Redacted)
 VITE_FIREBASE_AUTH_DOMAIN=itam-nexus.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=itam-nexus
 VITE_FIREBASE_STORAGE_BUCKET=itam-nexus.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=1000954001579
-VITE_FIREBASE_APP_ID=1:1000954001579:web:393391b44c4a1bc1841fee
-VITE_FIREBASE_MEASUREMENT_ID=G-7E2R4RRX0T
+VITE_FIREBASE_MESSAGING_SENDER_ID=***
+VITE_FIREBASE_APP_ID=***
+VITE_FIREBASE_MEASUREMENT_ID=***
 ```
 
 ⚠️ **Credenciais Firebase expostas no repositório** - risco de abuso (Firebase Abuse)
