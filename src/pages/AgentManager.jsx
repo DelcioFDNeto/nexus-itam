@@ -320,29 +320,6 @@ const AgentManager = () => {
     }
   };
 
-  const processSubmission = async (submission) => {
-    setProcessing(true);
-    try {
-      const result = await registerAgentAsset(submission.payload, {
-        user: currentUser?.email || 'Agente ITAM',
-        namingConfig: normalizedNamingConfig,
-        tenantId,
-      });
-      await markAgentSubmission(submission.id, {
-        status: 'processed',
-        resultAction: result.action,
-        assetId: result.assetId,
-      });
-      toast.success(result.action === 'created' ? 'Submissão processada: ativo criado.' : 'Submissão processada: ativo atualizado.');
-      await loadInbox();
-    } catch (error) {
-      console.error(error);
-      toast.error(`Falha ao processar submissão: ${error.message}`);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
   // eslint-disable-next-line no-unused-vars
   const updateDuplicateStatus = async (status) => {
     if (!preview?.duplicate?.id) return;

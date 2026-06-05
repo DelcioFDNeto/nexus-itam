@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
 import Login from './Login';
 import { useAuth } from '../contexts/AuthContext';
+import { toast } from 'sonner';
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: vi.fn()
@@ -17,6 +18,12 @@ vi.mock('react-router-dom', async () => {
     useNavigate: () => mockNavigate
   };
 });
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn()
+  }
+}));
 
 describe('Login Page', () => {
   beforeEach(() => {
@@ -61,6 +68,29 @@ describe('Login Page', () => {
 
     await waitFor(() => {
       expect(mockLogin).toHaveBeenCalledWith('admin@test.com', 'password123');
+    });
+  });
+
+  it('shows error toast when login fails', async () => {
+    const mockLogin = vi.fn().mockRejectedValueOnce(new Error('Invalid credentials'));
+    useAuth.mockReturnValue({
+      login: mockLogin,
+      currentUser: null,
+      loading: false
+    });
+
+    render(
+      <BrowserRouter>
+        <Login />
+      </BrowserRouter>
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('acesso@nexusitam.com'), { target: { value: 'admin@test.com' } });
+    fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'wrongpass' } });
+    fireEvent.click(screen.getByRole('button', { name: /Autenticar/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Acesso negado. Verifique suas credenciais.')).toBeInTheDocument();
     });
   });
 });

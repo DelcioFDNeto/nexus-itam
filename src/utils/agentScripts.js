@@ -118,7 +118,7 @@ $AgentCode = @"
 
 $AgentCode | Out-File -FilePath $ScriptPath -Encoding UTF8 -Force
 
-$Action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File \\"\$ScriptPath\\""
+$Action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File \\"$ScriptPath\\""
 $Trigger = New-ScheduledTaskTrigger -AtLogOn
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -Hidden
 $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
@@ -223,11 +223,11 @@ curl -s -X POST "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databa
     return `#!/bin/bash
 # Instala o script no crontab para rodar a cada boot
 SCRIPT_PATH="/usr/local/bin/nexus-agent.sh"
-cat << 'EOFAGENT' > \$SCRIPT_PATH
-\${baseScript}
+cat << 'EOFAGENT' > $SCRIPT_PATH
+${baseScript}
 EOFAGENT
-chmod +x \$SCRIPT_PATH
-(crontab -l 2>/dev/null; echo "@reboot \$SCRIPT_PATH") | crontab -
+chmod +x $SCRIPT_PATH
+(crontab -l 2>/dev/null; echo "@reboot $SCRIPT_PATH") | crontab -
 echo "Agente instalado no crontab."
 `;
   }
@@ -319,12 +319,12 @@ curl -s -X POST "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databa
 PLIST_PATH="/Library/LaunchDaemons/com.nexus.agent.plist"
 SCRIPT_PATH="/usr/local/bin/nexus-agent.sh"
 
-sudo cat << 'EOFAGENT' > \$SCRIPT_PATH
-\${baseScript}
+sudo cat << 'EOFAGENT' > $SCRIPT_PATH
+${baseScript}
 EOFAGENT
-sudo chmod +x \$SCRIPT_PATH
+sudo chmod +x $SCRIPT_PATH
 
-sudo cat << 'EOFPLIST' > \$PLIST_PATH
+sudo cat << 'EOFPLIST' > $PLIST_PATH
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -333,7 +333,7 @@ sudo cat << 'EOFPLIST' > \$PLIST_PATH
     <string>com.nexus.agent</string>
     <key>ProgramArguments</key>
     <array>
-        <string>\$SCRIPT_PATH</string>
+        <string>$SCRIPT_PATH</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -341,7 +341,7 @@ sudo cat << 'EOFPLIST' > \$PLIST_PATH
 </plist>
 EOFPLIST
 
-sudo launchctl load \$PLIST_PATH
+sudo launchctl load $PLIST_PATH
 echo "Agente instalado como LaunchDaemon no macOS."
 `;
   }
