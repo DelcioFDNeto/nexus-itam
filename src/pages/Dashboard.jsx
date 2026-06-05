@@ -17,8 +17,8 @@ import { db } from '../services/firebase';
 
 // Components
 import DashboardSkeleton from '../components/dashboard/DashboardSkeleton';
-import NexusDashboard from './NexusDashboard';
 
+const NexusDashboard = React.lazy(() => import('./NexusDashboard'));
 const DashboardCharts = React.lazy(() => import('../components/dashboard/DashboardCharts'));
 
 const Dashboard = () => {
@@ -156,7 +156,11 @@ const Dashboard = () => {
   if (loading) return <DashboardSkeleton />;
 
   if (currentUser?.role === 'superadmin') {
-    return <NexusDashboard />;
+    return (
+      <React.Suspense fallback={<DashboardSkeleton />}>
+        <NexusDashboard />
+      </React.Suspense>
+    );
   }
 
   return (

@@ -10,6 +10,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import Login from './pages/Login';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
+import PWAToast from './components/PWAToast';
 
 // Componente de Fallback (Loading State)
 const PageLoader = () => (
@@ -45,6 +46,7 @@ function App() {
     <AuthProvider>
       <ThemeProvider>
         <Router>
+          <PWAToast />
         <Suspense fallback={<PageLoader />}>
           <Routes>
           
