@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
 import Login from './Login';
 import { useAuth } from '../contexts/AuthContext';
-import { toast } from 'sonner';
+
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: vi.fn()
