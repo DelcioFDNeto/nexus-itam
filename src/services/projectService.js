@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, orderBy, where, collectionGroup } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, orderBy, where, collectionGroup, serverTimestamp } from 'firebase/firestore';
 
 const projectCollection = collection(db, 'projects');
 
@@ -9,7 +9,8 @@ export const createProject = async (data) => {
   }
   return await addDoc(projectCollection, {
     ...data,
-    createdAt: new Date(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
     progress: 0 // Começa com 0%
   });
 };
@@ -33,7 +34,10 @@ export const getGlobalProjects = async () => {
 
 export const updateProject = async (id, data) => {
   const docRef = doc(db, 'projects', id);
-  await updateDoc(docRef, data);
+  await updateDoc(docRef, {
+    ...data,
+    updatedAt: serverTimestamp()
+  });
 };
 
 export const deleteProject = async (id) => {

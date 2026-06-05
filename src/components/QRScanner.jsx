@@ -11,7 +11,7 @@ const QRScanner = ({ onClose, onScan }) => {
   const navigate = useNavigate();
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [lastScan] = useState(null);
+  const lastScanRef = useRef(null);
   const scannerRef = useRef(null);
 
   function handleScanSuccess(decodedText) {
@@ -49,7 +49,8 @@ const QRScanner = ({ onClose, onScan }) => {
           },
           (decodedText) => {
             const now = Date.now();
-            if (lastScan && (now - lastScan < 1500) && decodedText === lastScan) return;
+            if (lastScanRef.current && (now - lastScanRef.current.time < 1500) && decodedText === lastScanRef.current.text) return;
+            lastScanRef.current = { text: decodedText, time: now };
             
             handleScanSuccess(decodedText);
           },

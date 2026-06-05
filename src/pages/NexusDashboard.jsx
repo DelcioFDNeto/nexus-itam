@@ -9,12 +9,10 @@ import { Bar, Doughnut } from 'react-chartjs-2';
 import { db } from '../services/firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { getGlobalAssets, getGlobalActivity } from '../services/assetService';
-import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
 
 const NexusDashboard = () => {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     tenantsCount: 0,
@@ -27,7 +25,6 @@ const NexusDashboard = () => {
   const [assetsByType, setAssetsByType] = useState({});
   const [tenantsByPlan, setTenantsByPlan] = useState({});
   const [recentLogs, setRecentLogs] = useState([]);
-  const [tenantsList, setTenantsList] = useState([]);
 
   useEffect(() => {
     const fetchNexusData = async () => {
@@ -36,7 +33,6 @@ const NexusDashboard = () => {
         // 1. Fetch tenants
         const tenantsSnap = await getDocs(collection(db, 'tenants'));
         const tenants = tenantsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setTenantsList(tenants);
 
         // 2. Fetch users
         const usersSnap = await getDocs(collection(db, 'users'));

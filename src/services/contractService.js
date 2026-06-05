@@ -1,7 +1,7 @@
 // src/services/contractService.js
 import { db } from './firebase';
 import { 
-  collection, getDocs, addDoc, deleteDoc, doc, query, orderBy, serverTimestamp, where 
+  collection, getDocs, addDoc, deleteDoc, updateDoc, doc, query, orderBy, serverTimestamp, where 
 } from 'firebase/firestore';
 
 const collectionRef = collection(db, 'contracts');
@@ -23,7 +23,16 @@ export const createContract = async (data) => {
   }
   return await addDoc(collectionRef, {
     ...data,
-    createdAt: serverTimestamp()
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+};
+
+export const updateContract = async (id, data) => {
+  const docRef = doc(db, 'contracts', id);
+  await updateDoc(docRef, {
+    ...data,
+    updatedAt: serverTimestamp()
   });
 };
 

@@ -348,7 +348,7 @@ const LicenseManager = () => {
                     onChange={e => setSelectedAssetId(e.target.value)}
                   >
                     <option value="">Selecione um ativo...</option>
-                    {assets.sort((a, b) => a.model.localeCompare(b.model)).map(asset => (
+                    {[...assets].sort((a, b) => a.model.localeCompare(b.model)).map(asset => (
                       <option key={asset.id} value={asset.id}>{asset.model} ({asset.internalId})</option>
                     ))}
                   </select>

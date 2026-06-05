@@ -1,6 +1,6 @@
 // src/services/taskService.js
 import { db } from './firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, orderBy, where } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, orderBy, where, serverTimestamp } from 'firebase/firestore';
 
 const taskCollection = collection(db, 'tasks');
 
@@ -22,13 +22,17 @@ export const addTask = async (task) => {
   }
   await addDoc(taskCollection, {
     ...task,
-    createdAt: new Date()
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
   });
 };
 
 export const updateTask = async (id, updatedFields) => {
   const taskDoc = doc(db, 'tasks', id);
-  await updateDoc(taskDoc, updatedFields);
+  await updateDoc(taskDoc, {
+    ...updatedFields,
+    updatedAt: serverTimestamp()
+  });
 };
 
 export const deleteTask = async (id) => {

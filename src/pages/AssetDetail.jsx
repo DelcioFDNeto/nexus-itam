@@ -1105,8 +1105,9 @@ const AssetDetail = () => {
                   id="cpf-input"
                 />
                 <button
-                  onClick={async () => {
-                    const cpfValue = document.getElementById("cpf-input").value.trim();
+                  onClick={async (e) => {
+                    const cpfInput = e.currentTarget.previousElementSibling;
+                    const cpfValue = cpfInput ? cpfInput.value.trim() : '';
                     const userEmail = currentUser?.email || "Usuário Desconhecido";
                     await updateAsset(id, { clientCpf: cpfValue }, {
                       action: "CPF Atualizado",

@@ -41,8 +41,8 @@ export const useAssets = () => {
   // --- A CORREÇÃO ESTÁ AQUI ---
   // Envolvemos estas funções em useCallback para elas não mudarem a cada render
   const getAssetById = useCallback(async (id) => {
-    return await fetchAssetById(id);
-  }, []);
+    return await fetchAssetById(id, currentUser?.role === 'superadmin' ? null : tenantId);
+  }, [tenantId, currentUser?.role]);
 
   const getAssetHistory = useCallback(async (id) => {
     return await fetchHistory(id);

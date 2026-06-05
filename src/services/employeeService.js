@@ -1,6 +1,6 @@
 // src/services/employeeService.js
 import { db } from './firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where, collectionGroup } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where, collectionGroup, serverTimestamp } from 'firebase/firestore';
 
 const empCollection = collection(db, 'employees');
 const secCollection = collection(db, 'sectors');
@@ -27,12 +27,19 @@ export const addEmployee = async (employee) => {
   if (!employee.tenantId) {
     throw new Error("Não é possível cadastrar um colaborador sem especificar o inquilino (tenantId).");
   }
-  await addDoc(empCollection, employee);
+  await addDoc(empCollection, {
+    ...employee,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
 };
 
 export const updateEmployee = async (id, updatedData) => {
   const docRef = doc(db, 'employees', id);
-  await updateDoc(docRef, updatedData);
+  await updateDoc(docRef, {
+    ...updatedData,
+    updatedAt: serverTimestamp()
+  });
 };
 
 export const deleteEmployee = async (id) => {
@@ -56,12 +63,19 @@ export const addSector = async (sector) => {
   if (!sector.tenantId) {
     throw new Error("Não é possível cadastrar um setor sem especificar o inquilino (tenantId).");
   }
-  await addDoc(secCollection, sector);
+  await addDoc(secCollection, {
+    ...sector,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
 };
 
 export const updateSector = async (id, updatedData) => {
   const docRef = doc(db, 'sectors', id);
-  await updateDoc(docRef, updatedData);
+  await updateDoc(docRef, {
+    ...updatedData,
+    updatedAt: serverTimestamp()
+  });
 };
 
 export const deleteSector = async (id) => {

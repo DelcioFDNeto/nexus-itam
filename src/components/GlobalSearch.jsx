@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Monitor, User, FileText, ArrowRight, Command, X } from 'lucide-react';
-import { collection, getDocs, limit, query } from 'firebase/firestore';
+import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { useAuth } from '../contexts/AuthContext';
 
 const GlobalSearch = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const inputRef = useRef(null);
   const [term, setTerm] = useState('');
   const [results, setResults] = useState({ assets: [], employees: [], pages: [] });
@@ -44,9 +46,11 @@ const GlobalSearch = ({ isOpen, onClose }) => {
         // Aqui simularei uma busca simples pegando uma coleção menor ou filtrando no cliente se a base não for gigante.
         // Para produção real com milhares de itens, ideal é Algolia ou ElasticSearch.
         // Vou fazer uma busca manual em memória nos snapshots recentes para manter a simplicidade sem custos extras:
-        
+        // Busca restrita ao tenantId do usuário atual, garantindo segurança
+        const tenantId = currentUser?.tenantId;
         const assetsRef = collection(db, 'assets');
-        const assetsSnap = await getDocs(query(assetsRef, limit(100))); // Limite de segurança
+        const assetsQuery = query(assetsRef, where('tenantId', '==', tenantId), limit(100));
+        const assetsSnap = await getDocs(assetsQuery); // Limite de segurança
         const matchedAssets = assetsSnap.docs
             .map(d => ({ id: d.id, ...d.data() }))
             .filter(a => 
@@ -58,7 +62,8 @@ const GlobalSearch = ({ isOpen, onClose }) => {
 
         // 3. Buscar Funcionários
         const empRef = collection(db, 'employees');
-        const empSnap = await getDocs(query(empRef, limit(50)));
+        const empQuery = query(empRef, where('tenantId', '==', tenantId), limit(50));
+        const empSnap = await getDocs(empQuery);
         const matchedEmp = empSnap.docs
             .map(d => ({ id: d.id, ...d.data() }))
             .filter(e => e.name.toLowerCase().includes(lowerTerm))

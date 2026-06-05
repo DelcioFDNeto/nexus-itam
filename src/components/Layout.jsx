@@ -5,7 +5,7 @@ import Sidebar from './Sidebar';
 import GlobalSearch from './GlobalSearch';
 import { Toaster } from 'sonner';
 import { 
-  Home, Box, QrCode, Search, Plus, Settings, Menu, Bell, User,
+  Home, Box, QrCode, Search, Plus, Settings, Menu,
   Building2, Users, Layers, LayoutDashboard
 } from 'lucide-react';
 import Logo from './Logo';

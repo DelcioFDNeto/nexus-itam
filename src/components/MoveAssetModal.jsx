@@ -2,34 +2,38 @@
 import React, { useState, useEffect } from 'react';
 import { X, MapPin, User, Calendar, Truck, Search, ArrowRight, ArrowRightLeft } from 'lucide-react';
 import { getEmployees } from '../services/employeeService';
-import AssetIcon from '../components/AssetIcon';
+import AssetIcon from './AssetIcon';
+import { useAuth } from '../contexts/AuthContext';
 
 const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
+  const { currentUser } = useAuth();
   const [employees, setEmployees] = useState([]);
   
   const [formData, setFormData] = useState({
     newLocation: '',
     newResponsible: '',
+    newCpf: '',
     date: new Date().toISOString().split('T')[0],
     reason: ''
   });
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && currentUser?.tenantId) {
         const fetchEmps = async () => {
-            const data = await getEmployees();
+            const data = await getEmployees(currentUser.tenantId);
             setEmployees(data);
             // Inicializa o formulário após carregar os employees
             setFormData({
                 newLocation: '',
                 newResponsible: asset?.assignedTo || '',
+                newCpf: '',
                 date: new Date().toISOString().split('T')[0],
                 reason: ''
             });
         };
         fetchEmps();
     }
-  }, [isOpen, asset]);
+  }, [isOpen, asset, currentUser]);
 
   if (!isOpen) return null;
 

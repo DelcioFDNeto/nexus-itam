@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/firebase';
 import { 
-  collection, getDocs, doc, updateDoc, deleteDoc, serverTimestamp, getDoc 
+  collection, getDocs, doc, updateDoc, deleteDoc, serverTimestamp 
 } from 'firebase/firestore';
 import { 
   Users, Search, Filter, ShieldCheck, CheckCircle, XCircle, 

@@ -9,80 +9,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-const ProjectsPage = () => {
-  const navigate = useNavigate();
-  const { currentUser } = useAuth();
-  const tenantId = currentUser?.tenantId;
-  const [projects, setProjects] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('grid'); // Define a escolha visual do usuário (tabelão em grid ou colunas de Kanban)
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  // Guarda os rascunhos de digitação temporários do modal de "Novo Projeto"
-  const [formData, setFormData] = useState({
-    name: '', description: '', status: 'Planejamento', priority: 'Média', leader: '', deadline: '', version: '2.0', team: []
-  });
-
-  const loadProjects = React.useCallback(async () => {
-    if (!tenantId) return;
-    setLoading(true);
-    const [pData, eData] = await Promise.all([getProjects(tenantId), getEmployees(tenantId)]);
-    setProjects(pData);
-    setEmployees(eData);
-    setLoading(false);
-  }, [tenantId]);
-
-  useEffect(() => {
-    if (tenantId) {
-      setTimeout(() => loadProjects(), 0);
-    }
-  }, [tenantId, loadProjects]);
-
-
-
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    const enrichedData = {
-        ...formData,
-        tenantId: tenantId,
-        coverImage: `https://ui-avatars.com/api/?name=${formData.name}&background=random&size=128&bold=true`, 
-        changelog: [`v${formData.version}: Projeto iniciado.`],
-        progress: 0
-    };
-    await createProject(enrichedData);
-    setFormData({ name: '', description: '', status: 'Planejamento', priority: 'Média', leader: '', deadline: '', version: '2.0', team: [] });
-    setIsModalOpen(false);
-    loadProjects();
-  };
-
-  const handleDelete = async (id, e) => {
-    e.stopPropagation();
-    if(confirm("Apagar projeto e todo seu histórico?")) {
-      await deleteProject(id);
-      loadProjects();
-    }
-  };
-
-  // Motores de categorização e estilos das colunas do painel tipo Trello
-  const KANBAN_COLUMNS = [
-      { id: 'Planejamento', label: 'Planejamento', color: 'bg-gray-100 border-gray-200 dark:border-slate-600' },
-      { id: 'Em Andamento', label: 'Em Execução', color: 'bg-blue-50 border-blue-100' },
-      { id: 'Concluído', label: 'Entregue', color: 'bg-green-50 border-green-100' }
-  ];
-
-  const getProjectsByStatus = (status) => {
-      // Agrupa status semelhantes na raia correta do Kanban (ex: Pausado encosta no Planejamento)
-      return projects.filter(p => {
-         if (status === 'Planejamento') return p.status === 'Planejamento' || p.status === 'Pausado';
-         if (status === 'Em Andamento') return p.status === 'Em Andamento' || p.status === 'Revisão';
-         if (status === 'Concluído') return p.status === 'Concluído';
-         return false;
-      });
-  };
-
-  // Peças visuais isoladas construídas para serem replicadas na tela
-  const ProjectCard = ({ project }) => (
+// Peças visuais isoladas construídas para serem replicadas na tela
+const ProjectCard = ({ project, navigate, viewMode, onDelete }) => (
     <div 
         onClick={() => navigate(`/projects/${project.id}`)} 
         className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-gray-200 dark:border-slate-600 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group flex flex-col h-full"
@@ -136,12 +64,87 @@ const ProjectsPage = () => {
                       <span className={`text-[10px] font-bold flex items-center gap-1 ${project.deadline ? 'text-gray-600' : 'text-gray-400 dark:text-gray-500'}`}>
                          <Calendar size={12}/> {project.deadline ? new Date(project.deadline).toLocaleDateString('pt-BR', {timeZone: 'UTC'}).slice(0,5) : 'S/ Data'}
                       </span>
-                     <button onClick={(e) => handleDelete(project.id, e)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                     <button onClick={(e) => onDelete(project.id, e)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
                 </div>
             </div>
         </div>
     </div>
-  );
+);
+
+const ProjectsPage = () => {
+  const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const tenantId = currentUser?.tenantId;
+  const [projects, setProjects] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState('grid'); // Define a escolha visual do usuário (tabelão em grid ou colunas de Kanban)
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Guarda os rascunhos de digitação temporários do modal de "Novo Projeto"
+  const [formData, setFormData] = useState({
+    name: '', description: '', status: 'Planejamento', priority: 'Média', leader: '', deadline: '', version: '2.0', team: []
+  });
+
+  const loadProjects = React.useCallback(async () => {
+    if (!tenantId) return;
+    setLoading(true);
+    const [pData, eData] = await Promise.all([getProjects(tenantId), getEmployees(tenantId)]);
+    setProjects(pData);
+    setEmployees(eData);
+    setLoading(false);
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (tenantId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadProjects();
+    }
+  }, [tenantId, loadProjects]);
+
+
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    const enrichedData = {
+        ...formData,
+        tenantId: tenantId,
+        coverImage: `https://ui-avatars.com/api/?name=${formData.name}&background=random&size=128&bold=true`, 
+        changelog: [`v${formData.version}: Projeto iniciado.`],
+        progress: 0
+    };
+    await createProject(enrichedData);
+    setFormData({ name: '', description: '', status: 'Planejamento', priority: 'Média', leader: '', deadline: '', version: '2.0', team: [] });
+    setIsModalOpen(false);
+    loadProjects();
+  };
+
+  const handleDelete = async (id, e) => {
+    e.stopPropagation();
+    if(confirm("Apagar projeto e todo seu histórico?")) {
+      await deleteProject(id);
+      loadProjects();
+    }
+  };
+
+  // Motores de categorização e estilos das colunas do painel tipo Trello
+  const KANBAN_COLUMNS = [
+      { id: 'Planejamento', label: 'Planejamento', color: 'bg-gray-100 border-gray-200 dark:border-slate-600' },
+      { id: 'Em Andamento', label: 'Em Execução', color: 'bg-blue-50 border-blue-100' },
+      { id: 'Concluído', label: 'Entregue', color: 'bg-green-50 border-green-100' }
+  ];
+
+  const getProjectsByStatus = (status) => {
+      // Agrupa status semelhantes na raia correta do Kanban (ex: Pausado encosta no Planejamento)
+      return projects.filter(p => {
+         if (status === 'Planejamento') return p.status === 'Planejamento' || p.status === 'Pausado';
+         if (status === 'Em Andamento') return p.status === 'Em Andamento' || p.status === 'Revisão';
+         if (status === 'Concluído') return p.status === 'Concluído';
+         return false;
+      });
+  };
+
+  // Peças visuais extraídas para fora para evitar re-renderizações desnecessárias
 
   return (
     <div className="p-4 md:p-8 max-w-[1600px] mx-auto pb-24 space-y-8 min-h-screen">
@@ -174,7 +177,7 @@ const ProjectsPage = () => {
            {viewMode === 'grid' ? (
                 // Layout Padrão: Todos os cartões esparramados numa grande grade responsiva
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {projects.map(project => <ProjectCard key={project.id} project={project} />)}
+                    {projects.map(project => <ProjectCard key={project.id} project={project} navigate={navigate} viewMode={viewMode} onDelete={handleDelete} />)}
                     {projects.length === 0 && (
                         <div className="col-span-full text-center py-20 text-gray-400 dark:text-gray-500 border-2 border-dashed border-gray-200 dark:border-slate-600 rounded-3xl">
                             <FolderGit2 size={48} className="mx-auto mb-4 opacity-20"/>
@@ -196,7 +199,7 @@ const ProjectsPage = () => {
                             <div className="p-3 space-y-3 overflow-y-auto max-h-[70vh] custom-scrollbar">
                                 {getProjectsByStatus(col.id).map(project => (
                                     <div key={project.id} className="transform hover:scale-[1.02] transition-transform">
-                                        <ProjectCard project={project} />
+                                        <ProjectCard project={project} navigate={navigate} viewMode={viewMode} onDelete={handleDelete} />
                                     </div>
                                 ))}
                                 {getProjectsByStatus(col.id).length === 0 && (

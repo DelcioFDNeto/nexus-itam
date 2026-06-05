@@ -176,7 +176,7 @@ const ServiceManager = () => {
                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Descrição do Plano</label>
                     <textarea className="w-full p-3 border rounded-xl outline-none" rows="2" placeholder="Ex: Link Dedicado 100MB + IP Fixo" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}></textarea>
                 </div>
-                <button type="submit" className="w-full bg-brand hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-colors mt-2">Salvar Contrato</button>
+                <button type="submit" className="w-full bg-black hover:bg-gray-800 text-white font-bold py-3 rounded-xl transition-colors mt-2">Salvar Contrato</button>
             </form>
           </div>
         </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/firebase';
 import { 
   collection, getDocs, doc, updateDoc, setDoc, serverTimestamp, 
-  collectionGroup, deleteDoc, getDoc 
+  collectionGroup, deleteDoc 
 } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';

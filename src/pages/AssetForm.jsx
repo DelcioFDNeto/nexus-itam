@@ -56,7 +56,7 @@ const AssetForm = () => {
             }
 
             if (id) {
-                const data = await getAssetById(id);
+                const data = await getAssetById(id, currentUser?.role === 'superadmin' ? null : currentUser?.tenantId);
                 if (data) {
                     const loadedData = { 
                         model: data.model || '',

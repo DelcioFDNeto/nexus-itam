@@ -1,7 +1,8 @@
 // src/components/MaintenanceModal.jsx
 import React, { useState } from 'react';
 import { X, Wrench, DollarSign, AlertTriangle, Save } from 'lucide-react';
-import AssetIcon from '../components/AssetIcon';
+import AssetIcon from './AssetIcon';
+import { toast } from 'sonner';
 
 const MaintenanceModal = ({ isOpen, onClose, asset, onConfirm }) => {
   const [loading, setLoading] = useState(false);
@@ -14,10 +15,16 @@ const MaintenanceModal = ({ isOpen, onClose, asset, onConfirm }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    await onConfirm(formData);
-    setLoading(false);
-    onClose();
+    try {
+      setLoading(true);
+      await onConfirm(formData);
+      onClose();
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao registrar manutenção. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Formata moeda simples
@@ -48,7 +55,7 @@ const MaintenanceModal = ({ isOpen, onClose, asset, onConfirm }) => {
           <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 flex gap-3">
              <AlertTriangle className="text-orange-500 shrink-0" size={20} />
              <p className="text-xs text-orange-800">
-                Ao confirmar, o status do ativo <span className="inline-flex items-center gap-1 mx-1 align-bottom rounded bg-white dark:bg-slate-800 px-1 border border-orange-200"><AssetIcon type={asset.type} category={asset.category} model={asset.model} internalId={asset.internalId} size={14} /> <strong>{asset.internalId}</strong></span> mudará automaticamente para <strong>EM MANUTENÇÃO</strong>.
+                Ao confirmar, o status do ativo <span className="inline-flex items-center gap-1 mx-1 align-bottom rounded bg-white dark:bg-slate-800 px-1 border border-orange-200"><AssetIcon type={asset?.type} category={asset?.category} model={asset?.model} internalId={asset?.internalId} size={14} /> <strong>{asset?.internalId}</strong></span> mudará automaticamente para <strong>EM MANUTENÇÃO</strong>.
              </p>
           </div>
 

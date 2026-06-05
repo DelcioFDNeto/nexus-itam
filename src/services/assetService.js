@@ -38,10 +38,16 @@ export const getGlobalAssets = async () => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-export const getAssetById = async (id) => {
+export const getAssetById = async (id, tenantId) => {
   const docRef = doc(db, 'assets', id);
   const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) return { id: docSnap.id, ...docSnap.data() };
+  if (docSnap.exists()) {
+    const data = docSnap.data();
+    if (tenantId && data.tenantId !== tenantId) {
+      throw new Error("Acesso negado: Este ativo pertence a outro inquilino.");
+    }
+    return { id: docSnap.id, ...data };
+  }
   throw new Error("Ativo não encontrado");
 };
 
@@ -152,9 +158,22 @@ export const updateAsset = async (id, assetData, historyOptions = null) => {
   }
 };
 
-export const deleteAsset = async (id) => {
+export const deleteAsset = async (id, tenantId, user = 'Sistema') => {
   const assetRef = doc(db, 'assets', id);
   await deleteDoc(assetRef);
+  
+  // Log de Exclusão
+  if (tenantId) {
+    await addDoc(historyCollection, {
+      assetId: id,
+      tenantId: tenantId,
+      type: 'deletion',
+      action: 'Ativo Excluído',
+      date: serverTimestamp(),
+      user: user,
+      details: 'Registro removido permanentemente do banco de dados.'
+    });
+  }
   return true;
 };
 

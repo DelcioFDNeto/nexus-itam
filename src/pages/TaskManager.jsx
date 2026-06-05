@@ -27,20 +27,19 @@ const TaskManager = () => {
       return;
     }
     const data = await getTasks(tenantId);
-    const sorted = data.sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds);
+    const sorted = [...data].sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds);
     setTasks(sorted);
     setLoading(false);
   }, [tenantId]);
 
   useEffect(() => {
-    setTimeout(() => {
-      if (tenantId) {
-        loadTasks();
-      } else {
-        setTasks([]);
-        setLoading(false);
-      }
-    }, 0);
+    if (tenantId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadTasks();
+    } else {
+      setTasks([]);
+      setLoading(false);
+    }
   }, [tenantId, loadTasks]);
 
   const handleQuickAdd = async (e) => {

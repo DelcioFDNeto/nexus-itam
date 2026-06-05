@@ -78,8 +78,7 @@ const SettingsPage = () => {
       }
     };
     loadConfig();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId]);
+  }, [currentUser?.role, currentUser?.tenantId, navigate, tenantId]);
 
   const addCustomField = () => {
     setConfig(prev => ({
@@ -109,7 +108,7 @@ const SettingsPage = () => {
     }
     setLoading(true);
     try {
-      await setDoc(doc(db, 'settings', tenantId || 'general'), config);
+      await setDoc(doc(db, 'settings', tenantId || 'general'), config, { merge: true });
       toast.success("Configurações atualizadas com sucesso!");
     } catch (error) {
       console.error(error);
@@ -123,7 +122,7 @@ const SettingsPage = () => {
   const handleFullBackup = async () => {
     setBackupLoading(true);
     try {
-      const backupData = await generateFullBackup();
+      const backupData = await generateFullBackup(currentUser.tenantId, currentUser.role === 'superadmin');
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
       const downloadAnchorNode = document.createElement('a');
       downloadAnchorNode.setAttribute("href", dataStr);

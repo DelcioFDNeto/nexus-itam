@@ -1,7 +1,7 @@
 // src/services/licenseService.js
 import { db } from './firebase';
 import { 
-  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp, arrayUnion, arrayRemove, where 
+  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp, arrayUnion, arrayRemove, where, increment 
 } from 'firebase/firestore';
 
 const licenseCollection = collection(db, 'licenses');
@@ -43,22 +43,22 @@ export const deleteLicense = async (id) => {
   await deleteDoc(docRef);
 };
 
-// VINCULAR: Adiciona o ativo na lista da licença
 export const assignLicense = async (licenseId, assetId, assetName) => {
   const licenseRef = doc(db, 'licenses', licenseId);
   
   await updateDoc(licenseRef, {
     assignedAssets: arrayUnion({ id: assetId, name: assetName }),
+    usedCount: increment(1),
     updatedAt: serverTimestamp()
   });
 };
 
-// DESVINCULAR: Libera a vaga da licença
 export const unassignLicense = async (licenseId, assetObjectToRemove) => {
   const licenseRef = doc(db, 'licenses', licenseId);
   
   await updateDoc(licenseRef, {
     assignedAssets: arrayRemove(assetObjectToRemove),
+    usedCount: increment(-1),
     updatedAt: serverTimestamp()
   });
 };

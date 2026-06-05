@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { collection, getDocs, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc, serverTimestamp, query, where } from 'firebase/firestore';
 
 // Coleções que serão incluídas no backup
 const COLLECTIONS_TO_BACKUP = [
@@ -9,14 +9,21 @@ const COLLECTIONS_TO_BACKUP = [
   'projects',
   'tasks',
   'sectors',
-  'settings' // Incluindo configurações também
+  'settings', // Incluindo configurações também
+  'licenses',
+  'contracts',
+  'agentInbox',
+  'serviceOrders',
+  'audits',
+  'tenants',
+  'users'
 ];
 
 /**
  * Gera um objeto JSON contendo todos os dados do sistema.
  * @returns {Promise<Object>} Objeto de backup completo
  */
-export const generateFullBackup = async () => {
+export const generateFullBackup = async (tenantId, isSuperAdmin = false) => {
   const backupData = {
     meta: {
       version: '2.0',
@@ -29,7 +36,21 @@ export const generateFullBackup = async () => {
 
   try {
     const promises = COLLECTIONS_TO_BACKUP.map(async (colName) => {
-      const snapshot = await getDocs(collection(db, colName));
+      let q;
+      if (isSuperAdmin) {
+          q = collection(db, colName);
+      } else {
+          // Filtrar por tenantId para usuários não-superadmin
+          // Tratamento especial para settings e tenants onde o ID pode ser o tenantId, ou não tem tenantId explícito
+          if (colName === 'settings' || colName === 'tenants') {
+              q = query(collection(db, colName)); // Se tentarem baixar settings global sem ser superadmin vai falhar nas regras
+          } else {
+              q = query(collection(db, colName), where('tenantId', '==', tenantId));
+          }
+      }
+
+      try {
+          const snapshot = await getDocs(q);
       return {
         name: colName,
         docs: snapshot.docs.map(doc => {
@@ -50,6 +71,10 @@ export const generateFullBackup = async () => {
             return { _id: doc.id, ...serializedData };
         })
       };
+      } catch (err) {
+          console.warn(`Aviso: Sem permissão ou erro ao buscar ${colName}`, err);
+          return { name: colName, docs: [] };
+      }
     });
 
     const results = await Promise.all(promises);
@@ -131,7 +156,7 @@ export const restoreBackup = async (backupData, onProgress, targetTenantId = nul
          }, {});
 
          // Adiciona updated_at de restauração para rastreio
-         processedData._restoredAt = serverTimestamp();
+         processedData.restoredAt = serverTimestamp();
 
          // Garante que os dados restaurados pertençam ao tenantId correto do usuário que está importando
          if (targetTenantId) {
