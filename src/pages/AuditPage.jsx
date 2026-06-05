@@ -9,8 +9,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
-import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
 const QRScanner = React.lazy(() => import('../components/QRScanner'));
 import AssetIcon from '../components/AssetIcon';
 
@@ -199,8 +197,14 @@ const AuditPage = () => {
       } catch (err) { console.error(err); toast.error("Erro ao salvar."); }
   };
 
-  const exportToPDF = () => {
+  const exportToPDF = async () => {
     if (!selectedLocation) return;
+    
+    // Dynamic import to avoid loading 200kb on initial page load
+    toast.info("Gerando PDF, aguarde...", { id: 'pdf-toast' });
+    const { jsPDF } = await import('jspdf');
+    await import('jspdf-autotable');
+
     const doc = new jsPDF();
     doc.text(`Relatório de Auditoria - Nexus ITAM`, 14, 15);
     doc.setFontSize(10);
@@ -224,7 +228,7 @@ const AuditPage = () => {
     });
 
     doc.save(`Auditoria_${selectedLocation}_${new Date().toISOString().split('T')[0]}.pdf`);
-    toast.success("Relatório PDF exportado com sucesso!");
+    toast.success("Relatório PDF exportado com sucesso!", { id: 'pdf-toast' });
   };
 
   // ---------------- Interface Gráfica e Componentes ----------------

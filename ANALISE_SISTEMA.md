@@ -813,20 +813,34 @@ Após 3 rodadas de correções, **zero problemas restantes** - lint limpo, build
 | 7 | ✅ **Browserslist** | `npx update-browserslist-db@latest` executado |
 | 8 | ✅ **Versão** | `package.json` atualizado para `2.1.0` |
 
+### Rodada 5 (Performance + Qualidade + CI/CD)
+
+| # | Melhoria | Descrição |
+|---|----------|-----------|
+| 1 | ✅ **Code-splitting Dashboard** | `chart.js` delegado para componente assíncrono (React.lazy) |
+| 2 | ✅ **Code-splitting AuditPage** | `jspdf`+`html2canvas` carregados sob demanda |
+| 3 | ✅ **Recharts removido** | Dependência não utilizada eliminada |
+| 4 | ✅ **Testes expandidos** | 6 suites, 15 testes (assetService, employeeService, licenseService, AssetForm, Login, ThemeContext) |
+| 5 | ✅ **Toast de atualização PWA** | `useRegisterSW` notifica usuário sobre nova versão |
+| 6 | ✅ **CI/CD pipeline** | `.github/workflows/ci.yml` com lint → test → build |
+| 7 | ✅ **Skeleton loading** | Esqueletos fluidos em EmployeeManager e ServiceManager |
+| 8 | ✅ **`test:watch` script** | Adicionado ao package.json para dev iterativo |
+
 ### Estado Final
 
 | Métrica | Valor |
 |---------|-------|
 | Versão | **2.1.0** |
-| Issues identificadas | **47** |
-| ✅ Resolvidas | **47** |
+| Issues resolvidas | **47** |
+| Melhorias implementadas | **16** |
 | 🧹 ESLint | **Zero erros** |
-| 🧪 Testes | **2 passed** (1 suite) |
-| 🏗️ Build | **9.58s, 2047 módulos** |
+| 🧪 Testes | **15 passed** (6 suites) |
+| 🏗️ Build | **8.61s, 2047 módulos** |
 | 📦 PWA | 75 precache entries (3.17 MiB) |
+| ⚙️ CI/CD | GitHub Actions (lint → test → build) |
 | 🎯 Framework | React 19 + Firebase 12.6 + Vite 7.2 + Tailwind 3.4 |
-| 📋 Coleções Firestore | assets, employees, licenses, projects, tasks, contracts, audits, history, sectors, settings, tenants, users, agentInbox, serviceOrders |
+| 📋 Coleções | assets, employees, licenses, projects, tasks, contracts, audits, history, sectors, settings, tenants, users, agentInbox, serviceOrders |
 
 ---
 
-*Documento final - v2.1.0 - todas as 47 issues resolvidas + 8 melhorias implementadas em 2026-06-05*
+*Documento final - v2.1.0 - 47 issues resolvidas + 16 melhorias em 2026-06-05*

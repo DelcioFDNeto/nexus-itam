@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../contexts/AuthContext';
+import PWAToast from './PWAToast';
 
 const Layout = ({ children }) => {
   const { currentUser } = useAuth();
@@ -163,6 +164,8 @@ const Layout = ({ children }) => {
           </div>
 
       </div>
+
+      <PWAToast />
 
       {/* MOBILE SIDEBAR */}
       <div className="md:hidden">

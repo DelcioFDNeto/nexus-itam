@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
+import ManagerSkeleton from '../components/dashboard/ManagerSkeleton';
 
 const EmployeeManager = () => {
   const { currentUser } = useAuth();
@@ -145,8 +146,10 @@ const EmployeeManager = () => {
     ? employees.filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()) || e.role?.toLowerCase().includes(searchTerm.toLowerCase()))
     : sectors.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
+  if (loading) return <ManagerSkeleton />;
+
   return (
-    <div className="p-4 md:p-8 max-w-[1600px] mx-auto pb-24">
+    <div className="p-4 md:p-8 max-w-[1600px] mx-auto animate-fade-in pb-24">
       
       {/* Titulação da página com botão de nova ação que muda o contexto conforme a aba atual */}
       <div className="flex flex-col md:flex-row justify-between items-end gap-6 mb-8">

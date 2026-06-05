@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { getContracts, createContract, deleteContract } from '../services/contractService';
 import { useAuth } from '../contexts/AuthContext';
+import ManagerSkeleton from '../components/dashboard/ManagerSkeleton';
 import { 
   Globe, Plus, Trash2, Search, Phone, Calendar, DollarSign, Briefcase 
 } from 'lucide-react';
@@ -9,7 +10,7 @@ import { toast } from 'sonner';
 
 const ServiceManager = () => {
   const [contracts, setContracts] = useState([]);
-  const [, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { currentUser } = useAuth();
   const tenantId = currentUser?.tenantId;
@@ -67,8 +68,10 @@ const ServiceManager = () => {
   // Soma automática de todos os custos recorrentes para exibir no painel principal
   const totalMonthly = contracts.reduce((acc, curr) => acc + (parseFloat(curr.monthlyCost) || 0), 0);
 
+  if (loading) return <ManagerSkeleton />;
+
   return (
-    <div className="p-8 max-w-[1600px] mx-auto">
+    <div className="p-4 md:p-8 max-w-[1600px] mx-auto animate-fade-in pb-24">
       
       <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div>
