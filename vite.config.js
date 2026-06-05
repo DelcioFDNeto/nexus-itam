@@ -61,14 +61,6 @@ export default defineConfig({
     // Aumentar limite de aviso para não poluir o console (chunks grandes são intencionais)
     chunkSizeWarningLimit: 600,
   },
-  test: {
-    environment: 'jsdom',
-    server: {
-      deps: {
-        inline: ['@exodus/bytes']
-      }
-    }
-  },
   server: {
     host: true,
     port: 5173,
