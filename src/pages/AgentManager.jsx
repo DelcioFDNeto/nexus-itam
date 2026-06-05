@@ -32,6 +32,7 @@ import {
   registerAgentAsset,
   resolveAgentNamingFromDatabase,
 } from '../services/agentService';
+import { buildWindowsScript, buildLinuxScript, buildMacScript } from '../utils/agentScripts';
 
 const samplePayload = {
   hostname: 'DESKTOP-TI-001',
@@ -56,127 +57,7 @@ const normalizeNamingConfig = (config = {}) => ({
   padLength: Number(config.padLength) || DEFAULT_AGENT_NAMING.padLength,
 });
 
-// --- GERADOR DE SCRIPT POWERSHELL ---
-const buildAgentScript = (tenantId = 'default-tenant', mode = 'portable') => {
-  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'SEU_PROJECT_ID';
-  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY || 'SUA_API_KEY';
-
-  const baseScript = `
-$ProjectId = "${projectId}"
-$ApiKey = "${apiKey}"
-$TenantId = "${tenantId}"
-
-function Get-ItamPayload {
-  $ErrorActionPreference = "SilentlyContinue"
-  $os = Get-CimInstance Win32_OperatingSystem
-  $sys = Get-CimInstance Win32_ComputerSystem
-  $bios = Get-CimInstance Win32_BIOS
-  $board = Get-CimInstance Win32_BaseBoard
-  $cpu = Get-CimInstance Win32_Processor
-  $rams = Get-CimInstance Win32_PhysicalMemory
-  $netAdapter = Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled -eq $true } | Select-Object -First 1
-  $disks = Get-CimInstance Win32_DiskDrive | ForEach-Object {
-    $size = if ($_.Size) { [math]::Round($_.Size / 1GB, 2) } else { 0 }
-    "$($_.Model) ($size GB) Serial: $($_.SerialNumber)"
-  }
-
-  return @{
-    hostname = $env:COMPUTERNAME
-    usuario_logado = $env:USERNAME
-    mac_address = if ($netAdapter -and $netAdapter.MACAddress) { $netAdapter.MACAddress } else { "" }
-    ip_address = if ($netAdapter -and $netAdapter.IPAddress) { $netAdapter.IPAddress[0] } else { "" }
-    sistema_operacional = "$($os.Caption) $($os.OSArchitecture)"
-    data_coleta = (Get-Date).ToString("o")
-    hardware = @{
-      fabricante = $sys.Manufacturer
-      modelo_sistema = $sys.Model
-      modelo_placa = $board.Product
-      placa_mae_serial = $board.SerialNumber
-      bios_serial = $bios.SerialNumber
-      pc_system_type = $sys.PCSystemType
-      chassis_types = ($sys.ChassisSKUNumber, ((Get-CimInstance Win32_SystemEnclosure).ChassisTypes -join ",")) -join "|"
-      processador = $cpu.Name
-      ram_gb = if ($rams) { [math]::Round(($rams | Measure-Object Capacity -Sum).Sum / 1GB, 2) } else { 0 }
-      storage = ($disks -join " | ")
-    }
-  }
-}
-
-function ConvertTo-FirestoreValue {
-  param($Value)
-  if ($null -eq $Value) { return @{ nullValue = $null } }
-  if ($Value -is [hashtable]) {
-    $fields = @{}
-    foreach ($key in $Value.Keys) { $fields[$key] = ConvertTo-FirestoreValue $Value[$key] }
-    return @{ mapValue = @{ fields = $fields } }
-  }
-  if ($Value -is [int] -or $Value -is [long]) { return @{ integerValue = "$Value" } }
-  if ($Value -is [double] -or $Value -is [decimal] -or $Value -is [float]) { return @{ doubleValue = [double]$Value } }
-  if ($Value -is [bool]) { return @{ booleanValue = $Value } }
-  return @{ stringValue = [string]$Value }
-}
-
-function Send-ItamPayload {
-  param($Payload)
-  $endpoint = "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/agentInbox?key=$ApiKey"
-  $document = @{
-    fields = @{
-      payload = ConvertTo-FirestoreValue $Payload
-      source = @{ stringValue = "Agente ITAM PowerShell" }
-      status = @{ stringValue = "pending" }
-      hostname = @{ stringValue = [string]$Payload.hostname }
-      internalId = @{ stringValue = "" }
-      serialNumber = @{ stringValue = [string]$Payload.hardware.bios_serial }
-      createdAt = @{ stringValue = (Get-Date).ToString("o") }
-      tenantId = @{ stringValue = $TenantId }
-    }
-  }
-  $body = $document | ConvertTo-Json -Depth 20
-  Invoke-RestMethod -Method Post -Uri $endpoint -Body $body -ContentType "application/json" | Out-Null
-}
-
-$payload = Get-ItamPayload
-try {
-  Send-ItamPayload $payload
-} catch {
-  Write-Warning "Falha ao enviar."
-}
-`;
-
-  if (mode === 'service') {
-    return `# Agente ITAM - Auto Instalador de Serviço (Scheduled Task)
-# Este script se copia para C:\\ProgramData e cria uma tarefa agendada invisível
-Requires -RunAsAdministrator
-
-$InstallDir = "C:\\ProgramData\\NexusITAM"
-$ScriptPath = Join-Path $InstallDir "NexusAgent.ps1"
-$TaskName = "NexusITAM_AgentSync"
-
-if (-not (Test-Path $InstallDir)) {
-    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-}
-
-$AgentCode = @"
-${baseScript}
-"@
-
-$AgentCode | Out-File -FilePath $ScriptPath -Encoding UTF8 -Force
-
-# Cria a Tarefa Agendada para rodar a cada Logon
-$Action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File \`"$ScriptPath\`""
-$Trigger = New-ScheduledTaskTrigger -AtLogOn
-$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -Hidden
-$Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-
-Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal -Force | Out-Null
-
-Write-Host "Agente instalado com sucesso. A sincronizacao ocorrera a cada login silenciosamente."
-`;
-  }
-
-  // Portable Mode
-  return `# Agente ITAM Ativo - Portatil\n${baseScript}`;
-};
+// Geradores de script movidos para ../utils/agentScripts};
 
 const parsePayload = (value) => {
   const parsed = JSON.parse(value);
@@ -217,8 +98,13 @@ const AgentManager = () => {
   const [loadingInbox, setLoadingInbox] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [namingConfig, setNamingConfig] = useState(DEFAULT_AGENT_NAMING);
+  const [agentToken, setAgentToken] = useState('');
+  const [trustedIps, setTrustedIps] = useState('');
+  const [autoAcceptEnabled, setAutoAcceptEnabled] = useState(false);
+  const [selectedSubmissions, setSelectedSubmissions] = useState([]);
   const [autoNamingPreview, setAutoNamingPreview] = useState(null);
   const [deployMode, setDeployMode] = useState('portable'); // 'portable' ou 'service'
+  const [targetOS, setTargetOS] = useState('windows'); // 'windows', 'linux', 'mac'
 
   const pendingSubmissions = useMemo(
     () => submissions.filter((item) => item.status !== 'processed'),
@@ -234,15 +120,35 @@ const AgentManager = () => {
     }));
   };
 
-  const saveNamingConfig = async (configToSave = normalizedNamingConfig, silent = false) => {
+  const saveNamingConfig = async (configToSave = namingConfig) => {
     setSavingConfig(true);
     try {
-      await setDoc(doc(db, 'settings', tenantId), { agentNaming: configToSave }, { merge: true });
+      await setDoc(doc(db, 'settings', tenantId), { 
+        agentNaming: configToSave,
+        trustedIps,
+        autoAcceptEnabled 
+      }, { merge: true });
+      toast.success('Configurações salvas.');
       setNamingConfig(configToSave);
-      if (!silent) toast.success('Padrão de nomenclatura salvo.');
+      // if (!silent) toast.success('Padrão de nomenclatura salvo.');
     } catch (error) {
       console.error(error);
       toast.error('Erro ao salvar nomenclatura do agente.');
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
+  const generateAgentToken = async () => {
+    setSavingConfig(true);
+    try {
+      const newToken = crypto.randomUUID();
+      await setDoc(doc(db, 'settings', tenantId), { agentToken: newToken }, { merge: true });
+      setAgentToken(newToken);
+      toast.success('Token de segurança gerado com sucesso.');
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao gerar token.');
     } finally {
       setSavingConfig(false);
     }
@@ -281,10 +187,23 @@ const AgentManager = () => {
     setLoadingInbox(true);
     try {
       const data = await getAgentSubmissions(tenantId);
+      
+      const settingsRef = doc(db, 'settings', tenantId);
+      const snap = await getDoc(settingsRef);
+      const autoAccept = snap.data()?.autoAcceptEnabled;
+      const ips = (snap.data()?.trustedIps || '').split(',').map(s=>s.trim()).filter(Boolean);
+
       const enriched = await Promise.all(
         data.map(async (submission) => {
           try {
             const agentPreview = await previewAgentPayload(submission.payload || {}, { namingConfig: normalizedNamingConfig, tenantId });
+            
+            if (autoAccept && submission.status === 'pending' && ips.some(ip => agentPreview.ipAddress?.startsWith(ip))) {
+              const result = await registerAgentAsset(submission.payload, { user: 'Agente ITAM (Auto)', namingConfig: normalizedNamingConfig, tenantId });
+              await markAgentSubmission(submission.id, { status: 'processed', result });
+              return { ...submission, status: 'processed', preview: agentPreview };
+            }
+
             return { ...submission, preview: agentPreview };
           } catch {
             return submission;
@@ -303,17 +222,25 @@ const AgentManager = () => {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const settingsRef = doc(db, 'settings', tenantId);
-        const snap = await getDoc(settingsRef);
-        if (snap.exists()) {
-          setNamingConfig(normalizeNamingConfig(snap.data().agentNaming || {}));
-        } else {
-          const generalRef = doc(db, 'settings', 'general');
-          const generalSnap = await getDoc(generalRef);
-          if (generalSnap.exists()) {
-            setNamingConfig(normalizeNamingConfig(generalSnap.data().agentNaming || {}));
-          }
+      const settingsRef = doc(db, 'settings', tenantId);
+      const snap = await getDoc(settingsRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        setNamingConfig(normalizeNamingConfig(data.agentNaming || {}));
+        if (data.agentToken) setAgentToken(data.agentToken);
+        setTrustedIps(data.trustedIps || '');
+        setAutoAcceptEnabled(!!data.autoAcceptEnabled);
+      } else {
+        const generalRef = doc(db, 'settings', 'general');
+        const generalSnap = await getDoc(generalRef);
+        if (generalSnap.exists()) {
+          const generalData = generalSnap.data();
+          setNamingConfig(normalizeNamingConfig(generalData.agentNaming || {}));
+          if (generalData.agentToken) setAgentToken(generalData.agentToken);
+          setTrustedIps(generalData.trustedIps || '');
+          setAutoAcceptEnabled(!!generalData.autoAcceptEnabled);
         }
+      }
       } catch (error) {
         console.error(error);
       }
@@ -335,6 +262,44 @@ const AgentManager = () => {
     refreshAutoNamingPreview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jsonText, normalizedNamingConfig, tenantId]);
+
+  const toggleSelectAll = () => {
+    if (selectedSubmissions.length === pendingSubmissions.length) {
+      setSelectedSubmissions([]);
+    } else {
+      setSelectedSubmissions(pendingSubmissions.map(s => s.id));
+    }
+  };
+
+  const toggleSelect = (id) => {
+    setSelectedSubmissions(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const processSelected = async () => {
+    if (selectedSubmissions.length === 0) return;
+    setProcessing(true);
+    try {
+      for (const id of selectedSubmissions) {
+        const submission = pendingSubmissions.find(s => s.id === id);
+        if (submission) {
+          const result = await registerAgentAsset(submission.payload, {
+            user: currentUser?.email || 'Agente ITAM',
+            namingConfig: normalizedNamingConfig,
+            tenantId,
+          });
+          await markAgentSubmission(submission.id, { status: 'processed', result });
+        }
+      }
+      toast.success(`${selectedSubmissions.length} ativos incorporados com sucesso.`);
+      setSelectedSubmissions([]);
+      await loadInbox();
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao processar em lote.');
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   const registerManualPayload = async () => {
     setProcessing(true);
@@ -400,20 +365,32 @@ const AgentManager = () => {
     }
   };
 
+  const getSelectedScript = () => {
+    const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'SEU_PROJECT_ID';
+    const apiKey = import.meta.env.VITE_FIREBASE_API_KEY || 'SUA_API_KEY';
+    if (targetOS === 'windows') return buildWindowsScript(projectId, apiKey, tenantId, agentToken, deployMode);
+    if (targetOS === 'linux') return buildLinuxScript(projectId, apiKey, tenantId, agentToken, deployMode);
+    return buildMacScript(projectId, apiKey, tenantId, agentToken, deployMode);
+  };
+
   const downloadScript = () => {
-    const blob = new Blob([buildAgentScript(tenantId, deployMode)], { type: 'text/plain;charset=utf-8' });
+    if (!agentToken) return toast.error('Gere um Token de Segurança primeiro.');
+    const ext = targetOS === 'windows' ? '.ps1' : '.sh';
+    const blob = new Blob([getSelectedScript()], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = deployMode === 'service' ? 'Instalar_Agente_Nexus_Background.ps1' : 'Agente_Nexus_Portatil.ps1';
+    link.download = `Instalar_Agente_Nexus_${targetOS}_${deployMode}${ext}`;
     document.body.appendChild(link);
     link.click();
-    link.remove();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    toast.success(`Script para ${targetOS.toUpperCase()} baixado com sucesso.`);
   };
 
   const copyScript = async () => {
-    await navigator.clipboard.writeText(buildAgentScript(tenantId, deployMode));
+    if (!agentToken) return toast.error('Gere um Token de Segurança primeiro.');
+    await navigator.clipboard.writeText(getSelectedScript());
     toast.success('Script do agente copiado.');
   };
 
@@ -465,12 +442,18 @@ const AgentManager = () => {
           <section className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-3xl shadow-sm overflow-hidden">
             <div className="p-6 md:p-8 bg-slate-900 text-white relative overflow-hidden">
               <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none"></div>
-              <h2 className="font-black text-2xl flex items-center gap-2 mb-2 relative z-10"><Terminal size={24} className="text-cyan-400"/> Gerar Agente Windows</h2>
+              <h2 className="font-black text-2xl flex items-center gap-2 mb-2 relative z-10"><Terminal size={24} className="text-cyan-400"/> Gerar Script Agente</h2>
               <p className="text-indigo-200 text-sm relative z-10">
-                Baixe o script PowerShell nativo para inventariar as máquinas da sua rede. Não requer instalação de agentes de terceiros.
+                Baixe o script nativo para inventariar as máquinas da sua rede. Não requer instalação de agentes de terceiros.
               </p>
 
-              <div className="mt-8 flex bg-slate-800/50 p-1.5 rounded-xl border border-white/10 max-w-sm relative z-10">
+              <div className="mt-8 flex bg-slate-800/50 p-1.5 rounded-xl border border-white/10 max-w-md relative z-10 gap-1">
+                <button onClick={() => setTargetOS('windows')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${targetOS === 'windows' ? 'bg-cyan-500 text-slate-900 shadow-md' : 'text-slate-400 hover:text-white'}`}>Windows</button>
+                <button onClick={() => setTargetOS('linux')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${targetOS === 'linux' ? 'bg-amber-500 text-slate-900 shadow-md' : 'text-slate-400 hover:text-white'}`}>Linux</button>
+                <button onClick={() => setTargetOS('mac')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${targetOS === 'mac' ? 'bg-gray-200 text-slate-900 shadow-md' : 'text-slate-400 hover:text-white'}`}>macOS</button>
+              </div>
+
+              <div className="mt-4 flex bg-slate-800/50 p-1.5 rounded-xl border border-white/10 max-w-md relative z-10 gap-1">
                 <button 
                   onClick={() => setDeployMode('portable')}
                   className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${deployMode === 'portable' ? 'bg-white dark:bg-slate-800 text-slate-900 shadow-md' : 'text-slate-400 hover:text-white'}`}
@@ -479,20 +462,27 @@ const AgentManager = () => {
                 </button>
                 <button 
                   onClick={() => setDeployMode('service')}
-                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${deployMode === 'service' ? 'bg-cyan-500 text-slate-900 shadow-md' : 'text-slate-400 hover:text-white'}`}
+                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${deployMode === 'service' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
                 >
-                  Serviço Invisível (GPO)
+                  Serviço Invisível (Auto)
                 </button>
               </div>
 
               <div className="mt-6 flex flex-wrap gap-3 relative z-10">
-                <button onClick={downloadScript} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-cyan-400 text-slate-900 font-black text-sm hover:bg-cyan-300 transition-colors shadow-lg shadow-cyan-500/20">
-                  <Download size={18} /> Baixar Script PowerShell
+                <button onClick={downloadScript} disabled={!agentToken} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-cyan-400 text-slate-900 font-black text-sm hover:bg-cyan-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-cyan-500/20">
+                  <Download size={18} /> Baixar Script ({targetOS.toUpperCase()})
                 </button>
-                <button onClick={copyScript} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 border border-white/20 text-white font-bold text-sm hover:bg-white/20 transition-colors">
+                <button onClick={copyScript} disabled={!agentToken} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 border border-white/20 text-white font-bold text-sm hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                   <Clipboard size={18} /> Copiar
                 </button>
               </div>
+
+              {!agentToken && (
+                <div className="mt-4 bg-amber-500/20 border border-amber-500/30 text-amber-100 p-3 rounded-xl text-sm flex items-center gap-2 relative z-10">
+                  <AlertTriangle size={18} className="text-amber-400 flex-shrink-0" />
+                  Para baixar o script, configure o Token de Segurança na seção abaixo.
+                </div>
+              )}
             </div>
 
             {/* Documentação de Implantação */}
@@ -517,6 +507,58 @@ const AgentManager = () => {
                   </ol>
                 </div>
               )}
+            </div>
+          </section>
+
+          {/* Configuração de Segurança (Token) */}
+          <section className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-3xl shadow-sm overflow-hidden mb-6">
+            <div className="p-6 md:p-8">
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <h2 className="font-black text-gray-900 dark:text-white flex items-center gap-2 text-xl tracking-tight"><ShieldCheck size={20} className="text-amber-500"/> Segurança do Agente (Token Drop-Box)</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">O Token garante que apenas scripts autorizados podem enviar dados para a sua fila.</p>
+                </div>
+                <button onClick={generateAgentToken} disabled={savingConfig} className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-amber-500 text-white font-bold text-xs hover:bg-amber-600 disabled:opacity-60 shadow-md">
+                  <RefreshCcw size={14} className={savingConfig ? "animate-spin" : ""} /> Gerar Novo Token
+                </button>
+              </div>
+
+              <div className="bg-amber-50 dark:bg-slate-900 p-4 rounded-2xl border border-amber-100 dark:border-slate-700 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-500 mb-1 block">Token de Autenticação Atual</span>
+                  <div className="font-mono text-sm font-black text-gray-900 dark:text-white">
+                    {agentToken || 'Nenhum token gerado. O Agente não funcionará até que você gere um.'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 border-t border-gray-100 dark:border-slate-700 pt-6">
+                <h3 className="font-black text-gray-900 dark:text-white text-sm mb-3">Aprovação Automática (Lote / Bulk Actions)</h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 block">Redes Confiáveis (IPs separados por vírgula)</label>
+                    <input 
+                      type="text" 
+                      value={trustedIps} 
+                      onChange={(e) => setTrustedIps(e.target.value)}
+                      placeholder="Ex: 192.168.0., 10.0.0." 
+                      className="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="relative inline-flex items-center cursor-pointer mt-5">
+                      <input type="checkbox" className="sr-only peer" checked={autoAcceptEnabled} onChange={(e) => setAutoAcceptEnabled(e.target.checked)} />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-emerald-500"></div>
+                      <span className="ml-3 text-sm font-bold text-gray-700 dark:text-gray-300">Habilitar Auto-Accept</span>
+                    </label>
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button onClick={() => saveNamingConfig()} disabled={savingConfig} className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gray-900 text-white font-bold text-xs hover:bg-gray-800 disabled:opacity-60 shadow-md">
+                    {savingConfig ? <RefreshCcw size={14} className="animate-spin" /> : <CheckCircle size={14} />} Salvar Configurações
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -571,15 +613,38 @@ const AgentManager = () => {
         <aside className="space-y-6">
           
           {/* Caixa de Entrada (Fila do Agente) */}
-          <section className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-3xl shadow-sm overflow-hidden flex flex-col h-[400px]">
-            <div className="p-5 md:p-6 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-slate-50">
-              <div>
-                <h2 className="font-black text-gray-900 dark:text-white text-lg tracking-tight">Fila de Recepção</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-0.5">{pendingSubmissions.length} endpoint(s) aguardando</p>
+          <section className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-3xl shadow-sm overflow-hidden flex flex-col h-[500px]">
+            <div className="p-4 md:p-5 border-b border-gray-100 dark:border-slate-700 flex flex-col gap-3 bg-slate-50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-black text-gray-900 dark:text-white text-lg tracking-tight">Fila de Recepção</h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-0.5">{pendingSubmissions.length} endpoint(s) aguardando</p>
+                </div>
+                <button onClick={loadInbox} disabled={loadingInbox} className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 text-gray-400 dark:text-gray-500 transition-colors shadow-sm">
+                  <RefreshCcw size={16} className={loadingInbox ? 'animate-spin' : ''} />
+                </button>
               </div>
-              <button onClick={loadInbox} disabled={loadingInbox} className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 text-gray-400 dark:text-gray-500 transition-colors shadow-sm">
-                <RefreshCcw size={16} className={loadingInbox ? 'animate-spin' : ''} />
-              </button>
+              
+              {pendingSubmissions.length > 0 && (
+                <div className="flex items-center justify-between bg-white dark:bg-slate-800 p-2 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
+                  <label className="flex items-center gap-2 px-2 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      checked={selectedSubmissions.length === pendingSubmissions.length && pendingSubmissions.length > 0}
+                      onChange={toggleSelectAll}
+                    />
+                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300">Selecionar Todos</span>
+                  </label>
+                  <button 
+                    onClick={processSelected} 
+                    disabled={selectedSubmissions.length === 0 || processing}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                  >
+                    <CheckCircle size={14} /> Incorporar ({selectedSubmissions.length})
+                  </button>
+                </div>
+              )}
             </div>
             
             <div className="flex-1 overflow-y-auto divide-y divide-gray-100 p-2">
@@ -590,21 +655,26 @@ const AgentManager = () => {
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Os dados enviados pelo agente aparecerão aqui.</p>
                 </div>
               ) : submissions.map((submission) => (
-                <div key={submission.id} className="p-4 hover:bg-gray-50 dark:bg-slate-900 rounded-2xl transition-colors m-2 border border-transparent hover:border-gray-100 dark:border-slate-700">
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="min-w-0">
-                      <p className="font-black text-sm text-gray-900 dark:text-white truncate">{submission.hostname || 'Desconhecido'}</p>
-                      <p className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate mt-0.5">SN: {submission.serialNumber || 'N/A'}</p>
+                <div key={submission.id} className="p-3 hover:bg-gray-50 dark:bg-slate-900 rounded-2xl transition-colors m-1 border border-transparent hover:border-gray-100 dark:border-slate-700">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      {submission.status === 'pending' && (
+                        <input 
+                          type="checkbox" 
+                          className="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          checked={selectedSubmissions.includes(submission.id)}
+                          onChange={() => toggleSelect(submission.id)}
+                        />
+                      )}
+                      <div className="min-w-0" onClick={() => setPreview(submission.preview)} style={{cursor: 'pointer'}}>
+                        <p className="font-black text-sm text-gray-900 dark:text-white truncate hover:text-indigo-600">{submission.hostname || 'Desconhecido'}</p>
+                        <p className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate mt-0.5">SN: {submission.serialNumber || 'N/A'}</p>
+                      </div>
                     </div>
-                    <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md border ${submission.status === 'processed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                    <span className={`flex-shrink-0 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md border ${submission.status === 'processed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
                       {submission.status === 'processed' ? 'OK' : 'Novo'}
                     </span>
                   </div>
-                  {submission.status !== 'processed' && (
-                    <button onClick={() => processSubmission(submission)} disabled={processing} className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-gray-900 text-white text-xs font-bold hover:bg-gray-800 disabled:opacity-60 shadow-sm">
-                      <CheckCircle size={14} /> Incorporar Ativo
-                    </button>
-                  )}
                 </div>
               ))}
             </div>

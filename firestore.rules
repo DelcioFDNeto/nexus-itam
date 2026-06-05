@@ -57,6 +57,25 @@ service cloud.firestore {
       allow create: if isAuthenticated() && (request.resource.data.tenantId == getUserTenant() || getUserTenant() == 'nexus-master');
     }
 
+    // Segurança do Agente ITAM (Drop-Box)
+    match /agentInbox/{docId} {
+      // Apenas a aplicação Web (usuário autenticado do tenant) pode ler, atualizar ou deletar
+      allow read, update, delete: if isAuthenticated() && (
+        getUserTenant() == 'nexus-master' ||
+        resource.data.tenantId == getUserTenant()
+      );
+      
+      // PowerShell (Sem auth) ou Aplicação Web podem criar
+      allow create: if 
+        (isAuthenticated() && request.resource.data.tenantId == getUserTenant()) || 
+        (
+          request.resource.data.tenantId != null &&
+          request.resource.data.agentToken != null &&
+          exists(/databases/$(database)/documents/settings/$(request.resource.data.tenantId)) &&
+          get(/databases/$(database)/documents/settings/$(request.resource.data.tenantId)).data.agentToken == request.resource.data.agentToken
+        );
+    }
+
     // Regras para consultas de Collection Group globais (Superadmin ou do próprio Tenant)
     match /{path=**}/assets/{assetId} {
       allow read: if isAuthenticated() && (

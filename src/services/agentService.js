@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { createAsset, updateAsset } from './assetService';
+import { getLicenses, assignLicense } from '../services/licenseService';
 
 const assetsCollection = collection(db, 'assets');
 const agentInboxCollection = collection(db, 'agentInbox');
@@ -207,6 +208,9 @@ const normalizeAgentPayload = (payload = {}, options = {}) => {
     processor: hardware.processador || payload.processador || '',
     ramGb: hardware.ram_gb || payload.ram_gb || '',
     storage: hardware.storage || hardware.discos || payload.storage || '',
+    software: payload.software ? payload.software.split('||').filter(Boolean) : [],
+    security: payload.security || { antivirus: 'Nenhum detectado', firewall: 'Desconhecido' },
+    monitors: payload.monitors ? payload.monitors.split('||').filter(Boolean) : [],
     collectedAt: payload.data_coleta || payload.collectedAt || new Date().toISOString(),
   };
 };
@@ -230,6 +234,9 @@ const toAssetData = (normalized) => ({
     storage: normalized.storage,
     manufacturer: normalized.manufacturer,
     boardModel: normalized.boardModel,
+    software: normalized.software,
+    security: normalized.security,
+    monitors: normalized.monitors,
   },
   agent: {
     source: 'Agente ITAM',
@@ -314,6 +321,31 @@ export const previewAgentPayload = async (payload, options = {}) => {
   };
 };
 
+const processSoftwareLicenses = async (assetId, assetName, softwareList, tenantId) => {
+  if (!softwareList || softwareList.length === 0) return;
+  try {
+    const licenses = await getLicenses(tenantId);
+    for (const license of licenses) {
+      // Pula se a licença já estourou ou se não tem chave/nome
+      if (license.used >= license.quantity) continue;
+      
+      // Checa se algum software instalado bate com o nome da licença
+      const licenseName = license.name.toLowerCase();
+      const match = softwareList.find((sw) => sw.toLowerCase().includes(licenseName));
+      
+      if (match) {
+        // Checa se este ativo já consumiu esta licença
+        const alreadyAssigned = (license.assignedAssets || []).some(a => a.id === assetId);
+        if (!alreadyAssigned) {
+          await assignLicense(license.id, assetId, assetName);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Erro na dedução automática de licenças:', error);
+  }
+};
+
 export const registerAgentAsset = async (payload, options = {}) => {
   const tenantId = options.tenantId || 'default-tenant';
   const explicitId = firstUsable(payload.internalId, payload.internal_id, payload.patrimonio, payload.assetTag);
@@ -349,6 +381,9 @@ export const registerAgentAsset = async (payload, options = {}) => {
       user,
     });
 
+    // Dedução automática de licenças (SAM) para atualizações
+    await processSoftwareLicenses(duplicate.id, duplicate.model || assetData.model, assetData.specs?.software, tenantId);
+
     return {
       action: 'updated',
       assetId: duplicate.id,
@@ -362,6 +397,9 @@ export const registerAgentAsset = async (payload, options = {}) => {
     tenantId,
     createdBy: user,
   });
+
+  // Dedução automática de licenças (SAM)
+  await processSoftwareLicenses(docRef.id, assetData.model, assetData.specs?.software, tenantId);
 
   return {
     action: 'created',
