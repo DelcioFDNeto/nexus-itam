@@ -159,37 +159,36 @@ const AssetDetail = () => {
     const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Termo_${id}</title>
 <style>
-  @page { size: A4; margin: 15mm; }
-  body { font-family: 'Times New Roman', Times, serif; color: #000; line-height: 1.5; margin: 0; padding: 20px; }
-  .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 20px; }
-  .header-left { display: flex; align-items: center; gap: 15px; }
-  .logo-img { height: 45px; object-fit: contain; }
-  .title { text-align: center; font-weight: bold; font-size: 16px; text-transform: uppercase; margin: 20px 0; }
-  .content { font-size: 11px; text-align: justify; margin-bottom: 10px; }
-  .box { border: 1px solid #000; padding: 10px; margin: 15px 0; background-color: #f9f9f9; }
-  .box-title { font-weight: bold; font-size: 12px; margin-bottom: 5px; text-decoration: underline; }
-  .grid-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; }
-  .label { font-weight: bold; text-transform: uppercase; font-size: 9px; color: #333; }
-  .value { font-weight: bold; font-size: 11px; margin-left: 4px; }
-  .clauses { padding-left: 15px; }
-  .clause-item { margin-bottom: 8px; font-size: 11px; }
-  .signatures { display: flex; justify-content: space-between; margin-top: 50px; text-align: center; }
-  .line { border-top: 1px solid #000; width: 220px; margin-bottom: 5px; }
-  .footer { margin-top: 30px; font-size: 9px; text-align: center; border-top: 1px solid #ccc; padding-top: 5px; }
+  @page { size: A4; margin: 12mm 15mm; }
+  body { font-family: 'Times New Roman', Times, serif; color: #000; line-height: 1.3; margin: 0; padding: 12px 18px; }
+  .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px; }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo-img { height: 35px; object-fit: contain; }
+  .title { text-align: center; font-weight: bold; font-size: 13px; text-transform: uppercase; margin: 8px 0; }
+  .content { font-size: 10px; text-align: justify; margin-bottom: 6px; line-height: 1.3; }
+  .box { border: 1px solid #000; padding: 6px 8px; margin: 8px 0; background-color: #f9f9f9; }
+  .box-title { font-weight: bold; font-size: 11px; margin-bottom: 3px; text-decoration: underline; }
+  .grid-info { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 10px; }
+  .label { font-weight: bold; text-transform: uppercase; font-size: 8px; color: #333; }
+  .value { font-weight: bold; font-size: 10px; margin-left: 3px; }
+  .clauses { padding-left: 0; list-style-type: none; }
+  .clause-item { margin-bottom: 4px; font-size: 9.5px; line-height: 1.25; text-align: justify; }
+  .signatures { display: flex; justify-content: space-between; margin-top: 25px; text-align: center; }
+  .line { border-top: 1px solid #000; width: 200px; margin-bottom: 4px; }
+  .footer { margin-top: 12px; font-size: 8px; text-align: center; border-top: 1px solid #ccc; padding-top: 4px; }
 </style></head><body>
   <div class="header">
     <div class="header-left">
-      <div style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: flex-start; gap: 6px; color: #4F46E5; font-size: 24px; letter-spacing: -0.5px; height: 45px;">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+      <div style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: flex-start; gap: 5px; color: #4F46E5; font-size: 20px; letter-spacing: -0.5px; height: 35px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
         NEXUS<span style="color: #111827">ITAM</span>
       </div>
       <div>
-        <h1 style="font-size:20px;margin:0;font-weight:900">${config.companyName.toUpperCase()}</h1>
-        <p style="margin:2px 0 0;font-size:10px">CNPJ: ${config.cnpj || '00.000.000/0001-00'}</p>
-        <p style="margin:0;font-size:10px">Departamento de Tecnologia da Informação</p>
+        <h1 style="font-size:16px;margin:0;font-weight:900">${config.companyName.toUpperCase()}</h1>
+        <p style="margin:1px 0 0;font-size:9px">CNPJ: ${config.cnpj || '00.000.000/0001-00'} — Departamento de Tecnologia da Informação</p>
       </div>
     </div>
-    <div style="text-align:right"><p style="margin:0;font-size:10px">Emitido em: ${new Date().toLocaleDateString('pt-BR')}</p></div>
+    <div style="text-align:right"><p style="margin:0;font-size:9px">Emitido em: ${new Date().toLocaleDateString('pt-BR')}</p></div>
   </div>
   <h2 class="title">${config.termTitle}</h2>
 <p class="content">
@@ -207,7 +206,7 @@ const AssetDetail = () => {
   </div>
   <div class="box">
     <div class="box-title">2. OBJETO (EQUIPAMENTO EM COMODATO)</div>
-    <div style="font-size:11px;margin-bottom:8px">A empresa cede ao(à) responsável, a título de comodato gratuito, para uso EXCLUSIVO no desempenho de suas atividades profissionais/laborais, o(s) seguinte(s) bem(ns):</div>
+    <div style="font-size:10px;margin-bottom:4px">A empresa cede ao(à) responsável, a título de comodato, para uso EXCLUSIVO no desempenho de suas atividades profissionais, o(s) seguinte(s) bem(ns):</div>
     <div class="grid-info">
       <div><span class="label">Equipamento:</span> <span class="value">${asset.model}</span></div>
       <div><span class="label">Tipo:</span> <span class="value">${asset.type.toUpperCase()}</span></div>
@@ -218,18 +217,18 @@ const AssetDetail = () => {
     </div>
   </div>
   <div class="content">
-    <p style="font-weight:bold;margin-bottom:5px">CLÁUSULAS CONTRATUAIS:</p>
-    <ul class="clauses" style="list-style-type: none; padding-left: 0;">
+    <p style="font-weight:bold;margin-bottom:3px;font-size:10px">CLÁUSULAS CONTRATUAIS:</p>
+    <ul class="clauses">
       ${clausesHtml}
     </ul>
   </div>
-  <div style="margin-top:30px;font-size:11px">
+  <div style="margin-top:15px;font-size:10px">
     <p>Li, compreendi e aceito integralmente os termos acima descritos.</p>
     <p>_______________________, _____ de _______________________ de _________.</p>
   </div>
   <div class="signatures">
-    <div><div class="line"></div><span>${_responsibleName}</span><br/><small>RECEBEDOR(A) / RESPONSÁVEL</small>${!asset.clientCpf ? '<br/><small style="font-size:9px;color:#666">CPF: ___.___.___-__</small>' : ''}</div>
-    <div><div class="line"></div><span>${config.itManager}</span><br/><small>GESTOR DE TI</small></div>
+    <div><div class="line"></div><span style="font-size:10px">${_responsibleName}</span><br/><small style="font-size:9px">RECEBEDOR(A) / RESPONSÁVEL</small>${!asset.clientCpf ? '<br/><small style="font-size:8px;color:#666">CPF: ___.___.___-__</small>' : ''}</div>
+    <div><div class="line"></div><span style="font-size:10px">${config.itManager}</span><br/><small style="font-size:9px">GESTOR DE TI</small></div>
   </div>
   <div class="footer">Documento gerado eletronicamente pela plataforma corporativa Nexus ITAM. ID: ${id}</div>
 </body></html>`;
