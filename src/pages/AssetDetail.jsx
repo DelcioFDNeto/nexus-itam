@@ -962,28 +962,28 @@ const AssetDetail = () => {
           </button>
           <button
             onClick={() => setIsMoveModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:bg-slate-900 transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
           >
             <ArrowRightLeft size={16} />{" "}
             <span className="hidden sm:inline">Movimentar</span>
           </button>
           <button
             onClick={() => setIsMaintModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:bg-slate-900 transition-all whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap"
           >
             <Wrench size={16} />{" "}
             <span className="hidden sm:inline">Manutenção</span>
           </button>
           <button
             onClick={handlePrintTerm}
-            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:bg-slate-900 transition-all whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap"
           >
             <FileText size={16} />{" "}
             <span className="hidden sm:inline">Termo</span>
           </button>
           <button
             onClick={handlePrintLabel}
-            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:bg-slate-900 transition-all whitespace-nowrap"
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap"
           >
             <Printer size={16} />{" "}
             <span className="hidden sm:inline">Etiqueta</span>
@@ -1289,7 +1289,7 @@ const AssetDetail = () => {
                 asset.peripherals.map((item, idx) => (
                   <div
                     key={idx}
-                    className="group flex items-center gap-2 bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 pl-3 pr-2 py-2 rounded-xl transition-all hover:border-gray-300 hover:bg-white dark:bg-slate-800 hover:shadow-sm"
+                    className="group flex items-center gap-2 bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 pl-3 pr-2 py-2 rounded-xl transition-all hover:border-gray-300 hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm"
                   >
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
                       {item.name}

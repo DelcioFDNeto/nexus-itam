@@ -305,7 +305,7 @@ const ImportData = () => {
                     className={`w-full p-3 rounded-xl border flex items-center gap-3 transition-all text-left ${
                         selectedType === key 
                         ? 'border-black bg-black text-white shadow-lg shadow-gray-400/20' 
-                        : 'border-transparent bg-white dark:bg-slate-800 text-gray-600 hover:bg-gray-50 dark:bg-slate-900 hover:text-black'
+                        : 'border-transparent bg-white dark:bg-slate-800 text-gray-600 hover:bg-gray-50 dark:hover:bg-slate-700 hover:text-black'
                     }`}
                   >
                       <div className={`${selectedType === key ? 'text-white' : 'text-gray-400 dark:text-gray-500 group-hover:text-black'}`}>{schema.icon}</div>
@@ -336,7 +336,7 @@ const ImportData = () => {
                   </div>
                   <button 
                     onClick={handleDownloadTemplate} 
-                    className="shrink-0 flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-300 rounded-lg text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:bg-slate-900 hover:border-gray-400 transition-all shadow-sm"
+                    className="shrink-0 flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-300 rounded-lg text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-gray-400 transition-all shadow-sm"
                   >
                       <Download size={16}/> Baixar Modelo Excel
                   </button>
@@ -419,7 +419,7 @@ const ImportData = () => {
                     className={`border-2 border-dashed rounded-2xl p-12 text-center transition-all cursor-pointer group flex flex-col items-center justify-center min-h-[300px] ${
                         dragActive 
                         ? 'border-blue-500 bg-blue-50 scale-[1.01]' 
-                        : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:border-gray-400 hover:bg-gray-50 dark:bg-slate-900'
+                        : 'border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:border-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700'
                     }`}
                     onDragEnter={handleDrag}
                     onDragLeave={handleDrag}

@@ -465,7 +465,7 @@ const AssetList = () => {
             <input
               type="text"
               placeholder="Buscar por tag, modelo, serial ou responsável..."
-              className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-slate-900 border-transparent focus:bg-white dark:bg-slate-800 border-2 focus:border-black rounded-2xl outline-none font-bold text-sm transition-all"
+              className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-slate-900 border-transparent focus:bg-white dark:focus:bg-slate-800 border-2 focus:border-black rounded-2xl outline-none font-bold text-sm transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -568,7 +568,7 @@ const AssetList = () => {
               setSortBy(nextSort);
               setSortOrder(nextSort === "createdAt" ? "desc" : "asc");
             }}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${sortBy === "createdAt" ? "bg-black text-white border-black shadow-lg scale-105" : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-slate-600 hover:border-gray-300 hover:bg-gray-50 dark:bg-slate-900"}`}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${sortBy === "createdAt" ? "bg-black text-white border-black shadow-lg scale-105" : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-slate-600 hover:border-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700"}`}
           >
             <Clock size={16} /> Recentes
           </button>
@@ -576,7 +576,7 @@ const AssetList = () => {
             <button
               key={f.value}
               onClick={() => setFilterType(f.value)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${filterType === f.value ? "bg-black text-white border-black shadow-lg scale-105" : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-slate-600 hover:border-gray-300 hover:bg-gray-50 dark:bg-slate-900"}`}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${filterType === f.value ? "bg-black text-white border-black shadow-lg scale-105" : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-slate-600 hover:border-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700"}`}
             >
               {f.icon} {f.label}
             </button>
@@ -601,7 +601,7 @@ const AssetList = () => {
                 <div
                   key={asset.id}
                   onClick={() => navigate(`/assets/${asset.id}`)}
-                  className={`bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-[0_4px_20px_-12px_rgba(0,0,0,0.1)] active:scale-[0.98] transition-all relative overflow-hidden group ${selectedIds.includes(asset.id) ? "ring-2 ring-black bg-gray-50 dark:bg-slate-900" : ""}`}
+                  className={`p-5 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-[0_4px_20px_-12px_rgba(0,0,0,0.1)] active:scale-[0.98] transition-all relative overflow-hidden group ${selectedIds.includes(asset.id) ? "ring-2 ring-black bg-gray-50 dark:bg-slate-900" : "bg-white dark:bg-slate-800"}`}
                 >
                   {/* Forma orgânica desenhada apenas para visual agradável das extremidades do Card */}
                   <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 dark:bg-slate-900 rounded-full -mr-10 -mt-10 opacity-50 pointer-events-none"></div>
@@ -738,7 +738,7 @@ const AssetList = () => {
                             </div>
                           </td>
                           <td className="py-3 px-3">
-                            <div className="bg-gray-50 dark:bg-slate-900 px-2 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 w-fit group-hover:bg-white dark:bg-slate-800 transition-colors">
+                            <div className="bg-gray-50 dark:bg-slate-900 px-2 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600 w-fit group-hover:bg-white dark:group-hover:bg-slate-800 transition-colors">
                               <p className="font-mono font-bold text-[10px] xl:text-xs text-gray-900 dark:text-white">
                                 {asset.internalId}
                               </p>

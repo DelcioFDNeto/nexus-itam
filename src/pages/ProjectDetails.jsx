@@ -182,7 +182,7 @@ const ProjectDetails = () => {
         <button onClick={() => navigate('/projects')} className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-black font-bold text-sm transition-colors">
             <ArrowLeft size={18}/> Voltar
         </button>
-        <button onClick={openEditModal} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl text-xs font-bold hover:bg-gray-50 dark:bg-slate-900 shadow-sm transition-all">
+        <button onClick={openEditModal} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl text-xs font-bold hover:bg-gray-50 dark:hover:bg-slate-700 shadow-sm transition-all">
             <Edit3 size={16}/> Editar Projeto
         </button>
       </div>
