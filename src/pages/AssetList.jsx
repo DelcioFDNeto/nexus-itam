@@ -45,6 +45,7 @@ import {
   MoreVertical,
   SlidersHorizontal,
   Package,
+  Archive,
 } from "lucide-react";
 
 const getCompanyLabel = (companyName) =>
@@ -76,6 +77,7 @@ const AssetList = () => {
   const [filterStatus, setFilterStatus] = useState(() => sessionStorage.getItem("itam_asset_filterStatus") || "Todos");
   const [sortOrder, setSortOrder] = useState(() => sessionStorage.getItem("itam_asset_sortOrder") || "asc");
   const [sortBy, setSortBy] = useState(() => sessionStorage.getItem("itam_asset_sortBy") || "internalId");
+  const [showRetired, setShowRetired] = useState(false);
 
   useEffect(() => {
     sessionStorage.setItem("itam_asset_searchTerm", searchTerm);
@@ -86,7 +88,6 @@ const AssetList = () => {
   }, [searchTerm, filterType, filterStatus, sortBy, sortOrder, showRetired]);
 
   // Controle da seleção múltipla para exportação, impressão corporativa e edições conjuntas
-  const [showRetired, setShowRetired] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [bulkProcessing, setBulkProcessing] = useState(false);
