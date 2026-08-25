@@ -23,7 +23,12 @@ export default defineConfig([
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Componentes referenciados so em JSX (ex.: `{ icon: Icon }`) nao sao
+      // detectados sem eslint-plugin-react; PascalCase fica isento.
+      'no-unused-vars': [
+        'error',
+        { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^(_|[A-Z])' },
+      ],
     },
   },
   {

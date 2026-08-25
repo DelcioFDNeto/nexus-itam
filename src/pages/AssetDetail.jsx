@@ -12,19 +12,29 @@ import {
   orderBy,
   getDocs,
   getDoc,
+  limit,
 } from "firebase/firestore";
 import {
   moveAsset,
   registerMaintenance,
   updateAsset,
   deleteAsset,
+  writeOffAsset,
+  reactivateAsset,
 } from "../services/assetService";
 import MoveAssetModal from "../components/MoveAssetModal";
 import MaintenanceModal from "../components/MaintenanceModal";
+import WriteOffModal from "../components/WriteOffModal";
+import StatusBadge from "../components/StatusBadge";
+import { isRetired, warrantyStatus, WARRANTY_BADGE, WARRANTY_LABEL } from "../utils/assetStatus";
 import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "../contexts/AuthContext";
+import { safeLinkUrl } from "../utils/sanitize";
 import { toast } from "sonner";
 import {
+  Archive,
+  RotateCcw,
+  ShieldCheck,
   ArrowLeft,
   MapPin,
   User,
@@ -77,6 +87,8 @@ const AssetDetail = () => {
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const [isMaintModalOpen, setIsMaintModalOpen] = useState(false);
+  const [isWriteOffOpen, setIsWriteOffOpen] = useState(false);
+  const [writingOff, setWritingOff] = useState(false);
   const [activeTab, setActiveTab] = useState("details"); // 'details' | 'history' (Mobile)
 
   // Controle do formulário de links e anexos
@@ -339,17 +351,23 @@ const AssetDetail = () => {
   };
 
   // Busca de dados no banco (Firestore)
-  const fetchHistory = async () => {
+  const fetchHistory = async (historyTenantId) => {
+    // Sem `tenantId` a consulta varre o historico global. As regras nao
+    // conseguem provar que o resultado e seguro e rejeitam a query inteira —
+    // a timeline vinha vazia sem nenhum erro visivel.
+    if (!historyTenantId) return;
     try {
       const q = query(
         collection(db, "history"),
+        where("tenantId", "==", historyTenantId),
         where("assetId", "==", id),
         orderBy("date", "desc"),
+        limit(50),
       );
       const snapshot = await getDocs(q);
       setHistory(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
     } catch (err) {
-      console.error(err);
+      console.error("Falha ao carregar a timeline do ativo:", err);
     }
   };
 
@@ -363,7 +381,7 @@ const AssetDetail = () => {
           const data = { id: docSnap.id, ...docSnap.data() };
           setAsset(data);
           if (loading) setNotes(data.notes || "");
-          fetchHistory();
+          fetchHistory(data.tenantId || currentUser?.tenantId);
         } else {
           navigate("/assets");
         }
@@ -381,20 +399,20 @@ const AssetDetail = () => {
 
   const handleMoveConfirm = async (moveData) => {
     const userEmail = currentUser?.email || "Usuário Desconhecido";
-    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
+    const tenantId = asset?.tenantId || currentUser?.tenantId;
     await moveAsset(id, { ...asset, tenantId }, moveData, userEmail);
   };
 
   const handleMaintenanceConfirm = async (maintData) => {
     const userEmail = currentUser?.email || "Usuário Desconhecido";
-    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
+    const tenantId = asset?.tenantId || currentUser?.tenantId;
     await registerMaintenance(id, { ...maintData, tenantId }, userEmail);
   };
 
   const handleSaveNotes = async () => {
     setIsSavingNotes(true);
     const userEmail = currentUser?.email || "Usuário Desconhecido";
-    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
+    const tenantId = asset?.tenantId || currentUser?.tenantId;
     await updateAsset(
       id,
       { notes: notes, tenantId },
@@ -415,7 +433,7 @@ const AssetDetail = () => {
       return toast.warning("Preencha o nome e o link!");
     setIsAddingLink(true);
     const userEmail = currentUser?.email || "Usuário Desconhecido";
-    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
+    const tenantId = asset?.tenantId || currentUser?.tenantId;
     try {
       const currentLinks = asset.attachments || [];
       const newLink = {
@@ -448,7 +466,7 @@ const AssetDetail = () => {
   const handleDeleteLink = async (linkToDelete) => {
     if (!confirm("Remover este link?")) return;
     const userEmail = currentUser?.email || "Usuário Desconhecido";
-    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
+    const tenantId = asset?.tenantId || currentUser?.tenantId;
     try {
       const currentLinks = asset.attachments || [];
       const newLinks = currentLinks.filter((l) => l.url !== linkToDelete.url);
@@ -474,7 +492,7 @@ const AssetDetail = () => {
       return toast.warning("Digite o nome do periférico (ex: Carregador)");
     setIsAddingPeripheral(true);
     const userEmail = currentUser?.email || "Usuário Desconhecido";
-    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
+    const tenantId = asset?.tenantId || currentUser?.tenantId;
     try {
       const currentPeripherals = asset.peripherals || [];
       const newItem = { name: newPeripheral, addedAt: new Date() };
@@ -501,7 +519,7 @@ const AssetDetail = () => {
   const handleDeletePeripheral = async (itemToDelete) => {
     if (!confirm(`Remover ${itemToDelete.name}?`)) return;
     const userEmail = currentUser?.email || "Usuário Desconhecido";
-    const tenantId = asset?.tenantId || currentUser?.tenantId || "default-tenant";
+    const tenantId = asset?.tenantId || currentUser?.tenantId;
     try {
       const currentPeripherals = asset.peripherals || [];
       const newPeripherals = currentPeripherals.filter(
@@ -524,8 +542,39 @@ const AssetDetail = () => {
     }
   };
 
+  const handleWriteOff = async (form) => {
+    setWritingOff(true);
+    try {
+      await writeOffAsset(id, asset, form, currentUser?.email || "Sistema");
+      setIsWriteOffOpen(false);
+      toast.success("Baixa registrada. O histórico do ativo foi preservado.");
+    } catch (err) {
+      console.error(err);
+      toast.error(err.message || "Erro ao registrar a baixa.");
+    } finally {
+      setWritingOff(false);
+    }
+  };
+
+  const handleReactivate = async () => {
+    if (!window.confirm("Devolver este ativo ao inventário como Disponível?")) return;
+    try {
+      await reactivateAsset(id, asset, currentUser?.email || "Sistema");
+      toast.success("Ativo reativado.");
+    } catch (err) {
+      console.error(err);
+      toast.error(err.message || "Erro ao reativar.");
+    }
+  };
+
   const handleDelete = async () => {
-    if (window.confirm(" TEM CERTEZA? A exclusão é irreversível.")) {
+    // Excluir apaga a timeline junto. Para aposentar um equipamento a via
+    // correta e a baixa, que preserva o historico patrimonial.
+    if (!isRetired(asset?.status)) {
+      toast.error('Dê baixa no ativo antes de excluir — a exclusão apaga todo o histórico.');
+      return;
+    }
+    if (window.confirm(" TEM CERTEZA? A exclusão é irreversível e remove todo o histórico."))  {
       setIsDeleting(true);
       try {
         await deleteAsset(id);
@@ -573,14 +622,7 @@ const AssetDetail = () => {
     }
     return isNaN(date.getTime()) ? "N/A" : date.toLocaleDateString("pt-BR");
   };
-  const getBannerColor = () => {
-    const s = asset.status.toLowerCase();
-    if (s === "entregue") return "bg-purple-600";
-    if (s.includes("transfer")) return "bg-yellow-500";
-    if (s === "manutenção") return "bg-orange-600";
-    if (s === "disponível") return "bg-blue-600";
-    return "bg-black";
-  };
+  const garantia = warrantyStatus(asset.warrantyEnd);
 
   const companyLabelText = getCompanyLabel(config.companyName).toLocaleUpperCase("pt-BR");
 
@@ -947,6 +989,25 @@ const AssetDetail = () => {
             <span className="hidden sm:inline">Etiqueta</span>
           </button>
           {currentUser?.role !== 'operator' && (
+            isRetired(asset?.status) ? (
+              <button
+                onClick={handleReactivate}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 rounded-xl font-bold text-sm hover:bg-emerald-100 transition-all whitespace-nowrap"
+              >
+                <RotateCcw size={16} />{" "}
+                <span className="hidden sm:inline">Reativar</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setIsWriteOffOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all whitespace-nowrap"
+              >
+                <Archive size={16} />{" "}
+                <span className="hidden sm:inline">Dar baixa</span>
+              </button>
+            )
+          )}
+          {currentUser?.role !== 'operator' && (
             <button
               onClick={handleDelete}
               className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 transition-all ml-auto hover:scale-105"
@@ -978,11 +1039,18 @@ const AssetDetail = () => {
 
           <div className="flex-grow pt-2">
             <div className="flex flex-col md:flex-row md:items-center gap-4 mb-2">
-              <div
-                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${getBannerColor()} text-white shadow-md`}
-              >
-                {asset.status}
-              </div>
+              <StatusBadge status={asset.status} />
+
+              {/* Garantia: o dado so vale se estiver visivel onde se decide
+                  abrir chamado ou trocar o equipamento. */}
+              {garantia && (
+                <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${WARRANTY_BADGE[garantia.state]}`}>
+                  <ShieldCheck size={12} />
+                  {WARRANTY_LABEL[garantia.state]}
+                  {garantia.state === 'expirando' && ` · ${garantia.days}d`}
+                </span>
+              )}
+
               <span className="text-sm font-mono text-gray-400 dark:text-gray-500 font-bold">
                 {asset.category}
               </span>
@@ -1303,13 +1371,17 @@ const AssetDetail = () => {
               </h3>
 
               <div className="flex-1 space-y-2 mb-4 overflow-y-auto max-h-[150px] custom-scrollbar">
-                {asset.attachments?.map((link, i) => (
+                {asset.attachments?.map((link, i) => {
+                  // URL vem do banco: um `javascript:` aqui executaria script no clique.
+                  const href = safeLinkUrl(link.url);
+                  return (
                   <div
                     key={i}
                     className="flex justify-between items-center p-3 rounded-xl bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 hover:border-blue-200 transition-colors group"
                   >
+                    {href ? (
                     <a
-                      href={link.url}
+                      href={href}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-3 text-sm font-medium text-blue-600 hover:underline truncate"
@@ -1317,6 +1389,15 @@ const AssetDetail = () => {
                       <FileText size={14} className="text-gray-400 dark:text-gray-500" />{" "}
                       {link.name}
                     </a>
+                    ) : (
+                    <span
+                      title="Endereco bloqueado por seguranca"
+                      className="flex items-center gap-3 text-sm font-medium text-gray-400 line-through truncate"
+                    >
+                      <FileText size={14} />{" "}
+                      {link.name}
+                    </span>
+                    )}
                     <button
                       onClick={() => handleDeleteLink(link)}
                       className="text-gray-400 dark:text-gray-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all ml-2"
@@ -1324,7 +1405,8 @@ const AssetDetail = () => {
                       <Trash2 size={14} />
                     </button>
                   </div>
-                ))}
+                  );
+                })}
                 {(!asset.attachments || asset.attachments.length === 0) && (
                   <p className="text-sm text-gray-400 dark:text-gray-500 italic text-center py-4">
                     Nenhum link adicionado.
@@ -1431,6 +1513,13 @@ const AssetDetail = () => {
           currentAsset={asset}
         />
       )}
+      <WriteOffModal
+        isOpen={isWriteOffOpen}
+        onClose={() => setIsWriteOffOpen(false)}
+        asset={asset}
+        onConfirm={handleWriteOff}
+        saving={writingOff}
+      />
     </div>
   );
 };

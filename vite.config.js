@@ -14,10 +14,13 @@ export default defineConfig({
         name: 'Nexus ITAM',
         short_name: 'ITAM',
         description: 'Gestão de Ativos Nexus ITAM',
-        theme_color: '#ffffff',
-        background_color: '#ffffff',
+        theme_color: '#0a0a0c',
+        background_color: '#0a0a0c',
         display: 'standalone',
-        orientation: 'portrait',
+        // 'portrait' travava o PWA instalado em tablets e desktops.
+        orientation: 'any',
+        display_override: ['standalone', 'minimal-ui'],
+        categories: ['business', 'productivity'],
         icons: [
           {
             src: 'pwa-192x192.png',
@@ -50,11 +53,10 @@ export default defineConfig({
             'react-dom',
             'react-router-dom',
           ],
-          // Bibliotecas de UI (~60 KB) — framer-motion, sonner, etc.
-          'vendor-ui': [
-            'framer-motion',
-            'sonner',
-          ],
+          // Notificacoes (framer-motion foi removido: nao havia nenhum import).
+          'vendor-ui': ['sonner'],
+          // Chart.js so entra no bundle de quem abre um dashboard com graficos.
+          'vendor-charts': ['chart.js', 'react-chartjs-2'],
         },
       },
     },

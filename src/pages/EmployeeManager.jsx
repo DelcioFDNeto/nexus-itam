@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import ManagerSkeleton from '../components/dashboard/ManagerSkeleton';
+import LocationSelect from '../components/LocationSelect';
 
 const EmployeeManager = () => {
   const { currentUser } = useAuth();
@@ -29,7 +30,7 @@ const EmployeeManager = () => {
 
   // Molde padrão para dar reset no formulário sem precisar limpar campo por campo
   const initialForm = {
-    name: '', role: '', email: '', cpf: '', branch: 'Matriz - Belém', sectorId: '',
+    name: '', role: '', email: '', cpf: '', branch: '', sectorId: '',
     sectorName: '', manager: '', description: ''
   };
   const [formData, setFormData] = useState(initialForm);
@@ -318,14 +319,13 @@ const EmployeeManager = () => {
                     </div>
                     <div>
                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Unidade / Base</label>
-                        <select value={formData.branch} onChange={e => setFormData({...formData, branch: e.target.value})} className="w-full p-3 border rounded-xl bg-white dark:bg-slate-800 outline-none focus:border-black">
-                            <option>Matriz - Belém</option>
-                            <option>Fábrica / CD - Ananindeua</option>
-                            <option>Filial Castanhal</option>
-                            <option>Filial Ananindeua</option>
-                            <option>Fortaleza (CE)</option>
-                            <option>Home Office</option>
-                        </select>
+                        <LocationSelect
+                            value={formData.branch}
+                            onChange={e => setFormData({...formData, branch: e.target.value})}
+                            name="branch"
+                            showManageLink
+                            className="w-full p-3 border rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-none focus:border-black"
+                        />
                     </div>
                   </>
               ) : (

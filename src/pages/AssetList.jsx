@@ -8,6 +8,9 @@ import { QRCodeSVG } from "qrcode.react";
 import ReactDOMServer from "react-dom/server";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
+import { safeSpreadsheetCell } from "../utils/sanitize";
+import { ASSET_STATUSES, isRetired } from "../utils/assetStatus";
+import StatusBadge from "../components/StatusBadge";
 import AssetListSkeleton from "../components/assets/AssetListSkeleton";
 import AssetIcon from "../components/AssetIcon";
 import AssetMetrics from "../components/assets/AssetMetrics";
@@ -80,9 +83,10 @@ const AssetList = () => {
     sessionStorage.setItem("itam_asset_filterStatus", filterStatus);
     sessionStorage.setItem("itam_asset_sortBy", sortBy);
     sessionStorage.setItem("itam_asset_sortOrder", sortOrder);
-  }, [searchTerm, filterType, filterStatus, sortBy, sortOrder]);
+  }, [searchTerm, filterType, filterStatus, sortBy, sortOrder, showRetired]);
 
   // Controle da seleção múltipla para exportação, impressão corporativa e edições conjuntas
+  const [showRetired, setShowRetired] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -167,6 +171,11 @@ const AssetList = () => {
 
       if (!matchesSearch) return false;
 
+      // Baixados ficam fora da visão padrão: continuam no banco pelo histórico
+      // patrimonial, mas não são inventário. Só aparecem quando pedidos.
+      if (!showRetired && filterStatus === "Todos" && isRetired(asset.status))
+        return false;
+
       // Limita resultados focando num status específico (Ex: Em Uso, Defeito)
       if (filterStatus !== "Todos" && asset.status !== filterStatus)
         return false;
@@ -210,7 +219,7 @@ const AssetList = () => {
             sensitivity: "base",
           });
     });
-  }, [assets, searchTerm, filterType, filterStatus, sortBy, sortOrder]);
+  }, [assets, searchTerm, filterType, filterStatus, sortBy, sortOrder, showRetired]);
 
   const toggleSelectAll = () => {
     if (selectedIds.length === processedAssets.length) setSelectedIds([]);
@@ -396,14 +405,17 @@ const AssetList = () => {
 
   const handleExportExcel = async () => {
     const XLSX = await import("xlsx");
+    // Toda celula passa por safeSpreadsheetCell: um valor como "=cmd|..."
+    // digitado no cadastro seria executado pelo Excel ao abrir a planilha.
+    const cell = safeSpreadsheetCell;
     const dataToExport = processedAssets.map((asset) => ({
-      Patrimônio: asset.internalId,
-      Modelo: asset.model,
-      Tipo: asset.type,
-      Serial: asset.serialNumber || "",
-      Responsável: asset.assignedTo || asset.clientName || "",
-      "Setor/Local": asset.location,
-      Status: asset.status,
+      Patrimônio: cell(asset.internalId),
+      Modelo: cell(asset.model),
+      Tipo: cell(asset.type),
+      Serial: cell(asset.serialNumber || ""),
+      Responsável: cell(asset.assignedTo || asset.clientName || ""),
+      "Setor/Local": cell(asset.location),
+      Status: cell(asset.status),
     }));
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
@@ -428,15 +440,8 @@ const AssetList = () => {
     },
   ];
 
-  const statusOptions = [
-    "Em Uso",
-    "Disponível",
-    "Em Transferência",
-    "Manutenção",
-    "Entregue",
-    "Defeito",
-    "Em Trânsito",
-  ];
+  // Lista unica de status, vinda do catalogo de ciclo de vida.
+  const statusOptions = ASSET_STATUSES.map((st) => st.id);
 
   if (loading) return <AssetListSkeleton />;
 
@@ -493,6 +498,20 @@ const AssetList = () => {
                 ))}
               </select>
             </div>
+
+            {/* Baixados ficam ocultos por padrão; este é o interruptor. */}
+            <button
+              onClick={() => setShowRetired((v) => !v)}
+              title={showRetired ? "Ocultar ativos baixados" : "Incluir ativos baixados"}
+              className={`flex items-center gap-1.5 rounded-2xl border px-3 py-3 text-xs font-bold transition-colors ${
+                showRetired
+                  ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
+                  : "border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 text-gray-500 dark:text-gray-400 hover:bg-gray-100"
+              }`}
+            >
+              <Archive size={16} />
+              <span className="hidden xl:inline">Baixados</span>
+            </button>
 
             <button
               onClick={() =>
@@ -587,11 +606,7 @@ const AssetList = () => {
                   <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 dark:bg-slate-900 rounded-full -mr-10 -mt-10 opacity-50 pointer-events-none"></div>
 
                   <div className="flex justify-between items-start mb-4 relative z-10">
-                    <span
-                      className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wide ${asset.status === "Em Uso" ? "bg-green-100 text-green-700" : asset.status === "Disponível" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}
-                    >
-                      {asset.status}
-                    </span>
+                    <StatusBadge status={asset.status} size="sm" />
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -754,14 +769,7 @@ const AssetList = () => {
                             </div>
                           </td>
                           <td className="py-3 px-3 text-center">
-                            <span
-                              className={`inline-flex items-center px-2 py-1 rounded-full text-[8px] xl:text-[10px] font-black uppercase tracking-wide whitespace-nowrap shadow-sm border ${asset.status === "Em Uso" ? "bg-green-50 text-green-700 border-green-100" : asset.status === "Disponível" ? "bg-blue-50 text-blue-700 border-blue-100" : asset.status === "Entregue" ? "bg-purple-50 text-purple-700 border-purple-100" : "bg-gray-50 dark:bg-slate-900 text-gray-600 border-gray-100 dark:border-slate-700"}`}
-                            >
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full mr-1.5 shrink-0 animate-pulse ${asset.status === "Em Uso" ? "bg-green-500" : asset.status === "Disponível" ? "bg-blue-500" : "bg-gray-400"}`}
-                              ></span>
-                              {asset.status}
-                            </span>
+                            <StatusBadge status={asset.status} size="sm" />
                           </td>
                           <td className="py-3 px-3 text-center">
                             <div className="p-1.5 text-gray-300 group-hover:text-black hover:bg-gray-100 rounded-xl transition-all inline-flex">

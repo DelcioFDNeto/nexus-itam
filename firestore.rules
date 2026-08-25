@@ -1,124 +1,257 @@
 rules_version = '2';
+
+// =============================================================================
+// Nexus ITAM - Regras de Seguranca Multi-Tenant
+// -----------------------------------------------------------------------------
+// Principios:
+//  1. FECHADO POR PADRAO. Nao existe regra "catch-all" permissiva. Toda colecao
+//     precisa ser declarada explicitamente aqui para ser acessivel.
+//  2. O tenant do usuario vem PRIMEIRO do custom claim (request.auth.token.tenantId)
+//     e so cai para o documento /users/{uid} como fallback de migracao.
+//  3. Um usuario NUNCA pode alterar o proprio `role`, `tenantId` ou `status`.
+//     Escalonamento de privilegio e bloqueado na origem.
+//  4. Segredos (agentToken) vivem em /tenantSecrets/{tenantId}, legivel apenas
+//     por owner/admin do proprio tenant - nunca pelo tenant vizinho.
+// =============================================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Funções Helper de Autenticação e Multi-Tenancy Seguras
-    function isAuthenticated() {
+
+    // ---------------------------------------------------------------------
+    // HELPERS
+    // ---------------------------------------------------------------------
+
+    function signedIn() {
       return request.auth != null;
     }
-    
-    function getUserTenant() {
-      // Prioridade 1: Custom Claim (request.auth.token.tenantId) gerado pelo backend (Performance ideal, sem leitura a mais)
-      // Prioridade 2: Fallback temporário usando a leitura do usuário caso as claims não estejam ativas.
-      return ('tenantId' in request.auth.token) 
-        ? request.auth.token.tenantId 
-        : (exists(/databases/$(database)/documents/users/$(request.auth.uid)) ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId : 'no-tenant');
+
+    function claims() {
+      return request.auth.token;
     }
 
-    // Regras específicas de usuários
+    function profilePath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function profileExists() {
+      return exists(profilePath());
+    }
+
+    function profile() {
+      return get(profilePath()).data;
+    }
+
+    // Tenant efetivo: custom claim > documento de perfil > null (sem acesso)
+    function tenantOf() {
+      return !signedIn()
+        ? null
+        : ('tenantId' in claims()
+            ? claims().tenantId
+            : (profileExists() ? profile().tenantId : null));
+    }
+
+    // Papel efetivo: custom claim > documento de perfil > 'viewer' (menor privilegio)
+    function roleOf() {
+      return !signedIn()
+        ? 'anonymous'
+        : ('role' in claims()
+            ? claims().role
+            : (profileExists() ? profile().role : 'viewer'));
+    }
+
+    function isMaster() {
+      return signedIn() && tenantOf() == 'nexus-master' && roleOf() == 'superadmin';
+    }
+
+    // Pertence ao mesmo tenant do recurso (tenant nulo nunca casa)
+    function sameTenant(t) {
+      return signedIn() && t != null && t is string && t == tenantOf();
+    }
+
+    function isTenantAdmin(t) {
+      return sameTenant(t) && roleOf() in ['owner', 'admin'];
+    }
+
+    // Papeis autorizados a gravar dados operacionais do tenant
+    function canOperate(t) {
+      return sameTenant(t) && roleOf() in ['owner', 'admin', 'manager', 'member', 'operator'];
+    }
+
+    function validRole(r) {
+      return r in ['owner', 'admin', 'manager', 'member', 'operator', 'viewer'];
+    }
+
+    function changed(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(keys);
+    }
+
+    // --- Atalhos para colecoes de negocio escopadas por tenantId ---
+
+    function tenantRead() {
+      return isMaster() || sameTenant(resource.data.tenantId);
+    }
+
+    function tenantCreate() {
+      return isMaster() || canOperate(request.resource.data.tenantId);
+    }
+
+    // Update nao pode "sequestrar" o documento para outro tenant
+    function tenantUpdate() {
+      return isMaster() || (
+        canOperate(resource.data.tenantId) &&
+        request.resource.data.tenantId == resource.data.tenantId
+      );
+    }
+
+    function tenantDelete() {
+      return isMaster() || canOperate(resource.data.tenantId);
+    }
+
+    // ---------------------------------------------------------------------
+    // USUARIOS
+    // ---------------------------------------------------------------------
     match /users/{userId} {
-      // Regras de leitura e escrita seguras que previnem recursão infinita usando short-circuit
-      allow read: if isAuthenticated() && (
-        request.auth.uid == userId || 
-        getUserTenant() == 'nexus-master' ||
-        (resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
+      allow read: if signedIn() && (
+        request.auth.uid == userId ||
+        isMaster() ||
+        sameTenant(resource.data.tenantId)
       );
-      allow update: if isAuthenticated() && (
-        request.auth.uid == userId || 
-        getUserTenant() == 'nexus-master' ||
-        (resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
+
+      // Auto-provisionamento no cadastro: so o proprio UID, nunca no tenant master,
+      // nunca com papel de superadmin.
+      allow create: if isMaster() || (
+        signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.tenantId is string &&
+        request.resource.data.tenantId != 'nexus-master' &&
+        validRole(request.resource.data.role)
       );
-      allow create: if isAuthenticated();
-      allow delete: if isAuthenticated() && (request.auth.uid == userId || getUserTenant() == 'nexus-master');
+
+      allow update: if isMaster()
+        // O proprio usuario edita o perfil, mas nunca role / tenantId / status.
+        || (signedIn() && request.auth.uid == userId && !changed(['role', 'tenantId', 'status']))
+        // Owner/admin gerencia membros do proprio tenant, sem trocar o tenant
+        // e sem criar superadmins.
+        || (
+          isTenantAdmin(resource.data.tenantId) &&
+          request.resource.data.tenantId == resource.data.tenantId &&
+          validRole(request.resource.data.role)
+        );
+
+      allow delete: if isMaster() || (
+        isTenantAdmin(resource.data.tenantId) && request.auth.uid != userId
+      );
     }
 
-    // Regras específicas de tenants
+    // ---------------------------------------------------------------------
+    // TENANTS (empresas)
+    // ---------------------------------------------------------------------
     match /tenants/{tenantId} {
-      allow read: if isAuthenticated(); // Acesso aberto para listas e admin
-      allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && (tenantId == getUserTenant() || getUserTenant() == 'nexus-master');
-    }
+      // Sem listagem global: cada empresa so enxerga a si mesma.
+      allow read: if isMaster() || (signedIn() && tenantId == tenantOf());
 
-    // Regras de Planos & Níveis Comerciais
-    match /plans/{planId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && getUserTenant() == 'nexus-master';
-    }
+      // Self-service signup. O tenant master nunca pode ser criado pelo cliente.
+      allow create: if signedIn() &&
+        tenantId != 'nexus-master' &&
+        request.resource.data.id == tenantId &&
+        request.resource.data.companyName is string;
 
-    // Regras específicas de configurações (Whitelabel)
-    match /settings/{tenantId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && (tenantId == getUserTenant() || getUserTenant() == 'nexus-master');
-    }
-
-    // Sistema de Convites
-    match /invites/{inviteId} {
-      allow read, update, delete: if isAuthenticated() && (resource.data.tenantId == getUserTenant() || getUserTenant() == 'nexus-master');
-      allow create: if isAuthenticated() && (request.resource.data.tenantId == getUserTenant() || getUserTenant() == 'nexus-master');
-    }
-
-    // Segurança do Agente ITAM (Drop-Box)
-    match /agentInbox/{docId} {
-      // Apenas a aplicação Web (usuário autenticado do tenant) pode ler, atualizar ou deletar
-      allow read, update, delete: if isAuthenticated() && (
-        getUserTenant() == 'nexus-master' ||
-        resource.data.tenantId == getUserTenant()
+      // Plano e status sao comerciais: so o master altera.
+      allow update: if isMaster() || (
+        isTenantAdmin(tenantId) && !changed(['plan', 'status', 'id', 'limits'])
       );
-      
-      // PowerShell (Sem auth) ou Aplicação Web podem criar
-      allow create: if 
-        (isAuthenticated() && request.resource.data.tenantId == getUserTenant()) || 
+
+      allow delete: if isMaster();
+    }
+
+    // ---------------------------------------------------------------------
+    // PLANOS COMERCIAIS
+    // ---------------------------------------------------------------------
+    match /plans/{planId} {
+      allow read: if signedIn();
+      allow write: if isMaster();
+    }
+
+    // ---------------------------------------------------------------------
+    // CONFIGURACOES / WHITELABEL (nao-secreto)
+    // ---------------------------------------------------------------------
+    match /settings/{tenantId} {
+      allow read: if isMaster() || (signedIn() && tenantId == tenantOf());
+      allow write: if isMaster() || isTenantAdmin(tenantId);
+    }
+
+    // ---------------------------------------------------------------------
+    // SEGREDOS DO TENANT (agentToken, webhooks, integracoes)
+    // Nunca legivel por outro tenant. As regras do agentInbox leem este
+    // documento server-side via get(), sem expor o valor ao cliente.
+    // ---------------------------------------------------------------------
+    match /tenantSecrets/{tenantId} {
+      allow read, write: if isMaster() || isTenantAdmin(tenantId);
+    }
+
+    // ---------------------------------------------------------------------
+    // CONVITES
+    // ---------------------------------------------------------------------
+    match /invites/{inviteId} {
+      allow read, update, delete: if isMaster() || isTenantAdmin(resource.data.tenantId);
+      allow create: if isMaster() || (
+        isTenantAdmin(request.resource.data.tenantId) &&
+        validRole(request.resource.data.role) &&
+        request.resource.data.status == 'pending'
+      );
+    }
+
+    // ---------------------------------------------------------------------
+    // AGENTE ITAM - caixa de entrada (drop-box)
+    // ---------------------------------------------------------------------
+    match /agentInbox/{docId} {
+      allow read: if tenantRead();
+      allow update: if tenantUpdate();
+      allow delete: if isMaster() || isTenantAdmin(resource.data.tenantId);
+
+      allow create: if
+        // Origem 1: a propria aplicacao web autenticada.
+        tenantCreate()
+        ||
+        // Origem 2: agente de coleta (sem login), autenticado por token do tenant.
         (
-          request.resource.data.tenantId != null &&
-          request.resource.data.agentToken != null &&
-          exists(/databases/$(database)/documents/settings/$(request.resource.data.tenantId)) &&
-          get(/databases/$(database)/documents/settings/$(request.resource.data.tenantId)).data.agentToken == request.resource.data.agentToken
+          request.resource.data.tenantId is string &&
+          request.resource.data.agentToken is string &&
+          request.resource.data.status == 'pending' &&
+          exists(/databases/$(database)/documents/tenantSecrets/$(request.resource.data.tenantId)) &&
+          get(/databases/$(database)/documents/tenantSecrets/$(request.resource.data.tenantId)).data.agentToken == request.resource.data.agentToken
         );
     }
 
-    // Regras para consultas de Collection Group globais (Superadmin ou do próprio Tenant)
-    match /{path=**}/assets/{assetId} {
-      allow read: if isAuthenticated() && (
-        getUserTenant() == 'nexus-master' ||
-        (resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
-      );
+    // ---------------------------------------------------------------------
+    // COLECOES OPERACIONAIS ESCOPADAS POR TENANT
+    // ---------------------------------------------------------------------
+    match /assets/{docId}        { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
+    match /employees/{docId}     { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
+    match /sectors/{docId}       { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
+    match /locations/{docId}     { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if isMaster() || isTenantAdmin(resource.data.tenantId); }
+    match /projects/{docId}      { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
+    match /tasks/{docId}         { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
+    match /licenses/{docId}      { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
+    match /contracts/{docId}     { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
+    match /serviceOrders/{docId} { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
+    match /audits/{docId}        { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
+
+    // Trilha de auditoria: append-only. Ninguem reescreve o passado, exceto o master.
+    match /history/{docId} {
+      allow read: if tenantRead();
+      allow create: if tenantCreate();
+      allow update, delete: if isMaster();
     }
-    match /{path=**}/employees/{employeeId} {
-      allow read: if isAuthenticated() && (
-        getUserTenant() == 'nexus-master' ||
-        (resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
-      );
-    }
-    match /{path=**}/projects/{projectId} {
-      allow read: if isAuthenticated() && (
-        getUserTenant() == 'nexus-master' ||
-        (resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
-      );
-    }
-    match /{path=**}/history/{historyId} {
-      allow read: if isAuthenticated() && (
-        getUserTenant() == 'nexus-master' ||
-        (resource != null && 'tenantId' in resource.data && resource.data.tenantId == getUserTenant())
-      );
-    }
-    
-    // Para todas as outras coleções baseadas em Tenant (assets, projects, tasks, etc)
-    match /{collection}/{document=**} {
-      // Garante que operações de Read/Update/Delete só operem em dados do MESMO tenant ou para superadmin.
-      // Se a coleção for genérica e não possuir 'tenantId', ela libera leitura.
-      allow read, update, delete: if isAuthenticated() && (
-        (collection != 'users' && collection != 'tenants' && collection != 'plans' && collection != 'settings' && collection != 'invites' && getUserTenant() == 'nexus-master') ||
-        resource == null || 
-        !("tenantId" in resource.data) || 
-        resource.data.tenantId == getUserTenant()
-      );
-      
-      // Garante que o usuário só crie registros atrelados à SUA própria empresa ou para superadmin.
-      allow create: if isAuthenticated() && (
-        (collection != 'users' && collection != 'tenants' && collection != 'plans' && collection != 'settings' && collection != 'invites' && getUserTenant() == 'nexus-master') ||
-        !("tenantId" in request.resource.data) || 
-        request.resource.data.tenantId == getUserTenant()
-      );
-    }
+
+    // ---------------------------------------------------------------------
+    // COLLECTION GROUP (visao global do Nexus Master)
+    // ---------------------------------------------------------------------
+    match /{path=**}/assets/{assetId}       { allow read: if isMaster(); }
+    match /{path=**}/employees/{employeeId} { allow read: if isMaster(); }
+    match /{path=**}/projects/{projectId}   { allow read: if isMaster(); }
+    match /{path=**}/history/{historyId}    { allow read: if isMaster(); }
+
+    // Tudo que nao foi declarado acima permanece negado.
   }
 }

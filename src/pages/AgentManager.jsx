@@ -17,10 +17,14 @@ import {
   Settings,
   Terminal,
   Cpu,
-  Info
+  Info,
+  Eye,
+  EyeOff,
+  Copy
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
+import { getAgentToken, migrateLegacyAgentToken, rotateAgentToken } from '../services/tenantSecretService';
 import { db } from '../services/firebase';
 import { updateAsset } from '../services/assetService';
 import {
@@ -89,7 +93,7 @@ const buildJsonPayload = (currentText) => {
 
 const AgentManager = () => {
   const { currentUser } = useAuth();
-  const tenantId = currentUser?.tenantId || 'default-tenant';
+  const tenantId = currentUser?.tenantId;
   const [jsonText, setJsonText] = useState(JSON.stringify(samplePayload, null, 2));
   const [preview, setPreview] = useState(null);
   const [submissions, setSubmissions] = useState([]);
@@ -99,6 +103,7 @@ const AgentManager = () => {
   const [savingConfig, setSavingConfig] = useState(false);
   const [namingConfig, setNamingConfig] = useState(DEFAULT_AGENT_NAMING);
   const [agentToken, setAgentToken] = useState('');
+  const [tokenVisible, setTokenVisible] = useState(false);
   const [trustedIps, setTrustedIps] = useState('');
   const [autoAcceptEnabled, setAutoAcceptEnabled] = useState(false);
   const [selectedSubmissions, setSelectedSubmissions] = useState([]);
@@ -140,12 +145,16 @@ const AgentManager = () => {
   };
 
   const generateAgentToken = async () => {
+    if (!tenantId) return toast.error('Sem contexto de inquilino.');
+    if (agentToken && !confirm('Gerar um novo token invalida o token atual: todos os agentes ja instalados deixam de reportar ate serem reconfigurados. Continuar?')) {
+      return;
+    }
     setSavingConfig(true);
     try {
-      const newToken = crypto.randomUUID();
-      await setDoc(doc(db, 'settings', tenantId), { agentToken: newToken }, { merge: true });
+      // O token nao mora mais em /settings (documento legivel pelo tenant inteiro).
+      const newToken = await rotateAgentToken(tenantId, currentUser?.email || 'sistema');
       setAgentToken(newToken);
-      toast.success('Token de segurança gerado com sucesso.');
+      toast.success('Token de seguranca gerado. Reinstale os agentes com o novo script.');
     } catch (error) {
       console.error(error);
       toast.error('Erro ao gerar token.');
@@ -227,20 +236,12 @@ const AgentManager = () => {
       if (snap.exists()) {
         const data = snap.data();
         setNamingConfig(normalizeNamingConfig(data.agentNaming || {}));
-        if (data.agentToken) setAgentToken(data.agentToken);
         setTrustedIps(data.trustedIps || '');
         setAutoAcceptEnabled(!!data.autoAcceptEnabled);
-      } else {
-        const generalRef = doc(db, 'settings', 'general');
-        const generalSnap = await getDoc(generalRef);
-        if (generalSnap.exists()) {
-          const generalData = generalSnap.data();
-          setNamingConfig(normalizeNamingConfig(generalData.agentNaming || {}));
-          if (generalData.agentToken) setAgentToken(generalData.agentToken);
-          setTrustedIps(generalData.trustedIps || '');
-          setAutoAcceptEnabled(!!generalData.autoAcceptEnabled);
-        }
       }
+        // Token vem do cofre do inquilino; migra sozinho quem ainda esta no formato antigo.
+        const stored = (await getAgentToken(tenantId)) || (await migrateLegacyAgentToken(tenantId));
+        setAgentToken(stored || '');
       } catch (error) {
         console.error(error);
       }
@@ -500,13 +501,39 @@ const AgentManager = () => {
                 </button>
               </div>
 
-              <div className="bg-amber-50 dark:bg-slate-900 p-4 rounded-2xl border border-amber-100 dark:border-slate-700 flex items-center justify-between">
-                <div>
+              <div className="bg-amber-50 dark:bg-slate-900 p-4 rounded-2xl border border-amber-100 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
                   <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-500 mb-1 block">Token de Autenticação Atual</span>
-                  <div className="font-mono text-sm font-black text-gray-900 dark:text-white">
-                    {agentToken || 'Nenhum token gerado. O Agente não funcionará até que você gere um.'}
+                  {/* Credencial: fica mascarada por padrão para não vazar em
+                      screenshots, gravações de tela ou apresentações. */}
+                  <div className="font-mono text-sm font-black text-gray-900 dark:text-white break-all">
+                    {agentToken
+                      ? (tokenVisible ? agentToken : `${agentToken.slice(0, 4)}${'•'.repeat(20)}${agentToken.slice(-4)}`)
+                      : 'Nenhum token gerado. O Agente não funcionará até que você gere um.'}
                   </div>
                 </div>
+                {agentToken && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setTokenVisible((v) => !v)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-amber-200 dark:border-slate-700 text-xs font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-slate-700"
+                    >
+                      {tokenVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                      {tokenVisible ? 'Ocultar' : 'Revelar'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(agentToken);
+                        toast.success('Token copiado.');
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white dark:bg-slate-800 border border-amber-200 dark:border-slate-700 text-xs font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-slate-700"
+                    >
+                      <Copy size={14} /> Copiar
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 border-t border-gray-100 dark:border-slate-700 pt-6">

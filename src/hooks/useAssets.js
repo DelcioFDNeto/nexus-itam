@@ -50,9 +50,10 @@ export const useAssets = () => {
     return await fetchAssetById(id, currentUser?.role === 'superadmin' ? null : tenantId);
   }, [tenantId, currentUser?.role]);
 
-  const getAssetHistory = useCallback(async (id) => {
-    return await fetchHistory(id);
-  }, []);
+  const getAssetHistory = useCallback(
+    async (id, limitCount = 20) => fetchHistory(id, tenantId, limitCount),
+    [tenantId],
+  );
 
   return { 
     assets, 

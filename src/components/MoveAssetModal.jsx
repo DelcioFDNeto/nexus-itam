@@ -1,6 +1,7 @@
 // src/components/MoveAssetModal.jsx
 import React, { useState, useEffect } from 'react';
 import { X, MapPin, User, Calendar, Truck, Search, ArrowRight, ArrowRightLeft } from 'lucide-react';
+import LocationSelect from './LocationSelect';
 import { getEmployees } from '../services/employeeService';
 import AssetIcon from './AssetIcon';
 import { useAuth } from '../contexts/AuthContext';
@@ -114,51 +115,14 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
               <div>
                 <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Novo Local / Filial</label>
                 <div className="relative">
-                    <select 
-                        required
-                        value={formData.newLocation} 
-                        onChange={(e) => setFormData({...formData, newLocation: e.target.value})} 
+                    <LocationSelect
+                        value={formData.newLocation}
+                        onChange={(e) => setFormData({ ...formData, newLocation: e.target.value })}
+                        name="newLocation"
+                        emptyLabel="Selecione o destino..."
+                        showManageLink
                         className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 rounded-xl outline-none focus:border-red-600 font-bold bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-100 appearance-none text-sm transition-all focus:shadow-md"
-                    >
-                        <option value="">Selecione o destino...</option>
-                        
-                        <optgroup label="Pará - Região Metropolitana">
-                            <option value="Matriz - Belém">Matriz - Belém</option>
-                            <option value="Fábrica / CD - Ananindeua">Fábrica / CD - Ananindeua</option>
-                            <option value="Filial Ananindeua">Filial Ananindeua</option>
-                            <option value="Filial Castanhal">Filial Castanhal</option>
-                            <option value="Icoaraci">Icoaraci</option>
-                            <option value="Barcarena">Barcarena</option>
-                        </optgroup>
-
-                        <optgroup label="Pará - Interior">
-                            <option value="Acará">Acará</option>
-                            <option value="Bragança">Bragança</option>
-                            <option value="Breves">Breves</option>
-                            <option value="Capanema">Capanema</option>
-                            <option value="Capitão Poço">Capitão Poço</option>
-                            <option value="Concórdia">Concórdia</option>
-                            <option value="Curuçá">Curuçá</option>
-                            <option value="Moju">Moju</option>
-                            <option value="Igarapé Mirim">Igarapé Mirim</option>
-                            <option value="São Miguel">São Miguel</option>
-                            <option value="Soure">Soure</option>
-                            <option value="Tailândia">Tailândia</option>
-                            <option value="Tomé-Açu">Tomé-Açu</option>
-                        </optgroup>
-
-                        <optgroup label="Ceará">
-                            <option value="Fortaleza (CE)">Fortaleza (CE)</option>
-                            <option value="Aldeota (CE)">Aldeota (CE)</option>
-                            <option value="Demócrito Rocha (CE)">Demócrito Rocha (CE)</option>
-                            <option value="Parangaba (CE)">Parangaba (CE)</option>
-                        </optgroup>
-
-                        <optgroup label="Outros">
-                            <option value="Home Office">Home Office</option>
-                            <option value="Em Trânsito">Em Trânsito</option>
-                        </optgroup>
-                    </select>
+                    />
                     <div className="absolute right-4 top-3.5 pointer-events-none text-gray-400 dark:text-gray-500">▼</div>
                 </div>
               </div>

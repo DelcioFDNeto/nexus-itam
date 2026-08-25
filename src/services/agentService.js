@@ -17,6 +17,15 @@ import { getLicenses, assignLicense } from '../services/licenseService';
 const assetsCollection = collection(db, 'assets');
 const agentInboxCollection = collection(db, 'agentInbox');
 
+// Falhar alto e melhor que gravar num inquilino generico: o antigo fallback
+// 'default-tenant' juntava dados de empresas diferentes no mesmo balde.
+const requireTenant = (tenantId) => {
+  if (!tenantId || typeof tenantId !== 'string' || tenantId === 'default-tenant') {
+    throw new Error('Operacao do agente exige um inquilino valido.');
+  }
+  return tenantId;
+};
+
 const normalizeComparable = (value) =>
   String(value || '')
     .trim()
@@ -152,7 +161,7 @@ const resolveNextSequenceFromAssets = (assets, namingConfig) => {
 };
 
 export const resolveAgentNamingFromDatabase = async (payload = {}, options = {}) => {
-  const tenantId = options.tenantId || 'default-tenant';
+  const tenantId = requireTenant(options.tenantId);
   const assetType = inferAgentAssetType(payload);
   const q = query(assetsCollection, where('tenantId', '==', tenantId));
   const snapshot = await getDocs(q);
@@ -250,7 +259,7 @@ const toAssetData = (normalized) => ({
 export const findDuplicateAsset = async ({ internalId, serialNumber, tenantId }) => {
   const targetInternalId = normalizeComparable(internalId);
   const targetSerialNumber = normalizeComparable(serialNumber);
-  const targetTenantId = tenantId || 'default-tenant';
+  const targetTenantId = requireTenant(tenantId);
 
   if (isUsableIdentifier(internalId)) {
     const byInternalId = query(
@@ -304,7 +313,7 @@ export const findDuplicateAsset = async ({ internalId, serialNumber, tenantId })
 };
 
 export const previewAgentPayload = async (payload, options = {}) => {
-  const tenantId = options.tenantId || 'default-tenant';
+  const tenantId = requireTenant(options.tenantId);
   const explicitId = firstUsable(payload.internalId, payload.internal_id, payload.patrimonio, payload.assetTag);
   const resolved = explicitId ? null : await resolveAgentNamingFromDatabase(payload, options);
   const normalized = normalizeAgentPayload(payload, {
@@ -347,7 +356,7 @@ const processSoftwareLicenses = async (assetId, assetName, softwareList, tenantI
 };
 
 export const registerAgentAsset = async (payload, options = {}) => {
-  const tenantId = options.tenantId || 'default-tenant';
+  const tenantId = requireTenant(options.tenantId);
   const explicitId = firstUsable(payload.internalId, payload.internal_id, payload.patrimonio, payload.assetTag);
   const resolved = explicitId ? null : await resolveAgentNamingFromDatabase(payload, options);
   const normalized = normalizeAgentPayload(payload, {
@@ -430,7 +439,8 @@ export const markAgentSubmission = async (submissionId, data) => {
   });
 };
 
-export const enqueueAgentSubmission = async (payload, source = 'manual', tenantId = 'default-tenant') => {
+export const enqueueAgentSubmission = async (payload, source = 'manual', tenantId = null) => {
+  requireTenant(tenantId);
   const normalized = normalizeAgentPayload(payload);
   return addDoc(agentInboxCollection, {
     payload,

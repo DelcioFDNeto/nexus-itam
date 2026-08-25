@@ -1,192 +1,179 @@
 // src/contexts/AuthContext.jsx
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { auth, db } from '../services/firebase';
-import { 
-  signInWithEmailAndPassword, 
-  signOut, 
+import {
+  signInWithEmailAndPassword,
+  signOut,
   onAuthStateChanged,
   sendPasswordResetEmail,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { MASTER_TENANT } from '../utils/permissions';
+import { safeCssColor, safeImageUrl } from '../utils/sanitize';
 
 const AuthContext = createContext();
 
 // eslint-disable-next-line react-refresh/only-export-components
-export const useAuth = () => {
-  return useContext(AuthContext);
-};
+export const useAuth = () => useContext(AuthContext);
+
+const slugify = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 24);
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Erro de carregamento de perfil: mantido separado para a UI poder explicar
+  // por que a sessao existe mas o acesso foi negado.
+  const [profileError, setProfileError] = useState(null);
 
-  const login = (email, password) => {
-    return signInWithEmailAndPassword(auth, email, password);
-  };
+  const login = useCallback((email, password) => signInWithEmailAndPassword(auth, email, password), []);
+  const logout = useCallback(() => signOut(auth), []);
+  const resetPassword = useCallback((email) => sendPasswordResetEmail(auth, email), []);
 
-  const logout = () => {
-    return signOut(auth);
-  };
-
-  const resetPassword = (email) => {
-    return sendPasswordResetEmail(auth, email);
-  };
-
-  // Cadastro de novo Inquilino (SaaS B2B)
-  const registerTenant = async (companyName, adminName, email, password) => {
-    // 1. Cria usuário no Firebase Auth
+  // Cadastro de novo inquilino (SaaS B2B).
+  // Tenant e perfil sao gravados na mesma transacao: nunca sobra um usuario orfao.
+  const registerTenant = useCallback(async (companyName, adminName, email, password) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    // Generar tenantId baseado no nome ou ID aleatório
-    const tenantId = `tenant-${Math.random().toString(36).substring(2, 9)}`;
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const base = slugify(companyName) || 'empresa';
+    const tenantId = `${base}-${suffix}`;
 
-    // 2. Salvar metadados da empresa na coleção 'tenants'
-    await setDoc(doc(db, 'tenants', tenantId), {
-      id: tenantId,
-      companyName: companyName,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      status: 'active',
-      plan: 'starter'
-    });
+    try {
+      await runTransaction(db, async (tx) => {
+        const tenantRef = doc(db, 'tenants', tenantId);
+        if ((await tx.get(tenantRef)).exists()) {
+          throw new Error('Identificador de empresa ja utilizado. Tente novamente.');
+        }
 
-    // 3. Salvar perfil do usuário associado a esse tenant com perfil 'owner'
-    await setDoc(doc(db, 'users', user.uid), {
-      id: user.uid,
-      email: email,
-      name: adminName,
-      tenantId: tenantId,
-      role: 'owner',
-      status: 'active',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
+        tx.set(tenantRef, {
+          id: tenantId,
+          companyName,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          status: 'active',
+          plan: 'starter',
+        });
+
+        tx.set(doc(db, 'users', user.uid), {
+          id: user.uid,
+          email,
+          name: adminName,
+          tenantId,
+          role: 'owner',
+          status: 'active',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+    } catch (error) {
+      // A conta de Auth ficaria orfa sem perfil: remove para o e-mail voltar a ficar livre.
+      await user.delete().catch(() => {});
+      throw error;
+    }
 
     return { user, tenantId };
-  };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        try {
-          // Busca o perfil do usuário no Firestore
-          const userDocRef = doc(db, 'users', user.uid);
-          let userDoc = await getDoc(userDocRef);
-          let userData = userDoc.exists() ? userDoc.data() : null;
+      if (!user) {
+        setCurrentUser(null);
+        setProfileError(null);
+        setLoading(false);
+        return;
+      }
 
-          // Promoção automática de delciofarias04@gmail.com para superadmin (case-insensitive)
-          if (user.email && user.email.toLowerCase() === 'delciofarias04@gmail.com') {
-            let needsUpdate = false;
-            
-            if (!userData) {
-              userData = {
-                id: user.uid,
-                email: user.email,
-                name: 'Délcio Farias',
-                tenantId: 'nexus-master',
-                role: 'superadmin',
-                status: 'active',
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-              };
-              needsUpdate = true;
-            } else if (userData.role !== 'superadmin' || userData.tenantId !== 'nexus-master' || userData.name !== 'Délcio Farias') {
-              userData.role = 'superadmin';
-              userData.tenantId = 'nexus-master';
-              userData.name = 'Délcio Farias';
-              userData.updatedAt = serverTimestamp();
-              needsUpdate = true;
-            }
+      try {
+        // 1) Custom claims sao a fonte autoritativa (definidas pelo backend).
+        //    O documento de perfil e apenas fallback de migracao.
+        const tokenResult = await user.getIdTokenResult();
+        const claimTenantId = tokenResult.claims.tenantId || null;
+        const claimRole = tokenResult.claims.role || null;
 
-            if (needsUpdate) {
-              await setDoc(userDocRef, userData, { merge: true });
-            }
+        const userSnap = await getDoc(doc(db, 'users', user.uid));
+        const profile = userSnap.exists() ? userSnap.data() : null;
 
-            // Garante que o tenant 'nexus-master' existe e tem o nome correto
-            const tenantDocRef = doc(db, 'tenants', 'nexus-master');
-            const tenantDoc = await getDoc(tenantDocRef);
-            if (!tenantDoc.exists()) {
-              await setDoc(tenantDocRef, {
-                id: 'nexus-master',
-                companyName: 'Nexus ITAM',
-                status: 'active',
-                plan: 'enterprise',
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-              });
-            } else if (tenantDoc.data().companyName !== 'Nexus ITAM') {
-              await setDoc(tenantDocRef, { companyName: 'Nexus ITAM' }, { merge: true });
-            }
-          }
+        const tenantId = claimTenantId || profile?.tenantId || null;
+        const role = claimRole || profile?.role || null;
 
-          if (userData) {
-            // Busca as customizações visuais do inquilino
-            let tenantConfig = {};
-            if (userData.tenantId) {
-              const settingsDocRef = doc(db, 'settings', userData.tenantId);
-              const settingsDoc = await getDoc(settingsDocRef);
-              if (settingsDoc.exists()) {
-                tenantConfig = settingsDoc.data();
-                if (tenantConfig.primaryColor) {
-                  document.documentElement.style.setProperty('--color-brand', tenantConfig.primaryColor);
-                }
-              }
-            }
-
-            setCurrentUser({
-              uid: user.uid,
-              email: user.email,
-              tenantId: userData.tenantId,
-              role: userData.role,
-              name: userData.name || user.displayName || 'Membro Nexus',
-              logoUrl: tenantConfig.logoUrl || '',
-              companyName: tenantConfig.companyName || 'Nexus ITAM',
-              ...userData
-            });
-          } else {
-            // Se o documento do usuário ainda não existir (caso de usuários antigos ou admin local)
-            // Define perfil padrão para manter a retrocompatibilidade
-            setCurrentUser({
-              uid: user.uid,
-              email: user.email,
-              tenantId: 'default-tenant',
-              role: 'owner',
-              name: user.displayName || 'Admin Nexus'
-            });
-          }
-        } catch (error) {
-          console.error("Erro ao buscar dados do perfil multi-tenant:", error);
-          // Fallback para evitar travar o login caso falte a coleção 'users' temporariamente
+        // FAIL-CLOSED: sem tenant ou sem papel o usuario entra sem privilegio
+        // algum. Antes, uma falha de leitura promovia o usuario a 'owner'.
+        if (!tenantId || !role) {
+          setProfileError(
+            profile
+              ? 'Perfil incompleto: entre em contato com o administrador da conta.'
+              : 'Usuario autenticado sem perfil vinculado a uma empresa.',
+          );
           setCurrentUser({
             uid: user.uid,
             email: user.email,
-            tenantId: 'default-tenant',
-            role: 'owner',
-            name: user.displayName || 'Admin Nexus'
+            name: profile?.name || user.displayName || 'Usuario',
+            tenantId: null,
+            role: null,
           });
+          setLoading(false);
+          return;
         }
-      } else {
-        setCurrentUser(null);
+
+        // 2) Branding do inquilino (whitelabel). Falha aqui nao bloqueia o login.
+        let tenantConfig = {};
+        try {
+          const settingsSnap = await getDoc(doc(db, 'settings', tenantId));
+          if (settingsSnap.exists()) tenantConfig = settingsSnap.data();
+        } catch {
+          tenantConfig = {};
+        }
+
+        setProfileError(null);
+        setCurrentUser({
+          ...profile,
+          uid: user.uid,
+          email: user.email,
+          // tenantId e role vem por ultimo: nenhum campo do documento sobrescreve
+          // a decisao de autorizacao.
+          tenantId,
+          role,
+          name: profile?.name || user.displayName || 'Membro Nexus',
+          logoUrl: safeImageUrl(tenantConfig.logoUrl),
+          companyName: tenantConfig.companyName || 'Nexus ITAM',
+          // Quem aplica a cor e o ThemeContext: duas fontes escrevendo
+          // --color-brand faziam o acento pessoal e o whitelabel se anularem.
+          primaryColor: safeCssColor(tenantConfig.primaryColor),
+          isMaster: tenantId === MASTER_TENANT && role === 'superadmin',
+        });
+      } catch (error) {
+        console.error('Falha ao resolver o perfil multi-tenant:', error);
+        setProfileError('Nao foi possivel validar suas permissoes. Tente novamente.');
+        setCurrentUser({
+          uid: user.uid,
+          email: user.email,
+          name: user.displayName || 'Usuario',
+          tenantId: null,
+          role: null,
+        });
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return unsubscribe;
   }, []);
 
-  const value = {
-    currentUser,
-    login,
-    logout,
-    resetPassword,
-    registerTenant
-  };
-
-  return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({ currentUser, loading, profileError, login, logout, resetPassword, registerTenant }),
+    [currentUser, loading, profileError, login, logout, resetPassword, registerTenant],
   );
-};
+
+  // Renderiza sempre: as rotas decidem o que mostrar durante `loading`.
+  // Antes o app inteiro ficava em branco ate a resolucao do perfil.
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};

@@ -22,6 +22,15 @@ vi.mock('../services/firebase', () => ({
   db: {}
 }));
 
+vi.mock('../hooks/useLocations', () => ({
+  useLocations: () => ({ locations: [], loading: false, reload: vi.fn(), tenantId: 'acme-1234' })
+}));
+
+vi.mock('../services/locationService', () => ({
+  getLocations: vi.fn().mockResolvedValue([]),
+  groupLocations: () => []
+}));
+
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');

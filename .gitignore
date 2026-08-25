@@ -35,3 +35,10 @@ dist-ssr
 .env
 .env.*
 !.env.example
+# Credenciais de servico do Firebase Admin (NUNCA comitar)
+serviceAccountKey.json
+*serviceAccount*.json
+firebase-adminsdk-*.json
+
+# Backups exportados do sistema (contem dados de clientes)
+BACKUP_NEXUS_*.json

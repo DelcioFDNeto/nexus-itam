@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Nexus ITAM — Plataforma SaaS de Gestão de Ativos de TI. Controle patrimônio, licenças, auditorias e muito mais." />
-    <meta name="theme-color" content="#0a0a0c" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8fafc" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#020617" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
@@ -21,38 +22,21 @@
     <link rel="dns-prefetch" href="https://firestore.googleapis.com" />
     <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com" />
 
-    <!-- Cache buster automático para PWA e Service Workers -->
-    <script>
-      (function() {
-        const CURRENT_VERSION = '2.0.1';
-        if (localStorage.getItem('NEXUS_VERSION') !== CURRENT_VERSION) {
-          localStorage.setItem('NEXUS_VERSION', CURRENT_VERSION);
-          if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function(registrations) {
-              for (let registration of registrations) {
-                registration.unregister();
-              }
-              if ('caches' in window) {
-                caches.keys().then(function(names) {
-                  return Promise.all(names.map(name => caches.delete(name)));
-                }).then(function() {
-                  window.location.reload(true);
-                });
-              } else {
-                window.location.reload(true);
-              }
-            }).catch(function() {
-              window.location.reload(true);
-            });
-          } else {
-            window.location.reload(true);
-          }
-        }
-      })();
-    </script>
+    <!--
+      O cache-buster manual foi removido: a versao ficava fixa em '2.0.1' (o app
+      ja estava em 2.2.x), ele desregistrava o service worker e disparava
+      window.location.reload(true) — parametro obsoleto e sem efeito.
+      O vite-plugin-pwa esta em registerType 'autoUpdate' e ja cuida disso.
+    -->
+    <meta name="color-scheme" content="light dark" />
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <p style="font-family: system-ui, sans-serif; padding: 2rem; text-align: center">
+        O Nexus ITAM precisa de JavaScript habilitado para funcionar.
+      </p>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

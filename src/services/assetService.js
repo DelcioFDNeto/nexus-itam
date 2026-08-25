@@ -52,10 +52,14 @@ export const getAssetById = async (id, tenantId) => {
 };
 
 // Busca histórico na coleção global filtrando pelo ID do ativo
-export const getAssetHistory = async (assetId, limitCount = 20) => {
+export const getAssetHistory = async (assetId, tenantId, limitCount = 20) => {
+  if (!tenantId) return [];
+  // Sem o filtro de tenant a consulta varria o historico global: as regras
+  // rejeitavam a query inteira e a timeline vinha vazia sem explicacao.
   const q = query(
-    historyCollection, 
-    where('assetId', '==', assetId), 
+    historyCollection,
+    where('tenantId', '==', tenantId),
+    where('assetId', '==', assetId),
     orderBy('date', 'desc'),
     limit(limitCount)
   );
@@ -138,7 +142,7 @@ export const updateAsset = async (id, assetData, historyOptions = null) => {
   if (historyOptions) {
       await addDoc(historyCollection, {
         assetId: id,
-        tenantId: assetData.tenantId || historyOptions.tenantId || 'default-tenant',
+        tenantId: assetData.tenantId || historyOptions.tenantId,
         type: historyOptions.type || 'update',
         action: historyOptions.action || 'Dados Editados',
         date: serverTimestamp(),
@@ -148,7 +152,7 @@ export const updateAsset = async (id, assetData, historyOptions = null) => {
   } else {
       await addDoc(historyCollection, {
         assetId: id,
-        tenantId: assetData.tenantId || 'default-tenant',
+        tenantId: assetData.tenantId,
         type: 'update',
         action: 'Dados Editados',
         date: serverTimestamp(),
@@ -197,7 +201,7 @@ export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema'
   // 2. Grava na Timeline Global
   const historyLog = {
     assetId: assetId,
-    tenantId: currentData.tenantId || 'default-tenant',
+    tenantId: currentData.tenantId,
     type: 'movimentacao',
     action: 'Transferência',
     date: serverTimestamp(),
@@ -215,6 +219,94 @@ export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema'
   return true;
 };
 
+// --- BAIXA PATRIMONIAL ---
+
+/**
+ * Retira o ativo do patrimonio sem apagar o registro.
+ *
+ * Antes so existia `deleteAsset`: aposentar um equipamento significava excluir
+ * o documento e perder junto toda a timeline — movimentacoes, manutencoes e
+ * responsaveis anteriores. A baixa preserva o historico e exige data e motivo.
+ *
+ * @param {string} assetId
+ * @param {object} currentData ativo como esta hoje
+ * @param {{status?:string, date:string, reason:string, notes?:string, residualValue?:string}} writeOff
+ * @param {string} user quem registrou
+ */
+export const writeOffAsset = async (assetId, currentData, writeOff, user = 'Sistema') => {
+  if (!writeOff?.reason) throw new Error('A baixa exige um motivo.');
+  if (!writeOff?.date) throw new Error('A baixa exige a data.');
+
+  const tenantId = currentData?.tenantId;
+  if (!tenantId) throw new Error('Ativo sem inquilino: baixa nao registrada.');
+
+  const status = writeOff.status || 'Baixado';
+
+  await updateDoc(doc(db, 'assets', assetId), {
+    status,
+    writeOffDate: writeOff.date,
+    writeOffReason: writeOff.reason,
+    writeOffNotes: writeOff.notes || '',
+    writeOffResidualValue: writeOff.residualValue || '',
+    writeOffBy: user,
+    // Solta o responsavel: um ativo baixado nao fica sob a guarda de ninguem.
+    assignedTo: '',
+    employeeId: '',
+    updatedAt: serverTimestamp()
+  });
+
+  await addDoc(historyCollection, {
+    assetId,
+    tenantId,
+    type: 'baixa',
+    action: 'Baixa Patrimonial',
+    date: serverTimestamp(),
+    user,
+    previousStatus: currentData.status || 'N/A',
+    newStatus: status,
+    reason: writeOff.reason,
+    details: [
+      `Motivo: ${writeOff.reason}`,
+      `Data da baixa: ${writeOff.date}`,
+      writeOff.residualValue ? `Valor residual: R$ ${writeOff.residualValue}` : null,
+      writeOff.notes ? `Obs: ${writeOff.notes}` : null
+    ].filter(Boolean).join(' | ')
+  });
+
+  return true;
+};
+
+/** Desfaz a baixa, devolvendo o ativo ao inventario ativo. */
+export const reactivateAsset = async (assetId, currentData, user = 'Sistema', newStatus = 'Disponível') => {
+  const tenantId = currentData?.tenantId;
+  if (!tenantId) throw new Error('Ativo sem inquilino: reativacao nao registrada.');
+
+  await updateDoc(doc(db, 'assets', assetId), {
+    status: newStatus,
+    writeOffDate: '',
+    writeOffReason: '',
+    writeOffNotes: '',
+    writeOffResidualValue: '',
+    reactivatedAt: serverTimestamp(),
+    reactivatedBy: user,
+    updatedAt: serverTimestamp()
+  });
+
+  await addDoc(historyCollection, {
+    assetId,
+    tenantId,
+    type: 'reativacao',
+    action: 'Reativação de Ativo',
+    date: serverTimestamp(),
+    user,
+    previousStatus: currentData.status || 'Baixado',
+    newStatus,
+    details: `Ativo devolvido ao inventário como "${newStatus}". Baixa anterior: ${currentData.writeOffReason || 'não informada'}.`
+  });
+
+  return true;
+};
+
 // Registra manutenção
 export const registerMaintenance = async (assetId, maintenanceData, user = 'Sistema') => {
   const assetRef = doc(db, 'assets', assetId);
@@ -228,7 +320,7 @@ export const registerMaintenance = async (assetId, maintenanceData, user = 'Sist
   // 2. Grava na Timeline Global
   const historyLog = {
     assetId: assetId,
-    tenantId: maintenanceData.tenantId || 'default-tenant',
+    tenantId: maintenanceData.tenantId,
     type: 'manutencao',
     action: 'Manutenção Iniciada',
     date: serverTimestamp(),

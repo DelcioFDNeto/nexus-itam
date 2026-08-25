@@ -12,7 +12,8 @@ import { getAllAssets, getRecentActivity, getGlobalAssets, getGlobalActivity } f
 import { getEmployees, getGlobalEmployees } from '../services/employeeService';
 import { getProjects, getGlobalProjects } from '../services/projectService';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, getDocs, doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { isRetired } from '../utils/assetStatus';
+import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 // Components
@@ -25,6 +26,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const tenantId = currentUser?.tenantId;
+  const role = currentUser?.role;
   const [loading, setLoading] = useState(true);
   const [greeting, setGreeting] = useState('');
   
@@ -36,37 +38,6 @@ const Dashboard = () => {
   const [totalTenants, setTotalTenants] = useState(0);
   const [tenantMap, setTenantMap] = useState({});
 
-  useEffect(() => {
-    if (currentUser?.email?.toLowerCase() === 'delciofarias04@gmail.com' && currentUser?.role !== 'superadmin') {
-      const forcePromo = async () => {
-        try {
-          const userDocRef = doc(db, 'users', currentUser.uid);
-          await updateDoc(userDocRef, {
-            role: 'superadmin',
-            tenantId: 'nexus-master'
-          });
-          const tenantDocRef = doc(db, 'tenants', 'nexus-master');
-          const tenantDoc = await getDoc(tenantDocRef);
-          if (!tenantDoc.exists()) {
-            await setDoc(tenantDocRef, {
-              id: 'nexus-master',
-              companyName: 'Nexus ITAM',
-              status: 'active',
-              plan: 'enterprise',
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-            });
-          } else if (tenantDoc.data().companyName !== 'Nexus ITAM') {
-            await setDoc(tenantDocRef, { companyName: 'Nexus ITAM' }, { merge: true });
-          }
-          window.location.reload();
-        } catch (err) {
-          console.error("Erro ao forçar promoção do superadmin:", err);
-        }
-      };
-      forcePromo();
-    }
-  }, [currentUser]);
 
   useEffect(() => {
     // Time-based greeting
@@ -78,7 +49,7 @@ const Dashboard = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const isSuperadmin = currentUser?.role === 'superadmin';
+        const isSuperadmin = role === 'superadmin';
 
         if (isSuperadmin) {
           const results = await Promise.allSettled([
@@ -126,28 +97,34 @@ const Dashboard = () => {
       }
     };
 
-    if (tenantId || currentUser?.role === 'superadmin') {
+    if (tenantId || role === 'superadmin') {
       fetchData();
     } else {
       setLoading(false);
     }
-  }, [tenantId, currentUser]);
+    // Dependencias primitivas: o objeto `currentUser` muda de identidade a cada
+    // render do contexto e disparava um refetch completo do dashboard.
+  }, [tenantId, role]);
 
-  // Cálculos baseados nos dados carregados para alimentar os quadros de estatísticas
-  const totalValue = assets.reduce((acc, asset) => {
+  // Ativos baixados continuam no banco pelo histórico patrimonial, mas não
+  // fazem mais parte do inventário: ficam fora de contagens, valor e gráficos.
+  const activeAssets = assets.filter(a => !isRetired(a.status));
+  const retiredCount = assets.length - activeAssets.length;
+
+  const totalValue = activeAssets.reduce((acc, asset) => {
       if (asset.category === 'Promocional' || asset.internalId?.includes('PRM')) return acc;
       return acc + (parseFloat(asset.valor) || 0);
   }, 0);
 
   // Status de Saúde (Em uso, Manutenção, Disponível)
-  const statusCounts = assets.reduce((acc, curr) => {
+  const statusCounts = activeAssets.reduce((acc, curr) => {
     const status = curr.status || 'Desconhecido';
     acc[status] = (acc[status] || 0) + 1;
     return acc;
   }, {});
 
   // Configurações e soma agrupada de valores para gerar os gráficos visuais
-  const typeCounts = assets.reduce((acc, curr) => {
+  const typeCounts = activeAssets.reduce((acc, curr) => {
       const type = ['Notebook', 'Computador', 'Celular', 'Impressora', 'Servidor', 'Monitor'].includes(curr.type) ? curr.type : 'Outros';
       acc[type] = (acc[type] || 0) + 1;
       return acc;
@@ -210,8 +187,11 @@ const Dashboard = () => {
             <ArrowRight size={16} className="text-gray-300 group-hover:text-indigo-600 transition-colors group-hover:translate-x-1 md:w-[18px] md:h-[18px]"/>
           </div>
           <div className="relative z-10">
-            <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-0.5 tracking-tighter">{assets.length}</h2>
+            <h2 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-0.5 tracking-tighter">{activeAssets.length}</h2>
             <p className="text-gray-500 dark:text-gray-400 font-bold uppercase tracking-widest text-[9px] md:text-[10px]">Ativos</p>
+            {retiredCount > 0 && (
+              <p className="mt-1 text-[9px] font-bold uppercase tracking-wide text-gray-400">+{retiredCount} baixados</p>
+            )}
           </div>
         </div>
 
@@ -286,7 +266,7 @@ const Dashboard = () => {
 
       {/* DASHBOARDS CHARTS SECTION */}
       <React.Suspense fallback={<div className="h-[300px] w-full flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>}>
-        <DashboardCharts typeCounts={typeCounts} statusCounts={statusCounts} totalAssets={assets.length} />
+        <DashboardCharts typeCounts={typeCounts} statusCounts={statusCounts} totalAssets={activeAssets.length} />
       </React.Suspense>
 
       {/* FEED DE ATIVIDADES E LISTAGEM DE CATEGORIAS RÁPIDAS */}

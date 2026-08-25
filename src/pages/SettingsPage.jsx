@@ -10,6 +10,9 @@ import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNavigate } from 'react-router-dom';
+import { can } from '../utils/permissions';
+import LocationManager from '../components/settings/LocationManager';
+import AssetTypeManager from '../components/settings/AssetTypeManager';
 
 const CONFIG_FIELDS = [
   { key: 'companyName', label: 'Nome da empresa', placeholder: 'Ex: Shineray do Brasil' },
@@ -51,16 +54,18 @@ const SettingsPage = () => {
     supportEmail: 'shiadmti@gmail.com',
     termTitle: 'Termo de Responsabilidade',
     termClauses: '1. DO USO E FINALIDADE: O(a) Responsável declara ter recebido o equipamento em perfeito estado de conservação e funcionamento. Compromete-se a utilizá-lo estrita e exclusivamente para fins profissionais.\n2. DA GUARDA E CONSERVAÇÃO: É responsabilidade do(a) Responsável zelar pela guarda, segurança e conservação do equipamento.\n3. DA RESTITUIÇÃO: O equipamento deverá ser devolvido imediatamente à Empresa, em perfeito estado, em caso de rescisão, mudança de cargo ou solicitação expressa.',
-    locationBranch: 'Matriz - Belém',
+    locationBranch: '',
     logoUrl: '',
     primaryColor: '#000000',
-    customFields: []
+    customFields: [],
+    assetTypes: []
   });
 
   // Busca a identidade visual e dados cadastrais no banco logo na largada da tela
   useEffect(() => {
-    if (currentUser?.role !== 'owner' && currentUser?.role !== 'superadmin') {
-      toast.error('Acesso negado. Apenas o Líder da TI (Owner) pode acessar as configurações.');
+    // Defesa em profundidade: a rota ja barra, mas a tela nao confia nisso.
+    if (!can(currentUser, 'settings:read')) {
+      toast.error('Acesso negado às configurações.');
       navigate('/dashboard');
       return;
     }
@@ -68,7 +73,7 @@ const SettingsPage = () => {
     if (!tenantId) return;
     const loadConfig = async () => {
       try {
-        const docRef = doc(db, 'settings', tenantId || 'general');
+        const docRef = doc(db, 'settings', tenantId);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           setConfig(prev => ({ ...prev, ...docSnap.data() }));
@@ -78,7 +83,7 @@ const SettingsPage = () => {
       }
     };
     loadConfig();
-  }, [currentUser?.role, currentUser?.tenantId, navigate, tenantId]);
+  }, [currentUser, navigate, tenantId]);
 
   const addCustomField = () => {
     setConfig(prev => ({
@@ -108,7 +113,7 @@ const SettingsPage = () => {
     }
     setLoading(true);
     try {
-      await setDoc(doc(db, 'settings', tenantId || 'general'), config, { merge: true });
+      await setDoc(doc(db, 'settings', tenantId), config, { merge: true });
       toast.success("Configurações atualizadas com sucesso!");
     } catch (error) {
       console.error(error);
@@ -226,7 +231,14 @@ const SettingsPage = () => {
               setRestoreStatus(message);
           }, tenantId);
           
-          toast.success(`Sucesso! Importação finalizada.\n\nColeções: ${stats.collectionsUpdated.join(', ')}\nErros: ${stats.errors.length}`);
+          const notas = [
+            `Coleções: ${stats.collectionsUpdated.join(', ') || 'nenhuma'}`,
+            `Documentos restaurados: ${stats.totalDocsProcessed}`,
+            stats.rejectedDocs ? `Recusados (outro inquilino ou ID inválido): ${stats.rejectedDocs}` : null,
+            stats.skippedCollections.length ? `Ignoradas por segurança: ${stats.skippedCollections.join(', ')}` : null,
+            `Erros: ${stats.errors.length}`,
+          ].filter(Boolean);
+          toast.success(`Importação finalizada.\n\n${notas.join('\n')}`);
           window.location.reload(); 
       } catch (error) {
           console.error(error);
@@ -322,6 +334,13 @@ const SettingsPage = () => {
                             <p className="text-xs text-center text-gray-400 dark:text-gray-500 font-medium py-2">Nenhum campo customizado criado.</p>
                         )}
                     </div>
+
+                    <LocationManager />
+
+                    <AssetTypeManager
+                        types={config.assetTypes || []}
+                        onChange={(assetTypes) => setConfig(prev => ({ ...prev, assetTypes }))}
+                    />
 
                     <div className="rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 p-4">
                         <div className="flex items-center gap-2 mb-3">
