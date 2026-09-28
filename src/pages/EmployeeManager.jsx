@@ -35,14 +35,25 @@ const EmployeeManager = () => {
   };
   const [formData, setFormData] = useState(initialForm);
 
-  // Puxa colaborades e departamentos simultaneamente para tornar a tela mais rápida
+  // Puxa colaboradores e departamentos simultaneamente para tornar a tela mais rápida
   const loadData = async () => {
     if (!tenantId) return;
     setLoading(true);
     try {
-        const [empData, secData] = await Promise.all([getEmployees(tenantId), getSectors(tenantId)]);
-        setEmployees(empData);
-        setSectors(secData);
+        const [empRes, secRes] = await Promise.allSettled([
+          getEmployees(tenantId), 
+          getSectors(tenantId)
+        ]);
+        if (empRes.status === 'fulfilled') {
+          setEmployees(empRes.value || []);
+        } else {
+          console.error("Erro ao carregar colaboradores:", empRes.reason);
+        }
+        if (secRes.status === 'fulfilled') {
+          setSectors(secRes.value || []);
+        } else {
+          console.error("Erro ao carregar setores:", secRes.reason);
+        }
     } catch (error) {
         console.error("Erro ao carregar:", error);
     } finally {
@@ -144,8 +155,8 @@ const EmployeeManager = () => {
 
   // O filtro ocorre localmente varrendo o nome sem bater no servidor novamente
   const filteredList = activeTab === 'employees' 
-    ? employees.filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()) || e.role?.toLowerCase().includes(searchTerm.toLowerCase()))
-    : sectors.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    ? employees.filter(e => (e.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (e.role || '').toLowerCase().includes(searchTerm.toLowerCase()))
+    : sectors.filter(s => (s.name || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
   if (loading) return <ManagerSkeleton />;
 
@@ -169,13 +180,13 @@ const EmployeeManager = () => {
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full md:w-fit mb-6">
           <button 
             onClick={() => setActiveTab('employees')} 
-            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'employees' ? 'bg-white dark:bg-slate-800 text-black shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'employees' ? 'bg-white text-black shadow-sm dark:bg-slate-700 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
           >
               <UserCircle size={18}/> Colaboradores
           </button>
           <button 
             onClick={() => setActiveTab('sectors')} 
-            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'sectors' ? 'bg-white dark:bg-slate-800 text-black shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'sectors' ? 'bg-white text-black shadow-sm dark:bg-slate-700 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
           >
               <Briefcase size={18}/> Setores / Deptos
           </button>

@@ -340,7 +340,7 @@ const AuditPage = () => {
 
                     {/* Botões para alternar ferramentas visuais durante o inventário */}
                     <div className="grid grid-cols-2 gap-4 w-full max-w-sm">
-                        <button onClick={() => setIsScannerOpen(true)} className="bg-white dark:bg-slate-800 text-black py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-gray-200 active:scale-95 transition-all">
+                        <button onClick={() => setIsScannerOpen(true)} className="bg-white text-black py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-gray-200 active:scale-95 transition-all">
                             <Smartphone size={20}/> Câmera
                         </button>
                         <button onClick={() => setViewMode('list')} className="bg-gray-800 text-white py-4 rounded-xl font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-gray-700 active:scale-95 transition-all border border-gray-700">

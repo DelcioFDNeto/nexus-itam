@@ -5,6 +5,10 @@
 @layer base {
   :root {
     --color-brand: #4F46E5;
+    /* Canais usados pelo Tailwind (tailwind.config.js); o ThemeContext
+       reescreve os tres a partir da cor da empresa ou do acento pessoal. */
+    --color-brand-rgb: 79 70 229;
+    --color-brand-dark-rgb: 67 56 202;
     /* PREMIUM PALETTE */
     --brand-dark: #0a0a0a;
     --glass-bg: rgba(255, 255, 255, 0.85);
@@ -144,6 +148,13 @@
 }
 
 
+
+/* Overlays e modais `fixed` renderizados dentro de um container `space-y-*`
+   herdavam o margin-top do espacamento e apareciam deslocados 24px para baixo. */
+[class*="space-y-"] > .fixed {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
 
 /* GLOBAL ANIMATIONS */
 @keyframes fadeIn {

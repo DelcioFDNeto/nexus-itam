@@ -16,8 +16,20 @@ export const ROLE_LABELS = {
   member: 'Membro',
   manager: 'Gestor',
   admin: 'Administrador',
-  owner: 'Proprietario',
+  owner: 'Proprietário',
   superadmin: 'Nexus Master',
+};
+
+/** Papeis validos dentro de uma empresa (superadmin so existe no tenant master). */
+export const TENANT_ROLES = ['owner', 'admin', 'manager', 'member', 'operator', 'viewer'];
+
+export const ROLE_DESCRIPTIONS = {
+  owner: 'Acesso total: identidade visual, termo, backup, restauração e administradores.',
+  admin: 'Usuários (até Gestor), Agente ITAM, importação e locais.',
+  manager: 'Gestão completa de ativos (inclusive exclusão), contratos e equipe.',
+  member: 'Opera ativos, projetos, licenças e cadastro da equipe.',
+  operator: 'Cadastra e movimenta ativos, executa tarefas e auditorias.',
+  viewer: 'Somente leitura do inventário.',
 };
 
 const rank = (role) => {
@@ -55,6 +67,9 @@ export const CAPABILITIES = {
   'agent:manage': 'admin',
   'users:manage': 'admin',
   'settings:read': 'admin',
+  // Identidade visual, termo juridico e campos da empresa: so o owner.
+  // firestore.rules espelha isto — admin grava em /settings apenas as chaves
+  // do Agente ITAM (nomenclatura, IPs confiaveis e aceite automatico).
   'settings:write': 'owner',
   'backup:create': 'owner',
   'backup:restore': 'owner',
@@ -68,6 +83,32 @@ export const can = (user, capability) => {
   if (!required) return false;
   if (required === 'superadmin') return false;
   return hasRole(user, required);
+};
+
+/**
+ * Papeis que `actor` pode atribuir a membros da propria empresa.
+ * Espelha `canAssignRole()` em firestore.rules: admin nunca cria outro admin nem
+ * owner — antes um admin podia se promover a owner e rebaixar o dono da conta.
+ */
+export const assignableRoles = (actor) => {
+  if (isSuperadmin(actor)) return [...TENANT_ROLES];
+  if (actor?.role === 'owner') return [...TENANT_ROLES];
+  if (actor?.role === 'admin') return ['manager', 'member', 'operator', 'viewer'];
+  return [];
+};
+
+/**
+ * `actor` pode alterar papel/status ou remover `target`?
+ * Ninguem mexe no proprio acesso (evita empresa sem dono) e admin nao toca em
+ * owner nem em outro admin.
+ */
+export const canManageMember = (actor, target) => {
+  if (!actor || !target) return false;
+  if (isSuperadmin(actor)) return true;
+  const targetId = target.uid || target.id;
+  if (actor.uid && targetId && actor.uid === targetId) return false;
+  if (!target.tenantId || target.tenantId !== actor.tenantId) return false;
+  return assignableRoles(actor).includes(target.role);
 };
 
 /** Tenant valido? Bloqueia perfis orfaos e o antigo placeholder 'default-tenant'. */

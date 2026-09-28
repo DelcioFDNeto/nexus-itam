@@ -10,8 +10,17 @@ rules_version = '2';
 //     e so cai para o documento /users/{uid} como fallback de migracao.
 //  3. Um usuario NUNCA pode alterar o proprio `role`, `tenantId` ou `status`.
 //     Escalonamento de privilegio e bloqueado na origem.
-//  4. Segredos (agentToken) vivem em /tenantSecrets/{tenantId}, legivel apenas
+//  4. Ninguem se vincula a uma empresa sozinho: o perfil so nasce (a) junto com
+//     a empresa que o proprio usuario esta fundando, ou (b) consumindo um
+//     convite pendente enderecado ao e-mail dele. Antes, qualquer conta nova
+//     podia gravar /users/{uid} com o tenantId de outra empresa e role 'owner'.
+//  5. Empresa suspensa/encerrada e usuario suspenso perdem acesso aos dados
+//     operacionais. Antes o status era so visual: o acesso continuava.
+//  6. Segredos (agentToken) vivem em /tenantSecrets/{tenantId}, legivel apenas
 //     por owner/admin do proprio tenant - nunca pelo tenant vizinho.
+//
+// Espelhos no cliente: src/utils/permissions.js (papeis e capacidades) e
+// src/utils/entitlements.js (status que bloqueiam acesso).
 // =============================================================================
 
 service cloud.firestore {
@@ -41,6 +50,14 @@ service cloud.firestore {
       return get(profilePath()).data;
     }
 
+    function tenantPath(t) {
+      return /databases/$(database)/documents/tenants/$(t);
+    }
+
+    function invitePath(inviteId) {
+      return /databases/$(database)/documents/invites/$(inviteId);
+    }
+
     // Tenant efetivo: custom claim > documento de perfil > null (sem acesso)
     function tenantOf() {
       return !signedIn()
@@ -63,13 +80,43 @@ service cloud.firestore {
       return signedIn() && tenantOf() == 'nexus-master' && roleOf() == 'superadmin';
     }
 
-    // Pertence ao mesmo tenant do recurso (tenant nulo nunca casa)
+    function authEmail() {
+      return ('email' in request.auth.token) && request.auth.token.email is string
+        ? request.auth.token.email.lower()
+        : null;
+    }
+
+    // Usuario suspenso pelo owner/admin ou pelo master. Continua lendo o
+    // proprio perfil (a UI precisa explicar o bloqueio), mas nada alem disso.
+    function memberBlocked() {
+      return profileExists() &&
+        profile().get('status', 'active') in ['suspended', 'blocked', 'disabled'];
+    }
+
+    // Empresa suspensa ou encerrada pelo master. Empresa sem cadastro em
+    // /tenants (legada, anterior ao modulo SaaS) nao e bloqueada.
+    function tenantBlocked(t) {
+      return exists(tenantPath(t)) &&
+        get(tenantPath(t)).data.get('status', 'active') in ['suspended', 'cancelled'];
+    }
+
+    // Pertence ao mesmo tenant do recurso, com acesso ativo (tenant nulo nunca casa)
     function sameTenant(t) {
-      return signedIn() && t != null && t is string && t == tenantOf();
+      return signedIn() && t != null && t is string && t == tenantOf() &&
+        !memberBlocked() && !tenantBlocked(t);
+    }
+
+    function isTenantOwner(t) {
+      return sameTenant(t) && roleOf() == 'owner';
     }
 
     function isTenantAdmin(t) {
       return sameTenant(t) && roleOf() in ['owner', 'admin'];
+    }
+
+    // Gestao: exclusao de ativos e leitura da caixa do agente
+    function canManage(t) {
+      return sameTenant(t) && roleOf() in ['owner', 'admin', 'manager'];
     }
 
     // Papeis autorizados a gravar dados operacionais do tenant
@@ -79,6 +126,12 @@ service cloud.firestore {
 
     function validRole(r) {
       return r in ['owner', 'admin', 'manager', 'member', 'operator', 'viewer'];
+    }
+
+    // Papel que o usuario logado (owner ou admin) pode conceder ou revogar.
+    // Admin nunca cria/altera owner nem outro admin. Espelha assignableRoles().
+    function canAssignRole(r) {
+      return validRole(r) && (roleOf() == 'owner' || r in ['manager', 'member', 'operator', 'viewer']);
     }
 
     function changed(keys) {
@@ -107,6 +160,38 @@ service cloud.firestore {
       return isMaster() || canOperate(resource.data.tenantId);
     }
 
+    function managerDelete() {
+      return isMaster() || canManage(resource.data.tenantId);
+    }
+
+    // --- Entrada de um novo membro ---
+
+    // (a) Fundador: o perfil de owner nasce no MESMO batch que cria a empresa,
+    //     e a empresa aponta para este UID como dono.
+    function foundsTenant(data) {
+      return data.role == 'owner' &&
+        !exists(tenantPath(data.tenantId)) &&
+        getAfter(tenantPath(data.tenantId)).data.ownerUid == request.auth.uid;
+    }
+
+    function inviteMatches(data, invite) {
+      return invite.status == 'pending' &&
+        invite.tenantId == data.tenantId &&
+        invite.role == data.role &&
+        authEmail() != null &&
+        invite.email == authEmail() &&
+        (invite.get('expiresAt', null) == null || invite.expiresAt > request.time) &&
+        getAfter(invitePath(data.inviteId)).data.status == 'accepted';
+    }
+
+    // (b) Convidado: consome, no mesmo batch, um convite pendente enderecado
+    //     ao e-mail autenticado, herdando exatamente tenant e papel do convite.
+    function acceptsInvite(data) {
+      return data.get('inviteId', null) is string &&
+        exists(invitePath(data.inviteId)) &&
+        inviteMatches(data, get(invitePath(data.inviteId)).data);
+    }
+
     // ---------------------------------------------------------------------
     // USUARIOS
     // ---------------------------------------------------------------------
@@ -117,29 +202,34 @@ service cloud.firestore {
         sameTenant(resource.data.tenantId)
       );
 
-      // Auto-provisionamento no cadastro: so o proprio UID, nunca no tenant master,
-      // nunca com papel de superadmin.
       allow create: if isMaster() || (
         signedIn() &&
         request.auth.uid == userId &&
         request.resource.data.tenantId is string &&
         request.resource.data.tenantId != 'nexus-master' &&
-        validRole(request.resource.data.role)
+        validRole(request.resource.data.role) &&
+        request.resource.data.get('status', 'active') == 'active' &&
+        (foundsTenant(request.resource.data) || acceptsInvite(request.resource.data))
       );
 
       allow update: if isMaster()
         // O proprio usuario edita o perfil, mas nunca role / tenantId / status.
-        || (signedIn() && request.auth.uid == userId && !changed(['role', 'tenantId', 'status']))
-        // Owner/admin gerencia membros do proprio tenant, sem trocar o tenant
-        // e sem criar superadmins.
+        || (signedIn() && request.auth.uid == userId && !changed(['role', 'tenantId', 'status', 'inviteId']))
+        // Owner/admin gerencia OUTROS membros do proprio tenant, sem trocar o
+        // tenant e sem ultrapassar o proprio nivel (admin nao toca em owner/admin).
         || (
           isTenantAdmin(resource.data.tenantId) &&
+          request.auth.uid != userId &&
           request.resource.data.tenantId == resource.data.tenantId &&
-          validRole(request.resource.data.role)
+          canAssignRole(resource.data.role) &&
+          canAssignRole(request.resource.data.role) &&
+          request.resource.data.get('status', 'active') in ['active', 'suspended']
         );
 
       allow delete: if isMaster() || (
-        isTenantAdmin(resource.data.tenantId) && request.auth.uid != userId
+        isTenantAdmin(resource.data.tenantId) &&
+        request.auth.uid != userId &&
+        canAssignRole(resource.data.role)
       );
     }
 
@@ -150,18 +240,35 @@ service cloud.firestore {
       // Sem listagem global: cada empresa so enxerga a si mesma.
       allow read: if isMaster() || (signedIn() && tenantId == tenantOf());
 
-      // Self-service signup. O tenant master nunca pode ser criado pelo cliente.
-      allow create: if signedIn() &&
+      // Self-service signup: so quem ainda nao pertence a empresa nenhuma, sempre
+      // no plano de entrada, sem limites/ajustes (esses sao comerciais: so o master).
+      allow create: if isMaster() || (
+        signedIn() &&
+        !profileExists() &&
         tenantId != 'nexus-master' &&
+        request.resource.data.keys().hasOnly(['id', 'companyName', 'ownerUid', 'plan', 'status', 'createdAt', 'updatedAt']) &&
         request.resource.data.id == tenantId &&
-        request.resource.data.companyName is string;
+        request.resource.data.companyName is string &&
+        request.resource.data.companyName.size() > 0 &&
+        request.resource.data.companyName.size() <= 120 &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.plan == 'starter' &&
+        request.resource.data.status == 'active'
+      );
 
-      // Plano e status sao comerciais: so o master altera.
+      // O owner so renomeia a empresa. Plano, status, limites e ajustes: master.
       allow update: if isMaster() || (
-        isTenantAdmin(tenantId) && !changed(['plan', 'status', 'id', 'limits'])
+        isTenantOwner(tenantId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['companyName', 'updatedAt'])
       );
 
       allow delete: if isMaster();
+    }
+
+    // Anotacoes comerciais internas do master sobre cada empresa (contato,
+    // negociacao, observacoes). Nunca visiveis para o proprio cliente.
+    match /tenantInternal/{tenantId} {
+      allow read, write: if isMaster();
     }
 
     // ---------------------------------------------------------------------
@@ -175,9 +282,24 @@ service cloud.firestore {
     // ---------------------------------------------------------------------
     // CONFIGURACOES / WHITELABEL (nao-secreto)
     // ---------------------------------------------------------------------
+
+    // Admin grava apenas as chaves do Agente ITAM. `agentToken` so pode ser
+    // REMOVIDO daqui (migracao para /tenantSecrets), nunca gravado.
+    function agentSettingsOnly() {
+      let allowed = ['agentNaming', 'trustedIps', 'autoAcceptEnabled', 'agentToken'];
+      let affected = resource == null
+        ? request.resource.data.keys().toSet()
+        : request.resource.data.diff(resource.data).affectedKeys();
+      return affected.hasOnly(allowed) &&
+        (!affected.hasAny(['agentToken']) || !('agentToken' in request.resource.data));
+    }
+
     match /settings/{tenantId} {
       allow read: if isMaster() || (signedIn() && tenantId == tenantOf());
-      allow write: if isMaster() || isTenantAdmin(tenantId);
+      allow create, update: if isMaster() || isTenantOwner(tenantId) || (
+        isTenantAdmin(tenantId) && agentSettingsOnly()
+      );
+      allow delete: if isMaster();
     }
 
     // ---------------------------------------------------------------------
@@ -191,22 +313,53 @@ service cloud.firestore {
 
     // ---------------------------------------------------------------------
     // CONVITES
+    // O link de convite carrega o ID do documento. O convidado so le o convite
+    // depois de autenticar com o e-mail convidado, e so pode marca-lo como
+    // aceito — no mesmo batch em que cria o proprio perfil.
     // ---------------------------------------------------------------------
     match /invites/{inviteId} {
-      allow read, update, delete: if isMaster() || isTenantAdmin(resource.data.tenantId);
+      function isInvitee() {
+        return signedIn() && authEmail() != null && resource.data.email == authEmail();
+      }
+
+      allow get: if isMaster() || isTenantAdmin(resource.data.tenantId) || isInvitee();
+      allow list: if isMaster() || isTenantAdmin(resource.data.tenantId);
+
       allow create: if isMaster() || (
         isTenantAdmin(request.resource.data.tenantId) &&
-        validRole(request.resource.data.role) &&
-        request.resource.data.status == 'pending'
+        canAssignRole(request.resource.data.role) &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.email is string &&
+        request.resource.data.email == request.resource.data.email.lower()
       );
+
+      allow update: if isMaster()
+        || (
+          isTenantAdmin(resource.data.tenantId) &&
+          request.resource.data.tenantId == resource.data.tenantId &&
+          canAssignRole(request.resource.data.role)
+        )
+        || (
+          isInvitee() &&
+          resource.data.status == 'pending' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedAt', 'acceptedBy']) &&
+          request.resource.data.status == 'accepted' &&
+          request.resource.data.acceptedBy == request.auth.uid
+        );
+
+      allow delete: if isMaster() || isTenantAdmin(resource.data.tenantId);
     }
 
     // ---------------------------------------------------------------------
     // AGENTE ITAM - caixa de entrada (drop-box)
+    // Os documentos carregam o agentToken: leitura restrita a gestao.
     // ---------------------------------------------------------------------
     match /agentInbox/{docId} {
-      allow read: if tenantRead();
-      allow update: if tenantUpdate();
+      allow read: if isMaster() || canManage(resource.data.tenantId);
+      allow update: if isMaster() || (
+        isTenantAdmin(resource.data.tenantId) &&
+        request.resource.data.tenantId == resource.data.tenantId
+      );
       allow delete: if isMaster() || isTenantAdmin(resource.data.tenantId);
 
       allow create: if
@@ -219,14 +372,16 @@ service cloud.firestore {
           request.resource.data.agentToken is string &&
           request.resource.data.status == 'pending' &&
           exists(/databases/$(database)/documents/tenantSecrets/$(request.resource.data.tenantId)) &&
-          get(/databases/$(database)/documents/tenantSecrets/$(request.resource.data.tenantId)).data.agentToken == request.resource.data.agentToken
+          get(/databases/$(database)/documents/tenantSecrets/$(request.resource.data.tenantId)).data.agentToken == request.resource.data.agentToken &&
+          !tenantBlocked(request.resource.data.tenantId)
         );
     }
 
     // ---------------------------------------------------------------------
     // COLECOES OPERACIONAIS ESCOPADAS POR TENANT
     // ---------------------------------------------------------------------
-    match /assets/{docId}        { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
+    // Excluir ativo apaga o registro patrimonial: exige gestor ('assets:delete').
+    match /assets/{docId}        { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if managerDelete(); }
     match /employees/{docId}     { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
     match /sectors/{docId}       { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
     match /locations/{docId}     { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if isMaster() || isTenantAdmin(resource.data.tenantId); }
@@ -249,6 +404,7 @@ service cloud.firestore {
     // ---------------------------------------------------------------------
     match /{path=**}/assets/{assetId}       { allow read: if isMaster(); }
     match /{path=**}/employees/{employeeId} { allow read: if isMaster(); }
+    match /{path=**}/sectors/{sectorId}     { allow read: if isMaster(); }
     match /{path=**}/projects/{projectId}   { allow read: if isMaster(); }
     match /{path=**}/history/{historyId}    { allow read: if isMaster(); }
 

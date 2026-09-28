@@ -1,6 +1,6 @@
 // src/App.jsx
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 
 // Contextos
 import { AuthProvider } from './contexts/AuthContext';
@@ -24,14 +24,14 @@ const NotFound = () => (
   <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
     <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Erro 404</p>
     <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900 dark:text-white">
-      Pagina nao encontrada
+      Página não encontrada
     </h1>
     <p className="mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400">
-      O endereco acessado nao existe ou foi movido.
+      O endereço acessado não existe ou foi movido.
     </p>
     <Link
       to="/dashboard"
-      className="mt-6 rounded-xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-widest text-white hover:bg-slate-800"
+      className="mt-6 rounded-xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-widest text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900"
     >
       Voltar ao painel
     </Link>
@@ -54,6 +54,7 @@ const ServiceManager = lazy(() => import('./pages/ServiceManager'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AgentManager = lazy(() => import('./pages/AgentManager'));
 const Register = lazy(() => import('./pages/Register'));
+const AcceptInvite = lazy(() => import('./pages/AcceptInvite'));
 const UserManager = lazy(() => import('./pages/UserManager'));
 const TenantManager = lazy(() => import('./pages/TenantManager'));
 const NexusUserManager = lazy(() => import('./pages/NexusUserManager'));
@@ -62,15 +63,24 @@ const NexusPlansManager = lazy(() => import('./pages/NexusPlansManager'));
 /**
  * Rota autenticada. `capability` e `masterOnly` sao a mesma linguagem usada em
  * firestore.rules — mudou a permissao de uma tela, muda nos dois lugares.
+ * `feature` exige o recurso no plano da empresa (utils/entitlements.js).
  */
-const AppRoute = ({ element, capability, masterOnly }) => (
-  <PrivateRoute capability={capability} masterOnly={masterOnly}>
-    <Layout>
-      <ErrorBoundary>
-        <Suspense fallback={<PageLoader />}>{element}</Suspense>
-      </ErrorBoundary>
-    </Layout>
-  </PrivateRoute>
+const AppRoute = ({ element, capability, masterOnly, feature }) => {
+  const { pathname } = useLocation();
+  return (
+    <PrivateRoute capability={capability} masterOnly={masterOnly} feature={feature}>
+      <Layout>
+        {/* resetKey: um erro numa tela nao "persegue" o usuario pelas proximas rotas */}
+        <ErrorBoundary resetKey={pathname}>
+          <Suspense fallback={<PageLoader />}>{element}</Suspense>
+        </ErrorBoundary>
+      </Layout>
+    </PrivateRoute>
+  );
+};
+
+const PublicRoute = ({ element }) => (
+  <Suspense fallback={<PageLoader />}>{element}</Suspense>
 );
 
 function App() {
@@ -83,14 +93,9 @@ function App() {
             <Routes>
               {/* --- Rotas publicas --- */}
               <Route path="/" element={<Login />} />
-              <Route
-                path="/register"
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <Register />
-                  </Suspense>
-                }
-              />
+              <Route path="/register" element={<PublicRoute element={<Register />} />} />
+              {/* Link enviado pelo administrador: cria a conta e entra na empresa */}
+              <Route path="/convite/:inviteId" element={<PublicRoute element={<AcceptInvite />} />} />
 
               {/* --- Operacao de ativos --- */}
               <Route path="/dashboard" element={<AppRoute element={<Dashboard />} capability="assets:read" />} />
@@ -100,17 +105,17 @@ function App() {
               <Route path="/assets/:id" element={<AppRoute element={<AssetDetail />} capability="assets:read" />} />
 
               {/* --- Gestao --- */}
-              <Route path="/projects" element={<AppRoute element={<ProjectsPage />} capability="projects:write" />} />
-              <Route path="/projects/:id" element={<AppRoute element={<ProjectDetails />} capability="projects:write" />} />
-              <Route path="/tasks" element={<AppRoute element={<TaskManager />} capability="tasks:write" />} />
-              <Route path="/licenses" element={<AppRoute element={<LicenseManager />} capability="licenses:write" />} />
-              <Route path="/services" element={<AppRoute element={<ServiceManager />} capability="contracts:write" />} />
+              <Route path="/projects" element={<AppRoute element={<ProjectsPage />} capability="projects:write" feature="projects" />} />
+              <Route path="/projects/:id" element={<AppRoute element={<ProjectDetails />} capability="projects:write" feature="projects" />} />
+              <Route path="/tasks" element={<AppRoute element={<TaskManager />} capability="tasks:write" feature="projects" />} />
+              <Route path="/licenses" element={<AppRoute element={<LicenseManager />} capability="licenses:write" feature="licenses" />} />
+              <Route path="/services" element={<AppRoute element={<ServiceManager />} capability="contracts:write" feature="contracts" />} />
               <Route path="/employees" element={<AppRoute element={<EmployeeManager />} capability="employees:write" />} />
-              <Route path="/audit" element={<AppRoute element={<AuditPage />} capability="audit:run" />} />
+              <Route path="/audit" element={<AppRoute element={<AuditPage />} capability="audit:run" feature="audit" />} />
 
               {/* --- Administracao do inquilino --- */}
-              <Route path="/agent" element={<AppRoute element={<AgentManager />} capability="agent:manage" />} />
-              <Route path="/import" element={<AppRoute element={<ImportData />} capability="assets:import" />} />
+              <Route path="/agent" element={<AppRoute element={<AgentManager />} capability="agent:manage" feature="agent" />} />
+              <Route path="/import" element={<AppRoute element={<ImportData />} capability="assets:import" feature="import" />} />
               <Route path="/settings" element={<AppRoute element={<SettingsPage />} capability="settings:read" />} />
               <Route path="/users" element={<AppRoute element={<UserManager />} capability="users:manage" />} />
 

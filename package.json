@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "deploy": "npm run build && firebase deploy",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-nexus-itam \"vitest run --config vitest.rules.config.js\""
   },
   "dependencies": {
     "chart.js": "^4.5.1",
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.5",

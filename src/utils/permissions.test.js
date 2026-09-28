@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { can, hasRole, hasValidTenant, isSuperadmin, isTenantAdmin } from './permissions';
+import {
+  assignableRoles, can, canManageMember, hasRole, hasValidTenant, isSuperadmin, isTenantAdmin, TENANT_ROLES,
+} from './permissions';
 
 const user = (role, tenantId = 'acme-1234') => ({ role, tenantId });
 
@@ -93,5 +95,51 @@ describe('isTenantAdmin', () => {
     expect(isTenantAdmin(user('admin'))).toBe(true);
     expect(isTenantAdmin(user('owner'))).toBe(true);
     expect(isTenantAdmin(user('manager'))).toBe(false);
+  });
+});
+
+describe('assignableRoles', () => {
+  it('owner atribui qualquer papel da empresa', () => {
+    expect(assignableRoles(user('owner'))).toEqual(TENANT_ROLES);
+  });
+
+  it('admin nao cria admin nem owner', () => {
+    // Regressao: o admin podia se promover a owner e rebaixar o dono da conta.
+    const roles = assignableRoles(user('admin'));
+    expect(roles).not.toContain('owner');
+    expect(roles).not.toContain('admin');
+    expect(roles).toContain('manager');
+  });
+
+  it('papeis operacionais nao atribuem nada', () => {
+    expect(assignableRoles(user('manager'))).toEqual([]);
+    expect(assignableRoles(null)).toEqual([]);
+  });
+
+  it('superadmin plantado em tenant comum nao herda poderes', () => {
+    expect(assignableRoles({ role: 'superadmin', tenantId: 'acme-1234' })).toEqual([]);
+  });
+});
+
+describe('canManageMember', () => {
+  const owner = { uid: 'o1', role: 'owner', tenantId: 'acme-1234' };
+  const admin = { uid: 'a1', role: 'admin', tenantId: 'acme-1234' };
+
+  it('ninguem altera o proprio acesso', () => {
+    expect(canManageMember(owner, { id: 'o1', role: 'owner', tenantId: 'acme-1234' })).toBe(false);
+  });
+
+  it('admin nao toca em owner nem em outro admin', () => {
+    expect(canManageMember(admin, { id: 'o1', role: 'owner', tenantId: 'acme-1234' })).toBe(false);
+    expect(canManageMember(admin, { id: 'a2', role: 'admin', tenantId: 'acme-1234' })).toBe(false);
+    expect(canManageMember(admin, { id: 'm1', role: 'operator', tenantId: 'acme-1234' })).toBe(true);
+  });
+
+  it('nunca gerencia membro de outra empresa', () => {
+    expect(canManageMember(owner, { id: 'x', role: 'viewer', tenantId: 'outra-9999' })).toBe(false);
+  });
+
+  it('owner gerencia outros owners', () => {
+    expect(canManageMember(owner, { id: 'o2', role: 'owner', tenantId: 'acme-1234' })).toBe(true);
   });
 });

@@ -78,8 +78,10 @@ _Tech Lead & Full Stack Developer_
 ### 🛡️ Segurança & Multi-Tenancy
 
 - **Isolamento por Tenant**: Cada empresa opera em um silo de dados completamente isolado. As Firestore Rules garantem que nenhum tenant acesse dados de outro.
-- **RBAC (Role-Based Access Control)**: Papéis de `superadmin`, `admin` e `operator` com permissões granulares.
-- **Token Drop-Box para Agente**: Validação de token via Firestore Rules (sem Cloud Functions).
+- **Entrada controlada**: um perfil só nasce junto com a empresa que o próprio usuário está fundando ou consumindo um convite pendente endereçado ao e-mail dele — ninguém se vincula sozinho a uma empresa existente.
+- **RBAC (Role-Based Access Control)**: papéis `owner`, `admin`, `manager`, `member`, `operator` e `viewer` (mais `superadmin` no tenant master). Admin não cria nem altera owners/admins; ninguém altera o próprio papel ou status.
+- **Suspensão real**: empresa suspensa/encerrada e usuário suspenso perdem o acesso aos dados (validado nas regras, não só na tela).
+- **Token Drop-Box para Agente**: Validação de token via Firestore Rules (sem Cloud Functions); empresas suspensas deixam de receber envios.
 - **Backup Inteligente**: Exportação completa do banco de dados (JSON) com opção de restauração.
 - **Importação Resiliente**: Importação em massa via Excel/JSON com validação pré-processamento.
 - **Logs de Auditoria**: Registro detalhado de quem fez o quê e quando.
@@ -91,11 +93,12 @@ _Tech Lead & Full Stack Developer_
 
 ### 🏢 Plataforma Multi-Tenant (Nexus Master)
 
-- **Gestão de Tenants**: Criação, edição e controle de empresas na plataforma.
-- **Gestão de Planos**: Planos comerciais com limites de ativos, colaboradores e funcionalidades.
-- **Gestão de Usuários Global**: Controle de todos os usuários da plataforma pelo superadmin.
-- **Sistema de Convites**: Convites por email para novos usuários com tenant pré-atribuído.
-- **Whitelabel (Configurações)**: Personalização de logo, nome e cores por tenant.
+- **Visão do dono**: receita recorrente (MRR/ARR), empresas ativas, novas, uso de limites, empresas legadas e alertas acionáveis (limite atingido, inatividade, sem owner).
+- **Visão 360° por empresa**: plano, limites e recursos **sob medida** (ex.: liberar o Agente para um cliente Starter), mensalidade negociada, identidade visual, membros, notas comerciais internas e suspensão/encerramento reversível.
+- **Empresas legadas**: tenants usados por perfis mas sem cadastro em `/tenants` aparecem no console e podem ser regularizados sem mexer nos dados.
+- **Gestão de Planos**: limites e recursos por plano, aplicados de fato no app de cada empresa (`src/utils/entitlements.js`).
+- **Convites por link**: o administrador gera um link `/convite/{id}` (válido por 7 dias) e envia por e-mail ou mensagem; o convidado cria a senha e entra direto na empresa.
+- **Personalização por empresa**: nome, logotipo, cor da marca (com prévia e aviso de contraste), texto do termo, rodapé das etiquetas, módulos visíveis e tipos/campos de ativo próprios. O whitelabel completo remove a marca Nexus do menu, etiquetas e termos.
 
 ### ⚡ Performance & PWA
 
@@ -186,6 +189,12 @@ npm run test:watch
 npm run lint
 ```
 
+Regras do Firestore (cenários de ataque contra o emulador — exige Java):
+
+```bash
+npm run test:rules
+```
+
 | Suíte                        | Testes | Cobertura                                    |
 | ---------------------------- | ------ | -------------------------------------------- |
 | `agentService.test.js`       | 3      | Registro, duplicatas, normalização SAM       |
@@ -235,13 +244,15 @@ Matrix: **Node 20.x** e **Node 22.x** no Ubuntu latest.
    Crie um arquivo `.env` na raiz do projeto com as credenciais do Firebase:
 
    ```env
-   VITE_API_KEY=seu_api_key
-   VITE_AUTH_DOMAIN=seu_projeto.firebaseapp.com
-   VITE_PROJECT_ID=seu_project_id
-   VITE_STORAGE_BUCKET=seu_bucket.appspot.com
-   VITE_MESSAGING_SENDER_ID=seu_sender_id
-   VITE_APP_ID=seu_app_id
+   VITE_FIREBASE_API_KEY=seu_api_key
+   VITE_FIREBASE_AUTH_DOMAIN=seu_projeto.firebaseapp.com
+   VITE_FIREBASE_PROJECT_ID=seu_project_id
+   VITE_FIREBASE_STORAGE_BUCKET=seu_bucket.appspot.com
+   VITE_FIREBASE_MESSAGING_SENDER_ID=seu_sender_id
+   VITE_FIREBASE_APP_ID=seu_app_id
    ```
+
+   Para desenvolver sem tocar em dados reais, rode `firebase emulators:start --only auth,firestore --project demo-nexus-itam` e inicie o app com `VITE_USE_EMULATORS=true` e `VITE_FIREBASE_PROJECT_ID=demo-nexus-itam`.
 
 4. **Execute o Servidor de Desenvolvimento**
    ```bash
@@ -284,6 +295,7 @@ Matrix: **Node 20.x** e **Node 22.x** no Ubuntu latest.
 | `npm run lint`      | Análise estática de código (ESLint)     |
 | `npm run test`      | Execução da suíte de testes (Vitest)    |
 | `npm run test:watch`| Testes em modo watch (desenvolvimento)  |
+| `npm run test:rules`| Testes das regras do Firestore (emulador) |
 
 ---
 

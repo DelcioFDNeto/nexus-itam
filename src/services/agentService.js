@@ -330,25 +330,39 @@ export const previewAgentPayload = async (payload, options = {}) => {
   };
 };
 
+/**
+ * Dedução automática de licenças (SAM): cruza os softwares coletados com as
+ * licenças cadastradas e consome uma ativação por equipamento.
+ *
+ * Os nomes de campo seguem o LicenseManager (`softwareName`, `totalSeats`,
+ * `assignedAssets`). A versão anterior lia `license.name`, `license.used` e
+ * `license.quantity` — campos que não existem: `license.name.toLowerCase()`
+ * lançava TypeError, o catch engolia o erro e a dedução nunca aconteceu.
+ */
+export const matchLicensesForSoftware = (licenses, softwareList, assetId) => {
+  const installed = (softwareList || []).map((sw) => String(sw || '').toLowerCase()).filter(Boolean);
+  if (installed.length === 0) return [];
+
+  return (licenses || []).filter((license) => {
+    const name = String(license.softwareName || license.name || '').trim().toLowerCase();
+    if (name.length < 3) return false; // nome curto demais casaria com qualquer coisa
+
+    const assigned = Array.isArray(license.assignedAssets) ? license.assignedAssets : [];
+    if (assigned.some((a) => a?.id === assetId)) return false;
+
+    const seats = Number(license.totalSeats ?? license.quantity);
+    if (Number.isFinite(seats) && seats > 0 && assigned.length >= seats) return false;
+
+    return installed.some((sw) => sw.includes(name));
+  });
+};
+
 const processSoftwareLicenses = async (assetId, assetName, softwareList, tenantId) => {
   if (!softwareList || softwareList.length === 0) return;
   try {
     const licenses = await getLicenses(tenantId);
-    for (const license of licenses) {
-      // Pula se a licença já estourou ou se não tem chave/nome
-      if (license.used >= license.quantity) continue;
-      
-      // Checa se algum software instalado bate com o nome da licença
-      const licenseName = license.name.toLowerCase();
-      const match = softwareList.find((sw) => sw.toLowerCase().includes(licenseName));
-      
-      if (match) {
-        // Checa se este ativo já consumiu esta licença
-        const alreadyAssigned = (license.assignedAssets || []).some(a => a.id === assetId);
-        if (!alreadyAssigned) {
-          await assignLicense(license.id, assetId, assetName);
-        }
-      }
+    for (const license of matchLicensesForSoftware(licenses, softwareList, assetId)) {
+      await assignLicense(license.id, assetId, assetName);
     }
   } catch (error) {
     console.error('Erro na dedução automática de licenças:', error);

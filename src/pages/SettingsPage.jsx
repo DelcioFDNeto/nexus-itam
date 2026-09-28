@@ -1,560 +1,763 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { db } from '../services/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { generateFullBackup, restoreBackup } from '../services/backupService';
-import { 
-  Settings, Save, Database, Download, AlertTriangle, 
-  UserCog, FileText, CheckCircle, Shield, UploadCloud, RefreshCcw, FileJson, Info, Code, Play, Tag, Plus, Trash2
+// src/pages/SettingsPage.jsx
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import {
+  AlertTriangle, CheckCircle, Code, Database, Download, Eye, EyeOff, FileJson, FileText, Image as ImageIcon,
+  Info, Layers, Lock, Palette, Play, Plus, RefreshCcw, RotateCcw, Save, Settings, Tag, Trash2, UploadCloud, UserCog,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { db } from '../services/firebase';
+import { generateFullBackup, restoreBackup } from '../services/backupService';
+import { countAssets, countMembers, describeFirebaseError } from '../services/tenantService';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
-import { useNavigate } from 'react-router-dom';
+import { ACCENTS, useTheme } from '../contexts/ThemeContext';
 import { can } from '../utils/permissions';
+import { FEATURES, formatUsage, hasFeature, usageRatio, usageTone } from '../utils/entitlements';
+import { contrastRatio, rgbChannels } from '../utils/color';
+import { safeCssColor, safeImageUrl } from '../utils/sanitize';
+import { DEFAULT_TERM_CLAUSES } from '../utils/printTemplates';
 import LocationManager from '../components/settings/LocationManager';
 import AssetTypeManager from '../components/settings/AssetTypeManager';
 
-const CONFIG_FIELDS = [
-  { key: 'companyName', label: 'Nome da empresa', placeholder: 'Ex: Shineray do Brasil' },
-  { key: 'cnpj', label: 'CNPJ', placeholder: '00.000.000/0001-00' },
-  { key: 'itManager', label: 'Gestor de TI', placeholder: 'Nome do responsável' },
-  { key: 'supportEmail', label: 'Email de suporte', placeholder: 'suporte@empresa.com' },
-  { key: 'termTitle', label: 'Título do termo', placeholder: 'Termo de Responsabilidade' },
-  { key: 'logoUrl', label: 'URL do Logotipo', placeholder: 'https://...', type: 'text' },
-  { key: 'primaryColor', label: 'Cor Principal (HEX)', placeholder: '#000000', type: 'color' },
-];
+// Campos da empresa gravados em /settings/{tenantId}. Sem valores de outra
+// empresa como padrao: antes toda empresa nova via "Délcio Farias" como gestor
+// de TI e o e-mail de suporte da primeira cliente, e a cor da marca vinha
+// preta (#000000) — salvar sem perceber aplicava tudo isso.
+const EMPTY_CONFIG = {
+  companyName: '',
+  cnpj: '',
+  itManager: '',
+  supportEmail: '',
+  labelFooter: '',
+  termTitle: 'Termo de Responsabilidade',
+  termClauses: '',
+  logoUrl: '',
+  primaryColor: '',
+  customFields: [],
+  assetTypes: [],
+  hiddenModules: [],
+};
 
-const getCompanyLabel = (companyName) =>
-  (companyName || 'Nexus ITAM').trim() || 'Nexus ITAM';
+const EDITABLE_KEYS = Object.keys(EMPTY_CONFIG);
+const NEXUS_DEFAULT_COLOR = '#4F46E5';
+const MODULES = FEATURES.filter((f) => f.module);
 
-const getSupportEmail = (supportEmail) =>
-  (supportEmail || 'shiadmti@gmail.com').trim() || 'shiadmti@gmail.com';
+const inputClass =
+  'w-full border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-lg p-2 font-bold text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-brand disabled:opacity-60 disabled:cursor-not-allowed';
+
+const Card = ({ icon: Icon, title, subtitle, children, action }) => (
+  <section className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
+    <header className="bg-gray-50 dark:bg-slate-900 px-5 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-3">
+      <Icon className="text-brand shrink-0" size={18} />
+      <div className="min-w-0 flex-1">
+        <h2 className="font-bold text-gray-800 dark:text-white text-sm uppercase">{title}</h2>
+        {subtitle && <p className="text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
+      </div>
+      {action}
+    </header>
+    <div className="p-5 space-y-4">{children}</div>
+  </section>
+);
+
+const Field = ({ label, hint, children }) => (
+  <div>
+    <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">{label}</label>
+    {children}
+    {hint && <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">{hint}</p>}
+  </div>
+);
+
+/** Pre-visualizacao da identidade antes de salvar (usa a cor em edicao, nao a aplicada). */
+const BrandPreview = ({ companyName, logoUrl, color }) => {
+  // Guarda QUAL url falhou: trocar a url limpa o aviso sem precisar de efeito.
+  const [failedUrl, setFailedUrl] = useState(null);
+  const channels = rgbChannels(color) || '79 70 229';
+  const safeLogo = safeImageUrl(logoUrl);
+  const logoFailed = Boolean(safeLogo) && failedUrl === safeLogo;
+  const tint = `rgb(${channels} / 0.12)`;
+
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-900">
+        {safeLogo && !logoFailed ? (
+          <img src={safeLogo} alt="" className="h-7 w-7 object-contain" onError={() => setFailedUrl(safeLogo)} />
+        ) : (
+          <div className="h-7 w-7 rounded-lg flex items-center justify-center text-white text-xs font-black" style={{ backgroundColor: color }}>
+            {(companyName || 'N').charAt(0).toUpperCase()}
+          </div>
+        )}
+        <span className="text-sm font-black text-gray-900 dark:text-white truncate">{companyName || 'Sua empresa'}</span>
+      </div>
+      <div className="p-4 flex flex-wrap items-center gap-2 bg-gray-50 dark:bg-slate-900/60">
+        <span className="px-3 py-2 rounded-lg text-white text-xs font-bold" style={{ backgroundColor: color }}>Botão principal</span>
+        <span className="px-3 py-2 rounded-lg text-xs font-bold" style={{ backgroundColor: tint, color }}>Item ativo</span>
+        <span className="text-xs font-bold underline" style={{ color }}>Link</span>
+      </div>
+      {safeLogo && logoFailed && (
+        <p className="px-4 py-2 text-[11px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400">
+          Não foi possível carregar a imagem do logotipo. Verifique se a URL é pública (https).
+        </p>
+      )}
+    </div>
+  );
+};
 
 const SettingsPage = () => {
-  const { currentUser } = useAuth();
-  const { theme, setTheme, accentColor, setAccentColor } = useTheme();
-  const navigate = useNavigate();
+  const { currentUser, refreshProfile } = useAuth();
+  const { theme, setTheme, accentColor, setAccentColor, tenantBrand } = useTheme();
   const tenantId = currentUser?.tenantId;
-  const [loading, setLoading] = useState(false);
+
+  const canEdit = can(currentUser, 'settings:write');
+  const canBackup = can(currentUser, 'backup:create');
+  const canRestore = can(currentUser, 'backup:restore');
+  const whitelabel = hasFeature(currentUser, 'whitelabel');
+  const entitlements = currentUser?.entitlements;
+
+  const [config, setConfig] = useState(EMPTY_CONFIG);
+  const [savedConfig, setSavedConfig] = useState(EMPTY_CONFIG);
+  const [saving, setSaving] = useState(false);
+  const [usage, setUsage] = useState({ assets: null, users: null });
+
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [restoreProgress, setRestoreProgress] = useState(0);
   const [restoreStatus, setRestoreStatus] = useState('');
   const [dragActive, setDragActive] = useState(false);
-  const [importSummary, setImportSummary] = useState(null); // { filename, stats: { assets: 10, ... } }
+  const [importSummary, setImportSummary] = useState(null);
   const [showFormatGuide, setShowFormatGuide] = useState(false);
-  
   const fileInputRef = useRef(null);
-  
-  // Guarda na memória as variáveis globais da empresa, laços e termos de uso
-  const [config, setConfig] = useState({
-    companyName: 'Nexus ITAM',
-    cnpj: '',
-    itManager: 'Délcio Farias',
-    supportEmail: 'shiadmti@gmail.com',
-    termTitle: 'Termo de Responsabilidade',
-    termClauses: '1. DO USO E FINALIDADE: O(a) Responsável declara ter recebido o equipamento em perfeito estado de conservação e funcionamento. Compromete-se a utilizá-lo estrita e exclusivamente para fins profissionais.\n2. DA GUARDA E CONSERVAÇÃO: É responsabilidade do(a) Responsável zelar pela guarda, segurança e conservação do equipamento.\n3. DA RESTITUIÇÃO: O equipamento deverá ser devolvido imediatamente à Empresa, em perfeito estado, em caso de rescisão, mudança de cargo ou solicitação expressa.',
-    locationBranch: '',
-    logoUrl: '',
-    primaryColor: '#000000',
-    customFields: [],
-    assetTypes: []
-  });
 
-  // Busca a identidade visual e dados cadastrais no banco logo na largada da tela
   useEffect(() => {
-    // Defesa em profundidade: a rota ja barra, mas a tela nao confia nisso.
-    if (!can(currentUser, 'settings:read')) {
-      toast.error('Acesso negado às configurações.');
-      navigate('/dashboard');
-      return;
-    }
-    
     if (!tenantId) return;
-    const loadConfig = async () => {
+    (async () => {
       try {
-        const docRef = doc(db, 'settings', tenantId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setConfig(prev => ({ ...prev, ...docSnap.data() }));
-        }
+        const snap = await getDoc(doc(db, 'settings', tenantId));
+        const data = snap.exists() ? snap.data() : {};
+        const loaded = { ...EMPTY_CONFIG };
+        EDITABLE_KEYS.forEach((key) => {
+          if (data[key] !== undefined && data[key] !== null) loaded[key] = data[key];
+        });
+        if (!loaded.companyName) loaded.companyName = currentUser?.companyName && currentUser.companyName !== 'Nexus ITAM' ? currentUser.companyName : '';
+        setConfig(loaded);
+        setSavedConfig(loaded);
       } catch (error) {
-        console.error("Erro ao carregar configs:", error);
+        console.error('Erro ao carregar configurações:', error);
+        toast.error('Não foi possível carregar as configurações.');
       }
-    };
-    loadConfig();
-  }, [currentUser, navigate, tenantId]);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId]);
 
-  const addCustomField = () => {
-    setConfig(prev => ({
-      ...prev,
-      customFields: [...(prev.customFields || []), { id: `cf_${Date.now()}`, label: '', type: 'text' }]
-    }));
+  // Uso atual x limites do plano (contagem por agregacao, barata).
+  useEffect(() => {
+    if (!tenantId) return;
+    Promise.allSettled([countAssets(tenantId), countMembers(tenantId)]).then(([assets, users]) => {
+      setUsage({
+        assets: assets.status === 'fulfilled' ? assets.value : null,
+        users: users.status === 'fulfilled' ? users.value : null,
+      });
+    });
+  }, [tenantId]);
+
+  const dirty = useMemo(() => JSON.stringify(config) !== JSON.stringify(savedConfig), [config, savedConfig]);
+  const set = (key, value) => setConfig((prev) => ({ ...prev, [key]: value }));
+
+  const effectiveColor = safeCssColor(config.primaryColor) || NEXUS_DEFAULT_COLOR;
+  const contrast = contrastRatio(effectiveColor, '#ffffff');
+  const lowContrast = contrast !== null && contrast < 3;
+
+  // --- Campos customizados (sem mutar o estado, como o codigo antigo fazia) ---
+  const addCustomField = () =>
+    set('customFields', [...(config.customFields || []), { id: `cf_${Date.now()}`, label: '', type: 'text' }]);
+  const updateCustomField = (index, key, value) =>
+    set('customFields', (config.customFields || []).map((cf, i) => (i === index ? { ...cf, [key]: value } : cf)));
+  const removeCustomField = (index) =>
+    set('customFields', (config.customFields || []).filter((_, i) => i !== index));
+
+  const toggleModule = (moduleId) => {
+    const hidden = new Set(config.hiddenModules || []);
+    if (hidden.has(moduleId)) hidden.delete(moduleId);
+    else hidden.add(moduleId);
+    set('hiddenModules', [...hidden]);
   };
 
-  const updateCustomField = (index, key, value) => {
-    const newFields = [...(config.customFields || [])];
-    newFields[index][key] = value;
-    setConfig({ ...config, customFields: newFields });
-  };
-
-  const removeCustomField = (index) => {
-    const newFields = [...(config.customFields || [])];
-    newFields.splice(index, 1);
-    setConfig({ ...config, customFields: newFields });
-  };
-
-  // Carimba e documenta (Salva) todo o formulário global alterado
   const handleSave = async (e) => {
-    e.preventDefault();
-    if (!tenantId) {
-      toast.error("Sem contexto de tenant.");
+    e?.preventDefault();
+    if (!tenantId || !canEdit) return;
+
+    const color = config.primaryColor ? safeCssColor(config.primaryColor) : '';
+    if (config.primaryColor && !color) {
+      toast.error('Cor inválida. Use o seletor ou um código como #1E40AF.');
       return;
     }
-    setLoading(true);
+    if (config.logoUrl && !safeImageUrl(config.logoUrl)) {
+      toast.error('URL do logotipo inválida. Use um endereço https:// público.');
+      return;
+    }
+
+    setSaving(true);
     try {
-      await setDoc(doc(db, 'settings', tenantId), config, { merge: true });
-      toast.success("Configurações atualizadas com sucesso!");
+      const payload = {
+        ...Object.fromEntries(EDITABLE_KEYS.map((key) => [key, config[key]])),
+        companyName: config.companyName.trim(),
+        primaryColor: color || '',
+        customFields: (config.customFields || []).filter((cf) => cf.label?.trim()),
+        updatedAt: serverTimestamp(),
+      };
+      await setDoc(doc(db, 'settings', tenantId), payload, { merge: true });
+
+      // Mantem o nome no cadastro da empresa (visto pelo console master).
+      if (payload.companyName && payload.companyName !== savedConfig.companyName) {
+        await updateDoc(doc(db, 'tenants', tenantId), { companyName: payload.companyName, updatedAt: serverTimestamp() }).catch(() => {
+          /* empresa legada sem cadastro em /tenants */
+        });
+      }
+
+      const next = { ...config, primaryColor: color || '', customFields: payload.customFields };
+      setConfig(next);
+      setSavedConfig(next);
+      // Aplica logo, cor e modulos agora — antes so apareciam apos recarregar.
+      await refreshProfile();
+      toast.success('Configurações salvas e aplicadas.');
     } catch (error) {
       console.error(error);
-      toast.error("Erro ao salvar.");
+      toast.error(describeFirebaseError(error, 'Erro ao salvar as configurações.'));
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  // Varredura sistêmica completa, envelopando o ecossistema em um JSON gordo
+  // --- Backup / restauracao ---------------------------------------------------
+  const downloadJson = (data, filename) => {
+    // Blob em vez de data: URI — backups grandes estouravam o limite de URL.
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const handleFullBackup = async () => {
     setBackupLoading(true);
     try {
-      const backupData = await generateFullBackup(currentUser.tenantId, currentUser.role === 'superadmin');
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
-      const downloadAnchorNode = document.createElement('a');
-      downloadAnchorNode.setAttribute("href", dataStr);
-      downloadAnchorNode.setAttribute("download", `BACKUP_NEXUS_${new Date().toISOString().slice(0,10)}.json`);
-      document.body.appendChild(downloadAnchorNode);
-      downloadAnchorNode.click();
-      downloadAnchorNode.remove();
+      const backupData = await generateFullBackup(tenantId, false);
+      downloadJson(backupData, `BACKUP_NEXUS_${new Date().toISOString().slice(0, 10)}.json`);
+      toast.success('Backup gerado.');
     } catch (error) {
       console.error(error);
-      toast.error("Erro ao gerar backup. Verifique o console.");
+      toast.error('Erro ao gerar backup.');
     } finally {
       setBackupLoading(false);
     }
   };
 
-  // Fornece um arquivo em branco com o DNA da aplicação pra evitar importações frustradas
-  const handleDownloadTemplate = () => {
-     const template = {
-       meta: { version: "2.0", type: "full_backup", date: new Date().toISOString() },
-       data: {
-         assets: [ { internalId: "TAG-001", model: "Exemplo", type: "Notebook", status: "Disponível" } ],
-         employees: [], history: [], projects: [], tasks: [], sectors: []
-       }
-     };
-     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(template, null, 2));
-     const a = document.createElement('a');
-     a.href = dataStr;
-     a.download = "TEMPLATE_IMPORTACAO.json";
-     document.body.appendChild(a);
-     a.click();
-     a.remove();
-  };
+  const handleDownloadTemplate = () =>
+    downloadJson(
+      {
+        meta: { version: '2.0', type: 'full_backup', date: new Date().toISOString() },
+        data: {
+          assets: [{ internalId: 'TAG-001', model: 'Exemplo', type: 'Notebook', status: 'Disponível' }],
+          employees: [], history: [], projects: [], tasks: [], sectors: [],
+        },
+      },
+      'TEMPLATE_IMPORTACAO.json',
+    );
 
-  // Orquestração mágica para transformar "arrastas" e "soltas" em ações reais
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") setDragActive(true);
-    else if (e.type === "dragleave") setDragActive(false);
+    if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true);
+    else if (e.type === 'dragleave') setDragActive(false);
+  };
+
+  const handleFile = (file) => {
+    if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
+      toast.error('Arquivo inválido. Envie um JSON.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const json = JSON.parse(e.target.result);
+        if (!json.meta || !json.data) {
+          toast.error("Estrutura inválida: faltam 'meta' ou 'data'. Consulte o formato esperado.");
+          return;
+        }
+        setImportSummary({
+          filename: file.name,
+          date: json.meta.date ? new Date(json.meta.date).toLocaleString('pt-BR') : 'N/A',
+          counts: Object.keys(json.data).reduce((acc, key) => {
+            if (Array.isArray(json.data[key])) acc[key] = json.data[key].length;
+            return acc;
+          }, {}),
+          rawData: json,
+        });
+      } catch (err) {
+        toast.error(`Erro ao ler o arquivo JSON: ${err.message}`);
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-  };
-
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
-  };
-
-  const handleFile = (file) => {
-    if (file.type !== "application/json" && !file.name.endsWith('.json')) {
-        toast.error("Arquivo inválido. Por favor, envie um JSON.");
-        return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-        try {
-            const json = JSON.parse(e.target.result);
-            // Batida de olho técnica: O arquivo tem cabeça (meta) e corpo (data)?
-            if (!json.meta || !json.data) {
-                toast.error("Estrutura do arquivo inválida. Falta 'meta' ou 'data'. Consulte o guia.");
-                return;
-            }
-            
-            // Dissecar o organismo do arquivo: Quantos braços (ativos), pernas (histórico) ele tem
-            const summary = {
-                filename: file.name,
-                version: json.meta.version || 'Desconhecida',
-                date: json.meta.date ? new Date(json.meta.date).toLocaleString() : 'N/A',
-                counts: Object.keys(json.data).reduce((acc, key) => {
-                    if(Array.isArray(json.data[key])) acc[key] = json.data[key].length;
-                    return acc;
-                }, {}),
-                rawData: json
-            };
-            
-            setImportSummary(summary);
-            
-        } catch (err) {
-            toast.error("Erro ao ler o arquivo JSON: " + err.message);
-        }
-    };
-    reader.readAsText(file);
+    if (e.dataTransfer.files?.[0]) handleFile(e.dataTransfer.files[0]);
   };
 
   const confirmRestore = async () => {
-      if (!importSummary) return;
-      
-      setImportSummary(null); // Fecha modal de resumo
-      setRestoreLoading(true);
-      setRestoreProgress(0);
-      setRestoreStatus("Inicializando...");
-      
-      try {
-          const stats = await restoreBackup(importSummary.rawData, (progress, message) => {
-              setRestoreProgress(progress);
-              setRestoreStatus(message);
-          }, tenantId);
-          
-          const notas = [
-            `Coleções: ${stats.collectionsUpdated.join(', ') || 'nenhuma'}`,
-            `Documentos restaurados: ${stats.totalDocsProcessed}`,
-            stats.rejectedDocs ? `Recusados (outro inquilino ou ID inválido): ${stats.rejectedDocs}` : null,
-            stats.skippedCollections.length ? `Ignoradas por segurança: ${stats.skippedCollections.join(', ')}` : null,
-            `Erros: ${stats.errors.length}`,
-          ].filter(Boolean);
-          toast.success(`Importação finalizada.\n\n${notas.join('\n')}`);
-          window.location.reload(); 
-      } catch (error) {
-          console.error(error);
-          toast.error("Falha na restauração: " + error.message);
-      } finally {
-          setRestoreLoading(false);
-          setRestoreStatus("");
-      }
+    if (!importSummary) return;
+    const summary = importSummary;
+    setImportSummary(null);
+    setRestoreLoading(true);
+    setRestoreProgress(0);
+    setRestoreStatus('Inicializando...');
+    try {
+      const stats = await restoreBackup(summary.rawData, (progress, message) => {
+        setRestoreProgress(progress);
+        setRestoreStatus(message);
+      }, tenantId);
+      const notes = [
+        `Documentos restaurados: ${stats.totalDocsProcessed}`,
+        stats.rejectedDocs ? `Recusados (outra empresa ou ID inválido): ${stats.rejectedDocs}` : null,
+        stats.skippedCollections.length ? `Ignoradas por segurança: ${stats.skippedCollections.join(', ')}` : null,
+        stats.errors.length ? `Erros: ${stats.errors.length}` : null,
+      ].filter(Boolean);
+      toast.success('Restauração finalizada.', { description: notes.join(' · '), duration: 8000 });
+    } catch (error) {
+      console.error(error);
+      toast.error(`Falha na restauração: ${error.message}`);
+    } finally {
+      setRestoreLoading(false);
+      setRestoreStatus('');
+    }
   };
 
+  const assetsTone = usageTone(usageRatio(usage.assets ?? 0, entitlements?.maxAssets));
+  const usersTone = usageTone(usageRatio(usage.users ?? 0, entitlements?.maxUsers));
+  const toneBar = (tone) => (tone === 'critical' ? 'bg-rose-500' : tone === 'warning' ? 'bg-amber-500' : 'bg-brand');
+
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto pb-24">
-      
-      {/* Painel topo da central de controle do sistema */}
-      <div className="flex items-center gap-3 mb-8">
-        <div className="p-3 bg-gray-900 dark:bg-slate-800 text-white rounded-xl">
+    <div className="max-w-6xl mx-auto pb-28">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-gray-900 dark:bg-slate-800 text-white rounded-xl">
             <Settings size={28} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-black text-gray-900 dark:text-white">Configurações</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Identidade, documentos, módulos e dados de {config.companyName || 'sua empresa'}</p>
+          </div>
         </div>
-        <div>
-            <h1 className="text-2xl font-black text-gray-900 dark:text-white">Configurações Avançadas</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Backup, Restauração e Parâmetros do Sistema</p>
-        </div>
+        {canEdit && (
+          <button
+            onClick={handleSave}
+            disabled={saving || !dirty}
+            className="self-start md:self-auto bg-brand text-white px-5 py-3 rounded-xl font-bold hover:bg-brand-dark flex items-center gap-2 text-sm shadow-md shadow-brand/30 transition-all active:scale-95 disabled:opacity-50 disabled:shadow-none"
+          >
+            {saving ? <RefreshCcw size={16} className="animate-spin" /> : <Save size={16} />}
+            {saving ? 'Salvando...' : dirty ? 'Salvar alterações' : 'Tudo salvo'}
+          </button>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* COLUNA 1: Textos burocráticos e variáveis que pipocam nos PDFs do sistema */}
-        <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 shadow-sm overflow-hidden sticky top-8">
-                <div className="bg-gray-50 dark:bg-slate-900 p-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-2">
-                    <FileText className="text-brand" size={18}/>
-                    <h2 className="font-bold text-gray-800 dark:text-white text-sm uppercase">Documentos e Etiquetas</h2>
+      {!canEdit && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+          <Lock size={18} className="shrink-0 mt-0.5" />
+          <p>Somente o proprietário da conta altera identidade visual, documentos e módulos. Você pode gerenciar os locais e a sua aparência pessoal.</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* ------------------------------------------------------------ */}
+        <div className="lg:col-span-3 space-y-6">
+          <form onSubmit={handleSave} className="space-y-6">
+            <fieldset disabled={!canEdit || saving} className="space-y-6 min-w-0">
+              <Card icon={Palette} title="Identidade visual" subtitle="Aparece no menu, nas etiquetas e no termo de responsabilidade">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Nome da empresa">
+                    <input className={inputClass} value={config.companyName} onChange={(e) => set('companyName', e.target.value)} placeholder="Ex: ACME Indústria" maxLength={120} />
+                  </Field>
+                  <Field label="URL do logotipo" hint="PNG, SVG ou WebP públicos (https). Ideal: fundo transparente.">
+                    <div className="relative">
+                      <ImageIcon size={14} className="absolute left-2.5 top-3 text-gray-400" />
+                      <input className={`${inputClass} pl-8`} value={config.logoUrl} onChange={(e) => set('logoUrl', e.target.value.trim())} placeholder="https://..." />
+                    </div>
+                  </Field>
                 </div>
-                <form onSubmit={handleSave} className="p-5 space-y-4">
-{/* Montagem inteligente de loops mapeando todos os inputs das configurações */}
-                      {CONFIG_FIELDS.map(field => (
-                         <div key={field.key}>
-                             <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">{field.label}</label>
-                             <input 
-                               type={field.type || "text"}
-                               value={config[field.key] || ''} 
-                               onChange={e => setConfig({...config, [field.key]: e.target.value})} 
-                               className={`w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg font-bold text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-brand dark:focus:border-brand ${field.type === 'color' ? 'h-10 p-1 cursor-pointer' : 'p-2'}`}
-                               placeholder={field.placeholder}
-                             />
-                         </div>
-                      ))}
-                      <div className="col-span-1 md:col-span-2">
-                           <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Cláusulas do Termo de Responsabilidade</label>
-                           <textarea
-                             value={config.termClauses || ''}
-                             onChange={e => setConfig({...config, termClauses: e.target.value})}
-                             className="w-full border dark:border-slate-700 dark:bg-slate-900 rounded-lg font-bold text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-brand dark:focus:border-brand p-2 h-32 resize-none"
-                             placeholder="Digite as cláusulas do contrato, uma por linha..."
-                           />
-                       </div>
-                      
-                    {/* Sessão: Campos Customizados para Ativos */}
-                    <div className="rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 p-4 space-y-3">
-                        <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                                <Database size={16} className="text-brand" />
-                                <h3 className="text-xs font-black text-gray-700 dark:text-gray-200 uppercase">Campos Customizados</h3>
-                            </div>
-                            <button type="button" onClick={addCustomField} className="text-[10px] flex items-center gap-1 bg-brand text-white px-2 py-1 rounded font-bold hover:bg-brand/80 transition-colors">
-                                <Plus size={12}/> Adicionar Campo
-                            </button>
-                        </div>
-                        {(config.customFields || []).map((cf, idx) => (
-                            <div key={cf.id} className="flex items-center gap-2 bg-white dark:bg-slate-800 p-2 border border-gray-200 dark:border-slate-600 rounded-lg shadow-sm">
-                                <input 
-                                    value={cf.label} 
-                                    onChange={e => updateCustomField(idx, 'label', e.target.value)}
-                                    placeholder="Nome do Campo"
-                                    className="flex-1 p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-800 dark:text-gray-100 focus:border-brand focus:outline-none"
-                                />
-                                <select 
-                                    value={cf.type} 
-                                    onChange={e => updateCustomField(idx, 'type', e.target.value)}
-                                    className="p-1.5 border dark:border-slate-700 dark:bg-slate-900 rounded text-xs font-bold text-gray-600 dark:text-gray-400 bg-gray-50 focus:border-brand focus:outline-none"
-                                >
-                                    <option value="text">Texto Curto</option>
-                                    <option value="textarea">Texto Longo</option>
-                                    <option value="date">Data</option>
-                                    <option value="number">Número</option>
-                                </select>
-                                <button type="button" onClick={() => removeCustomField(idx)} className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors">
-                                    <Trash2 size={14} />
-                                </button>
-                            </div>
-                        ))}
-                        {(!config.customFields || config.customFields.length === 0) && (
-                            <p className="text-xs text-center text-gray-400 dark:text-gray-500 font-medium py-2">Nenhum campo customizado criado.</p>
-                        )}
-                    </div>
 
-                    <LocationManager />
-
-                    <AssetTypeManager
-                        types={config.assetTypes || []}
-                        onChange={(assetTypes) => setConfig(prev => ({ ...prev, assetTypes }))}
+                <Field label="Cor da marca" hint="Botões, destaques e itens ativos do menu de toda a equipe.">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <input
+                      type="color"
+                      value={effectiveColor.startsWith('#') && effectiveColor.length === 7 ? effectiveColor : NEXUS_DEFAULT_COLOR}
+                      onChange={(e) => set('primaryColor', e.target.value)}
+                      className="h-10 w-14 rounded-lg border border-gray-200 dark:border-slate-700 bg-transparent p-1 cursor-pointer"
+                      aria-label="Selecionar cor da marca"
                     />
+                    <input className={`${inputClass} w-32 font-mono`} value={config.primaryColor} onChange={(e) => set('primaryColor', e.target.value.trim())} placeholder={NEXUS_DEFAULT_COLOR} />
+                    {config.primaryColor && (
+                      <button type="button" onClick={() => set('primaryColor', '')} className="text-xs font-bold text-gray-500 hover:text-brand flex items-center gap-1">
+                        <RotateCcw size={12} /> Usar cor padrão Nexus
+                      </button>
+                    )}
+                  </div>
+                  {lowContrast && (
+                    <p className="mt-2 flex items-start gap-1.5 text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                      <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                      Texto branco sobre esta cor fica difícil de ler (contraste {contrast.toFixed(1)}:1). Prefira um tom mais escuro.
+                    </p>
+                  )}
+                </Field>
 
-                    <div className="rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                            <Tag size={16} className="text-brand" />
-                            <h3 className="text-xs font-black text-gray-700 dark:text-gray-200 uppercase">Identidade das Etiquetas</h3>
-                        </div>
-                        <div className="rounded-lg border-2 border-gray-900 bg-white dark:bg-slate-800 p-3 font-sans">
-                            <div className="border-b border-gray-200 dark:border-slate-600 pb-2">
-                                <p className="text-sm font-black leading-none text-brand">Nexus<span className="text-gray-900 dark:text-white">ITAM</span></p>
-                                <p className="mt-1 truncate text-[10px] font-black uppercase text-gray-900 dark:text-white">{getCompanyLabel(config.companyName)}</p>
-                            </div>
-                            <div className="pt-3">
-                                <p className="text-[9px] font-black uppercase text-gray-500 dark:text-gray-400">Patrimônio</p>
-                                <p className="font-mono text-xl font-black text-gray-950">TAG-001</p>
-                            </div>
-                            <div className="mt-2 flex items-center justify-between border-t border-gray-900 pt-1">
-                                <span className="text-[8px] font-black text-gray-600">SUPORTE TI</span>
-                                <span className="max-w-[120px] truncate text-[9px] font-black text-gray-900 dark:text-white">{getSupportEmail(config.supportEmail)}</span>
-                            </div>
-                        </div>
+                <BrandPreview companyName={config.companyName} logoUrl={config.logoUrl} color={effectiveColor} />
+
+                <p className="flex items-start gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                  <Info size={13} className="shrink-0 mt-0.5 text-brand" />
+                  {whitelabel
+                    ? 'Whitelabel completo ativo: a marca Nexus não aparece no menu, etiquetas nem termos.'
+                    : 'Seu plano exibe "Nexus ITAM" junto à sua marca. O whitelabel completo remove a marca Nexus dos impressos e do menu — fale com o suporte.'}
+                </p>
+              </Card>
+
+              <Card icon={FileText} title="Documentos e etiquetas" subtitle="Dados usados no termo de responsabilidade e nas etiquetas patrimoniais">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="CNPJ">
+                    <input className={inputClass} value={config.cnpj} onChange={(e) => set('cnpj', e.target.value)} placeholder="00.000.000/0001-00" />
+                  </Field>
+                  <Field label="Gestor de TI (assina o termo)">
+                    <input className={inputClass} value={config.itManager} onChange={(e) => set('itManager', e.target.value)} placeholder="Nome do responsável" />
+                  </Field>
+                  <Field label="E-mail de suporte (etiquetas)">
+                    <input type="email" className={inputClass} value={config.supportEmail} onChange={(e) => set('supportEmail', e.target.value)} placeholder="suporte@empresa.com" />
+                  </Field>
+                  <Field label="Texto do rodapé da etiqueta">
+                    <input className={inputClass} value={config.labelFooter} onChange={(e) => set('labelFooter', e.target.value.toUpperCase())} placeholder="SUPORTE TI" maxLength={24} />
+                  </Field>
+                </div>
+                <Field label="Título do termo">
+                  <input className={inputClass} value={config.termTitle} onChange={(e) => set('termTitle', e.target.value)} placeholder="Termo de Responsabilidade" />
+                </Field>
+                <Field label="Cláusulas do termo" hint="Uma cláusula por linha. Em branco, o termo usa o texto padrão (CLT Art. 462 e Código Civil).">
+                  <textarea
+                    value={config.termClauses}
+                    onChange={(e) => set('termClauses', e.target.value)}
+                    className={`${inputClass} h-36 resize-y font-medium`}
+                    placeholder="1. DO USO E FINALIDADE: ..."
+                  />
+                  <button type="button" onClick={() => set('termClauses', DEFAULT_TERM_CLAUSES)} className="mt-2 text-xs font-bold text-brand hover:underline flex items-center gap-1">
+                    <RotateCcw size={12} /> Carregar texto padrão para editar
+                  </button>
+                </Field>
+
+                {/* Etiqueta de exemplo com os dados em edicao */}
+                <div className="rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 p-4">
+                  <p className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase mb-3 flex items-center gap-1.5"><Tag size={12} /> Prévia da etiqueta</p>
+                  <div className="mx-auto w-full max-w-[280px] rounded-lg border-2 border-gray-900 bg-white p-3 font-sans text-gray-900">
+                    <div className="border-b border-gray-200 pb-2 flex items-center gap-2 min-h-[28px]">
+                      {safeImageUrl(config.logoUrl) ? (
+                        <img src={safeImageUrl(config.logoUrl)} alt="" className="h-5 max-w-[110px] object-contain" />
+                      ) : whitelabel ? (
+                        <span className="text-sm font-black uppercase" style={{ color: effectiveColor }}>{config.companyName || 'Sua empresa'}</span>
+                      ) : (
+                        <span className="text-sm font-black leading-none text-[#4F46E5]">Nexus<span className="text-gray-900">ITAM</span></span>
+                      )}
                     </div>
-                    <button type="submit" disabled={loading} className="w-full bg-black text-white py-3 rounded-lg font-bold hover:bg-gray-800 flex items-center justify-center gap-2 text-sm shadow-md transition-all active:scale-95">
-                        {loading ? 'Salvando...' : <><Save size={16}/> Salvar Configurações</>}
-                    </button>
-                </form>
-            </div>
+                    {(!whitelabel || safeImageUrl(config.logoUrl)) && (
+                      <p className="mt-1 truncate text-[9px] font-black uppercase">{config.companyName || 'Sua empresa'}</p>
+                    )}
+                    <p className="pt-2 text-[9px] font-black uppercase text-gray-500">Patrimônio</p>
+                    <p className="font-mono text-xl font-black">TAG-001</p>
+                    <div className="mt-2 flex items-center justify-between border-t border-gray-900 pt-1 gap-2">
+                      <span className="text-[8px] font-black text-gray-600">{config.labelFooter || 'SUPORTE TI'}</span>
+                      <span className="truncate text-[9px] font-black">{config.supportEmail}</span>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card icon={Layers} title="Módulos" subtitle="Oculte do menu o que sua equipe não usa. Os dados continuam salvos.">
+                <ul className="divide-y divide-gray-100 dark:divide-slate-700">
+                  {MODULES.map((mod) => {
+                    const entitled = hasFeature(currentUser, mod.id);
+                    const visible = !(config.hiddenModules || []).includes(mod.id);
+                    return (
+                      <li key={mod.id} className="flex items-center justify-between gap-4 py-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                            {mod.label}
+                            {!entitled && <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-gray-300">Fora do plano</span>}
+                          </p>
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400">{mod.description}</p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={entitled && visible}
+                          aria-label={`Exibir ${mod.label}`}
+                          disabled={!entitled}
+                          onClick={() => toggleModule(mod.id)}
+                          className={`relative h-6 min-h-0 w-11 shrink-0 rounded-full p-0 transition-colors disabled:opacity-40 ${entitled && visible ? 'bg-brand' : 'bg-gray-300 dark:bg-slate-600'}`}
+                        >
+                          <span className={`absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${entitled && visible ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
+
+              <Card
+                icon={Database}
+                title="Cadastro de ativos"
+                subtitle="Campos e tipos próprios da sua empresa"
+                action={
+                  <button type="button" onClick={addCustomField} className="text-[10px] flex items-center gap-1 bg-brand text-white px-2.5 py-1.5 rounded-lg font-bold hover:bg-brand-dark transition-colors disabled:opacity-50">
+                    <Plus size={12} /> Campo
+                  </button>
+                }
+              >
+                <div className="space-y-2">
+                  {(config.customFields || []).map((cf, idx) => (
+                    <div key={cf.id} className="flex items-center gap-2 bg-gray-50 dark:bg-slate-900 p-2 border border-gray-200 dark:border-slate-700 rounded-lg">
+                      <input
+                        value={cf.label}
+                        onChange={(e) => updateCustomField(idx, 'label', e.target.value)}
+                        placeholder="Nome do campo"
+                        aria-label="Nome do campo customizado"
+                        className="flex-1 min-w-0 p-1.5 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded text-xs font-bold text-gray-800 dark:text-gray-100 focus:border-brand focus:outline-none"
+                      />
+                      <select
+                        value={cf.type}
+                        onChange={(e) => updateCustomField(idx, 'type', e.target.value)}
+                        aria-label="Tipo do campo customizado"
+                        className="p-1.5 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded text-xs font-bold text-gray-600 dark:text-gray-300 focus:border-brand focus:outline-none"
+                      >
+                        <option value="text">Texto curto</option>
+                        <option value="textarea">Texto longo</option>
+                        <option value="date">Data</option>
+                        <option value="number">Número</option>
+                      </select>
+                      <button type="button" onClick={() => removeCustomField(idx)} aria-label="Remover campo" className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded transition-colors">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  {(config.customFields || []).length === 0 && (
+                    <p className="text-xs text-center text-gray-400 dark:text-gray-500 font-medium py-2">Nenhum campo customizado criado.</p>
+                  )}
+                </div>
+
+                <AssetTypeManager types={config.assetTypes || []} onChange={(assetTypes) => set('assetTypes', assetTypes)} />
+              </Card>
+            </fieldset>
+
+            {canEdit && dirty && (
+              <div className="sticky bottom-24 lg:bottom-4 z-20 flex items-center justify-between gap-3 rounded-2xl border border-brand/30 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-4 py-3 shadow-lg">
+                <span className="text-xs font-bold text-gray-600 dark:text-gray-300">Há alterações não salvas.</span>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setConfig(savedConfig)} className="px-3 py-2 rounded-lg text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800">
+                    Descartar
+                  </button>
+                  <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-xs font-black flex items-center gap-1.5 disabled:opacity-60">
+                    <Save size={14} /> Salvar
+                  </button>
+                </div>
+              </div>
+            )}
+          </form>
+
+          {/* Locais ficam FORA do formulario: tem gravacao propria, imediata. */}
+          <Card icon={Database} title="Filiais e locais" subtitle="Usados nos seletores de localização e na auditoria">
+            <LocationManager showHeader={false} />
+          </Card>
         </div>
 
-        {/* COLUNA 2 e 3: Área nevrálgica de transplante de órgãos (Dados JSON) */}
+        {/* ------------------------------------------------------------ */}
         <div className="lg:col-span-2 space-y-6">
-
-          {/* SESSÃO DE APARÊNCIA / THEME */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 shadow-sm overflow-hidden">
-              <div className="bg-gray-50 dark:bg-slate-900 p-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-2">
-                  <UserCog className="text-brand" size={18} />
-                  <h2 className="font-bold text-gray-800 dark:text-white text-sm uppercase">Aparência do Sistema</h2>
-              </div>
-              <div className="p-6 space-y-6">
-                <div>
-                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3">Modo de Exibição</h3>
-                  <div className="flex gap-3">
-                    <button onClick={() => setTheme('light')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'light' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-600'}`}>
-                      <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 shadow-sm"></div>
-                      Claro
-                    </button>
-                    <button onClick={() => setTheme('dark')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'dark' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-600'}`}>
-                      <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 shadow-sm"></div>
-                      Escuro
-                    </button>
-                    <button onClick={() => setTheme('system')} className={`flex-1 py-3 border-2 rounded-xl text-sm font-bold flex flex-col items-center gap-2 transition-all ${theme === 'system' ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-600'}`}>
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-slate-900 to-white border border-gray-300 shadow-sm"></div>
-                      Sistema
-                    </button>
+          <Card icon={CheckCircle} title="Plano da empresa" subtitle={entitlements?.legacy ? 'Conta sem plano definido (sem limites)' : entitlements?.planName}>
+            {[
+              ['Ativos', usage.assets, entitlements?.maxAssets, assetsTone],
+              ['Usuários', usage.users, entitlements?.maxUsers, usersTone],
+            ].map(([label, current, limit, tone]) => (
+              <div key={label}>
+                <div className="flex justify-between text-xs font-bold text-gray-600 dark:text-gray-300">
+                  <span>{label}</span>
+                  <span className="tabular-nums">{current === null ? '…' : formatUsage(current, limit)}</span>
+                </div>
+                {limit !== null && limit !== undefined && (
+                  <div className="mt-1.5 h-1.5 rounded-full bg-gray-100 dark:bg-slate-700 overflow-hidden">
+                    <div className={`h-full rounded-full ${toneBar(tone)}`} style={{ width: `${Math.min(100, usageRatio(current ?? 0, limit) * 100)}%` }} />
                   </div>
-                </div>
-
-                <div>
-                  <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3">Cor Destaque (Accent Color)</h3>
-                  <div className="flex gap-4">
-                    {[
-                      { id: 'blue', color: '#4F46E5' },
-                      { id: 'green', color: '#10B981' },
-                      { id: 'purple', color: '#8B5CF6' },
-                      { id: 'orange', color: '#F97316' },
-                      { id: 'cyan', color: '#06B6D4' }
-                    ].map(c => (
-                      <button 
-                        key={c.id} 
-                        onClick={() => setAccentColor(c.id)}
-                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${accentColor === c.id ? 'ring-4 ring-offset-2 ring-brand scale-110' : 'hover:scale-105'}`}
-                        style={{ backgroundColor: c.color }}
-                      >
-                        {accentColor === c.id && <CheckCircle size={16} className="text-white drop-shadow-md" />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                )}
               </div>
-          </div>
-            
-          {/* CAIXA 1: Ferramenta brutalista de backup global em um clique */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-blue-100 dark:border-blue-900/50 shadow-sm overflow-hidden relative group">
-                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Database size={100} className="text-blue-500"/></div>
-                <div className="p-6 relative z-10">
-                    <h2 className="text-lg font-black text-blue-900 dark:text-blue-400 mb-2 flex items-center gap-2"><Download className="text-blue-600 dark:text-blue-500"/> Backup do Sistema</h2>
-                    <p className="text-sm text-blue-700/80 dark:text-blue-300/80 mb-6 max-w-md">Gera um arquivo JSON completo contendo todos os dados. Ideal para migração ou segurança.</p>
-                    <button onClick={handleFullBackup} disabled={backupLoading} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 flex items-center gap-2 shadow-lg shadow-blue-200 dark:shadow-none transition-all hover:scale-105 active:scale-95">
-                        {backupLoading ? <RefreshCcw className="animate-spin" size={20}/> : <FileJson size={20}/>}
-                        {backupLoading ? 'Gerando Arquivo...' : 'Baixar Backup Completo'}
-                    </button>
-                </div>
+            ))}
+            <ul className="grid grid-cols-1 gap-1.5 pt-2">
+              {FEATURES.map((feature) => {
+                const on = hasFeature(currentUser, feature.id);
+                return (
+                  <li key={feature.id} className={`flex items-center gap-2 text-xs ${on ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400 dark:text-gray-500'}`}>
+                    {on ? <CheckCircle size={13} className="text-green-500 shrink-0" /> : <Lock size={13} className="shrink-0" />}
+                    {feature.label}
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+
+          <Card icon={UserCog} title="Minha aparência" subtitle="Preferências só deste navegador">
+            <div>
+              <h3 className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Modo de exibição</h3>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ['light', 'Claro', 'bg-white border-gray-200'],
+                  ['dark', 'Escuro', 'bg-slate-900 border-slate-700'],
+                  ['system', 'Sistema', 'bg-gradient-to-tr from-slate-900 to-white border-gray-300'],
+                ].map(([value, label, swatch]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setTheme(value)}
+                    aria-pressed={theme === value}
+                    className={`py-3 border-2 rounded-xl text-xs font-bold flex flex-col items-center gap-2 transition-all ${theme === value ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-slate-500'}`}
+                  >
+                    <span className={`w-7 h-7 rounded-full border shadow-sm ${swatch}`} />
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
+            <div>
+              <h3 className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-2">Cor de destaque</h3>
+              <div className="flex flex-wrap gap-3 items-center">
+                {/* "Automatico" devolve a cor da empresa — antes nao havia como voltar */}
+                <button
+                  type="button"
+                  onClick={() => setAccentColor(null)}
+                  title="Automático: cor da empresa"
+                  aria-pressed={!accentColor}
+                  className={`h-10 px-3 rounded-full flex items-center gap-2 text-[11px] font-black border-2 transition-all ${!accentColor ? 'border-brand text-brand' : 'border-gray-200 dark:border-slate-600 text-gray-500 dark:text-gray-400'}`}
+                >
+                  <span className="w-4 h-4 rounded-full" style={{ backgroundColor: safeCssColor(tenantBrand) || NEXUS_DEFAULT_COLOR }} />
+                  Empresa
+                </button>
+                {Object.entries(ACCENTS).map(([id, color]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setAccentColor(id)}
+                    aria-label={`Destaque ${id}`}
+                    aria-pressed={accentColor === id}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${accentColor === id ? 'ring-4 ring-offset-2 ring-brand dark:ring-offset-slate-800 scale-110' : 'hover:scale-105'}`}
+                    style={{ backgroundColor: color }}
+                  >
+                    {accentColor === id && <CheckCircle size={16} className="text-white drop-shadow-md" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Card>
 
-            {/* CAIXA 2: Receptor focado em assimilar vidas passadas de outras bases suportadas */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-600 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
-                    <div>
-                        <h2 className="text-lg font-black text-gray-900 dark:text-white mb-1 flex items-center gap-2"><UploadCloud className="text-orange-500"/> Restauração de Dados</h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Importe um arquivo JSON para restaurar ou atualizar dados.</p>
-                    </div>
-                    <button onClick={() => setShowFormatGuide(!showFormatGuide)} className="text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white flex items-center gap-1 bg-gray-100 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600">
-                    </button>
-                </div>
-                
-                {/* Aba retrátil agindo como um instrutor chato porém necessário para formats de injeção */}
-                {showFormatGuide && (
-                    <div className="bg-gray-50 dark:bg-slate-900 p-6 border-b border-gray-200 dark:border-slate-600 text-sm">
-                        <div className="flex justify-between items-start mb-4">
-                            <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><Info size={16} className="text-blue-500"/> Estrutura JSON Esperada</h3>
-                            <button onClick={handleDownloadTemplate} className="text-xs bg-white dark:bg-slate-800 border border-gray-300 px-2 py-1 rounded hover:bg-gray-100 font-bold text-gray-700 dark:text-gray-200">Baixar Modelo Vazio</button>
-                        </div>
-                        <p className="text-gray-600 mb-3">O arquivo deve conter um objeto raiz com as chaves <code>meta</code> e <code>data</code>. Os dados são agrupados por coleção.</p>
-                        <pre className="bg-gray-900 text-gray-100 p-4 rounded-xl overflow-x-auto font-mono text-xs shadow-inner border border-gray-700">
-{`{
-  "meta": {
-    "version": "2.0",
-    "type": "full_backup",
-    "date": "2024-05-20T10:00:00.000Z"
-  },
+          {canBackup && (
+            <Card icon={Download} title="Backup" subtitle="Arquivo JSON com todos os dados da empresa">
+              <button onClick={handleFullBackup} disabled={backupLoading} className="w-full bg-blue-600 text-white px-5 py-3 rounded-xl font-bold hover:bg-blue-700 flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-60">
+                {backupLoading ? <RefreshCcw className="animate-spin" size={18} /> : <FileJson size={18} />}
+                {backupLoading ? 'Gerando arquivo...' : 'Baixar backup completo'}
+              </button>
+            </Card>
+          )}
+
+          {canRestore && (
+            <Card
+              icon={UploadCloud}
+              title="Restauração"
+              subtitle="Importa um backup JSON desta empresa"
+              action={
+                <button
+                  type="button"
+                  onClick={() => setShowFormatGuide((v) => !v)}
+                  aria-expanded={showFormatGuide}
+                  className="text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white flex items-center gap-1 bg-gray-100 dark:bg-slate-700 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600"
+                >
+                  {showFormatGuide ? <EyeOff size={12} /> : <Code size={12} />} {showFormatGuide ? 'Ocultar formato' : 'Ver formato'}
+                </button>
+              }
+            >
+              {showFormatGuide && (
+                <div className="text-xs space-y-3">
+                  <div className="flex justify-between items-center">
+                    <p className="font-bold text-gray-700 dark:text-gray-200 flex items-center gap-1.5"><Info size={14} className="text-blue-500" /> Estrutura esperada</p>
+                    <button type="button" onClick={handleDownloadTemplate} className="text-[10px] bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 px-2 py-1 rounded font-bold text-gray-700 dark:text-gray-200">Baixar modelo</button>
+                  </div>
+                  <pre className="bg-gray-900 text-gray-100 p-3 rounded-xl overflow-x-auto font-mono text-[11px]">{`{
+  "meta": { "version": "2.0", "date": "2026-01-01T10:00:00Z" },
   "data": {
-    "assets": [
-      {
-        "internalId": "NB-001",
-        "model": "Dell Latitude 3420",
-        "type": "Notebook",
-        "status": "Em Uso"
-        ...
-      }
-    ],
+    "assets": [ { "internalId": "NB-001", "model": "Dell", ... } ],
     "employees": [ ... ],
     "history": [ ... ]
   }
-}`}
-                        </pre>
-                        <div className="mt-3 flex items-start gap-2 text-xs text-orange-700 bg-orange-100 p-3 rounded-lg">
-                            <AlertTriangle size={14} className="shrink-0 mt-0.5"/>
-                            <p><strong>Importante:</strong> Se um registro já existir (baseado no ID ou InternalId), ele será <strong>atualizado</strong>. Se não existir, será <strong>criado</strong>.</p>
-                        </div>
-                    </div>
-                )}
-
-                <div className="p-6">
-                    {/* Estado 2: Diagnóstico pronto. Aguardando a bênção do chefe supremo para atirar as informações no banco */}
-                    {importSummary ? (
-                        <div className="animate-in fade-in zoom-in duration-200 bg-blue-50 border border-blue-100 rounded-xl p-5">
-                            <h3 className="font-bold text-blue-900 text-lg mb-4 flex items-center gap-2"><FileJson className="text-blue-600"/> Arquivo Analisado</h3>
-                            
-                            <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
-                                <div><p className="text-gray-500 dark:text-gray-400 text-xs uppercase font-bold">Nome</p><p className="font-mono font-bold text-gray-800 dark:text-gray-100 truncate">{importSummary.filename}</p></div>
-                                <div><p className="text-gray-500 dark:text-gray-400 text-xs uppercase font-bold">Data (Meta)</p><p className="font-bold text-gray-800 dark:text-gray-100">{importSummary.date}</p></div>
-                            </div>
-
-                            <div className="bg-white dark:bg-slate-800 rounded-lg border border-blue-100 p-4 mb-6">
-                                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2">Conteúdo Encontrado</p>
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                                    {Object.entries(importSummary.counts).map(([key, count]) => (
-                                        <div key={key} className="bg-gray-50 dark:bg-slate-900 p-2 rounded text-center border border-gray-100 dark:border-slate-700">
-                                            <span className="block text-lg font-black text-gray-800 dark:text-gray-100">{count}</span>
-                                            <span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase font-bold">{key}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="flex gap-3">
-                                <button onClick={() => setImportSummary(null)} className="flex-1 py-3 bg-white dark:bg-slate-800 border border-gray-300 text-gray-700 dark:text-gray-200 font-bold rounded-lg hover:bg-gray-50 dark:hover:bg-slate-900">Cancelar</button>
-                                <button onClick={confirmRestore} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-lg shadow-blue-200 flex items-center justify-center gap-2">
-                                    <Play size={18}/> Confirmar Importação
-                                </button>
-                            </div>
-                        </div>
-                    ) : restoreLoading ? (
-                        // Estado 3: Turbinas trabalhando. Barra progressiva acalma a ansiedade avisando que não travou
-                        <div className="text-center py-8">
-                            <div className="w-16 h-16 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-4"></div>
-                            <h3 className="font-bold text-xl text-gray-800 dark:text-gray-100">{restoreProgress}%</h3>
-                            <p className="text-gray-500 dark:text-gray-400 font-medium">{restoreStatus}</p>
-                            <div className="w-full bg-gray-100 rounded-full h-2 mt-4 overflow-hidden">
-                                <div className="bg-orange-500 h-2 transition-all duration-300" style={{ width: `${restoreProgress}%` }}></div>
-                            </div>
-                        </div>
-                    ) : (
-                        // Estado 1: Tela de imã limpa e seca clamando por injeção de arquivo JSON
-                        <div 
-                                className={`p-8 border-2 border-dashed ${dragActive ? 'border-brand bg-indigo-50 dark:bg-indigo-900/20' : 'border-gray-200 dark:border-slate-600 bg-gray-50/50 dark:bg-slate-800/50'} transition-all text-center mx-6 mb-6 rounded-xl relative cursor-pointer group`}
-                                onDragEnter={handleDrag}
-                                onDragLeave={handleDrag}
-                                onDragOver={handleDrag}
-                                onDrop={handleDrop}
-                                onClick={() => fileInputRef.current.click()}
-                            >
-                                <input ref={fileInputRef} type="file" className="hidden" accept=".json" onChange={handleFileChange} />
-                                <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400 dark:text-gray-500 group-hover:text-orange-500 transition-colors shadow-sm border border-gray-100 dark:border-slate-700">
-                                    <UploadCloud size={32}/>
-                                </div>
-                                <h3 className="font-bold text-gray-700 dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-white">Clique ou Arraste seu JSON aqui</h3>
-                            <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 max-w-xs mx-auto">Suporta backups completos ou parciais. O sistema validará o arquivo antes de importar.</p>
-                        </div>
-                    )}
+}`}</pre>
+                  <p className="flex items-start gap-1.5 text-orange-700 bg-orange-50 dark:bg-orange-950/30 dark:text-orange-300 p-2.5 rounded-lg">
+                    <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                    Registros com o mesmo ID são atualizados; os demais são criados. Usuários, planos e configurações nunca são restaurados.
+                  </p>
                 </div>
-            </div>
+              )}
 
-            {/* Alerta estético, brincadeira de WipeOut travada só pra botar medo caso queiram */}
-            <div className="border border-red-100 rounded-xl p-4 bg-red-50/30 flex items-center justify-between opacity-60 hover:opacity-100 transition-opacity">
-                <div className="flex items-center gap-3">
-                    <Shield className="text-red-400" size={20}/>
-                    <div>
-                        <h4 className="font-bold text-red-900 text-sm">Hard Reset</h4>
-                        <p className="text-[10px] text-red-700">Apenas desenvolvedores</p>
-                    </div>
+              {importSummary ? (
+                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 rounded-xl p-4 space-y-3">
+                  <p className="font-bold text-blue-900 dark:text-blue-200 flex items-center gap-2 text-sm"><FileJson size={16} /> {importSummary.filename}</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Gerado em {importSummary.date}</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {Object.entries(importSummary.counts).map(([key, count]) => (
+                      <div key={key} className="bg-white dark:bg-slate-800 p-2 rounded text-center border border-gray-100 dark:border-slate-700">
+                        <span className="block text-base font-black text-gray-800 dark:text-gray-100">{count}</span>
+                        <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase font-bold">{key}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setImportSummary(null)} className="flex-1 py-2.5 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-200 font-bold rounded-lg text-xs">Cancelar</button>
+                    <button type="button" onClick={confirmRestore} className="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5"><Play size={14} /> Restaurar</button>
+                  </div>
                 </div>
-                <div className="text-xs font-mono text-red-400 bg-white dark:bg-slate-800 px-2 py-1 rounded border border-red-100">Action Blocked</div>
-            </div>
+              ) : restoreLoading ? (
+                <div className="text-center py-6">
+                  <div className="w-12 h-12 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-3" />
+                  <p className="font-bold text-lg text-gray-800 dark:text-gray-100">{restoreProgress}%</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{restoreStatus}</p>
+                </div>
+              ) : (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className={`p-6 border-2 border-dashed ${dragActive ? 'border-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 bg-gray-50/50 dark:bg-slate-900/50'} transition-all text-center rounded-xl cursor-pointer group`}
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
+                >
+                  <input ref={fileInputRef} type="file" className="hidden" accept=".json" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
+                  <UploadCloud size={28} className="mx-auto mb-2 text-gray-400 group-hover:text-orange-500 transition-colors" />
+                  <p className="font-bold text-sm text-gray-700 dark:text-gray-200">Clique ou arraste o JSON aqui</p>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">O arquivo é validado antes de importar.</p>
+                </div>
+              )}
+            </Card>
+          )}
 
+          {!canBackup && (
+            <p className="flex items-start gap-2 text-[11px] text-gray-500 dark:text-gray-400 px-1">
+              <Eye size={13} className="shrink-0 mt-0.5" /> Backup e restauração ficam disponíveis para o proprietário da conta.
+            </p>
+          )}
         </div>
       </div>
     </div>

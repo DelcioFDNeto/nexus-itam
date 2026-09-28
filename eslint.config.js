@@ -32,7 +32,8 @@ export default defineConfig([
     },
   },
   {
-    files: ['scripts/**/*.js'],
+    // Scripts de backend e testes de regras (rodam no Node, contra o emulador).
+    files: ['scripts/**/*.js', 'tests/**/*.js', 'vitest.rules.config.js'],
     languageOptions: {
       globals: globals.node,
     },

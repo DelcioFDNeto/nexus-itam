@@ -38,18 +38,22 @@ export const migrateLegacyAgentToken = async (tenantId) => {
   if (!tenantId) return '';
 
   const current = await getAgentToken(tenantId);
-  if (current) return current;
-
   const settingsSnap = await getDoc(doc(db, 'settings', tenantId));
   const legacyToken = settingsSnap.exists() ? settingsSnap.data().agentToken : null;
-  if (!legacyToken) return '';
 
-  await setDoc(
-    secretRef(tenantId),
-    { agentToken: legacyToken, migratedAt: serverTimestamp() },
-    { merge: true },
-  );
-  await updateDoc(doc(db, 'settings', tenantId), { agentToken: deleteField() });
+  // A copia antiga em /settings e apagada SEMPRE que existir. Antes o retorno
+  // antecipado (cofre ja preenchido) deixava o token para sempre no documento
+  // que qualquer membro da empresa le — inclusive visualizadores.
+  if (legacyToken) {
+    if (!current) {
+      await setDoc(
+        secretRef(tenantId),
+        { agentToken: legacyToken, migratedAt: serverTimestamp() },
+        { merge: true },
+      );
+    }
+    await updateDoc(doc(db, 'settings', tenantId), { agentToken: deleteField() });
+  }
 
-  return legacyToken;
+  return current || legacyToken || '';
 };

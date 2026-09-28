@@ -13,18 +13,18 @@ import { useAuth } from '../contexts/AuthContext';
 const ProjectCard = ({ project, navigate, viewMode, onDelete }) => (
     <div 
         onClick={() => navigate(`/projects/${project.id}`)} 
-        className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-gray-200 dark:border-slate-600 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group flex flex-col h-full"
+        className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-gray-200 dark:border-slate-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group flex flex-col h-full"
     >
         <div className="flex justify-between items-start mb-4">
             <div className="flex gap-3">
-                <img src={project.coverImage || `https://ui-avatars.com/api/?name=${project.name || 'Projeto'}&background=random`} alt="Logo" className="w-10 h-10 rounded-lg object-cover shadow-sm bg-gray-100" />
+                <img src={project.coverImage || `https://ui-avatars.com/api/?name=${project.name || 'Projeto'}&background=random`} alt="Logo" className="w-10 h-10 rounded-lg object-cover shadow-sm bg-gray-100 dark:bg-slate-700" />
                 <div>
                     <h3 className="font-bold text-gray-900 dark:text-white leading-tight group-hover:text-blue-600 transition-colors line-clamp-1">{project.name}</h3>
                     <p className="text-[10px] text-gray-500 dark:text-gray-400 font-mono uppercase mt-0.5">v{project.version}</p>
                 </div>
             </div>
             {viewMode === 'grid' && (
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${project.status === 'Em Andamento' ? 'bg-blue-100 text-blue-700' : project.status === 'Concluído' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${project.status === 'Em Andamento' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' : project.status === 'Concluído' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-300'}`}>
                     {project.status}
                 </span>
             )}
@@ -38,7 +38,7 @@ const ProjectCard = ({ project, navigate, viewMode, onDelete }) => (
                 <div className="flex justify-between text-[10px] font-bold text-gray-400 dark:text-gray-500 mb-1">
                     <span>Progresso</span><span>{project.progress || 0}%</span>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
                     <div className={`h-full rounded-full transition-all duration-500 ${project.status === 'Concluído' ? 'bg-green-500' : 'bg-gradient-to-r from-blue-600 to-purple-600'}`} style={{ width: `${project.progress || 0}%` }}></div>
                 </div>
             </div>
@@ -48,23 +48,23 @@ const ProjectCard = ({ project, navigate, viewMode, onDelete }) => (
                      {/* Círculos dinâmicos da equipe */}
                      {(project.team || []).length > 0 ? (
                          project.team.map((memberName, i) => (
-                             <div key={i} title={memberName} className="w-6 h-6 rounded-full bg-indigo-50 border-2 border-white flex items-center justify-center text-[8px] font-black text-brand uppercase shadow-sm">
+                             <div key={i} title={memberName} className="w-6 h-6 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border-2 border-white dark:border-slate-800 flex items-center justify-center text-[8px] font-black text-brand uppercase shadow-sm">
                                  {memberName.substring(0,2)}
                              </div>
                          ))
                      ) : project.leader ? (
-                         <div title={project.leader} className="w-6 h-6 rounded-full bg-indigo-50 border-2 border-white flex items-center justify-center text-[8px] font-black text-brand uppercase shadow-sm">
+                         <div title={project.leader} className="w-6 h-6 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border-2 border-white dark:border-slate-800 flex items-center justify-center text-[8px] font-black text-brand uppercase shadow-sm">
                              {project.leader.substring(0,2)}
                          </div>
                      ) : (
-                         <div title="Sem Equipe" className="w-6 h-6 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-[8px] font-black text-gray-400 dark:text-gray-500 uppercase shadow-sm">--</div>
+                         <div title="Sem Equipe" className="w-6 h-6 rounded-full bg-gray-100 dark:bg-slate-700 border-2 border-white dark:border-slate-800 flex items-center justify-center text-[8px] font-black text-gray-400 dark:text-gray-500 uppercase shadow-sm">--</div>
                      )}
                  </div>
                  <div className="flex items-center gap-2">
-                      <span className={`text-[10px] font-bold flex items-center gap-1 ${project.deadline ? 'text-gray-600' : 'text-gray-400 dark:text-gray-500'}`}>
+                      <span className={`text-[10px] font-bold flex items-center gap-1 ${project.deadline ? 'text-gray-600 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}>
                          <Calendar size={12}/> {project.deadline ? new Date(project.deadline).toLocaleDateString('pt-BR', {timeZone: 'UTC'}).slice(0,5) : 'S/ Data'}
                       </span>
-                     <button onClick={(e) => onDelete(project.id, e)} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
+                     <button onClick={(e) => onDelete(project.id, e)} className="text-gray-300 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"><Trash2 size={14}/></button>
                 </div>
             </div>
         </div>
@@ -89,15 +89,19 @@ const ProjectsPage = () => {
   const loadProjects = React.useCallback(async () => {
     if (!tenantId) return;
     setLoading(true);
-    const [pData, eData] = await Promise.all([getProjects(tenantId), getEmployees(tenantId)]);
-    setProjects(pData);
-    setEmployees(eData);
-    setLoading(false);
+    try {
+      const [pRes, eRes] = await Promise.allSettled([getProjects(tenantId), getEmployees(tenantId)]);
+      setProjects(pRes.status === 'fulfilled' ? pRes.value || [] : []);
+      setEmployees(eRes.status === 'fulfilled' ? eRes.value || [] : []);
+    } catch (error) {
+      console.error("Erro ao carregar projetos:", error);
+    } finally {
+      setLoading(false);
+    }
   }, [tenantId]);
 
   useEffect(() => {
     if (tenantId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadProjects();
     }
   }, [tenantId, loadProjects]);
@@ -129,9 +133,9 @@ const ProjectsPage = () => {
 
   // Motores de categorização e estilos das colunas do painel tipo Trello
   const KANBAN_COLUMNS = [
-      { id: 'Planejamento', label: 'Planejamento', color: 'bg-gray-100 border-gray-200 dark:border-slate-600' },
-      { id: 'Em Andamento', label: 'Em Execução', color: 'bg-blue-50 border-blue-100' },
-      { id: 'Concluído', label: 'Entregue', color: 'bg-green-50 border-green-100' }
+      { id: 'Planejamento', label: 'Planejamento', color: 'bg-gray-100 dark:bg-slate-800/80 border-gray-200 dark:border-slate-700' },
+      { id: 'Em Andamento', label: 'Em Execução', color: 'bg-blue-50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900/40' },
+      { id: 'Concluído', label: 'Entregue', color: 'bg-green-50 dark:bg-green-950/20 border-green-100 dark:border-green-900/40' }
   ];
 
   const getProjectsByStatus = (status) => {
@@ -158,11 +162,11 @@ const ProjectsPage = () => {
           <p className="text-gray-500 dark:text-gray-400 mt-1">Gerencie iniciativas, prazos e entregas de forma visual.</p>
         </div>
         
-        <div className="flex items-center gap-3 bg-white dark:bg-slate-800 p-1 rounded-xl border border-gray-200 dark:border-slate-600 shadow-sm">
-            <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-black text-white shadow' : 'text-gray-400 dark:text-gray-500 hover:text-black'}`}><LayoutGrid size={20}/></button>
-            <button onClick={() => setViewMode('kanban')} className={`p-2 rounded-lg transition-all ${viewMode === 'kanban' ? 'bg-black text-white shadow' : 'text-gray-400 dark:text-gray-500 hover:text-black'}`}><Kanban size={20}/></button>
-            <div className="w-[1px] h-6 bg-gray-200 mx-1"></div>
-            <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 flex items-center gap-2 text-sm shadow-lg shadow-blue-200">
+        <div className="flex items-center gap-3 bg-white dark:bg-slate-800 p-1 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
+            <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-black text-white dark:bg-brand shadow' : 'text-gray-400 dark:text-gray-400 hover:text-black dark:hover:text-white'}`}><LayoutGrid size={20}/></button>
+            <button onClick={() => setViewMode('kanban')} className={`p-2 rounded-lg transition-all ${viewMode === 'kanban' ? 'bg-black text-white dark:bg-brand shadow' : 'text-gray-400 dark:text-gray-400 hover:text-black dark:hover:text-white'}`}><Kanban size={20}/></button>
+            <div className="w-[1px] h-6 bg-gray-200 dark:bg-slate-700 mx-1"></div>
+            <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 dark:bg-brand hover:bg-blue-700 dark:hover:bg-brand/90 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm shadow-lg shadow-blue-200 dark:shadow-none transition-all">
                 <Plus size={18} /> Novo Projeto
             </button>
         </div>
@@ -170,7 +174,7 @@ const ProjectsPage = () => {
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
-             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black dark:border-white"></div>
         </div>
       ) : (
         <>
@@ -179,7 +183,7 @@ const ProjectsPage = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {projects.map(project => <ProjectCard key={project.id} project={project} navigate={navigate} viewMode={viewMode} onDelete={handleDelete} />)}
                     {projects.length === 0 && (
-                        <div className="col-span-full text-center py-20 text-gray-400 dark:text-gray-500 border-2 border-dashed border-gray-200 dark:border-slate-600 rounded-3xl">
+                        <div className="col-span-full text-center py-20 text-gray-400 dark:text-gray-500 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-3xl">
                             <FolderGit2 size={48} className="mx-auto mb-4 opacity-20"/>
                             <p>Nenhum projeto encontrado. Crie o primeiro!</p>
                         </div>
@@ -189,8 +193,8 @@ const ProjectsPage = () => {
                 // Layout Dinâmico: Projetos isolados em raias organizadas arrastáveis (ilusão de arrasto) pelo estágio
                 <div className="flex gap-6 overflow-x-auto pb-4 items-start min-h-[600px]">
                     {KANBAN_COLUMNS.map(col => (
-                        <div key={col.id} className="min-w-[320px] w-[350px] flex-shrink-0 flex flex-col bg-gray-50/50 rounded-2xl border border-gray-200 dark:border-slate-600/60 max-h-full">
-                            <div className={`p-4 border-b ${col.color.split(' ')[1]} rounded-t-2xl flex justify-between items-center sticky top-0 bg-white/50 backdrop-blur-sm z-10`}>
+                        <div key={col.id} className="min-w-[320px] w-[350px] flex-shrink-0 flex flex-col bg-gray-50/50 dark:bg-slate-900/50 rounded-2xl border border-gray-200 dark:border-slate-700 max-h-full">
+                            <div className={`p-4 border-b ${col.color.split(' ')[1]} rounded-t-2xl flex justify-between items-center sticky top-0 bg-white/50 dark:bg-slate-800/60 backdrop-blur-sm z-10`}>
                                 <h3 className="font-bold text-gray-700 dark:text-gray-200">{col.label}</h3>
                                 <span className="bg-white dark:bg-slate-800 px-2 py-0.5 rounded-full text-xs font-bold border border-gray-200 dark:border-slate-600 text-gray-500 dark:text-gray-400 shadow-sm">
                                     {getProjectsByStatus(col.id).length}
@@ -203,7 +207,7 @@ const ProjectsPage = () => {
                                     </div>
                                 ))}
                                 {getProjectsByStatus(col.id).length === 0 && (
-                                    <div className="h-32 flex items-center justify-center border-2 border-dashed border-gray-200 dark:border-slate-600 rounded-xl">
+                                    <div className="h-32 flex items-center justify-center border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-xl">
                                         <p className="text-xs text-gray-400 dark:text-gray-500 font-bold uppercase">Vazio</p>
                                     </div>
                                 )}
@@ -218,17 +222,17 @@ const ProjectsPage = () => {
       {/* Janela pop-up minimalista acionada unicamente para batizar um projeto base no ar */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg p-8 animate-in zoom-in-95">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg p-8 animate-in zoom-in-95 border border-transparent dark:border-slate-700">
             <h2 className="text-2xl font-black text-gray-900 dark:text-white mb-6">Iniciar Novo Projeto</h2>
             <form onSubmit={handleCreate} className="space-y-4">
-              <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 border rounded-xl font-bold" placeholder="Nome do Projeto" />
-              <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-3 border rounded-xl" rows="3" placeholder="Descrição macro..."></textarea>
+              <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl font-bold outline-none focus:border-black dark:focus:border-brand" placeholder="Nome do Projeto" />
+              <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-3 border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl outline-none focus:border-black dark:focus:border-brand" rows="3" placeholder="Descrição macro..."></textarea>
               <div className="grid grid-cols-2 gap-4">
-                  <input value={formData.version} onChange={e => setFormData({...formData, version: e.target.value})} className="w-full p-3 border rounded-xl" placeholder="Versão (1.0)" />
-                  <input type="date" value={formData.deadline} onChange={e => setFormData({...formData, deadline: e.target.value})} className="w-full p-3 border rounded-xl text-gray-600" title="Data Limite" />
+                  <input value={formData.version} onChange={e => setFormData({...formData, version: e.target.value})} className="w-full p-3 border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl outline-none focus:border-black dark:focus:border-brand font-mono" placeholder="Versão (1.0)" />
+                  <input type="date" value={formData.deadline} onChange={e => setFormData({...formData, deadline: e.target.value})} className="w-full p-3 border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-700 dark:text-gray-200 rounded-xl outline-none focus:border-black dark:focus:border-brand" title="Data Limite" />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                  <select value={formData.leader} onChange={e => setFormData({...formData, leader: e.target.value})} className="w-full p-3 border rounded-xl bg-white dark:bg-slate-800 text-gray-600">
+                  <select value={formData.leader} onChange={e => setFormData({...formData, leader: e.target.value})} className="w-full p-3 border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-700 dark:text-gray-200 rounded-xl outline-none focus:border-black dark:focus:border-brand cursor-pointer">
                       <option value="">Líder do Projeto...</option>
                       {employees.map(emp => <option key={emp.id} value={emp.name}>{emp.name}</option>)}
                   </select>
@@ -237,17 +241,17 @@ const ProjectsPage = () => {
                         multiple 
                         value={formData.team} 
                         onChange={e => setFormData({...formData, team: Array.from(e.target.selectedOptions, option => option.value)})} 
-                        className="w-full p-3 border rounded-xl bg-white dark:bg-slate-800 text-xs h-[50px] custom-scrollbar focus:h-[120px] absolute z-20 outline-none transition-all shadow-sm cursor-pointer"
+                        className="w-full p-3 border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-700 dark:text-gray-200 text-xs rounded-xl h-[50px] custom-scrollbar focus:h-[120px] absolute z-20 outline-none transition-all shadow-sm cursor-pointer"
                         title="Segure CTRL para selecionar múltiplos"
                      >
                          {employees.map(emp => <option key={`t-${emp.id}`} value={emp.name}>{emp.name}</option>)}
                      </select>
-                     <div className="absolute top-[-8px] text-[10px] left-3 bg-white dark:bg-slate-800 px-1 font-bold text-brand z-30">Equipe Técnica (Segure CTRL)</div>
+                     <div className="absolute top-[-8px] text-[10px] left-3 bg-white dark:bg-slate-900 px-1 font-bold text-brand z-30">Equipe Técnica (Segure CTRL)</div>
                   </div>
               </div>
               <div className="flex gap-2 pt-12">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-gray-100 rounded-xl font-bold hover:bg-gray-200">Cancelar</button>
-                <button type="submit" className="flex-1 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-900 shadow-md">Criar Projeto</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors">Cancelar</button>
+                <button type="submit" className="flex-1 py-3 bg-black text-white dark:bg-brand dark:hover:bg-brand/90 rounded-xl font-bold hover:bg-gray-900 shadow-md transition-colors">Criar Projeto</button>
               </div>
             </form>
           </div>

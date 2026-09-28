@@ -4,6 +4,10 @@ import React from 'react';
 /**
  * Antes, qualquer excecao de render derrubava o app inteiro para uma tela branca
  * sem nenhuma pista. Aqui a falha fica contida e o usuario consegue se recuperar.
+ *
+ * `resetKey`: quando muda (ex.: a rota atual), o erro e descartado. As rotas
+ * reaproveitam a mesma instancia do boundary; sem isto, depois de uma falha,
+ * navegar pelo menu continuava exibindo "Algo quebrou nesta tela".
  */
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -17,6 +21,12 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     console.error('Falha de renderizacao:', error, info?.componentStack);
+  }
+
+  componentDidUpdate(prevProps) {
+    if (this.state.error && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
   }
 
   handleReset = () => {
@@ -41,7 +51,7 @@ class ErrorBoundary extends React.Component {
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <button
             onClick={this.handleReset}
-            className="rounded-xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-widest text-white hover:bg-slate-800"
+            className="rounded-xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-widest text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900"
           >
             Tentar novamente
           </button>

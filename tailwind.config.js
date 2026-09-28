@@ -7,11 +7,14 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
-      // ADICIONE ISSO AQUI:
       colors: {
+        // Cor da marca da empresa (whitelabel), escrita pelo ThemeContext.
+        // Em canais RGB + <alpha-value>: so assim o Tailwind gera as variacoes
+        // com opacidade (bg-brand/10, shadow-brand/30...). Com var() puro essas
+        // classes simplesmente nao existiam no CSS final.
         brand: {
-          DEFAULT: 'var(--color-brand, #4F46E5)',
-          dark: 'var(--color-brand-dark, #4338CA)',
+          DEFAULT: 'rgb(var(--color-brand-rgb, 79 70 229) / <alpha-value>)',
+          dark: 'rgb(var(--color-brand-dark-rgb, 67 56 202) / <alpha-value>)',
         }
       },
       keyframes: {

@@ -12,6 +12,7 @@ import Logo from './Logo';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { can, isSuperadmin, ROLE_LABELS } from '../utils/permissions';
+import { hasFeature, isModuleEnabled } from '../utils/entitlements';
 
 const SIDEBAR_KEY = 'sidebar_collapsed';
 
@@ -58,6 +59,21 @@ const Layout = ({ children }) => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
+  // Identidade da empresa tambem na aba do navegador (e no icone, com whitelabel).
+  const whitelabel = !master && hasFeature(currentUser, 'whitelabel');
+  const companyName = currentUser?.companyName;
+  const logoUrl = currentUser?.logoUrl;
+  useEffect(() => {
+    if (master) document.title = 'Nexus Master · Console';
+    else if (companyName && companyName !== 'Nexus ITAM') document.title = whitelabel ? companyName : `${companyName} · Nexus ITAM`;
+    else document.title = 'Nexus ITAM — Gestão Inteligente de Ativos';
+
+    const icon = document.querySelector("link[rel='icon'][type='image/webp']") || document.querySelector("link[rel='icon']");
+    if (!icon) return;
+    if (!icon.dataset.defaultHref) icon.dataset.defaultHref = icon.getAttribute('href');
+    icon.setAttribute('href', whitelabel && logoUrl ? logoUrl : icon.dataset.defaultHref);
+  }, [master, whitelabel, companyName, logoUrl]);
+
   // Atalhos de teclado (desktop)
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -65,7 +81,7 @@ const Layout = ({ children }) => {
         e.preventDefault();
         setIsSearchOpen(true);
       }
-      if (e.altKey && e.key.toLowerCase() === 'n' && can(currentUser, 'assets:write')) {
+      if (e.altKey && e.key.toLowerCase() === 'n' && !isSuperadmin(currentUser) && can(currentUser, 'assets:write')) {
         e.preventDefault();
         navigate('/assets/new');
       }
@@ -90,10 +106,12 @@ const Layout = ({ children }) => {
       { to: '/dashboard', icon: Home, label: 'Inicio' },
       { to: '/assets', icon: Box, label: 'Ativos' },
       can(currentUser, 'assets:write') ? { to: '/assets/new', icon: Plus, label: 'Novo', primary: true } : null,
-      can(currentUser, 'audit:run') ? { to: '/audit', icon: QrCode, label: 'Auditoria' } : null,
+      can(currentUser, 'audit:run') && isModuleEnabled(currentUser, 'audit') ? { to: '/audit', icon: QrCode, label: 'Auditoria' } : null,
       can(currentUser, 'settings:read')
         ? { to: '/settings', icon: Settings, label: 'Ajustes' }
-        : { to: '/tasks', icon: Layers, label: 'Tarefas' },
+        : can(currentUser, 'tasks:write') && isModuleEnabled(currentUser, 'projects')
+          ? { to: '/tasks', icon: Layers, label: 'Tarefas' }
+          : null,
     ].filter(Boolean);
   }, [master, currentUser]);
 

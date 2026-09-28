@@ -1,33 +1,37 @@
 // src/services/employeeService.js
 import { db } from './firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where, collectionGroup, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, collectionGroup, serverTimestamp } from 'firebase/firestore';
 
 const empCollection = collection(db, 'employees');
 const secCollection = collection(db, 'sectors');
+
+const sortByName = (list) =>
+  [...list].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }));
 
 // --- COLABORADORES ---
 export const getEmployees = async (tenantId) => {
   if (!tenantId) return [];
   const q = query(
     empCollection, 
-    where('tenantId', '==', tenantId),
-    orderBy('name', 'asc')
+    where('tenantId', '==', tenantId)
   );
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  return sortByName(list);
 };
 
 export const getGlobalEmployees = async () => {
-  const q = query(collectionGroup(db, 'employees'), orderBy('name', 'asc'));
+  const q = query(collectionGroup(db, 'employees'));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  return sortByName(list);
 };
 
 export const addEmployee = async (employee) => {
   if (!employee.tenantId) {
     throw new Error("Não é possível cadastrar um colaborador sem especificar o inquilino (tenantId).");
   }
-  await addDoc(empCollection, {
+  return await addDoc(empCollection, {
     ...employee,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
@@ -52,18 +56,25 @@ export const getSectors = async (tenantId) => {
   if (!tenantId) return [];
   const q = query(
     secCollection, 
-    where('tenantId', '==', tenantId),
-    orderBy('name', 'asc')
+    where('tenantId', '==', tenantId)
   );
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  return sortByName(list);
+};
+
+export const getGlobalSectors = async () => {
+  const q = query(collectionGroup(db, 'sectors'));
+  const snapshot = await getDocs(q);
+  const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  return sortByName(list);
 };
 
 export const addSector = async (sector) => {
   if (!sector.tenantId) {
     throw new Error("Não é possível cadastrar um setor sem especificar o inquilino (tenantId).");
   }
-  await addDoc(secCollection, {
+  return await addDoc(secCollection, {
     ...sector,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()

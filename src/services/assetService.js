@@ -5,15 +5,13 @@ import {
   getDocs, 
   getDoc, 
   doc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
   query, 
   orderBy, 
   where,
   limit,
   serverTimestamp,
-  collectionGroup
+  collectionGroup,
+  writeBatch
 } from 'firebase/firestore';
 
 const assetsCollection = collection(db, 'assets');
@@ -104,20 +102,25 @@ export const getRecentActivity = async (tenantId, limitCount = 8) => {
 
 // --- ESCRITA (CREATE / UPDATE / DELETE) ---
 
-// Cria um novo ativo e registra na timeline
+// Cria um novo ativo e registra na timeline atomicamente
 export const createAsset = async (assetData) => {
   if (!assetData.tenantId) {
     throw new Error("Não é possível cadastrar um ativo sem especificar o inquilino (tenantId).");
   }
-  const docRef = await addDoc(assetsCollection, {
+
+  const batch = writeBatch(db);
+  const assetRef = doc(assetsCollection);
+  const historyRef = doc(historyCollection);
+
+  batch.set(assetRef, {
     ...assetData,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
 
   // Log de Criação
-  await addDoc(historyCollection, {
-    assetId: docRef.id,
+  batch.set(historyRef, {
+    assetId: assetRef.id,
     tenantId: assetData.tenantId,
     type: 'creation',
     action: 'Ativo Criado',
@@ -126,49 +129,68 @@ export const createAsset = async (assetData) => {
     details: 'Cadastro inicial no sistema.'
   });
 
-  return docRef;
+  await batch.commit();
+  return assetRef;
 };
 
-// Atualiza dados e registra na timeline com detalhes personalizados
+/**
+ * tenantId para o registro na timeline. As regras recusam historico sem
+ * tenantId: chamadas que esqueciam de passa-lo (ex.: alteracao de status em
+ * massa) atualizavam o ativo e em seguida falhavam no log — a tela acusava
+ * erro e a trilha de auditoria ficava sem a alteracao. Na falta, le do ativo.
+ */
+const resolveTenantId = async (assetId, ...candidates) => {
+  const known = candidates.find((value) => typeof value === 'string' && value);
+  if (known) return known;
+  const snap = await getDoc(doc(db, 'assets', assetId));
+  return snap.exists() ? snap.data().tenantId || null : null;
+};
+
+// Atualiza dados e registra na timeline com detalhes personalizados atomicamente
 export const updateAsset = async (id, assetData, historyOptions = null) => {
   const docRef = doc(db, 'assets', id);
+  const tenantId = await resolveTenantId(id, assetData?.tenantId, historyOptions?.tenantId);
+  const batch = writeBatch(db);
+  const historyRef = doc(historyCollection);
   
-  await updateDoc(docRef, {
+  batch.update(docRef, {
     ...assetData,
     updatedAt: serverTimestamp()
   });
 
   // Log de Edição
-  if (historyOptions) {
-      await addDoc(historyCollection, {
-        assetId: id,
-        tenantId: assetData.tenantId || historyOptions.tenantId,
-        type: historyOptions.type || 'update',
-        action: historyOptions.action || 'Dados Editados',
-        date: serverTimestamp(),
-        user: historyOptions.user || 'Sistema',
-        details: historyOptions.details || 'Atualização realizada.'
-      });
-  } else {
-      await addDoc(historyCollection, {
-        assetId: id,
-        tenantId: assetData.tenantId,
-        type: 'update',
-        action: 'Dados Editados',
-        date: serverTimestamp(),
-        user: 'Sistema',
-        details: 'Informações ou especificações atualizadas.'
-      });
-  }
+  const historyPayload = historyOptions ? {
+    assetId: id,
+    tenantId,
+    type: historyOptions.type || 'update',
+    action: historyOptions.action || 'Dados Editados',
+    date: serverTimestamp(),
+    user: historyOptions.user || 'Sistema',
+    details: historyOptions.details || 'Atualização realizada.'
+  } : {
+    assetId: id,
+    tenantId,
+    type: 'update',
+    action: 'Dados Editados',
+    date: serverTimestamp(),
+    user: 'Sistema',
+    details: 'Informações ou especificações atualizadas.'
+  };
+
+  batch.set(historyRef, historyPayload);
+  await batch.commit();
 };
 
 export const deleteAsset = async (id, tenantId, user = 'Sistema') => {
   const assetRef = doc(db, 'assets', id);
-  await deleteDoc(assetRef);
+  const batch = writeBatch(db);
+
+  batch.delete(assetRef);
   
   // Log de Exclusão
   if (tenantId) {
-    await addDoc(historyCollection, {
+    const historyRef = doc(historyCollection);
+    batch.set(historyRef, {
       assetId: id,
       tenantId: tenantId,
       type: 'deletion',
@@ -178,14 +200,18 @@ export const deleteAsset = async (id, tenantId, user = 'Sistema') => {
       details: 'Registro removido permanentemente do banco de dados.'
     });
   }
+
+  await batch.commit();
   return true;
 };
 
 // --- AÇÕES ESPECÍFICAS (TIMELINE RICA) ---
 
-// Realiza a movimentação
+// Realiza a movimentação atomicamente
 export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema') => {
   const assetRef = doc(db, 'assets', assetId);
+  const batch = writeBatch(db);
+  const historyRef = doc(historyCollection);
 
   // 1. Atualiza o Ativo
   const updateData = {
@@ -196,7 +222,7 @@ export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema'
     updatedAt: serverTimestamp()
   };
 
-  await updateDoc(assetRef, updateData);
+  batch.update(assetRef, updateData);
 
   // 2. Grava na Timeline Global
   const historyLog = {
@@ -215,14 +241,15 @@ export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema'
     user: user 
   };
 
-  await addDoc(historyCollection, historyLog);
+  batch.set(historyRef, historyLog);
+  await batch.commit();
   return true;
 };
 
 // --- BAIXA PATRIMONIAL ---
 
 /**
- * Retira o ativo do patrimonio sem apagar o registro.
+ * Retira o ativo do patrimonio sem apagar o registro atomicamente.
  *
  * Antes so existia `deleteAsset`: aposentar um equipamento significava excluir
  * o documento e perder junto toda a timeline — movimentacoes, manutencoes e
@@ -241,8 +268,11 @@ export const writeOffAsset = async (assetId, currentData, writeOff, user = 'Sist
   if (!tenantId) throw new Error('Ativo sem inquilino: baixa nao registrada.');
 
   const status = writeOff.status || 'Baixado';
+  const assetRef = doc(db, 'assets', assetId);
+  const batch = writeBatch(db);
+  const historyRef = doc(historyCollection);
 
-  await updateDoc(doc(db, 'assets', assetId), {
+  batch.update(assetRef, {
     status,
     writeOffDate: writeOff.date,
     writeOffReason: writeOff.reason,
@@ -255,7 +285,7 @@ export const writeOffAsset = async (assetId, currentData, writeOff, user = 'Sist
     updatedAt: serverTimestamp()
   });
 
-  await addDoc(historyCollection, {
+  batch.set(historyRef, {
     assetId,
     tenantId,
     type: 'baixa',
@@ -273,15 +303,20 @@ export const writeOffAsset = async (assetId, currentData, writeOff, user = 'Sist
     ].filter(Boolean).join(' | ')
   });
 
+  await batch.commit();
   return true;
 };
 
-/** Desfaz a baixa, devolvendo o ativo ao inventario ativo. */
+/** Desfaz a baixa, devolvendo o ativo ao inventario ativo atomicamente. */
 export const reactivateAsset = async (assetId, currentData, user = 'Sistema', newStatus = 'Disponível') => {
   const tenantId = currentData?.tenantId;
   if (!tenantId) throw new Error('Ativo sem inquilino: reativacao nao registrada.');
 
-  await updateDoc(doc(db, 'assets', assetId), {
+  const assetRef = doc(db, 'assets', assetId);
+  const batch = writeBatch(db);
+  const historyRef = doc(historyCollection);
+
+  batch.update(assetRef, {
     status: newStatus,
     writeOffDate: '',
     writeOffReason: '',
@@ -292,7 +327,7 @@ export const reactivateAsset = async (assetId, currentData, user = 'Sistema', ne
     updatedAt: serverTimestamp()
   });
 
-  await addDoc(historyCollection, {
+  batch.set(historyRef, {
     assetId,
     tenantId,
     type: 'reativacao',
@@ -304,15 +339,19 @@ export const reactivateAsset = async (assetId, currentData, user = 'Sistema', ne
     details: `Ativo devolvido ao inventário como "${newStatus}". Baixa anterior: ${currentData.writeOffReason || 'não informada'}.`
   });
 
+  await batch.commit();
   return true;
 };
 
-// Registra manutenção
+// Registra manutenção atomicamente
 export const registerMaintenance = async (assetId, maintenanceData, user = 'Sistema') => {
   const assetRef = doc(db, 'assets', assetId);
+  const tenantId = await resolveTenantId(assetId, maintenanceData?.tenantId);
+  const batch = writeBatch(db);
+  const historyRef = doc(historyCollection);
 
   // 1. Atualiza status do ativo
-  await updateDoc(assetRef, {
+  batch.update(assetRef, {
     status: 'Manutenção',
     updatedAt: serverTimestamp()
   });
@@ -320,7 +359,7 @@ export const registerMaintenance = async (assetId, maintenanceData, user = 'Sist
   // 2. Grava na Timeline Global
   const historyLog = {
     assetId: assetId,
-    tenantId: maintenanceData.tenantId,
+    tenantId,
     type: 'manutencao',
     action: 'Manutenção Iniciada',
     date: serverTimestamp(),
@@ -333,6 +372,7 @@ export const registerMaintenance = async (assetId, maintenanceData, user = 'Sist
     user: user
   };
 
-  await addDoc(historyCollection, historyLog);
+  batch.set(historyRef, historyLog);
+  await batch.commit();
   return true;
 };

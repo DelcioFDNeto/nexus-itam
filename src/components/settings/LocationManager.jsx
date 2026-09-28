@@ -8,7 +8,6 @@ import {
   groupLocations,
   updateLocation,
   seedLocations,
-  LEGACY_LOCATIONS,
   STARTER_LOCATIONS,
 } from '../../services/locationService';
 import { useLocations } from '../../hooks/useLocations';
@@ -17,9 +16,9 @@ import { useLocations } from '../../hooks/useLocations';
  * CRUD de filiais e locais fisicos do inquilino.
  *
  * Substitui a lista fixa que estava escrita no JSX de quatro telas com as
- * filiais da Shineray — que toda empresa nova do SaaS herdava.
+ * filiais da primeira cliente — que toda empresa nova do SaaS herdava.
  */
-const LocationManager = () => {
+const LocationManager = ({ showHeader = true }) => {
   const { locations, loading, reload, tenantId } = useLocations();
   const [draft, setDraft] = useState({ name: '', region: '' });
   const [busy, setBusy] = useState(false);
@@ -27,7 +26,7 @@ const LocationManager = () => {
   const groups = groupLocations(locations);
 
   const handleAdd = async (e) => {
-    e.preventDefault();
+    e?.preventDefault();
     if (!draft.name.trim()) return;
     setBusy(true);
     try {
@@ -83,33 +82,45 @@ const LocationManager = () => {
 
   return (
     <div className="rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <MapPin size={16} className="text-brand" />
-        <h3 className="text-xs font-black text-gray-700 dark:text-gray-200 uppercase">Filiais & Locais</h3>
-        <span className="ml-auto text-[10px] font-bold text-gray-400 tabular-nums">{locations.length}</span>
-      </div>
+      {showHeader && (
+        <div className="flex items-center gap-2">
+          <MapPin size={16} className="text-brand" />
+          <h3 className="text-xs font-black text-gray-700 dark:text-gray-200 uppercase">Filiais & Locais</h3>
+          <span className="ml-auto text-[10px] font-bold text-gray-400 tabular-nums">{locations.length}</span>
+        </div>
+      )}
 
-      <form onSubmit={handleAdd} className="flex flex-wrap gap-2">
+      {/* div, e nao <form>: este bloco vive dentro do formulario de
+          Configuracoes, e o submit do form aninhado disparava tambem o
+          "Salvar Configuracoes" da pagina inteira. */}
+      <div className="flex flex-wrap gap-2">
         <input
           value={draft.name}
           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleAdd(e);
+          }}
           placeholder="Nome do local (ex: Matriz)"
           className="flex-1 min-w-[150px] p-2 border dark:border-slate-700 dark:bg-slate-800 rounded-lg text-xs font-bold text-gray-800 dark:text-gray-100 focus:border-brand focus:outline-none"
         />
         <input
           value={draft.region}
           onChange={(e) => setDraft({ ...draft, region: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleAdd(e);
+          }}
           placeholder="Região (opcional)"
           className="w-36 p-2 border dark:border-slate-700 dark:bg-slate-800 rounded-lg text-xs text-gray-600 dark:text-gray-300 focus:border-brand focus:outline-none"
         />
         <button
-          type="submit"
+          type="button"
+          onClick={handleAdd}
           disabled={busy || !draft.name.trim()}
           className="flex items-center gap-1 bg-brand text-white px-3 py-2 rounded-lg text-[10px] font-black uppercase disabled:opacity-50"
         >
           <Plus size={12} /> Adicionar
         </button>
-      </form>
+      </div>
 
       {loading ? (
         <p className="flex items-center justify-center gap-2 py-4 text-xs text-gray-400">
@@ -128,14 +139,6 @@ const LocationManager = () => {
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-[10px] font-black uppercase text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-50"
             >
               <Download size={12} /> Locais de exemplo
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSeed(LEGACY_LOCATIONS, 'Shineray')}
-              disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-[10px] font-black uppercase text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-50"
-            >
-              <Download size={12} /> Filiais legadas
             </button>
           </div>
         </div>

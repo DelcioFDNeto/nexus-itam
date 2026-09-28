@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../services/firebase';
 import { collection, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import { assertWithinLimit } from '../services/tenantService';
 import { 
   UploadCloud, FileSpreadsheet, FileJson, AlertTriangle, Check, ArrowLeft, Save, 
   Users, Server, Layers, FolderGit2, Download, Database, CheckCircle, Info, X, Play
@@ -25,7 +26,7 @@ const IMPORT_SCHEMAS = {
       status: row['Status'] || 'Disponível',
       location: row['Local'] || 'Matriz',
       serialNumber: row['Serial'] || '',
-      owner: row['Usuario'] || '',
+      assignedTo: row['Usuario'] || '',
       createdAt: serverTimestamp()
     })
   },
@@ -126,6 +127,7 @@ const ImportData = () => {
   const [selectedType, setSelectedType] = useState('assets');
   const [fileAnalysis, setFileAnalysis] = useState(null); // { filename, totalRows, missingCols: [], sample: [] }
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(null); // { done, total }
   const [error, setError] = useState('');
   const [notification, setNotification] = useState(null); 
   const [dragActive, setDragActive] = useState(false);
@@ -239,41 +241,56 @@ const ImportData = () => {
     }
     
     setLoading(true);
+    setError('');
+    let written = 0;
     try {
-      const batch = writeBatch(db);
       const collectionRef = collection(db, currentSchema.collection);
-      
+
       // Converte as colunas irregulares do Excel para a formatação limpa baseada nas regras declaradas no topo do arquivo e injeta o tenantId
       const formattedData = fileAnalysis.rawData.map(row => ({
         ...currentSchema.transform(row),
         tenantId
       }));
-      
-      // Limite cravado do Firebase Firestore para transações em lote visando não explodir a nuvem
-      // Pega somente os primeiros registros por segurança; em carga maciça de produção usaríamos o modelo do backupService
-      const chunk = formattedData.slice(0, 490); 
-      
-      chunk.forEach(item => {
-        const docRef = doc(collectionRef); // Gera um ID alfanumérico fresco para identificar a linha na tabela
-        batch.set(docRef, item);
+
+      // Ativos contam no limite do plano da empresa.
+      if (currentSchema.collection === 'assets') {
+        await assertWithinLimit(currentUser, 'assets', formattedData.length);
+      }
+
+      // Lotes de 400 gravações (limite do Firestore: 500 por batch). A versão
+      // anterior gravava só as primeiras 490 linhas, descartava o resto em
+      // silêncio e ainda anunciava "importado com sucesso".
+      const CHUNK = 400;
+      setProgress({ done: 0, total: formattedData.length });
+      for (let i = 0; i < formattedData.length; i += CHUNK) {
+        const batch = writeBatch(db);
+        formattedData.slice(i, i + CHUNK).forEach(item => {
+          batch.set(doc(collectionRef), item);
+        });
+        await batch.commit();
+        written = Math.min(i + CHUNK, formattedData.length);
+        setProgress({ done: written, total: formattedData.length });
+      }
+
+      setNotification({
+          type: 'success',
+          message: `${formattedData.length} registros importados com sucesso em '${currentSchema.label}'!`
       });
 
-      await batch.commit();
-      
-      setNotification({ 
-          type: 'success', 
-          message: `${chunk.length} registros importados com sucesso em '${currentSchema.collection}'!` 
-      });
-      
       setFileAnalysis(null); // Esconde a janela de verificação para devolver a tela limpa
 
       setTimeout(() => setNotification(null), 5000);
 
     } catch (err) {
       console.error(err);
-      setError("Erro ao gravar no banco de dados. " + err.message);
+      setError(
+        (err?.message?.startsWith('Limite') || err?.message?.startsWith('O plano'))
+          ? err.message
+          : `Erro ao gravar no banco de dados${written ? ` (${written} registros já foram gravados)` : ''}. ${err.message}`
+      );
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   };
 
@@ -386,13 +403,13 @@ const ImportData = () => {
                                 </div>
 
                                 <div className="flex justify-end gap-3">
-                                    <button onClick={() => setFileAnalysis(null)} className="px-6 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200">Cancelar</button>
+                                    <button onClick={() => setFileAnalysis(null)} disabled={loading} className="px-6 py-3 bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-200 font-bold rounded-xl hover:bg-gray-200 dark:hover:bg-slate-600 disabled:opacity-50">Cancelar</button>
                                     <button 
                                         onClick={confirmImport} 
                                         disabled={loading}
-                                        className="px-6 py-3 bg-black text-white font-bold rounded-xl hover:bg-gray-800 shadow-lg flex items-center gap-2"
+                                        className="px-6 py-3 bg-black text-white dark:bg-white dark:text-slate-900 font-bold rounded-xl hover:bg-gray-800 shadow-lg flex items-center gap-2 disabled:opacity-60"
                                     >
-                                        {loading ? 'Importando...' : <><Play size={18} fill="currentColor"/> Confirmar Importação</>}
+                                        {loading ? (progress ? `Importando ${progress.done}/${progress.total}...` : 'Importando...') : <><Play size={18} fill="currentColor"/> Confirmar Importação</>}
                                     </button>
                                 </div>
                               </>

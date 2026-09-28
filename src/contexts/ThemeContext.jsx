@@ -1,6 +1,7 @@
 // src/contexts/ThemeContext.jsx
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { safeCssColor } from '../utils/sanitize';
+import { darken, rgbChannels } from '../utils/color';
 import { useAuth } from './AuthContext';
 
 const ThemeContext = createContext();
@@ -39,18 +40,6 @@ const writeStorage = (key, value) => {
   } catch {
     /* apenas nao persiste */
   }
-};
-
-/** Escurece um hex para gerar o tom de hover/pressed a partir de uma cor unica. */
-const darken = (hex, amount = 0.14) => {
-  const clean = hex.replace('#', '');
-  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean;
-  const n = parseInt(full.slice(0, 6), 16);
-  const scale = (v) => Math.max(0, Math.round(v * (1 - amount)));
-  const r = scale((n >> 16) & 255);
-  const g = scale((n >> 8) & 255);
-  const b = scale(n & 255);
-  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
 };
 
 const prefersDark = () =>
@@ -123,12 +112,18 @@ export const ThemeProvider = ({ children }) => {
     // Precedencia: escolha pessoal > marca da empresa > padrao Nexus.
     // Antes, ThemeContext e AuthContext gravavam --color-brand de forma
     // independente e o ultimo a rodar vencia, de forma imprevisivel.
-    const brand = accentColor
+    const candidate = accentColor
       ? ACCENTS[accentColor]
       : safeCssColor(tenantBrand) || DEFAULT_BRAND;
+    // Cor que passa no sanitizador mas nao e interpretavel cai no padrao.
+    const brand = rgbChannels(candidate) ? candidate : DEFAULT_BRAND;
+    const brandDark = darken(brand);
 
     root.style.setProperty('--color-brand', brand);
-    root.style.setProperty('--color-brand-dark', darken(brand));
+    root.style.setProperty('--color-brand-dark', brandDark);
+    // Canais consumidos pelo Tailwind (bg-brand, bg-brand/10, shadow-brand/30...).
+    root.style.setProperty('--color-brand-rgb', rgbChannels(brand));
+    root.style.setProperty('--color-brand-dark-rgb', rgbChannels(brandDark));
   }, [accentColor, tenantBrand]);
 
   const value = useMemo(

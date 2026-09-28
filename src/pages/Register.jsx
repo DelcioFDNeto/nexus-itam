@@ -38,24 +38,32 @@ const Register = () => {
     if (password !== confirmPassword) {
       return setError('As senhas digitadas não coincidem.');
     }
-    if (password.length < 6) {
-      return setError('A senha deve conter no mínimo 6 caracteres.');
+    if (password.length < 8) {
+      return setError('A senha deve conter no mínimo 8 caracteres.');
+    }
+    if (!companyName.trim() || !adminName.trim()) {
+      return setError('Informe o nome da empresa e do administrador.');
     }
 
     try {
       setLoading(true);
+      // registerTenant so resolve depois que o perfil ja esta ativo na sessao:
+      // o painel abre direto, sem a tela de "sem empresa vinculada".
       await registerTenant(companyName, adminName, email, password);
       setSuccess(true);
       setTimeout(() => {
-        navigate('/dashboard');
-      }, 3000);
+        navigate('/dashboard', { replace: true });
+      }, 1800);
     } catch (err) {
       console.error(err);
-      if (err.code === 'auth/email-already-in-use') {
-        setError('Este endereço de e-mail já está vinculado a outra corporação.');
-      } else {
-        setError('Falha de sistema ao provisionar nova instância. Tente novamente.');
-      }
+      const messages = {
+        'auth/email-already-in-use': 'Este e-mail já possui uma conta. Faça login ou use outro endereço.',
+        'auth/invalid-email': 'E-mail inválido.',
+        'auth/weak-password': 'Senha fraca: use pelo menos 8 caracteres, com letras e números.',
+        'auth/network-request-failed': 'Sem conexão com o servidor. Verifique sua internet.',
+        'auth/too-many-requests': 'Muitas tentativas seguidas. Aguarde alguns minutos.',
+      };
+      setError(messages[err.code] || 'Não foi possível criar a empresa agora. Tente novamente em instantes.');
     } finally {
       setLoading(false);
     }
@@ -63,8 +71,8 @@ const Register = () => {
 
   const calculatePasswordStrength = (pass) => {
     let strength = 0;
-    if (pass.length > 5) strength += 25;
-    if (pass.length > 8) strength += 25;
+    if (pass.length >= 8) strength += 25;
+    if (pass.length >= 12) strength += 25;
     if (pass.match(/[A-Z]/)) strength += 25;
     if (pass.match(/[0-9]/) || pass.match(/[^A-Za-z0-9]/)) strength += 25;
     return strength;
@@ -89,11 +97,11 @@ const Register = () => {
           </div>
           
           <h2 className="text-2xl font-black text-white uppercase tracking-tighter mb-2">Instância Criada!</h2>
-          <p className="text-sm text-gray-400 dark:text-gray-500 font-medium">A infraestrutura da <span className="text-brand font-bold">{companyName}</span> foi provisionada com sucesso.</p>
+          <p className="text-sm text-gray-400 font-medium">A conta da <span className="text-brand font-bold">{companyName}</span> está pronta. Você é o proprietário e pode convidar a equipe em Acessos.</p>
           <div className="mt-8 flex justify-center">
             <Orbit className="animate-spin text-brand" size={24} />
           </div>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-widest mt-4 animate-pulse">Redirecionando para o Dashboard Central...</p>
+          <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-4 animate-pulse">Abrindo o painel...</p>
         </div>
       </div>
     );
@@ -122,11 +130,11 @@ const Register = () => {
             <h2 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center justify-center gap-2">
               Deploy <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-brand">Corporativo</span>
             </h2>
-            <p className="text-xs font-medium text-gray-400 dark:text-gray-500 mt-2 tracking-widest uppercase">Provisionamento de Nova Instância SaaS</p>
+            <p className="text-xs font-medium text-gray-400 mt-2 tracking-widest uppercase">Crie a conta da sua empresa · Plano Starter</p>
           </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl mb-6 text-xs font-bold flex items-center gap-2 animate-[loginFadeUp_0.3s_ease-out_both]">
+            <div role="alert" className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl mb-6 text-xs font-bold flex items-center gap-2 animate-[loginFadeUp_0.3s_ease-out_both]">
               <AlertCircle size={16} /> {error}
             </div>
           )}
@@ -135,9 +143,9 @@ const Register = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Empresa */}
               <div className="animate-[loginFadeUp_0.6s_ease-out_0.16s_both]">
-                <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Razão Social / Fantasia</label>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Razão Social / Fantasia</label>
                 <div className="relative group">
-                  <Building2 className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <Building2 className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
                   <input 
                     type="text" 
                     required 
@@ -152,9 +160,9 @@ const Register = () => {
 
               {/* Admin */}
               <div className="animate-[loginFadeUp_0.6s_ease-out_0.24s_both]">
-                <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Administrador Master</label>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Administrador Master</label>
                 <div className="relative group">
-                  <User className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <User className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
                   <input 
                     type="text" 
                     required 
@@ -170,9 +178,9 @@ const Register = () => {
 
             {/* Email */}
             <div className="animate-[loginFadeUp_0.6s_ease-out_0.32s_both]">
-              <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">E-mail de Acesso</label>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">E-mail de Acesso</label>
               <div className="relative group">
-                <Mail className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                <Mail className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
                 <input 
                   type="email" 
                   required 
@@ -188,7 +196,7 @@ const Register = () => {
             {/* Senhas */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="animate-[loginFadeUp_0.6s_ease-out_0.4s_both]">
-                <label className="flex justify-between text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">
+                <label className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">
                   <span>Chave de Segurança</span>
                   {password.length > 0 && (
                       <span className={`text-[9px] ${pwdStrength > 50 ? 'text-green-400' : 'text-orange-400'}`}>
@@ -197,7 +205,7 @@ const Register = () => {
                   )}
                 </label>
                 <div className="relative group">
-                  <Lock className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <Lock className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
                   <input 
                     type="password" 
                     required 
@@ -220,9 +228,9 @@ const Register = () => {
               </div>
 
               <div className="animate-[loginFadeUp_0.6s_ease-out_0.48s_both]">
-                <label className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Confirmar Chave</label>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Confirmar Chave</label>
                 <div className="relative group">
-                  <ShieldCheck className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                  <ShieldCheck className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
                   <input 
                     type="password" 
                     required 
@@ -240,7 +248,7 @@ const Register = () => {
               <button 
                 type="submit" 
                 disabled={loading}
-                className="w-full relative group overflow-hidden bg-white dark:bg-slate-800 text-black font-black py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_25px_rgba(34,211,238,0.3)] hover:scale-[1.02] active:scale-[0.98]"
+                className="w-full relative group overflow-hidden bg-white text-black font-black py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_25px_rgba(34,211,238,0.3)] hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70"
               >
                 <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-cyan-100 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
                 {loading ? (
@@ -253,7 +261,7 @@ const Register = () => {
           </form>
 
           <div className="mt-6 flex justify-center items-center px-1 animate-[loginFadeUp_0.6s_ease-out_0.64s_both]">
-              <span className="text-[11px] text-gray-500 dark:text-gray-400 mr-2">Já possui uma instância provisionada?</span>
+              <span className="text-[11px] text-gray-400 mr-2">Já possui uma conta?</span>
               <Link 
                   to="/"
                   className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold transition-colors underline decoration-cyan-400/30 hover:decoration-cyan-400 underline-offset-4"
@@ -264,7 +272,7 @@ const Register = () => {
         </div>
         
         <div className="mt-8 text-center animate-[loginFadeUp_0.6s_ease-out_0.72s_both]">
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium tracking-widest uppercase">
+          <p className="text-[10px] text-gray-500 font-medium tracking-widest uppercase">
             SaaS Infrastructure Protocol © {new Date().getFullYear()}
           </p>
         </div>

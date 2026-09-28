@@ -1,657 +1,385 @@
-import React, { useState, useEffect } from 'react';
-import { db } from '../services/firebase';
-import { 
-  collection, getDocs, doc, updateDoc, setDoc, serverTimestamp, 
-  collectionGroup, deleteDoc 
-} from 'firebase/firestore';
-import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { 
-  Building2, Users, Calendar, Activity, Search, Shield, 
-  AlertTriangle, Play, Pause, RefreshCcw, UserCog, Mail,
-  PlusSquare, X, Save, Layers, Trash2, ShieldCheck, CheckCircle
+// src/pages/TenantManager.jsx
+// -----------------------------------------------------------------------------
+// Empresas da plataforma (console Nexus Master).
+//
+// Correcoes em relacao a versao anterior:
+//  - limites vinham de uma tabela fixa no codigo, ignorando /plans e qualquer
+//    ajuste individual; agora o plano efetivo sai de utils/entitlements;
+//  - lia TODOS os ativos da plataforma (collectionGroup) so para contar; agora
+//    usa agregacao por empresa (1 leitura a cada 1.000 documentos);
+//  - "Excluir" apagava so o documento da empresa — usuarios e dados continuavam
+//    acessiveis. Encerrar agora e um status que as regras do Firestore bloqueiam;
+//  - empresas legadas (sem /tenants) passam a aparecer e podem ser regularizadas;
+//  - provisionamento com erro nao deixa mais conta de login orfa.
+// -----------------------------------------------------------------------------
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  AlertTriangle, Building2, ChevronRight, CircleDollarSign, Pause, Play, PlusSquare, RefreshCcw, Search, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { describeFirebaseError, loadConsoleSnapshot, provisionTenant, updateTenant } from '../services/tenantService';
+import { TENANT_STATUSES } from '../utils/entitlements';
+import { brl, brlCompact, relativeDays, tenantAlerts } from '../utils/consoleMetrics';
+import { PlanBadge, TenantStatusBadge, UsageBar } from '../components/console/consoleUi';
+import TenantDetailDrawer from '../components/console/TenantDetailDrawer';
 
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-};
+const EMPTY_PROVISION = { companyName: '', adminName: '', email: '', password: '', plan: 'starter' };
+
+const fieldClass =
+  'w-full px-3 py-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand text-sm font-semibold text-gray-900 dark:text-white';
 
 const TenantManager = () => {
-  const { currentUser } = useAuth();
-  const navigate = useNavigate();
-  const [tenants, setTenants] = useState([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
-  const [planFilter, setPlanFilter] = useState('ALL');
+  const statusFilter = searchParams.get('status') || 'ALL';
+  const planFilter = searchParams.get('plano') || 'ALL';
+  const alertsOnly = searchParams.get('alertas') === '1';
+  const selectedId = searchParams.get('empresa');
+  const showProvision = searchParams.get('novo') === '1';
 
-  // Modal Provisionar
-  const [showProvisionModal, setShowProvisionModal] = useState(false);
+  const [provisionForm, setProvisionForm] = useState(EMPTY_PROVISION);
   const [provisionLoading, setProvisionLoading] = useState(false);
-  const [provisionForm, setProvisionForm] = useState({
-    companyName: '',
-    adminName: '',
-    email: '',
-    password: '',
-    plan: 'starter'
-  });
+  const [provisionError, setProvisionError] = useState('');
 
-  // Modal Editar
-  const [editingTenant, setEditingTenant] = useState(null);
-  const [editForm, setEditForm] = useState({
-    companyName: '',
-    plan: 'starter',
-    status: 'active'
-  });
+  const setParam = useCallback((key, value) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value === null || value === undefined || value === '' || value === 'ALL') next.delete(key);
+      else next.set(key, value);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
-  // Modal Deletar
-  const [deletingTenant, setDeletingTenant] = useState(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-
-  useEffect(() => {
-    if (currentUser?.role !== 'superadmin') {
-      toast.error('Acesso negado. Área restrita à Administração Global.');
-      navigate('/dashboard');
-      return;
-    }
-    loadTenants();
-  }, [currentUser, navigate]);
-
-  const loadTenants = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Busca todas as empresas (tenants)
-      const tenantsSnap = await getDocs(collection(db, 'tenants'));
-      const tenantsData = tenantsSnap.docs.map(doc => ({ ...doc.data(), refId: doc.id }));
-
-      // 2. Busca todos os usuários
-      const usersSnap = await getDocs(collection(db, 'users'));
-      const usersData = usersSnap.docs.map(doc => doc.data());
-
-      // 3. Busca ativos globais
-      const assetsSnap = await getDocs(collectionGroup(db, 'assets'));
-      const assetsData = assetsSnap.docs.map(doc => doc.data());
-
-      // Faz o join
-      const planLimits = {
-        starter: { maxUsers: 10, maxAssets: 100 },
-        pro: { maxUsers: 50, maxAssets: 1000 },
-        enterprise: { maxUsers: Infinity, maxAssets: Infinity }
-      };
-
-      const enrichedTenants = tenantsData.map(tenant => {
-        const adminUser = usersData.find(u => u.tenantId === tenant.id && (u.role === 'owner' || u.role === 'admin' || u.role === 'superadmin'));
-        const planKey = tenant.plan?.toLowerCase() || 'starter';
-        const limits = planLimits[planKey] || planLimits.starter;
-        
-        return {
-          ...tenant,
-          adminName: adminUser ? adminUser.name : 'N/A',
-          adminEmail: adminUser ? adminUser.email : 'N/A',
-          usersCount: usersData.filter(u => u.tenantId === tenant.id).length,
-          assetsCount: assetsData.filter(a => a.tenantId === tenant.id).length,
-          maxUsers: limits.maxUsers,
-          maxAssets: limits.maxAssets
-        };
-      });
-
-      setTenants(enrichedTenants.sort((a, b) => {
-        const aDate = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-        const bDate = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-        return bDate - aDate;
-      }));
+      setSnapshot(await loadConsoleSnapshot());
     } catch (error) {
-      console.error("Erro ao carregar tenants:", error);
-      toast.error("Falha ao carregar a lista de empresas.");
+      console.error('Erro ao carregar empresas:', error);
+      toast.error('Falha ao carregar a lista de empresas.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Alterar Status Rápido
-  const toggleTenantStatus = async (tenantId, currentStatus) => {
-    const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const tenants = useMemo(() => snapshot?.tenants || [], [snapshot]);
+  const plans = useMemo(() => snapshot?.plans || {}, [snapshot]);
+  const selected = tenants.find((t) => t.id === selectedId) || null;
+
+  const filtered = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return tenants.filter((t) => {
+      if (term) {
+        const haystack = [t.companyName, t.id, t.owner?.email, t.owner?.name].filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(term)) return false;
+      }
+      if (statusFilter === 'legacy' && !t.legacy) return false;
+      if (statusFilter !== 'ALL' && statusFilter !== 'legacy' && (t.legacy || t.status !== statusFilter)) return false;
+      if (planFilter !== 'ALL' && t.entitlements?.planId !== planFilter) return false;
+      if (alertsOnly && tenantAlerts(t).length === 0) return false;
+      return true;
+    });
+  }, [tenants, searchTerm, statusFilter, planFilter, alertsOnly]);
+
+  const totals = useMemo(() => ({
+    total: tenants.length,
+    live: tenants.filter((t) => !t.legacy && ['active', 'trial'].includes(t.status)).length,
+    blocked: tenants.filter((t) => ['suspended', 'cancelled'].includes(t.status)).length,
+    legacy: tenants.filter((t) => t.legacy).length,
+    mrr: tenants.reduce((sum, t) => sum + (t.mrr || 0), 0),
+    withAlerts: tenants.filter((t) => tenantAlerts(t).some((a) => a.level !== 'info')).length,
+  }), [tenants]);
+
+  const quickToggle = async (tenant) => {
+    const suspend = ['active', 'trial'].includes(tenant.status);
+    if (!confirm(`${suspend ? 'Suspender' : 'Reativar'} o acesso de "${tenant.companyName || tenant.id}"?`)) return;
     try {
-      await updateDoc(doc(db, 'tenants', tenantId), { 
-        status: newStatus,
-        updatedAt: serverTimestamp()
-      });
-      toast.success(`Empresa ${newStatus === 'active' ? 'ativada' : 'suspensa'} com sucesso.`);
-      setTenants(tenants.map(t => t.id === tenantId ? { ...t, status: newStatus } : t));
+      await updateTenant(tenant.id, { status: suspend ? 'suspended' : 'active' });
+      toast.success(suspend ? 'Empresa suspensa: acesso bloqueado.' : 'Empresa reativada.');
+      load();
     } catch (error) {
       console.error(error);
-      toast.error("Erro ao alterar status da empresa.");
+      toast.error(describeFirebaseError(error));
     }
   };
 
-  // Criar Novo Tenant (Empresa)
-  const handleProvisionTenant = async (e) => {
+  const closeProvision = () => {
+    setParam('novo', null);
+    setProvisionForm(EMPTY_PROVISION);
+    setProvisionError('');
+  };
+
+  const handleProvision = async (e) => {
     e.preventDefault();
+    setProvisionError('');
+    if (provisionForm.password.length < 8) {
+      setProvisionError('A senha inicial precisa de pelo menos 8 caracteres.');
+      return;
+    }
     setProvisionLoading(true);
-
-    const tempAppName = `TempApp-${Date.now()}`;
-    let tempApp = null;
-
     try {
-      // 1. Gera ID único para o tenant
-      const tenantId = `tenant-${Math.random().toString(36).substring(2, 9)}`;
-
-      // 2. Inicializa App temporário para criar usuário sem deslogar o superadmin
-      tempApp = initializeApp(firebaseConfig, tempAppName);
-      const tempAuth = getAuth(tempApp);
-      
-      const userCredential = await createUserWithEmailAndPassword(
-        tempAuth, 
-        provisionForm.email, 
-        provisionForm.password
-      );
-      const user = userCredential.user;
-      await signOut(tempAuth);
-
-      // 3. Salva Tenant no Firestore
-      await setDoc(doc(db, 'tenants', tenantId), {
-        id: tenantId,
-        companyName: provisionForm.companyName,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        status: 'active',
-        plan: provisionForm.plan
-      });
-
-      // 4. Salva o perfil do usuário como owner do novo tenant
-      await setDoc(doc(db, 'users', user.uid), {
-        id: user.uid,
-        email: provisionForm.email,
-        name: provisionForm.adminName,
-        tenantId: tenantId,
-        role: 'owner',
-        status: 'active',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-
-      toast.success(`Inquilino "${provisionForm.companyName}" provisionado com sucesso!`);
-      setShowProvisionModal(false);
-      setProvisionForm({
-        companyName: '',
-        adminName: '',
-        email: '',
-        password: '',
-        plan: 'starter'
-      });
-      loadTenants();
-
+      const { tenantId } = await provisionTenant(provisionForm);
+      toast.success(`Empresa "${provisionForm.companyName}" criada. Envie o acesso ao responsável.`);
+      closeProvision();
+      await load();
+      setParam('empresa', tenantId);
     } catch (error) {
-      console.error("Erro ao provisionar inquilino:", error);
-      toast.error(error.message || "Erro ao criar novo inquilino.");
+      console.error('Erro ao provisionar empresa:', error);
+      setProvisionError(describeFirebaseError(error, 'Erro ao criar a empresa.'));
     } finally {
-      if (tempApp) {
-        try {
-          await deleteApp(tempApp);
-        } catch (e) {
-          console.warn("Erro ao desalocar tempApp", e);
-        }
-      }
       setProvisionLoading(false);
     }
   };
 
-  // Atualizar Detalhes do Tenant (Edição)
-  const handleUpdateTenant = async (e) => {
-    e.preventDefault();
-    try {
-      await updateDoc(doc(db, 'tenants', editingTenant.id), {
-        companyName: editForm.companyName,
-        plan: editForm.plan,
-        status: editForm.status,
-        updatedAt: serverTimestamp()
-      });
-      toast.success("Empresa atualizada com sucesso!");
-      setEditingTenant(null);
-      loadTenants();
-    } catch (error) {
-      console.error(error);
-      toast.error("Erro ao atualizar empresa.");
-    }
-  };
-
-  // Excluir Tenant
-  const handleDeleteTenant = async () => {
-    if (!deletingTenant) return;
-    setDeleteLoading(true);
-    try {
-      // 1. Remove documento do tenant
-      await deleteDoc(doc(db, 'tenants', deletingTenant.id));
-      
-      // Observação: Na prática, excluiria cascateado os ativos/usuários do tenant.
-      // Por segurança no ambiente de teste, removemos apenas o tenant.
-      
-      toast.success(`Inquilino "${deletingTenant.companyName}" excluído da plataforma.`);
-      setDeletingTenant(null);
-      loadTenants();
-    } catch (error) {
-      console.error(error);
-      toast.error("Erro ao excluir inquilino.");
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
-
-  const handleOpenEdit = (tenant) => {
-    setEditingTenant(tenant);
-    setEditForm({
-      companyName: tenant.companyName || '',
-      plan: tenant.plan || 'starter',
-      status: tenant.status || 'active'
-    });
-  };
-
-  const getStatusBadge = (status) => {
-    if (status === 'active') return <span className="px-2.5 py-1 bg-green-500/10 text-green-500 text-[10px] font-black uppercase rounded border border-green-500/20">Ativo</span>;
-    if (status === 'suspended') return <span className="px-2.5 py-1 bg-rose-500/10 text-rose-500 text-[10px] font-black uppercase rounded border border-rose-500/20">Suspenso</span>;
-    return <span className="px-2.5 py-1 bg-gray-500/10 text-gray-400 text-[10px] font-black uppercase rounded border border-white/10">{status}</span>;
-  };
-
-  const getPlanBadge = (plan) => {
-    const p = plan ? plan.toUpperCase() : 'STARTER';
-    if (p === 'ENTERPRISE') return <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shadow-sm">Enterprise</span>;
-    if (p === 'PRO') return <span className="bg-purple-600 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">Pro</span>;
-    return <span className="bg-slate-700 text-slate-300 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border border-white/5">Starter</span>;
-  };
-
-  const filteredTenants = tenants.filter(t => {
-    const matchesSearch = 
-      t.companyName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.adminEmail?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
-    const matchesPlan = planFilter === 'ALL' || t.plan === planFilter;
-
-    return matchesSearch && matchesStatus && matchesPlan;
-  });
-
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24 space-y-6">
-      
-      {/* 1. HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2 bg-slate-900 rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden border border-white/5">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none"></div>
+    <div className="max-w-7xl mx-auto pb-24 space-y-6">
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden border border-white/5">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 flex items-center gap-4">
-          <div className="p-4 bg-white/5 backdrop-blur text-indigo-400 rounded-2xl border border-white/10">
+          <div className="p-4 bg-white/5 text-indigo-300 rounded-2xl border border-white/10">
             <Building2 size={32} />
           </div>
           <div>
-            <h1 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tight">Gerenciar Empresas</h1>
-            <p className="text-slate-400 font-medium text-sm mt-1">Administre e provisione contas de clientes da plataforma SaaS.</p>
+            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">Empresas</h1>
+            <p className="text-slate-400 font-medium text-sm mt-1">Planos, limites sob medida, identidade e saúde de cada cliente.</p>
           </div>
         </div>
-        
         <div className="relative z-10 flex items-center gap-2">
-           <button onClick={() => setShowProvisionModal(true)} className="flex items-center gap-2 px-5 py-3 bg-white hover:bg-gray-100 text-black rounded-xl font-black text-xs uppercase tracking-wider transition-all active:scale-95 shadow-lg">
-             <PlusSquare size={16} /> Novo Inquilino
-           </button>
-           <button onClick={loadTenants} className="flex items-center justify-center w-12 h-12 bg-white/5 hover:bg-white/10 text-white rounded-xl transition-all border border-white/10" title="Recarregar">
-             <RefreshCcw size={16} className={loading ? 'animate-spin' : ''} />
-           </button>
+          <button onClick={() => setParam('novo', '1')} className="flex items-center gap-2 px-5 py-3 bg-white hover:bg-gray-100 text-black rounded-xl font-black text-xs uppercase tracking-wider transition-all active:scale-95 shadow-lg">
+            <PlusSquare size={16} /> Nova empresa
+          </button>
+          <button onClick={load} aria-label="Recarregar" title="Recarregar" className="flex items-center justify-center w-12 h-12 bg-white/5 hover:bg-white/10 text-white rounded-xl transition-all border border-white/10">
+            <RefreshCcw size={16} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
       </div>
 
-      {/* 2. STATS */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* RESUMO */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
-          { label: 'Total', value: tenants.length, icon: <Building2 className="w-6 h-6 text-indigo-500" /> },
-          { label: 'Ativos', value: tenants.filter(t => t.status === 'active').length, icon: <CheckCircle className="w-6 h-6 text-green-500" /> },
-          { label: 'Bloqueados', value: tenants.filter(t => t.status === 'suspended').length, icon: <AlertTriangle className="w-6 h-6 text-rose-500" /> },
-          { label: 'Total Usuários', value: tenants.reduce((acc, t) => acc + (t.usersCount || 0), 0), icon: <Users className="w-6 h-6 text-purple-500" /> },
-        ].map(stat => (
-          <div key={stat.label} className="bg-white dark:bg-slate-800 rounded-3xl p-5 border border-gray-150 dark:border-slate-700 shadow-sm flex justify-between items-center group hover:shadow-md transition-shadow">
-            <div>
-              <p className="text-xs text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">{stat.label}</p>
-              <p className="text-2xl font-black text-gray-900 dark:text-white mt-1">{stat.value}</p>
-            </div>
-            <div className="p-3 bg-gray-50 dark:bg-slate-900 rounded-2xl">{stat.icon}</div>
-          </div>
+          { label: 'Total', value: totals.total, onClick: () => setParam('status', null) },
+          { label: 'Ativas', value: totals.live, onClick: () => setParam('status', 'active') },
+          { label: 'Suspensas / encerradas', value: totals.blocked, onClick: () => setParam('status', 'suspended') },
+          { label: 'Com alertas', value: totals.withAlerts, onClick: () => setParam('alertas', alertsOnly ? null : '1'), icon: AlertTriangle },
+          { label: 'MRR', value: brlCompact.format(totals.mrr), icon: CircleDollarSign },
+        ].map((stat) => (
+          <button
+            key={stat.label}
+            onClick={stat.onClick}
+            disabled={!stat.onClick}
+            className="text-left bg-white dark:bg-slate-800 rounded-3xl p-5 border border-gray-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow disabled:cursor-default"
+          >
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">{stat.label}</p>
+            <p className="text-2xl font-black text-gray-900 dark:text-white mt-1 tabular-nums">{stat.value}</p>
+          </button>
         ))}
       </div>
 
-      {/* 3. FILTERS */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-150 dark:border-slate-750 p-4 shadow-sm flex flex-col md:flex-row gap-3 items-center">
+      {/* FILTROS */}
+      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 p-4 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center">
         <div className="relative w-full md:flex-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
-            type="text"
-            placeholder="Pesquisar por razão social, e-mail ou ID..."
+            type="search"
+            placeholder="Buscar por empresa, ID, responsável ou e-mail..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 text-xs bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-medium text-gray-700 dark:text-slate-200"
+            className="w-full pl-10 pr-4 py-2.5 text-xs bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand font-medium text-gray-700 dark:text-slate-200"
           />
         </div>
-
-        <div className="flex flex-wrap gap-2 w-full md:w-auto">
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-xs bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-2.5 font-bold text-gray-600 dark:text-slate-350 cursor-pointer focus:outline-none"
-          >
-            <option value="ALL">Todos os Status</option>
-            <option value="active">Ativo</option>
-            <option value="suspended">Suspenso</option>
+        <div className="flex flex-wrap gap-2">
+          <select value={statusFilter} onChange={(e) => setParam('status', e.target.value)} aria-label="Filtrar por status" className="text-xs bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-2.5 font-bold text-gray-600 dark:text-slate-300 cursor-pointer focus:outline-none">
+            <option value="ALL">Todos os status</option>
+            {Object.entries(TENANT_STATUSES).map(([id, s]) => <option key={id} value={id}>{s.label}</option>)}
+            <option value="legacy">Legadas (sem cadastro)</option>
           </select>
-
-          {/* Plan Filter */}
-          <select
-            value={planFilter}
-            onChange={(e) => setPlanFilter(e.target.value)}
-            className="text-xs bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-2.5 font-bold text-gray-600 dark:text-slate-350 cursor-pointer focus:outline-none"
-          >
-            <option value="ALL">Todos os Planos</option>
-            <option value="starter">Starter</option>
-            <option value="pro">Pro</option>
-            <option value="enterprise">Enterprise</option>
+          <select value={planFilter} onChange={(e) => setParam('plano', e.target.value)} aria-label="Filtrar por plano" className="text-xs bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-2.5 font-bold text-gray-600 dark:text-slate-300 cursor-pointer focus:outline-none">
+            <option value="ALL">Todos os planos</option>
+            {Object.values(plans).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
+          {alertsOnly && (
+            <button onClick={() => setParam('alertas', null)} className="text-xs font-bold px-3 py-2 rounded-xl bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 flex items-center gap-1">
+              Com alertas <X size={12} />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 4. TABLE */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-150 dark:border-slate-750 shadow-sm overflow-hidden">
+      {/* TABELA */}
+      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-gray-50 dark:bg-slate-900 text-gray-400 text-[10px] uppercase font-black tracking-widest border-b border-gray-150 dark:border-slate-700">
-                <th className="p-4 pl-6">Empresa / ID</th>
-                <th className="p-4">Administrador / Responsável</th>
-                <th className="p-4 text-center">Usuários</th>
-                <th className="p-4 text-center">Parque de Ativos</th>
-                <th className="p-4 text-center">Plano</th>
-                <th className="p-4 text-center">Status</th>
-                <th className="p-4 text-center">Registro</th>
+              <tr className="bg-gray-50 dark:bg-slate-900 text-gray-400 text-[10px] uppercase font-black tracking-widest border-b border-gray-100 dark:border-slate-700">
+                <th className="p-4 pl-6">Empresa</th>
+                <th className="p-4">Responsável</th>
+                <th className="p-4">Plano</th>
+                <th className="p-4">Usuários</th>
+                <th className="p-4">Ativos</th>
+                <th className="p-4">Último acesso</th>
+                <th className="p-4 text-right">MRR</th>
                 <th className="p-4 pr-6 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="text-xs font-semibold text-gray-700 dark:text-slate-200">
-              {loading ? (
+              {loading && !snapshot ? (
                 <tr>
                   <td colSpan="8" className="p-12 text-center text-gray-400 font-bold uppercase tracking-widest">
                     <div className="flex flex-col items-center gap-3">
-                      <div className="w-8 h-8 border-4 border-indigo-100 border-t-indigo-500 rounded-full animate-spin"></div>
-                      Acessando Banco Global...
+                      <div className="w-8 h-8 border-4 border-brand/20 border-t-brand rounded-full animate-spin" />
+                      Carregando empresas...
                     </div>
                   </td>
                 </tr>
-              ) : filteredTenants.length === 0 ? (
+              ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="p-8 text-center text-gray-400 font-medium">Nenhum inquilino correspondente encontrado.</td>
+                  <td colSpan="8" className="p-8 text-center text-gray-400 font-medium">Nenhuma empresa corresponde aos filtros.</td>
                 </tr>
               ) : (
-                filteredTenants.map(tenant => (
-                  <tr key={tenant.id} className="border-b border-gray-50 dark:border-slate-750 hover:bg-gray-50/50 dark:hover:bg-slate-900/30 transition-colors">
-                    <td className="p-4 pl-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-slate-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-black border border-indigo-100 dark:border-slate-700 shrink-0">
-                          {tenant.companyName ? tenant.companyName.substring(0, 2).toUpperCase() : 'NA'}
-                        </div>
-                        <div>
-                          <p className="font-extrabold text-gray-900 dark:text-white text-sm">{tenant.companyName || 'Empresa sem nome'}</p>
-                          <p className="text-[9px] font-mono text-gray-400 dark:text-gray-500 font-medium bg-gray-150 dark:bg-slate-900 px-1.5 py-0.5 rounded inline-block mt-0.5">#{tenant.id}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <p className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5"><UserCog size={13} className="text-gray-400"/> {tenant.adminName}</p>
-                      <p className="text-[10px] text-gray-400 font-medium flex items-center gap-1.5 mt-0.5"><Mail size={11} className="text-gray-400"/> {tenant.adminEmail}</p>
-                    </td>
-                    <td className="p-4 text-center">
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="bg-gray-100 dark:bg-slate-900 text-gray-700 dark:text-gray-300 px-2.5 py-0.5 rounded-full text-[10px] font-black border border-gray-200 dark:border-slate-700">
-                          {tenant.usersCount} {tenant.maxUsers !== Infinity ? `/ ${tenant.maxUsers}` : ' (Ilimitado)'}
-                        </span>
-                        {tenant.maxUsers !== Infinity && (
-                          <div className="w-16 h-1 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden mt-1" title={`${((tenant.usersCount / tenant.maxUsers) * 100).toFixed(0)}% utilizado`}>
-                            <div 
-                              className={`h-full rounded-full transition-all ${tenant.usersCount / tenant.maxUsers >= 0.85 ? 'bg-rose-500' : tenant.usersCount / tenant.maxUsers >= 0.6 ? 'bg-amber-500' : 'bg-green-500'}`}
-                              style={{ width: `${Math.min(100, (tenant.usersCount / tenant.maxUsers) * 100)}%` }}
-                            ></div>
+                filtered.map((tenant) => {
+                  const alerts = tenantAlerts(tenant);
+                  const worst = alerts.find((a) => a.level === 'critical') || alerts.find((a) => a.level === 'warning');
+                  return (
+                    <tr
+                      key={tenant.id}
+                      onClick={() => setParam('empresa', tenant.id)}
+                      className="border-b border-gray-50 dark:border-slate-700/60 hover:bg-gray-50/60 dark:hover:bg-slate-900/40 transition-colors cursor-pointer"
+                    >
+                      <td className="p-4 pl-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-brand/10 text-brand flex items-center justify-center font-black shrink-0">
+                            {(tenant.companyName || tenant.id).substring(0, 2).toUpperCase()}
                           </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4 text-center">
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 px-2.5 py-0.5 rounded-full text-[10px] font-black border border-indigo-100/50 dark:border-indigo-900/30">
-                          {tenant.assetsCount} {tenant.maxAssets !== Infinity ? `/ ${tenant.maxAssets}` : ' (Ilimitado)'}
-                        </span>
-                        {tenant.maxAssets !== Infinity && (
-                          <div className="w-16 h-1 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden mt-1" title={`${((tenant.assetsCount / tenant.maxAssets) * 100).toFixed(0)}% utilizado`}>
-                            <div 
-                              className={`h-full rounded-full transition-all ${tenant.assetsCount / tenant.maxAssets >= 0.85 ? 'bg-rose-500' : tenant.assetsCount / tenant.maxAssets >= 0.6 ? 'bg-amber-500' : 'bg-indigo-500'}`}
-                              style={{ width: `${Math.min(100, (tenant.assetsCount / tenant.maxAssets) * 100)}%` }}
-                            ></div>
+                          <div className="min-w-0">
+                            <p className="font-extrabold text-gray-900 dark:text-white text-sm truncate max-w-[220px] flex items-center gap-1.5">
+                              {tenant.companyName || 'Empresa sem nome'}
+                              {worst && <AlertTriangle size={13} className={worst.level === 'critical' ? 'text-rose-500' : 'text-amber-500'} aria-label={worst.text} />}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <TenantStatusBadge tenant={tenant} />
+                              <span className="text-[9px] font-mono text-gray-400 truncate max-w-[140px]">#{tenant.id}</span>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4 text-center">
-                      {getPlanBadge(tenant.plan)}
-                    </td>
-                    <td className="p-4 text-center">
-                      {getStatusBadge(tenant.status)}
-                    </td>
-                    <td className="p-4 text-center text-[10px] font-medium text-gray-400">
-                      {tenant.createdAt?.toDate ? new Date(tenant.createdAt.toDate()).toLocaleDateString('pt-BR') : 'N/A'}
-                    </td>
-                    <td className="p-4 pr-6 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button 
-                          onClick={() => toggleTenantStatus(tenant.id, tenant.status)}
-                          className={`p-2 rounded-xl border transition-all ${tenant.status === 'active' ? 'text-amber-500 border-amber-200/50 hover:bg-amber-50 dark:hover:bg-amber-900/10' : 'text-green-500 border-green-200/50 hover:bg-green-50 dark:hover:bg-green-900/10'}`}
-                          title={tenant.status === 'active' ? 'Suspender Empresa' : 'Ativar Empresa'}
-                        >
-                          {tenant.status === 'active' ? <Pause size={14}/> : <Play size={14}/>}
-                        </button>
-                        <button 
-                          onClick={() => handleOpenEdit(tenant)}
-                          className="p-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-all"
-                          title="Configurar Plano"
-                        >
-                          <Layers size={14}/>
-                        </button>
-                        <button 
-                          onClick={() => setDeletingTenant(tenant)}
-                          className="p-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/10 transition-all"
-                          title="Remover Inquilino"
-                        >
-                          <Trash2 size={14}/>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <p className="font-bold text-gray-900 dark:text-white truncate max-w-[180px]">{tenant.owner?.name || '—'}</p>
+                        <p className="text-[10px] text-gray-400 truncate max-w-[180px]">{tenant.owner?.email || 'Sem responsável'}</p>
+                      </td>
+                      <td className="p-4"><PlanBadge tenant={tenant} /></td>
+                      <td className="p-4 w-32"><UsageBar compact current={tenant.usersCount} limit={tenant.entitlements?.maxUsers} /></td>
+                      <td className="p-4 w-32"><UsageBar compact current={tenant.assetsCount} limit={tenant.entitlements?.maxAssets} /></td>
+                      <td className="p-4 text-[11px] text-gray-500 dark:text-gray-400 whitespace-nowrap">{relativeDays(tenant.lastActivity)}</td>
+                      <td className="p-4 text-right tabular-nums font-black">{tenant.mrr ? brl.format(tenant.mrr) : '—'}</td>
+                      <td className="p-4 pr-6" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-2">
+                          {!tenant.legacy && tenant.status !== 'cancelled' && (
+                            <button
+                              onClick={() => quickToggle(tenant)}
+                              className={`p-2 rounded-xl border transition-all ${['active', 'trial'].includes(tenant.status) ? 'text-amber-500 border-amber-200/60 hover:bg-amber-50 dark:border-amber-900/60 dark:hover:bg-amber-950/30' : 'text-green-500 border-green-200/60 hover:bg-green-50 dark:border-green-900/60 dark:hover:bg-green-950/30'}`}
+                              title={['active', 'trial'].includes(tenant.status) ? 'Suspender empresa' : 'Reativar empresa'}
+                              aria-label={['active', 'trial'].includes(tenant.status) ? 'Suspender empresa' : 'Reativar empresa'}
+                            >
+                              {['active', 'trial'].includes(tenant.status) ? <Pause size={14} /> : <Play size={14} />}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setParam('empresa', tenant.id)}
+                            className="px-3 py-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300 hover:text-brand hover:border-brand/40 transition-all flex items-center gap-1 text-[10px] font-black uppercase"
+                          >
+                            Detalhes <ChevronRight size={12} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* ════════════════ PROVISION MODAL ════════════════ */}
-      {showProvisionModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-[fadeIn_0.2s_ease-out]">
-          <div className="bg-[#121214] border border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl relative animate-[scaleUp_0.3s_ease-out]" onClick={e => e.stopPropagation()}>
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-60"></div>
-            
+      {selected && (
+        <TenantDetailDrawer
+          key={selected.id}
+          tenant={selected}
+          plans={plans}
+          onClose={() => setParam('empresa', null)}
+          onChanged={load}
+        />
+      )}
+      {selectedId && !selected && snapshot && !loading && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 !mt-0 rounded-xl bg-slate-900 text-white px-4 py-3 text-xs font-bold shadow-xl flex items-center gap-3">
+          Empresa "{selectedId}" não encontrada.
+          <button onClick={() => setParam('empresa', null)} aria-label="Fechar aviso"><X size={14} /></button>
+        </div>
+      )}
+
+      {/* PROVISIONAMENTO */}
+      {showProvision && (
+        <div className="fixed inset-0 !mt-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4" role="dialog" aria-modal="true" aria-label="Nova empresa">
+          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-3xl p-6 w-full max-w-md shadow-2xl">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-black text-white uppercase tracking-tight">Provisionar Inquilino</h2>
-              <button onClick={() => setShowProvisionModal(false)} className="p-1 hover:bg-white/5 rounded-full text-gray-400 hover:text-white transition-colors"><X size={18} /></button>
+              <h2 className="text-lg font-black text-gray-900 dark:text-white">Nova empresa</h2>
+              <button onClick={closeProvision} aria-label="Fechar" className="p-1 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-white"><X size={18} /></button>
             </div>
 
-            <form onSubmit={handleProvisionTenant} className="space-y-4 text-left">
-              <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">Razão Social / Nome Fantasia *</label>
-                <input 
-                  type="text" 
-                  value={provisionForm.companyName} 
-                  onChange={e => setProvisionForm({ ...provisionForm, companyName: e.target.value })} 
-                  required
-                  className="w-full px-3 py-2.5 bg-black/50 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm font-semibold text-white placeholder-gray-600 shadow-inner"
-                  placeholder="Ex: ACME Corporation" 
-                />
-              </div>
+            {provisionError && (
+              <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">{provisionError}</p>
+            )}
 
+            <form onSubmit={handleProvision} className="space-y-4">
+              {[
+                ['companyName', 'Razão social / nome fantasia', 'text', 'Ex: ACME Indústria', 'organization'],
+                ['adminName', 'Nome do responsável (owner)', 'text', 'Nome completo', 'name'],
+                ['email', 'E-mail de acesso do responsável', 'email', 'admin@empresa.com', 'off'],
+                ['password', 'Senha inicial (mín. 8)', 'password', '••••••••', 'new-password'],
+              ].map(([key, text, type, placeholder, autoComplete]) => (
+                <div key={key}>
+                  <label htmlFor={`prov-${key}`} className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">{text}</label>
+                  <input
+                    id={`prov-${key}`}
+                    type={type}
+                    required
+                    minLength={key === 'password' ? 8 : undefined}
+                    autoComplete={autoComplete}
+                    value={provisionForm[key]}
+                    onChange={(e) => setProvisionForm({ ...provisionForm, [key]: e.target.value })}
+                    placeholder={placeholder}
+                    className={fieldClass}
+                  />
+                </div>
+              ))}
               <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">Administrador Master (Nome) *</label>
-                <input 
-                  type="text" 
-                  value={provisionForm.adminName} 
-                  onChange={e => setProvisionForm({ ...provisionForm, adminName: e.target.value })} 
-                  required
-                  className="w-full px-3 py-2.5 bg-black/50 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm font-semibold text-white placeholder-gray-600 shadow-inner"
-                  placeholder="Ex: John Doe" 
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">E-mail Master (Acesso) *</label>
-                <input 
-                  type="email" 
-                  value={provisionForm.email} 
-                  onChange={e => setProvisionForm({ ...provisionForm, email: e.target.value })} 
-                  required
-                  className="w-full px-3 py-2.5 bg-black/50 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm font-semibold text-white placeholder-gray-600 shadow-inner"
-                  placeholder="admin@empresa.com" 
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">Chave de Segurança Inicial *</label>
-                <input 
-                  type="password" 
-                  value={provisionForm.password} 
-                  onChange={e => setProvisionForm({ ...provisionForm, password: e.target.value })} 
-                  required
-                  minLength={6}
-                  className="w-full px-3 py-2.5 bg-black/50 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm font-semibold text-white placeholder-gray-600 shadow-inner tracking-widest"
-                  placeholder="••••••••" 
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">Plano SaaS *</label>
-                <select 
-                  value={provisionForm.plan} 
-                  onChange={e => setProvisionForm({ ...provisionForm, plan: e.target.value })}
-                  className="w-full px-3 py-2.5 bg-black/50 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm font-semibold text-white cursor-pointer"
-                >
-                  <option value="starter">Starter Plan (Até 100 ativos)</option>
-                  <option value="pro">Pro Plan (Até 1000 ativos)</option>
-                  <option value="enterprise">Enterprise (Ilimitado + Whitelabel)</option>
+                <label htmlFor="prov-plan" className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Plano</label>
+                <select id="prov-plan" value={provisionForm.plan} onChange={(e) => setProvisionForm({ ...provisionForm, plan: e.target.value })} className={fieldClass}>
+                  {Object.values(plans).map((p) => (
+                    <option key={p.id} value={p.id}>{p.name} — {brl.format(Number(p.monthlyPrice) || 0)}/mês</option>
+                  ))}
                 </select>
               </div>
-
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                Limites e recursos sob medida podem ser ajustados logo depois, em Detalhes → Plano e limites.
+              </p>
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowProvisionModal(false)} className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-gray-300 font-bold text-xs uppercase tracking-wider transition-colors">Cancelar</button>
-                <button type="submit" disabled={provisionLoading}
-                  className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-                >
-                  {provisionLoading ? 'Provisionando...' : 'Inicializar Conta'}
+                <button type="button" onClick={closeProvision} className="flex-1 px-4 py-3 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-600 dark:text-gray-300 font-bold text-xs uppercase tracking-wider">Cancelar</button>
+                <button type="submit" disabled={provisionLoading} className="flex-1 px-4 py-3 bg-brand text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg disabled:opacity-50">
+                  {provisionLoading ? 'Criando...' : 'Criar empresa'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
-      {/* ════════════════ EDIT PLAN MODAL ════════════════ */}
-      {editingTenant && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-[fadeIn_0.2s_ease-out]">
-          <div className="bg-[#121214] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative animate-[scaleUp_0.3s_ease-out]">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-60"></div>
-            
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-black text-white uppercase tracking-tight">Editar Inquilino</h2>
-              <button onClick={() => setEditingTenant(null)} className="p-1 hover:bg-white/5 rounded-full text-gray-400 hover:text-white transition-colors"><X size={18} /></button>
-            </div>
-
-            <form onSubmit={handleUpdateTenant} className="space-y-4 text-left">
-              <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">Razão Social / Nome Fantasia</label>
-                <input 
-                  type="text" 
-                  value={editForm.companyName} 
-                  onChange={e => setEditForm({ ...editForm, companyName: e.target.value })} 
-                  required
-                  className="w-full px-3 py-2.5 bg-black/50 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500 text-sm font-semibold text-white shadow-inner"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">Plano Atual</label>
-                <select 
-                  value={editForm.plan} 
-                  onChange={e => setEditForm({ ...editForm, plan: e.target.value })}
-                  className="w-full px-3 py-2.5 bg-black/50 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500 text-sm font-semibold text-white cursor-pointer"
-                >
-                  <option value="starter">Starter Plan</option>
-                  <option value="pro">Pro Plan</option>
-                  <option value="enterprise">Enterprise</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 ml-1">Status Operacional</label>
-                <select 
-                  value={editForm.status} 
-                  onChange={e => setEditForm({ ...editForm, status: e.target.value })}
-                  className="w-full px-3 py-2.5 bg-black/50 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500 text-sm font-semibold text-white cursor-pointer"
-                >
-                  <option value="active">Ativo</option>
-                  <option value="suspended">Suspenso</option>
-                </select>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setEditingTenant(null)} className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-gray-300 font-bold text-xs uppercase tracking-wider transition-colors">Cancelar</button>
-                <button type="submit" className="flex-1 px-4 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors">
-                  <Save size={14}/> Salvar Alterações
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ════════════════ DELETE MODAL ════════════════ */}
-      {deletingTenant && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-[fadeIn_0.2s_ease-out]">
-          <div className="bg-[#121214] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative text-center animate-[scaleUp_0.3s_ease-out]">
-            <div className="w-14 h-14 bg-rose-500/10 border border-rose-500/30 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle size={28} />
-            </div>
-            
-            <h3 className="font-black text-white text-lg uppercase tracking-tight mb-2">Excluir Inquilino</h3>
-            <p className="text-xs text-gray-400 leading-relaxed mb-6">
-              Tem certeza que deseja excluir permanentemente a empresa <strong className="text-white">"{deletingTenant.companyName}"</strong>? 
-              Essa ação removerá o registro e os acessos imediatos da plataforma SaaS.
-            </p>
-
-            <div className="flex gap-3">
-              <button onClick={() => setDeletingTenant(null)} className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-gray-300 font-bold text-xs uppercase tracking-wider transition-colors">Cancelar</button>
-              <button onClick={handleDeleteTenant} disabled={deleteLoading} className="flex-1 px-4 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-colors disabled:opacity-50">
-                {deleteLoading ? 'Removendo...' : 'Sim, Remover'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 };

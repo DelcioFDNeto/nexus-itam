@@ -6,6 +6,7 @@ import { createAsset, updateAsset, getAssetById } from '../services/assetService
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { assertWithinLimit, describeFirebaseError } from '../services/tenantService';
 import { toast } from 'sonner';
 import { Save, ArrowLeft, Search, Server, Box, User, MapPin, Building2, Tag, DollarSign, FileText, Database, ShieldCheck, Archive } from 'lucide-react';
 import AssetIcon from '../components/AssetIcon';
@@ -28,6 +29,8 @@ const AssetForm = () => {
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState([]); 
   const [initialData, setInitialData] = useState(null);
+  // Inquilino dono do registro: a edição nunca move o ativo de empresa.
+  const [originalTenantId, setOriginalTenantId] = useState(null);
   const [customFieldsDef, setCustomFieldsDef] = useState([]);
   // Tipos proprios da empresa, somados ao catalogo base.
   const [customTypes, setCustomTypes] = useState([]);
@@ -102,12 +105,14 @@ const AssetForm = () => {
                         imei2: data.imei2 || '', 
                         valor: data.valor || '',
                         notes: data.notes || '', 
+                        // TODAS as specs gravadas são carregadas — não só as que o
+                        // formulário exibe. O updateDoc substitui o mapa `specs`
+                        // inteiro: antes, editar um ativo apagava MAC, sistema
+                        // operacional, softwares (SAM), antivírus e monitores
+                        // coletados pelo Agente ITAM.
                         specs: {
-                            ip: data.specs?.ip || '',
-                            ram: data.specs?.ram || '',
-                            storage: data.specs?.storage || '',
-                            pageCount: data.specs?.pageCount || '',
-                            processor: data.specs?.processor || ''
+                            ip: '', ram: '', storage: '', pageCount: '', processor: '',
+                            ...(data.specs || {})
                         },
                         customData: data.customData || {},
                         // Campos de baixa: so leitura no form, mas precisam
@@ -118,6 +123,7 @@ const AssetForm = () => {
                     };
                     setFormData(loadedData);
                     setInitialData(loadedData);
+                    setOriginalTenantId(data.tenantId || null);
                 }
             }
         } catch (error) { console.error(error); }
@@ -175,7 +181,7 @@ const AssetForm = () => {
             }
 
             const detailsText = diffs.length > 0 ? diffs.join(', ') : 'Dados atualizados sem modificações rastreadas.';
-            const tenantId = currentUser?.tenantId;
+            const tenantId = originalTenantId || currentUser?.tenantId;
 
             await updateAsset(id, { 
                 ...cleanData,
@@ -189,6 +195,8 @@ const AssetForm = () => {
         }
         else {
             const tenantId = currentUser?.tenantId;
+            // Limite de ativos do plano (ou do ajuste individual da empresa).
+            await assertWithinLimit(currentUser, 'assets', 1);
             await createAsset({ 
                 ...cleanData, 
                 createdBy: userEmail,
@@ -204,7 +212,7 @@ const AssetForm = () => {
         navigate('/assets');
     } catch (error) { 
         console.error(error);
-        toast.error("Erro ao salvar! Verifique sua conexão."); 
+        toast.error(describeFirebaseError(error, "Erro ao salvar! Verifique sua conexão."));
     } finally { setLoading(false); }
   };
  
@@ -258,7 +266,7 @@ const AssetForm = () => {
                              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Patrimônio (Tag)</label>
                              <div className="relative">
                                  <Tag size={18} className="absolute left-4 top-4 text-gray-400 dark:text-gray-500"/>
-                                 <input name="internalId" value={formData.internalId} onChange={handleChange} className="w-full pl-11 pr-4 py-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:focus:bg-slate-800 focus:border-black rounded-xl outline-none font-mono font-bold text-gray-900 dark:text-white transition-all uppercase" required placeholder="Ex: SHL-NB-001" />
+                                 <input name="internalId" value={formData.internalId} onChange={handleChange} className="w-full pl-11 pr-4 py-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:focus:bg-slate-800 focus:border-black rounded-xl outline-none font-mono font-bold text-gray-900 dark:text-white transition-all uppercase" required placeholder="Ex: NB-001" />
                              </div>
                         </div>
 

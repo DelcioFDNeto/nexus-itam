@@ -1,6 +1,5 @@
 // src/pages/AssetDetail.jsx
-import React, { useEffect, useState, useRef } from "react";
-import ReactDOMServer from "react-dom/server";
+import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { db } from "../services/firebase";
 import {
@@ -27,9 +26,10 @@ import MaintenanceModal from "../components/MaintenanceModal";
 import WriteOffModal from "../components/WriteOffModal";
 import StatusBadge from "../components/StatusBadge";
 import { isRetired, warrantyStatus, WARRANTY_BADGE, WARRANTY_LABEL } from "../utils/assetStatus";
-import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "../contexts/AuthContext";
 import { safeLinkUrl } from "../utils/sanitize";
+import { can } from "../utils/permissions";
+import { buildLabelsDocument, buildTermDocument, printHtml, resolvePrintBranding } from "../utils/printTemplates";
 import { toast } from "sonner";
 import {
   Archive,
@@ -60,17 +60,6 @@ import {
 
 import AssetIcon from "../components/AssetIcon";
 
-const getCompanyLabel = (companyName) =>
-  (companyName || "Nexus ITAM").trim() || "Nexus ITAM";
-
-const escapeHtml = (value) =>
-  String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-
 const AssetDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -99,27 +88,20 @@ const AssetDetail = () => {
   // Controle do formulário de novos periféricos
   const [newPeripheral, setNewPeripheral] = useState("");
   const [isAddingPeripheral, setIsAddingPeripheral] = useState(false);
-  const [peripheralToPrint, setPeripheralToPrint] = useState(null); // eslint-disable-line no-unused-vars
 
-  // Configurações da empresa para impressão de termos
-  const [config, setConfig] = useState({
-    companyName: "Nexus ITAM",
-    cnpj: "",
-    itManager: "SISTEMA ITAM",
-    supportEmail: "shiadmti@gmail.com",
-    termTitle: "TERMO DE ENTREGA E RESPONSABILIDADE",
-  });
+  // Configurações da empresa para impressão de termos e etiquetas.
+  // Sem padrões fixos: antes toda empresa sem e-mail configurado imprimia o
+  // e-mail de suporte da primeira cliente.
+  const [config, setConfig] = useState({});
+  const canWrite = can(currentUser, "assets:write");
+  const canRetire = can(currentUser, "assets:delete");
 
   useEffect(() => {
     const loadConfig = async () => {
       try {
-        const settingsRef = doc(db, "settings", tenantId || "general");
-        const snap = await getDoc(settingsRef);
-        if (snap.exists())
-          setConfig((prev) => ({
-            ...prev,
-            ...snap.data(),
-          }));
+        if (!tenantId) return;
+        const snap = await getDoc(doc(db, "settings", tenantId));
+        if (snap.exists()) setConfig(snap.data());
       } catch (err) {
         console.error(err);
       }
@@ -127,227 +109,47 @@ const AssetDetail = () => {
     loadConfig();
   }, [tenantId]);
 
-  // Sistema de impressão utilizando nova janela para contornar limitações de navegadores móveis
-  const printInNewWindow = (htmlContent) => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      toast.error('Popup bloqueado! Permita popups para imprimir.');
-      return;
-    }
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.focus();
-        printWindow.print();
-      }, 500);
-    };
+  // Impressos com a identidade da empresa e todos os campos escapados
+  // (utils/printTemplates). Antes o HTML interpolava modelo, responsavel e
+  // clausulas sem escape dentro de document.write.
+  const openPrint = (html) => {
+    if (!printHtml(html)) toast.error('Popup bloqueado! Permita popups para imprimir.');
   };
 
-  const labelRef = useRef(null);
-  const peripheralLabelRef = useRef(null);
+  const printBranding = () => resolvePrintBranding(config, currentUser);
 
   const handlePrintTerm = () => {
     if (!asset) return;
-    const _responsibleName = asset.assignedTo || asset.clientName || '__________________________';
-    const _derivedSector = asset.sector || 'Adm/Op.';
-    const _location = asset.location || 'Local não definido';
-    const accessoriesText = asset.accessories
-      ? (Array.isArray(asset.accessories) ? asset.accessories.join(', ') : asset.accessories)
-      : '';
-    const peripheralsText = asset.peripherals?.length > 0
-      ? asset.peripherals.map(p => p.name).join(', ')
-      : '';
-
-    const defaultClauses = `1. DO USO E FINALIDADE: O(a) Responsável declara ter recebido o equipamento acima descrito em perfeito estado de conservação e funcionamento. Compromete-se a utilizá-lo estrita e exclusivamente para fins profissionais, sendo vedado o uso para fins pessoais, empréstimo a terceiros ou instalação de softwares não autorizados pela TI.
-2. DA GUARDA E CONSERVAÇÃO: É responsabilidade do(a) Responsável zelar pela guarda, segurança e conservação do equipamento. O mau uso, negligência, imprudência ou imperícia que resultar em danos ao equipamento sujeitará o(a) Responsável às sanções cíveis e disciplinares previstas em lei.
-3. DA RESTITUIÇÃO: O equipamento deverá ser devolvido imediatamente à Empresa, em perfeito estado (salvo desgaste natural), nas seguintes hipóteses: a) Rescisão do contrato de trabalho ou encerramento da prestação de serviços; b) Mudança de cargo ou função; c) Solicitação expressa da Empresa a qualquer tempo.
-4. DO EXTRAVIO, DANO OU FURTO: Em conformidade com o Art. 186 do Código Civil e, quando aplicável, Art. 462, §1º da CLT, o(a) Responsável AUTORIZA EXPRESSAMENTE o desconto em seus recebimentos (faturas/notas fiscais), folha de pagamento ou verbas rescisórias dos valores correspondentes ao reparo ou reposição do equipamento, caso seja comprovado que os danos ou o extravio decorreram de DOLO (intenção), NEGLIGÊNCIA (falta de cuidado) ou uso em desconformidade com as normas da empresa (mau uso).
-5. DA SEGURANÇA DA INFORMAÇÃO: O(a) Responsável está ciente de que o equipamento é monitorado e que não deve armazenar dados pessoais sensíveis, responsabilizando-se pelo sigilo de suas senhas e cumprimento das normas de LGPD da empresa.`;
-
-    const clausesList = (config.termClauses || defaultClauses).split('\n').filter(c => c.trim().length > 0);
-    const clausesHtml = clausesList.map(c => `<li class="clause-item">${c.trim()}</li>`).join('');
-
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Termo_${id}</title>
-<style>
-  @page { size: A4; margin: 14mm 15mm; }
-  body { font-family: 'Times New Roman', Times, serif; color: #000; line-height: 1.4; margin: 0; padding: 15px 20px; }
-  .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 14px; }
-  .header-left { display: flex; align-items: center; gap: 14px; }
-  .logo-img { height: 40px; object-fit: contain; }
-  .title { text-align: center; font-weight: bold; font-size: 14px; text-transform: uppercase; margin: 14px 0; }
-  .content { font-size: 10.5px; text-align: justify; margin-bottom: 8px; line-height: 1.4; }
-  .box { border: 1px solid #000; padding: 8px 10px; margin: 10px 0; background-color: #f9f9f9; }
-  .box-title { font-weight: bold; font-size: 11px; margin-bottom: 4px; text-decoration: underline; }
-  .grid-info { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 10.5px; }
-  .label { font-weight: bold; text-transform: uppercase; font-size: 8.5px; color: #333; }
-  .value { font-weight: bold; font-size: 10.5px; margin-left: 3px; }
-  .clauses { padding-left: 0; list-style-type: none; }
-  .clause-item { margin-bottom: 6px; font-size: 10px; line-height: 1.35; text-align: justify; }
-  .signatures { display: flex; justify-content: space-between; margin-top: 40px; text-align: center; }
-  .line { border-top: 1px solid #000; width: 210px; margin-bottom: 5px; }
-  .footer { margin-top: 20px; font-size: 8.5px; text-align: center; border-top: 1px solid #ccc; padding-top: 5px; }
-</style></head><body>
-  <div class="header">
-    <div class="header-left">
-      <div style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: flex-start; gap: 6px; color: #4F46E5; font-size: 22px; letter-spacing: -0.5px; height: 40px;">
-        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
-        NEXUS<span style="color: #111827">ITAM</span>
-      </div>
-      <div>
-        <h1 style="font-size:18px;margin:0;font-weight:900">${config.companyName.toUpperCase()}</h1>
-        <p style="margin:2px 0 0;font-size:9.5px">CNPJ: ${config.cnpj || '00.000.000/0001-00'}</p>
-        <p style="margin:0;font-size:9.5px">Departamento de Tecnologia da Informação</p>
-      </div>
-    </div>
-    <div style="text-align:right"><p style="margin:0;font-size:9.5px">Emitido em: ${new Date().toLocaleDateString('pt-BR')}</p></div>
-  </div>
-  <h2 class="title">${config.termTitle}</h2>
-<p class="content">
-    Pelo presente instrumento particular, de um lado a empresa <strong>${config.companyName}</strong>, inscrita no CNPJ sob o nº <strong>${config.cnpj || '00.000.000/0001-00'}</strong>, e de outro lado o(a) responsável abaixo qualificado(a),
-    celebram o presente termo de responsabilidade e comodato, regido pelas cláusulas e condições seguintes, em conformidade com a legislação civil pertinente e, quando aplicável, com o Art. 462 da CLT.
-  </p>
-  <div class="box">
-    <div class="box-title">1. DADOS DO COLABORADOR(A) / RESPONSÁVEL</div>
-    <div class="grid-info">
-      <div><span class="label">Nome:</span> <span class="value">${_responsibleName.toUpperCase()}</span></div>
-      <div><span class="label">CPF:</span> <span class="value">${asset.clientCpf || '___.___.___-__'}</span></div>
-      <div><span class="label">Departamento/Setor:</span> <span class="value">${_derivedSector.toUpperCase()}</span></div>
-      <div><span class="label">Local de Trabalho:</span> <span class="value">${_location.toUpperCase()}</span></div>
-    </div>
-  </div>
-  <div class="box">
-    <div class="box-title">2. OBJETO (EQUIPAMENTO EM COMODATO)</div>
-    <div style="font-size:10.5px;margin-bottom:5px">A empresa cede ao(à) responsável, a título de comodato, para uso EXCLUSIVO no desempenho de suas atividades profissionais, o(s) seguinte(s) bem(ns):</div>
-    <div class="grid-info">
-      <div><span class="label">Equipamento:</span> <span class="value">${asset.model}</span></div>
-      <div><span class="label">Tipo:</span> <span class="value">${asset.type.toUpperCase()}</span></div>
-      <div><span class="label">Patrimônio (ID):</span> <span class="value">${asset.internalId}</span></div>
-      <div><span class="label">Número de Série:</span> <span class="value">${asset.serialNumber || 'N/A'}</span></div>
-      ${accessoriesText ? `<div><span class="label">Acessórios/Periféricos:</span> <span class="value">${accessoriesText}</span></div>` : ''}
-      ${peripheralsText ? `<div><span class="label">Itens Adicionais:</span> <span class="value">${peripheralsText}</span></div>` : ''}
-    </div>
-  </div>
-  <div class="content">
-    <p style="font-weight:bold;margin-bottom:4px;font-size:10.5px">CLÁUSULAS CONTRATUAIS:</p>
-    <ul class="clauses">
-      ${clausesHtml}
-    </ul>
-  </div>
-  <div style="margin-top:20px;font-size:10.5px">
-    <p>Li, compreendi e aceito integralmente os termos acima descritos.</p>
-    <p>_______________________, _____ de _______________________ de _________.</p>
-  </div>
-  <div class="signatures">
-    <div><div class="line"></div><span style="font-size:10.5px">${_responsibleName}</span><br/><small style="font-size:9px">RECEBEDOR(A) / RESPONSÁVEL</small>${!asset.clientCpf ? '<br/><small style="font-size:8px;color:#666">CPF: ___.___.___-__</small>' : ''}</div>
-    <div><div class="line"></div><span style="font-size:10.5px">${config.itManager}</span><br/><small style="font-size:9px">GESTOR DE TI</small></div>
-  </div>
-  <div class="footer">Documento gerado eletronicamente pela plataforma corporativa Nexus ITAM. ID: ${id}</div>
-</body></html>`;
-    printInNewWindow(html);
+    openPrint(
+      buildTermDocument({
+        asset,
+        assetId: id,
+        branding: printBranding(),
+        termTitle: config.termTitle,
+        clauses: config.termClauses,
+      }),
+    );
   };
 
   const handlePrintLabel = () => {
     if (!asset) return;
-    const qrSvg = ReactDOMServer.renderToStaticMarkup(<QRCodeSVG value={asset.internalId} size={68} level="M" />);
-    const companyLabel = escapeHtml(getCompanyLabel(config.companyName).toLocaleUpperCase("pt-BR"));
-    const supportEmail = escapeHtml((config.supportEmail || "shiadmti@gmail.com").trim() || "shiadmti@gmail.com");
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Etiqueta_${id}</title>
-<style>
-  @page { size: auto; margin: 5mm; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { margin: 0; padding: 10px; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: Arial, sans-serif; }
-  .label { width: 7cm; height: 3.5cm; padding: 4px; border: 2px solid black; border-radius: 6px; display: flex; align-items: center; gap: 6px; background: white; overflow: hidden; }
-  .qr { width: 68px; height: 68px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-  .info { display: flex; flex-direction: column; height: 100%; flex-grow: 1; justify-content: space-between; overflow: hidden; }
-  .logo-row { min-height: 32px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; border-bottom: 1px solid #eee; padding-bottom: 2px; overflow: hidden; }
-  .brand-line { display: flex; align-items: center; justify-content: flex-start; gap: 4px; color: #4F46E5; font-size: 14px; font-weight: 900; line-height: 1; letter-spacing: -0.5px; }
-  .company-line { width: 100%; margin-top: 2px; font-size: 6px; font-weight: 900; color: #111827; text-transform: uppercase; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .logo-row img { height: 100%; max-height: 28px; }
-  .id-section { display: flex; flex-direction: column; justify-content: center; }
-  .id-label { font-size: 7px; font-weight: bold; color: #666; text-transform: uppercase; line-height: 1; }
-  .id-value { font-size: 18px; font-weight: 900; color: black; font-family: monospace; line-height: 1.1; letter-spacing: -0.5px; }
-  .model { font-size: 8px; font-weight: bold; color: #333; text-transform: uppercase; margin-top: 2px; white-space: nowrap; max-width: 125px; overflow: hidden; text-overflow: ellipsis; }
-  .footer-row { border-top: 1.5px solid #000; padding-top: 1px; margin-top: auto; display: flex; justify-content: space-between; align-items: center; }
-  .footer-left { font-size: 6px; font-weight: bold; color: #444; }
-  .footer-right { font-size: 8px; font-weight: 900; color: #000; }
-</style></head><body>
-  <div class="label">
-    <div class="qr">${qrSvg}</div>
-    <div class="info">
-      <div class="logo-row" style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: flex-start; gap: 4px; color: #4F46E5; font-size: 14px; letter-spacing: -0.5px;">
-        <div class="brand-line">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
-          Nexus<span style="color: #111827">ITAM</span>
-        </div>
-        <div class="company-line">${companyLabel}</div>
-      </div>
-      <div class="id-section">
-        <span class="id-label">Patrimônio</span>
-        <span class="id-value">${asset.internalId}</span>
-        <span class="model">${asset.model}</span>
-      </div>
-      <div class="footer-row">
-        <span class="footer-left">SUPORTE TI</span>
-        <span class="footer-right">${supportEmail}</span>
-      </div>
-    </div>
-  </div>
-</body></html>`;
-    printInNewWindow(html);
+    openPrint(
+      buildLabelsDocument([{ code: asset.internalId, subtitle: asset.model }], printBranding(), {
+        title: `Etiqueta_${asset.internalId || id}`,
+        grid: false,
+      }),
+    );
   };
 
   const handlePrintPeripheral = (item) => {
     if (!asset) return;
-    const qrSvg = ReactDOMServer.renderToStaticMarkup(<QRCodeSVG value={asset.internalId} size={42} level="M" />);
-    const companyLabel = escapeHtml(getCompanyLabel(config.companyName).toLocaleUpperCase("pt-BR"));
-    const supportEmail = escapeHtml((config.supportEmail || "shiadmti@gmail.com").trim() || "shiadmti@gmail.com");
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Acessorio_${id}</title>
-<style>
-  @page { size: auto; margin: 5mm; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { margin: 0; padding: 10px; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: Arial, sans-serif; }
-  .label { width: 5cm; height: 2.5cm; padding: 3px; border: 1.5px solid black; border-radius: 4px; display: flex; align-items: center; gap: 4px; overflow: hidden; background: white; }
-  .qr { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-  .info { display: flex; flex-direction: column; height: 100%; flex-grow: 1; justify-content: space-between; overflow: hidden; }
-  .logo-row { min-height: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-bottom: 1px solid #eee; padding-bottom: 1px; overflow: hidden; }
-  .brand-line { display: flex; align-items: center; justify-content: center; gap: 3px; color: #4F46E5; font-size: 8px; font-weight: 900; line-height: 1; letter-spacing: -0.2px; }
-  .company-line { width: 100%; margin-top: 1px; font-size: 4px; font-weight: 900; color: #111827; text-align: center; text-transform: uppercase; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .logo-row img { height: 100%; max-height: 16px; }
-  .id-section { display: flex; flex-direction: column; justify-content: center; gap: 1px; }
-  .id-label { font-size: 4.5px; font-weight: bold; color: #666; text-transform: uppercase; line-height: 1; }
-  .id-value { font-size: 11px; font-weight: 900; color: black; font-family: monospace; line-height: 1; letter-spacing: -0.2px; }
-  .peri-name { font-size: 6px; font-weight: bold; color: #333; text-transform: uppercase; white-space: nowrap; max-width: 95px; overflow: hidden; text-overflow: ellipsis; line-height: 1.1; }
-  .footer-row { border-top: 1px solid #000; padding-top: 1px; margin-top: auto; display: flex; justify-content: space-between; align-items: center; }
-  .footer-left { font-size: 4px; font-weight: bold; color: #444; }
-  .footer-right { font-size: 5px; font-weight: 900; color: #000; }
-</style></head><body>
-  <div class="label">
-    <div class="qr">${qrSvg}</div>
-    <div class="info">
-      <div class="logo-row" style="font-weight: 900; font-family: sans-serif; display: flex; align-items: center; justify-content: center; gap: 3px; color: #4F46E5; font-size: 8px; letter-spacing: -0.2px;">
-        <div class="brand-line">
-          <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
-          NEXUS<span style="color: #111827">ITAM</span>
-        </div>
-        <div class="company-line">${companyLabel}</div>
-      </div>
-      <div class="id-section">
-        <span class="id-label">Patrimônio / Periférico</span>
-        <span class="id-value">${asset.internalId}</span>
-        <span class="peri-name">${item.name || 'Acessório'}</span>
-      </div>
-      <div class="footer-row">
-        <span class="footer-left">SUPORTE TI</span>
-        <span class="footer-right">${supportEmail}</span>
-      </div>
-    </div>
-  </div>
-</body></html>`;
-    printInNewWindow(html);
+    openPrint(
+      buildLabelsDocument([{ code: asset.internalId, subtitle: item.name || 'Acessório' }], printBranding(), {
+        variant: 'peripheral',
+        title: `Acessorio_${asset.internalId || id}`,
+        grid: false,
+      }),
+    );
   };
 
   // Busca de dados no banco (Firestore)
@@ -413,19 +215,26 @@ const AssetDetail = () => {
     setIsSavingNotes(true);
     const userEmail = currentUser?.email || "Usuário Desconhecido";
     const tenantId = asset?.tenantId || currentUser?.tenantId;
-    await updateAsset(
-      id,
-      { notes: notes, tenantId },
-      {
-        action: "Nota Técnica",
-        details: "Observações técnicas atualizadas.",
-        type: "update",
-        user: userEmail,
-        tenantId,
-      },
-    );
-    setIsSavingNotes(false);
-    toast.success("Notas atualizadas!");
+    try {
+      await updateAsset(
+        id,
+        { notes: notes, tenantId },
+        {
+          action: "Nota Técnica",
+          details: "Observações técnicas atualizadas.",
+          type: "update",
+          user: userEmail,
+          tenantId,
+        },
+      );
+      toast.success("Notas atualizadas!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao salvar as notas.");
+    } finally {
+      // Antes, uma falha deixava o botão travado em "salvando" para sempre.
+      setIsSavingNotes(false);
+    }
   };
 
   const handleAddLink = async () => {
@@ -574,15 +383,16 @@ const AssetDetail = () => {
       toast.error('Dê baixa no ativo antes de excluir — a exclusão apaga todo o histórico.');
       return;
     }
-    if (window.confirm(" TEM CERTEZA? A exclusão é irreversível e remove todo o histórico."))  {
+    if (window.confirm("TEM CERTEZA? A exclusão é irreversível e remove o registro patrimonial.")) {
       setIsDeleting(true);
       try {
-        await deleteAsset(id);
-        alert("Excluído.");
+        // Com tenantId a exclusão fica registrada na trilha de auditoria.
+        await deleteAsset(id, asset?.tenantId || currentUser?.tenantId, currentUser?.email || "Sistema");
+        toast.success("Ativo excluído.");
         navigate("/assets");
       } catch (err) {
         console.error(err);
-        alert("Erro.");
+        toast.error(err?.code === "permission-denied" ? "Seu perfil não pode excluir ativos." : "Erro ao excluir o ativo.");
         setIsDeleting(false);
       }
     }
@@ -590,8 +400,8 @@ const AssetDetail = () => {
 
   if (loading)
     return (
-      <div className="flex h-screen items-center justify-center bg-[#F4F4F5]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-black"></div>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-black dark:border-white"></div>
       </div>
     );
   if (!asset) return null;
@@ -624,356 +434,49 @@ const AssetDetail = () => {
   };
   const garantia = warrantyStatus(asset.warrantyEnd);
 
-  const companyLabelText = getCompanyLabel(config.companyName).toLocaleUpperCase("pt-BR");
 
   return (
     <div className="max-w-[1920px] mx-auto pb-24 animate-fade-in relative min-h-screen">
-      {/* Elementos ocultos desenhados de forma padronizada para geração de impressão visual */}
-      <div style={{ display: "none" }}>
-        {/* Layout da etiqueta principal do ativo (formato padrão térmico) */}
-        <div
-          ref={labelRef}
-          style={{
-            width: "7cm",
-            height: "3.5cm",
-            padding: "4px",
-            border: "2px solid black",
-            borderRadius: "6px",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            backgroundColor: "white",
-            fontFamily: "Arial, sans-serif",
-            boxSizing: "border-box",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              width: "68px",
-              height: "68px",
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <QRCodeSVG value={asset.internalId} size={68} level="M" />
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              height: "100%",
-              flexGrow: 1,
-              justifyContent: "space-between",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                minHeight: "32px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "flex-start",
-                borderBottom: "1px solid #eee",
-                paddingBottom: "2px",
-                overflow: "hidden",
-              }}
-            >
-              <span
-                style={{
-                  color: "#4F46E5",
-                  fontSize: "14px",
-                  fontWeight: "900",
-                  lineHeight: "1",
-                }}
-              >
-                Nexus<span style={{ color: "#111827" }}>ITAM</span>
-              </span>
-              <span
-                style={{
-                  width: "100%",
-                  marginTop: "2px",
-                  fontSize: "6px",
-                  fontWeight: "900",
-                  color: "#111827",
-                  textTransform: "uppercase",
-                  lineHeight: "1",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {companyLabelText}
-              </span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "7px",
-                  fontWeight: "bold",
-                  color: "#666",
-                  textTransform: "uppercase",
-                  lineHeight: "1",
-                }}
-              >
-                Patrimônio
-              </span>
-              <span
-                style={{
-                  fontSize: "18px",
-                  fontWeight: "900",
-                  color: "black",
-                  fontFamily: "monospace",
-                  lineHeight: "1.1",
-                  letterSpacing: "-0.5px",
-                }}
-              >
-                {asset.internalId}
-              </span>
-              <span
-                style={{
-                  fontSize: "8px",
-                  fontWeight: "bold",
-                  color: "#333",
-                  textTransform: "uppercase",
-                  marginTop: "2px",
-                  whiteSpace: "nowrap",
-                  maxWidth: "125px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {asset.model}
-              </span>
-            </div>
-            <div
-              style={{
-                borderTop: "1.5px solid #000",
-                paddingTop: "1px",
-                marginTop: "auto",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <span
-                style={{ fontSize: "6px", fontWeight: "bold", color: "#444" }}
-              >
-                SUPORTE TI
-              </span>
-              <span
-                style={{ fontSize: "8px", fontWeight: "900", color: "#000" }}
-              >
-                shiadmti@gmail.com
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Layout simplificado de identificação para colar em periféricos ou acessórios */}
-        <div
-          ref={peripheralLabelRef}
-          style={{
-            width: "5cm",
-            height: "2.5cm",
-            padding: "3px",
-            border: "1.5px solid black",
-            borderRadius: "4px",
-            display: "flex",
-            alignItems: "center",
-            gap: "4px",
-            backgroundColor: "white",
-            fontFamily: "Arial, sans-serif",
-            boxSizing: "border-box",
-            pageBreakInside: "avoid",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              width: "44px",
-              height: "44px",
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <QRCodeSVG value={asset.internalId} size={42} level="M" />
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              height: "100%",
-              flexGrow: 1,
-              justifyContent: "space-between",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                minHeight: "20px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "flex-start",
-                borderBottom: "1px solid #eee",
-                paddingBottom: "1px",
-                overflow: "hidden",
-              }}
-            >
-              <span
-                style={{
-                  color: "#4F46E5",
-                  fontSize: "8px",
-                  fontWeight: "900",
-                  lineHeight: "1",
-                }}
-              >
-                NEXUS<span style={{ color: "#111827" }}>ITAM</span>
-              </span>
-              <span
-                style={{
-                  width: "100%",
-                  marginTop: "1px",
-                  fontSize: "4px",
-                  fontWeight: "900",
-                  color: "#111827",
-                  textAlign: "center",
-                  textTransform: "uppercase",
-                  lineHeight: "1",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {companyLabelText}
-              </span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-                gap: "1px",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "4.5px",
-                  fontWeight: "bold",
-                  color: "#666",
-                  textTransform: "uppercase",
-                  lineHeight: "1",
-                }}
-              >
-                Patrimônio / Periférico
-              </span>
-              <span
-                style={{
-                  fontSize: "11px",
-                  fontWeight: "900",
-                  fontFamily: "monospace",
-                  color: "black",
-                  lineHeight: "1",
-                  letterSpacing: "-0.2px",
-                }}
-              >
-                {asset.internalId}
-              </span>
-              <span
-                style={{
-                  fontSize: "6px",
-                  fontWeight: "bold",
-                  textTransform: "uppercase",
-                  color: "#333",
-                  maxWidth: "95px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  lineHeight: "1.1",
-                }}
-              >
-                {peripheralToPrint?.name || "Acessório"}
-              </span>
-            </div>
-            <div
-              style={{
-                borderTop: "1px solid #000",
-                paddingTop: "1px",
-                marginTop: "auto",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "4px",
-                  fontWeight: "bold",
-                  color: "#444",
-                }}
-              >
-                SUPORTE TI
-              </span>
-              <span
-                style={{
-                  fontSize: "5px",
-                  fontWeight: "900",
-                  color: "#000",
-                }}
-              >
-                shiadmti@gmail.com
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Barra superior de navegação com botões de ação e exportação */}
       <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <button
           onClick={() => navigate("/assets")}
-          className="group flex items-center text-gray-500 dark:text-gray-400 hover:text-black transition-colors font-bold text-sm"
+          className="group flex items-center text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors font-bold text-sm"
         >
-          <div className="p-2 rounded-full group-hover:bg-gray-100 transition-all mr-2">
+          <div className="p-2 rounded-full group-hover:bg-gray-100 dark:group-hover:bg-slate-800 transition-all mr-2">
             <ArrowLeft size={20} />
           </div>
           Voltar para Lista
         </button>
 
         <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-          <button
-            onClick={() => navigate(`/assets/edit/${id}`)}
-            className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl font-bold text-sm shadow-lg hover:bg-gray-800 transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
-          >
-            <Edit3 size={16} />{" "}
-            <span className="hidden sm:inline">Editar Ativo</span>
-          </button>
-          <button
-            onClick={() => setIsMoveModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
-          >
-            <ArrowRightLeft size={16} />{" "}
-            <span className="hidden sm:inline">Movimentar</span>
-          </button>
-          <button
-            onClick={() => setIsMaintModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap"
-          >
-            <Wrench size={16} />{" "}
-            <span className="hidden sm:inline">Manutenção</span>
-          </button>
+          {/* Ações de escrita só para quem pode gravar: o visualizador via os
+              botões, clicava e recebia erro de permissão do banco. */}
+          {canWrite && (
+            <>
+              <button
+                onClick={() => navigate(`/assets/edit/${id}`)}
+                className="flex items-center gap-2 px-4 py-2 bg-black text-white dark:bg-white dark:text-slate-900 rounded-xl font-bold text-sm shadow-lg hover:bg-gray-800 dark:hover:bg-slate-200 transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
+              >
+                <Edit3 size={16} />{" "}
+                <span className="hidden sm:inline">Editar Ativo</span>
+              </button>
+              <button
+                onClick={() => setIsMoveModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
+              >
+                <ArrowRightLeft size={16} />{" "}
+                <span className="hidden sm:inline">Movimentar</span>
+              </button>
+              <button
+                onClick={() => setIsMaintModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap"
+              >
+                <Wrench size={16} />{" "}
+                <span className="hidden sm:inline">Manutenção</span>
+              </button>
+            </>
+          )}
           <button
             onClick={handlePrintTerm}
             className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap"
@@ -988,7 +491,7 @@ const AssetDetail = () => {
             <Printer size={16} />{" "}
             <span className="hidden sm:inline">Etiqueta</span>
           </button>
-          {currentUser?.role !== 'operator' && (
+          {canRetire && (
             isRetired(asset?.status) ? (
               <button
                 onClick={handleReactivate}
@@ -1000,17 +503,19 @@ const AssetDetail = () => {
             ) : (
               <button
                 onClick={() => setIsWriteOffOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 transition-all whitespace-nowrap"
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap"
               >
                 <Archive size={16} />{" "}
                 <span className="hidden sm:inline">Dar baixa</span>
               </button>
             )
           )}
-          {currentUser?.role !== 'operator' && (
+          {canRetire && (
             <button
               onClick={handleDelete}
-              className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 transition-all ml-auto hover:scale-105"
+              title="Excluir ativo"
+              aria-label="Excluir ativo"
+              className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400 rounded-xl font-bold text-sm hover:bg-red-100 dark:hover:bg-red-900/40 transition-all ml-auto hover:scale-105"
             >
               <Trash2 size={16} />
             </button>

@@ -121,7 +121,7 @@ const LicenseManager = () => {
   };
 
   const filteredLicenses = licenses.filter(l =>
-    l.softwareName.toLowerCase().includes(searchTerm.toLowerCase())
+    (l.softwareName || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (

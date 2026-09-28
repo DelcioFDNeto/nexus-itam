@@ -10,6 +10,7 @@ import Logo from './Logo';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { can, isSuperadmin, ROLE_LABELS } from '../utils/permissions';
+import { isModuleEnabled } from '../utils/entitlements';
 
 /**
  * Navegacao lateral.
@@ -56,36 +57,42 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
 
     const groups = [
       {
-        title: 'Visao Geral',
+        title: 'Visão Geral',
         items: [
           { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', cap: 'assets:read' },
           { path: '/assets', icon: Server, label: 'Ativos', cap: 'assets:read' },
-          { path: '/projects', icon: FolderGit2, label: 'Projetos', cap: 'projects:write' },
-          { path: '/tasks', icon: Layers, label: 'Tarefas', cap: 'tasks:write' },
+          { path: '/projects', icon: FolderGit2, label: 'Projetos', cap: 'projects:write', feature: 'projects' },
+          { path: '/tasks', icon: Layers, label: 'Tarefas', cap: 'tasks:write', feature: 'projects' },
         ],
       },
       {
-        title: 'Gestao',
+        title: 'Gestão',
         items: [
-          { path: '/audit', icon: ClipboardCheck, label: 'Auditoria', cap: 'audit:run' },
+          { path: '/audit', icon: ClipboardCheck, label: 'Auditoria', cap: 'audit:run', feature: 'audit' },
           { path: '/employees', icon: Users, label: 'Equipe', cap: 'employees:write' },
-          { path: '/licenses', icon: ShieldCheck, label: 'Licencas', cap: 'licenses:write' },
-          { path: '/services', icon: Globe, label: 'Contratos', cap: 'contracts:write' },
-          { path: '/agent', icon: Activity, label: 'Agente ITAM', cap: 'agent:manage' },
+          { path: '/licenses', icon: ShieldCheck, label: 'Licenças', cap: 'licenses:write', feature: 'licenses' },
+          { path: '/services', icon: Globe, label: 'Contratos', cap: 'contracts:write', feature: 'contracts' },
+          { path: '/agent', icon: Activity, label: 'Agente ITAM', cap: 'agent:manage', feature: 'agent' },
         ],
       },
       {
         title: 'Sistema',
         items: [
-          { path: '/import', icon: FileInput, label: 'Importacao', cap: 'assets:import' },
+          { path: '/import', icon: FileInput, label: 'Importação', cap: 'assets:import', feature: 'import' },
           { path: '/users', icon: UserCog, label: 'Acessos', cap: 'users:manage' },
-          { path: '/settings', icon: Settings, label: 'Configuracoes', cap: 'settings:read' },
+          { path: '/settings', icon: Settings, label: 'Configurações', cap: 'settings:read' },
         ],
       },
     ];
 
     return groups
-      .map((group) => ({ ...group, items: group.items.filter((item) => can(currentUser, item.cap)) }))
+      // Permissao do papel + modulo liberado no plano e nao ocultado pela empresa.
+      .map((group) => ({
+        ...group,
+        items: group.items.filter(
+          (item) => can(currentUser, item.cap) && (!item.feature || isModuleEnabled(currentUser, item.feature)),
+        ),
+      }))
       .filter((group) => group.items.length > 0);
   }, [master, currentUser]);
 
@@ -152,9 +159,9 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
         </div>
 
         {/* --- Acoes rapidas --- */}
-        {!master && (
+        {(onSearchClick || (!master && canCreate)) && (
           <div className={`shrink-0 space-y-2 pt-5 ${isCollapsed ? 'px-4' : 'px-5'}`}>
-            {canCreate && (
+            {!master && canCreate && (
               <Link
                 to="/assets/new"
                 onClick={onClose}
@@ -246,14 +253,15 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
           {!isCollapsed && (
             <div className="mb-3 flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/60">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-black text-white dark:bg-white dark:text-slate-900">
-                {(currentUser?.name || currentUser?.email || 'U').slice(0, 2).toUpperCase()}
+                {(currentUser?.name || currentUser?.email || 'U').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">
                   {currentUser?.name || 'Usuario'}
                 </p>
-                <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400" title={currentUser?.companyName}>
                   {ROLE_LABELS[currentUser?.role] || 'Sem perfil'}
+                  {!master && currentUser?.companyName ? ` · ${currentUser.companyName}` : ''}
                 </p>
               </div>
             </div>

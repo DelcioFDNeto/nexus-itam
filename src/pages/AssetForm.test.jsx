@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
 import AssetForm from './AssetForm';
 import { useAuth } from '../contexts/AuthContext';
-import { createAsset } from '../services/assetService';
+import { createAsset, getAssetById, updateAsset } from '../services/assetService';
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: vi.fn()
@@ -32,12 +32,13 @@ vi.mock('../services/locationService', () => ({
 }));
 
 const mockNavigate = vi.fn();
+let mockParams = {};
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
     ...actual,
     useNavigate: () => mockNavigate,
-    useParams: () => ({})
+    useParams: () => mockParams
   };
 });
 
@@ -61,6 +62,7 @@ vi.mock('sonner', () => ({
 describe('AssetForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockParams = {};
     useAuth.mockReturnValue({
       currentUser: { email: 'admin@test.com', tenantId: 'tenant1' }
     });
@@ -75,7 +77,7 @@ describe('AssetForm', () => {
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(/Ex: Notebook/i)).toBeInTheDocument();
-      expect(screen.getByPlaceholderText(/Ex: SHL-NB-001/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/Ex: NB-001/i)).toBeInTheDocument();
     });
   });
 
@@ -91,7 +93,7 @@ describe('AssetForm', () => {
     });
 
     fireEvent.change(screen.getByPlaceholderText(/Ex: Notebook/i), { target: { value: 'MacBook Pro' } });
-    fireEvent.change(screen.getByPlaceholderText(/Ex: SHL-NB-001/i), { target: { value: 'DEV-001' } });
+    fireEvent.change(screen.getByPlaceholderText(/Ex: NB-001/i), { target: { value: 'DEV-001' } });
     
     // Click the "Celular" button to change type
     fireEvent.click(screen.getByText('Celular'));
@@ -108,5 +110,38 @@ describe('AssetForm', () => {
       expect(createAsset).toHaveBeenCalled();
       expect(mockNavigate).toHaveBeenCalledWith('/assets');
     });
+  });
+
+  it('preserva as specs coletadas pelo agente ao editar', async () => {
+    // Regressao: o formulario so carregava 5 campos de specs e o updateDoc
+    // substituia o mapa inteiro, apagando softwares, MAC e SO do agente.
+    mockParams = { id: 'asset-9' };
+    getAssetById.mockResolvedValueOnce({
+      id: 'asset-9',
+      tenantId: 'tenant1',
+      model: 'Dell Latitude',
+      internalId: 'NB-009',
+      type: 'Notebook',
+      specs: { ip: '10.0.0.9', mac: 'AA:BB', os: 'Windows 11', software: ['Office', 'Chrome'], security: { antivirus: 'Defender' } },
+    });
+
+    render(
+      <BrowserRouter>
+        <AssetForm />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Dell Latitude')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Salvar Alterações/i }));
+
+    await waitFor(() => expect(updateAsset).toHaveBeenCalled());
+    const [, saved] = updateAsset.mock.calls[0];
+    expect(saved.specs.software).toEqual(['Office', 'Chrome']);
+    expect(saved.specs.mac).toBe('AA:BB');
+    expect(saved.specs.security).toEqual({ antivirus: 'Defender' });
+    expect(saved.tenantId).toBe('tenant1');
   });
 });

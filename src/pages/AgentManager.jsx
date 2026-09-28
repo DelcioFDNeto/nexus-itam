@@ -24,7 +24,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
-import { getAgentToken, migrateLegacyAgentToken, rotateAgentToken } from '../services/tenantSecretService';
+import { assertWithinLimit } from '../services/tenantService';
+import { migrateLegacyAgentToken, rotateAgentToken } from '../services/tenantSecretService';
 import { db } from '../services/firebase';
 import { updateAsset } from '../services/assetService';
 import {
@@ -61,7 +62,19 @@ const normalizeNamingConfig = (config = {}) => ({
   padLength: Number(config.padLength) || DEFAULT_AGENT_NAMING.padLength,
 });
 
-// Geradores de script movidos para ../utils/agentScripts};
+// Geradores de script movidos para ../utils/agentScripts
+
+/**
+ * O IP pertence a faixa confiavel? Aceita prefixo ("192.168.1.") ou prefixo
+ * sem o ponto final ("192.168.1") — neste caso exige o limite do octeto, para
+ * "192.168.1" nao aceitar "192.168.10.5" como antes.
+ */
+const isTrustedIp = (ip, range) => {
+  if (!ip || !range) return false;
+  const prefix = range.trim();
+  if (prefix.endsWith('.')) return ip.startsWith(prefix);
+  return ip === prefix || ip.startsWith(`${prefix}.`);
+};
 
 const parsePayload = (value) => {
   const parsed = JSON.parse(value);
@@ -204,10 +217,26 @@ const AgentManager = () => {
 
       const enriched = await Promise.all(
         data.map(async (submission) => {
+          // Já processadas não precisam de pré-visualização: cada preview varre o
+          // inventário inteiro atrás de duplicatas.
+          if (submission.status === 'processed') return submission;
           try {
             const agentPreview = await previewAgentPayload(submission.payload || {}, { namingConfig: normalizedNamingConfig, tenantId });
-            
-            if (autoAccept && submission.status === 'pending' && ips.some(ip => agentPreview.ipAddress?.startsWith(ip))) {
+            // O IP fica em `normalized` (ou no topo do envio). A versão anterior lia
+            // `agentPreview.ipAddress`, sempre indefinido: o aceite automático
+            // nunca disparava.
+            const ip = agentPreview.normalized?.ipAddress || submission.ip_address || '';
+
+            if (autoAccept && submission.status === 'pending' && ips.some((range) => isTrustedIp(ip, range))) {
+              // Ativo novo respeita o limite do plano; se estourar, o envio fica
+              // pendente para aprovação manual em vez de falhar em silêncio.
+              if (!agentPreview.duplicate) {
+                try {
+                  await assertWithinLimit(currentUser, 'assets', 1);
+                } catch {
+                  return { ...submission, preview: agentPreview };
+                }
+              }
               const result = await registerAgentAsset(submission.payload, { user: 'Agente ITAM (Auto)', namingConfig: normalizedNamingConfig, tenantId });
               await markAgentSubmission(submission.id, { status: 'processed', result });
               return { ...submission, status: 'processed', preview: agentPreview };
@@ -240,7 +269,7 @@ const AgentManager = () => {
         setAutoAcceptEnabled(!!data.autoAcceptEnabled);
       }
         // Token vem do cofre do inquilino; migra sozinho quem ainda esta no formato antigo.
-        const stored = (await getAgentToken(tenantId)) || (await migrateLegacyAgentToken(tenantId));
+        const stored = await migrateLegacyAgentToken(tenantId);
         setAgentToken(stored || '');
       } catch (error) {
         console.error(error);
@@ -280,6 +309,11 @@ const AgentManager = () => {
     if (selectedSubmissions.length === 0) return;
     setProcessing(true);
     try {
+      // Só os envios sem duplicata viram ativos novos e contam no limite do plano.
+      const creating = selectedSubmissions
+        .map((id) => pendingSubmissions.find((s) => s.id === id))
+        .filter((s) => s && !s.preview?.duplicate).length;
+      await assertWithinLimit(currentUser, 'assets', creating);
       for (const id of selectedSubmissions) {
         const submission = pendingSubmissions.find(s => s.id === id);
         if (submission) {
@@ -296,7 +330,7 @@ const AgentManager = () => {
       await loadInbox();
     } catch (error) {
       console.error(error);
-      toast.error('Erro ao processar em lote.');
+      toast.error(error?.message?.startsWith('Limite') || error?.message?.startsWith('O plano') ? error.message : 'Erro ao processar em lote.');
     } finally {
       setProcessing(false);
     }
