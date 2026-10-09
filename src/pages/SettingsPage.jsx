@@ -15,7 +15,8 @@ import { can } from '../utils/permissions';
 import { FEATURES, formatUsage, hasFeature, usageRatio, usageTone } from '../utils/entitlements';
 import { contrastRatio, rgbChannels } from '../utils/color';
 import { safeCssColor, safeImageUrl } from '../utils/sanitize';
-import { DEFAULT_TERM_CLAUSES } from '../utils/printTemplates';
+import { DEFAULT_TERM_CLAUSES, DEFAULT_TRANSFER_CLAUSES } from '../utils/terms';
+import { invalidateTenantSettings } from '../hooks/useTenantSettings';
 import LocationManager from '../components/settings/LocationManager';
 import AssetTypeManager from '../components/settings/AssetTypeManager';
 
@@ -31,6 +32,10 @@ const EMPTY_CONFIG = {
   labelFooter: '',
   termTitle: 'Termo de Responsabilidade',
   termClauses: '',
+  termCity: '',
+  termShowValue: false,
+  termWitnesses: false,
+  transferClauses: '',
   logoUrl: '',
   primaryColor: '',
   customFields: [],
@@ -205,6 +210,8 @@ const SettingsPage = () => {
         updatedAt: serverTimestamp(),
       };
       await setDoc(doc(db, 'settings', tenantId), payload, { merge: true });
+      // Termos e etiquetas releem a identidade atualizada.
+      invalidateTenantSettings(tenantId);
 
       // Mantem o nome no cadastro da empresa (visto pelo console master).
       if (payload.companyName && payload.companyName !== savedConfig.companyName) {
@@ -425,7 +432,7 @@ const SettingsPage = () => {
                 </p>
               </Card>
 
-              <Card icon={FileText} title="Documentos e etiquetas" subtitle="Dados usados no termo de responsabilidade e nas etiquetas patrimoniais">
+              <Card icon={FileText} title="Documentos e etiquetas" subtitle="Dados usados nos termos (responsabilidade, devolução, transferência) e nas etiquetas">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="CNPJ">
                     <input className={inputClass} value={config.cnpj} onChange={(e) => set('cnpj', e.target.value)} placeholder="00.000.000/0001-00" />
@@ -451,6 +458,32 @@ const SettingsPage = () => {
                     placeholder="1. DO USO E FINALIDADE: ..."
                   />
                   <button type="button" onClick={() => set('termClauses', DEFAULT_TERM_CLAUSES)} className="mt-2 text-xs font-bold text-brand hover:underline flex items-center gap-1">
+                    <RotateCcw size={12} /> Carregar texto padrão para editar
+                  </button>
+                </Field>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                  <Field label="Cidade (data dos termos)" hint="Ex.: Belém. Sai como “Belém, 9 de outubro de 2026”.">
+                    <input className={inputClass} value={config.termCity} onChange={(e) => set('termCity', e.target.value)} placeholder="Deixe em branco para preencher à mão" />
+                  </Field>
+                  <label className="flex items-center gap-2 pb-6 text-xs font-bold text-gray-600 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={Boolean(config.termShowValue)} onChange={(e) => set('termShowValue', e.target.checked)} className="h-4 w-4" />
+                    Mostrar o valor dos bens no termo de responsabilidade
+                  </label>
+                  <label className="flex items-center gap-2 pb-6 text-xs font-bold text-gray-600 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={Boolean(config.termWitnesses)} onChange={(e) => set('termWitnesses', e.target.checked)} className="h-4 w-4" />
+                    Incluir duas testemunhas
+                  </label>
+                </div>
+
+                <Field label="Condições do termo de transferência" hint="Saem no Termo de Transferência e Recebimento (matriz → loja). Uma condição por linha; em branco usa o texto padrão.">
+                  <textarea
+                    value={config.transferClauses}
+                    onChange={(e) => set('transferClauses', e.target.value)}
+                    className={`${inputClass} h-28 resize-y font-medium`}
+                    placeholder="1. DA CONFERÊNCIA: ..."
+                  />
+                  <button type="button" onClick={() => set('transferClauses', DEFAULT_TRANSFER_CLAUSES)} className="mt-2 text-xs font-bold text-brand hover:underline flex items-center gap-1">
                     <RotateCcw size={12} /> Carregar texto padrão para editar
                   </button>
                 </Field>

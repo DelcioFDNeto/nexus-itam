@@ -6,8 +6,12 @@ import {
 } from '../services/employeeService';
 import { 
   Users, Briefcase, Plus, Trash2, Search, Edit,
-  UserCircle, Building2, MapPin, Mail, Save, X, CreditCard 
+  UserCircle, Building2, MapPin, Mail, Save, X, CreditCard, FileSignature, Undo2
 } from 'lucide-react';
+import { getAssetsAssignedTo } from '../services/assetService';
+import { isRetired } from '../utils/assetStatus';
+import { can } from '../utils/permissions';
+import TermIssueModal from '../components/terms/TermIssueModal';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import ManagerSkeleton from '../components/dashboard/ManagerSkeleton';
@@ -16,6 +20,31 @@ import LocationSelect from '../components/LocationSelect';
 const EmployeeManager = () => {
   const { currentUser } = useAuth();
   const tenantId = currentUser?.tenantId;
+  const canIssueTerms = can(currentUser, 'terms:issue');
+  // { kind, assets, holder } — termo do colaborador com os ativos que estao no nome dele
+  const [termModal, setTermModal] = useState(null);
+  const [loadingTermFor, setLoadingTermFor] = useState(null);
+
+  const openEmployeeTerm = async (emp, kind) => {
+    setLoadingTermFor(`${emp.id}-${kind}`);
+    try {
+      const assets = (await getAssetsAssignedTo(tenantId, emp.name)).filter((a) => !isRetired(a.status) && !a.transit);
+      if (kind === 'devolucao' && assets.length === 0) {
+        toast.info(`Nenhum ativo está sob responsabilidade de ${emp.name}.`);
+        return;
+      }
+      setTermModal({
+        kind,
+        assets,
+        holder: { name: emp.name || '', cpf: emp.cpf || '', role: emp.role || '', sector: emp.sector || '', branch: emp.branch || '', employeeId: emp.id },
+      });
+    } catch (error) {
+      console.error(error);
+      toast.error('Não foi possível carregar os ativos do colaborador.');
+    } finally {
+      setLoadingTermFor(null);
+    }
+  };
 
   // Armazena as listas puxadas do banco de dados
   const [employees, setEmployees] = useState([]);
@@ -215,7 +244,7 @@ const EmployeeManager = () => {
                       <div className="flex justify-between items-start mb-3">
                           <div className="flex items-center gap-3">
                               <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-black text-lg border border-gray-200 dark:border-slate-600 uppercase">
-                                  {emp.name.substring(0,2)}
+                                  {(emp.name || '?').substring(0,2)}
                               </div>
                               <div>
                                   <h3 className="font-bold text-gray-900 dark:text-white leading-tight">{emp.name}</h3>
@@ -247,6 +276,26 @@ const EmployeeManager = () => {
                               </div>
                           )}
                       </div>
+                      {canIssueTerms && emp.name && (
+                          <div className="grid grid-cols-2 gap-2 mt-3">
+                              <button
+                                  onClick={() => openEmployeeTerm(emp, 'responsabilidade')}
+                                  disabled={Boolean(loadingTermFor)}
+                                  title="Termo de responsabilidade com os ativos deste colaborador"
+                                  className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 dark:border-slate-600 py-2 text-[10px] font-black uppercase tracking-wider text-gray-600 dark:text-gray-300 hover:text-brand hover:border-brand/40 disabled:opacity-50"
+                              >
+                                  <FileSignature size={13}/> {loadingTermFor === `${emp.id}-responsabilidade` ? 'Carregando…' : 'Termo'}
+                              </button>
+                              <button
+                                  onClick={() => openEmployeeTerm(emp, 'devolucao')}
+                                  disabled={Boolean(loadingTermFor)}
+                                  title="Devolução dos ativos deste colaborador (ex.: desligamento)"
+                                  className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 dark:border-slate-600 py-2 text-[10px] font-black uppercase tracking-wider text-gray-600 dark:text-gray-300 hover:text-brand hover:border-brand/40 disabled:opacity-50"
+                              >
+                                  <Undo2 size={13}/> {loadingTermFor === `${emp.id}-devolucao` ? 'Carregando…' : 'Devolução'}
+                              </button>
+                          </div>
+                      )}
                   </div>
               ))}
 
@@ -285,6 +334,15 @@ const EmployeeManager = () => {
       )}
 
       {/* Janela polivalente: muda os campos baseada em qual aba o usuário quis abrir o "Novo" ou "Editar" */}
+      {termModal && (
+        <TermIssueModal
+          kind={termModal.kind}
+          initialAssets={termModal.assets}
+          initialHolder={termModal.holder}
+          onClose={() => setTermModal(null)}
+        />
+      )}
+
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95">

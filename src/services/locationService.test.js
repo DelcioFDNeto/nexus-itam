@@ -7,7 +7,9 @@ vi.mock('firebase/firestore', () => ({
   updateDoc: vi.fn(), where: vi.fn(), writeBatch: vi.fn(),
 }));
 
-const { getLocations, groupLocations, LEGACY_LOCATIONS, STARTER_LOCATIONS } = await import('./locationService');
+const {
+  findHeadquarters, getLocations, groupLocations, groupLocationsByKind, locationKind, LEGACY_LOCATIONS, STARTER_LOCATIONS,
+} = await import('./locationService');
 
 describe('getLocations', () => {
   it('devolve vazio sem inquilino, sem consultar o banco', async () => {
@@ -49,5 +51,31 @@ describe('presets', () => {
       expect(l.name).toBeTruthy();
       expect(l.region).toBeTruthy();
     });
+  });
+});
+
+describe('tipo do local', () => {
+  it('respeita o tipo gravado', () => {
+    expect(locationKind({ name: 'Filial Centro', kind: 'matriz' })).toBe('matriz');
+  });
+
+  it('infere pelo nome em locais antigos', () => {
+    expect(locationKind({ name: 'Matriz - Belem' })).toBe('matriz');
+    expect(locationKind({ name: 'Filial Castanhal' })).toBe('loja');
+    expect(locationKind({ name: 'Loja Shopping Boulevard' })).toBe('loja');
+    expect(locationKind({ name: 'Almoxarifado' })).toBe('deposito');
+    expect(locationKind({ name: 'Home Office' })).toBe('outro');
+  });
+
+  it('acha a matriz para ser a origem padrao', () => {
+    const locais = [{ name: 'Filial A' }, { name: 'Matriz - Belem' }];
+    expect(findHeadquarters(locais).name).toBe('Matriz - Belem');
+    expect(findHeadquarters([{ name: 'Filial A' }])).toBeNull();
+  });
+
+  it('agrupa por tipo com a matriz primeiro', () => {
+    const grupos = groupLocationsByKind([{ id: '1', name: 'Loja B' }, { id: '2', name: 'Matriz' }, { id: '3', name: 'Loja A' }]);
+    expect(grupos.map((g) => g.kind)).toEqual(['matriz', 'loja']);
+    expect(grupos[1].items.map((l) => l.name)).toEqual(['Loja A', 'Loja B']);
   });
 });

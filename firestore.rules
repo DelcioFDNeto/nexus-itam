@@ -400,6 +400,63 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------------
+    // TERMOS (responsabilidade, devolucao, transferencia e recebimento)
+    // O documento assinado nao muda: numero, tipo, itens e emissao sao fixos.
+    // Depois de emitido, so evolui o status (assinatura, recebimento na loja).
+    // Cancelar ou excluir exige gestor.
+    // ---------------------------------------------------------------------
+    match /terms/{termId} {
+      allow read: if tenantRead();
+
+      allow create: if tenantCreate() &&
+        request.resource.data.kind in ['responsabilidade', 'devolucao', 'transferencia'] &&
+        request.resource.data.number is string &&
+        request.resource.data.assets is list &&
+        request.resource.data.assets.size() > 0 &&
+        request.resource.data.assets.size() <= 150;
+
+      allow update: if isMaster() || (
+        canOperate(resource.data.tenantId) &&
+        request.resource.data.tenantId == resource.data.tenantId &&
+        !changed(['kind', 'number', 'year', 'sequence', 'assets', 'assetIds', 'issuedAt', 'issuedBy', 'issuedByName']) &&
+        (request.resource.data.status != 'cancelado' || canManage(resource.data.tenantId))
+      );
+
+      allow delete: if isMaster() || canManage(resource.data.tenantId);
+    }
+
+    // Numeracao sequencial por empresa e ano (TR-2026-0001). Cada contador so
+    // avanca de 1 em 1, dentro da mesma transacao que emite o termo.
+    match /termCounters/{tenantId}/years/{year} {
+      function counterKeys() {
+        return ['responsabilidade', 'devolucao', 'transferencia', 'updatedAt'];
+      }
+
+      function bumpedAtMostOne(key) {
+        return request.resource.data.get(key, 0) == resource.data.get(key, 0) ||
+          request.resource.data.get(key, 0) == resource.data.get(key, 0) + 1;
+      }
+
+      allow get: if isMaster() || sameTenant(tenantId);
+
+      allow create: if isMaster() || (
+        canOperate(tenantId) &&
+        request.resource.data.keys().hasOnly(counterKeys()) &&
+        request.resource.data.get('responsabilidade', 0) <= 1 &&
+        request.resource.data.get('devolucao', 0) <= 1 &&
+        request.resource.data.get('transferencia', 0) <= 1
+      );
+
+      allow update: if isMaster() || (
+        canOperate(tenantId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(counterKeys()) &&
+        bumpedAtMostOne('responsabilidade') &&
+        bumpedAtMostOne('devolucao') &&
+        bumpedAtMostOne('transferencia')
+      );
+    }
+
+    // ---------------------------------------------------------------------
     // COLLECTION GROUP (visao global do Nexus Master)
     // ---------------------------------------------------------------------
     match /{path=**}/assets/{assetId}       { allow read: if isMaster(); }

@@ -42,7 +42,11 @@ import {
   SlidersHorizontal,
   Package,
   Archive,
+  FileSignature,
+  Truck,
 } from "lucide-react";
+import TermIssueModal from "../components/terms/TermIssueModal";
+import TransferModal from "../components/terms/TransferModal";
 
 const isPromotional = (asset) =>
   asset.category === "Promocional" || asset.internalId?.includes("PRM");
@@ -54,6 +58,9 @@ const AssetList = () => {
   const [searchParams] = useSearchParams();
   const canWrite = can(currentUser, "assets:write");
   const canImport = can(currentUser, "assets:import") && hasFeature(currentUser, "import");
+  const canIssueTerms = can(currentUser, "terms:issue");
+  // 'responsabilidade' | 'transferencia' para os itens selecionados
+  const [termModal, setTermModal] = useState(null);
 
   // Estados que controlam a lista de ativos e o carregamento da tela
   const [assets, setAssets] = useState([]);
@@ -726,6 +733,24 @@ const AssetList = () => {
             >
               <PrinterIcon size={14} /> Etiquetas
             </button>
+            {canIssueTerms && (
+              <>
+                <button
+                  onClick={() => setTermModal("responsabilidade")}
+                  title="Um termo de responsabilidade com todos os itens selecionados"
+                  className="flex items-center gap-2 hover:bg-white/20 px-4 py-2 rounded-full text-xs font-bold uppercase transition-colors whitespace-nowrap"
+                >
+                  <FileSignature size={14} /> Termo
+                </button>
+                <button
+                  onClick={() => setTermModal("transferencia")}
+                  title="Enviar os itens selecionados para uma loja"
+                  className="flex items-center gap-2 hover:bg-white/20 px-4 py-2 rounded-full text-xs font-bold uppercase transition-colors whitespace-nowrap"
+                >
+                  <Truck size={14} /> Transferir
+                </button>
+              </>
+            )}
             {selectedPeripheralsData.length > 0 && (
               <button
                 onClick={handleBulkPeripheralPrint}
@@ -745,6 +770,22 @@ const AssetList = () => {
       )}
 
       {/* Opção para forçar alteração simultânea nos atributos dos componentes de um mesmo modelo (Ex: Retornar para Status Disponível um lote de Notebooks) */}
+      {termModal === "responsabilidade" && (
+        <TermIssueModal
+          kind="responsabilidade"
+          initialAssets={selectedAssetsData}
+          onClose={() => setTermModal(null)}
+          onIssued={() => setSelectedIds([])}
+        />
+      )}
+      {termModal === "transferencia" && (
+        <TransferModal
+          initialAssets={selectedAssetsData}
+          onClose={() => setTermModal(null)}
+          onDispatched={() => setSelectedIds([])}
+        />
+      )}
+
       {isStatusModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white dark:bg-slate-800 rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 p-2">

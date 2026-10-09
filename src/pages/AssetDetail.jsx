@@ -29,7 +29,10 @@ import { isRetired, warrantyStatus, WARRANTY_BADGE, WARRANTY_LABEL } from "../ut
 import { useAuth } from "../contexts/AuthContext";
 import { safeLinkUrl } from "../utils/sanitize";
 import { can } from "../utils/permissions";
-import { buildLabelsDocument, buildTermDocument, printHtml, resolvePrintBranding } from "../utils/printTemplates";
+import { buildLabelsDocument, printHtml, resolvePrintBranding } from "../utils/printTemplates";
+import TermIssueModal from "../components/terms/TermIssueModal";
+import TransferModal from "../components/terms/TransferModal";
+import AssetTermsCard from "../components/terms/AssetTermsCard";
 import { toast } from "sonner";
 import {
   Archive,
@@ -56,6 +59,9 @@ import {
   Plug,
   Clock,
   Copy,
+  Truck,
+  Undo2,
+  FileSignature,
 } from "lucide-react";
 
 import AssetIcon from "../components/AssetIcon";
@@ -95,6 +101,10 @@ const AssetDetail = () => {
   const [config, setConfig] = useState({});
   const canWrite = can(currentUser, "assets:write");
   const canRetire = can(currentUser, "assets:delete");
+  const canIssueTerms = can(currentUser, "terms:issue");
+  // Modais de termo: { kind: 'responsabilidade' | 'devolucao' | 'transferencia' }
+  const [termModal, setTermModal] = useState(null);
+  const [termsVersion, setTermsVersion] = useState(0);
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -117,19 +127,6 @@ const AssetDetail = () => {
   };
 
   const printBranding = () => resolvePrintBranding(config, currentUser);
-
-  const handlePrintTerm = () => {
-    if (!asset) return;
-    openPrint(
-      buildTermDocument({
-        asset,
-        assetId: id,
-        branding: printBranding(),
-        termTitle: config.termTitle,
-        clauses: config.termClauses,
-      }),
-    );
-  };
 
   const handlePrintLabel = () => {
     if (!asset) return;
@@ -202,7 +199,13 @@ const AssetDetail = () => {
   const handleMoveConfirm = async (moveData) => {
     const userEmail = currentUser?.email || "Usuário Desconhecido";
     const tenantId = asset?.tenantId || currentUser?.tenantId;
-    await moveAsset(id, { ...asset, tenantId }, moveData, userEmail);
+    try {
+      await moveAsset(id, { ...asset, tenantId }, moveData, userEmail);
+      toast.success(`Ativo movido para ${moveData.newLocation}.`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao movimentar o ativo.");
+    }
   };
 
   const handleMaintenanceConfirm = async (maintData) => {
@@ -477,13 +480,39 @@ const AssetDetail = () => {
               </button>
             </>
           )}
-          <button
-            onClick={handlePrintTerm}
-            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap"
-          >
-            <FileText size={16} />{" "}
-            <span className="hidden sm:inline">Termo</span>
-          </button>
+          {canIssueTerms && !isRetired(asset?.status) && (
+            <>
+              <button
+                onClick={() => setTermModal({ kind: "responsabilidade" })}
+                disabled={Boolean(asset?.transit)}
+                title="Termo de responsabilidade (entrega)"
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap disabled:opacity-40"
+              >
+                <FileSignature size={16} />{" "}
+                <span className="hidden sm:inline">Termo</span>
+              </button>
+              {asset?.assignedTo && (
+                <button
+                  onClick={() => setTermModal({ kind: "devolucao" })}
+                  disabled={Boolean(asset?.transit)}
+                  title="Termo de devolução"
+                  className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap disabled:opacity-40"
+                >
+                  <Undo2 size={16} />{" "}
+                  <span className="hidden sm:inline">Devolução</span>
+                </button>
+              )}
+              <button
+                onClick={() => setTermModal({ kind: "transferencia" })}
+                disabled={Boolean(asset?.transit)}
+                title="Transferir para uma loja com termo de transferência e recebimento"
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap disabled:opacity-40"
+              >
+                <Truck size={16} />{" "}
+                <span className="hidden sm:inline">Enviar p/ loja</span>
+              </button>
+            </>
+          )}
           <button
             onClick={handlePrintLabel}
             className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap"
@@ -522,6 +551,24 @@ const AssetDetail = () => {
           )}
         </div>
       </div>
+
+      {/* Ativo em transito: so muda de local quando a loja confirmar o recebimento */}
+      {asset.transit && (
+        <div className={`mb-6 flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border px-5 py-4 ${asset.transit.missing ? "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300" : "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300"}`}>
+          <Truck size={20} className="shrink-0" />
+          <p className="text-sm font-bold flex-1">
+            {asset.transit.missing
+              ? `Não recebido em ${asset.transit.to}: a loja registrou a falta deste item na conferência (${asset.transit.number}).`
+              : `Em trânsito de ${asset.transit.from} para ${asset.transit.to}${asset.transit.since ? ` desde ${new Date(asset.transit.since).toLocaleDateString("pt-BR")}` : ""}. O local muda quando a loja confirmar o recebimento.`}
+          </p>
+          <button
+            onClick={() => navigate(`/termos/${asset.transit.termId}`)}
+            className="shrink-0 rounded-xl bg-white/70 dark:bg-slate-900/60 px-4 py-2 text-xs font-black uppercase tracking-wider"
+          >
+            Abrir {asset.transit.number}
+          </button>
+        </div>
+      )}
 
       {/* Quadro de destaque no topo, exibindo a visão geral principal do equipamento */}
       <div className="bg-white dark:bg-slate-800 rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100 dark:border-slate-700 relative overflow-hidden mb-8 group">
@@ -952,6 +999,7 @@ const AssetDetail = () => {
         <div
           className={`lg:col-span-1 space-y-6 ${activeTab === "details" ? "hidden lg:block" : ""}`}
         >
+          <AssetTermsCard tenantId={asset.tenantId || tenantId} assetId={id} refreshKey={termsVersion} />
           <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm h-full flex flex-col">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
               <History size={20} /> Linha do Tempo
@@ -1007,7 +1055,7 @@ const AssetDetail = () => {
           isOpen={isMoveModalOpen}
           onClose={() => setIsMoveModalOpen(false)}
           onConfirm={handleMoveConfirm}
-          currentAsset={{ ...asset, responsibleName, location: asset.location }}
+          asset={asset}
         />
       )}
       {isMaintModalOpen && (
@@ -1015,7 +1063,22 @@ const AssetDetail = () => {
           isOpen={isMaintModalOpen}
           onClose={() => setIsMaintModalOpen(false)}
           onConfirm={handleMaintenanceConfirm}
-          currentAsset={asset}
+          asset={asset}
+        />
+      )}
+      {termModal && termModal.kind !== "transferencia" && (
+        <TermIssueModal
+          kind={termModal.kind}
+          initialAssets={[asset]}
+          onClose={() => setTermModal(null)}
+          onIssued={() => setTermsVersion((v) => v + 1)}
+        />
+      )}
+      {termModal?.kind === "transferencia" && (
+        <TransferModal
+          initialAssets={[asset]}
+          onClose={() => setTermModal(null)}
+          onDispatched={() => setTermsVersion((v) => v + 1)}
         />
       )}
       <WriteOffModal

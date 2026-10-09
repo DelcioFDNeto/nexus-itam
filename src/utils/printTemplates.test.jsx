@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildLabelsDocument, buildTermDocument, escapeHtml, resolvePrintBranding } from './printTemplates';
+import { buildLabelsDocument, escapeHtml, resolvePrintBranding } from './printTemplates';
+import { buildTermDocument } from './termDocuments';
 
 const XSS = '<img src=x onerror="alert(1)">';
 

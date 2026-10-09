@@ -76,6 +76,9 @@ beforeEach(async () => {
       ['assets/b1', { tenantId: 'beta', model: 'Desktop' }],
       ['assets/s1', { tenantId: 'susp', model: 'Impressora' }],
       ['agentInbox/in1', { tenantId: 'acme', status: 'pending', agentToken: 'tok-acme' }],
+      ['terms/tr1', { tenantId: 'acme', kind: 'responsabilidade', number: 'TR-2026-0001', status: 'pendente', assets: [{ id: 'a1' }], assetIds: ['a1'] }],
+      ['terms/tt1', { tenantId: 'acme', kind: 'transferencia', number: 'TT-2026-0003', status: 'em_transito', assets: [{ id: 'a1' }], assetIds: ['a1'] }],
+      ['termCounters/acme/years/2026', { transferencia: 3, responsabilidade: 1 }],
       ['invites/inv1', { tenantId: 'acme', email: 'novo@acme.com', role: 'operator', status: 'pending' }],
       ['invites/expired', {
         tenantId: 'acme', email: 'atrasado@acme.com', role: 'operator', status: 'pending',
@@ -312,5 +315,64 @@ describe('agente sem login (drop-box)', () => {
 
   it('recusa envio de empresa suspensa', async () => {
     await assertFails(setDoc(doc(anon(), 'agentInbox', 'susp1'), submission('susp', 'tok-susp')));
+  });
+});
+
+// -----------------------------------------------------------------------------
+describe('termos (responsabilidade, devolucao, transferencia)', () => {
+  const novoTermo = (extra = {}) => ({
+    tenantId: 'acme', kind: 'transferencia', number: 'TT-2026-0004', status: 'em_transito',
+    assets: [{ id: 'a1', internalId: 'NB-1' }], assetIds: ['a1'], ...extra,
+  });
+
+  it('operador emite termo e avanca o contador em 1 no mesmo batch', async () => {
+    const db = as('op1');
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'termCounters/acme/years/2026'), { transferencia: 4, updatedAt: serverTimestamp() });
+    batch.set(doc(db, 'terms', 'novo'), novoTermo());
+    await assertSucceeds(batch.commit());
+  });
+
+  it('contador novo comeca em 1', async () => {
+    await assertSucceeds(setDoc(doc(as('op1'), 'termCounters/acme/years/2027'), { devolucao: 1 }));
+    await assertFails(setDoc(doc(as('op1'), 'termCounters/acme/years/2028'), { devolucao: 50 }));
+  });
+
+  it('BLOQUEIA pular numeracao ou mexer no contador de outra empresa', async () => {
+    await assertFails(updateDoc(doc(as('op1'), 'termCounters/acme/years/2026'), { transferencia: 9 }));
+    await assertFails(updateDoc(doc(as('op1'), 'termCounters/acme/years/2026'), { transferencia: 2 }));
+    await assertFails(setDoc(doc(as('betaOwner'), 'termCounters/acme/years/2030'), { transferencia: 1 }));
+    await assertFails(getDoc(doc(as('betaOwner'), 'termCounters/acme/years/2026')));
+  });
+
+  it('visualizador le, mas nao emite termos', async () => {
+    await assertSucceeds(getDoc(doc(as('viewer1'), 'terms', 'tr1')));
+    await assertFails(setDoc(doc(as('viewer1'), 'terms', 'x'), novoTermo()));
+  });
+
+  it('BLOQUEIA termo sem itens ou de tipo desconhecido', async () => {
+    await assertFails(setDoc(doc(as('op1'), 'terms', 'x1'), novoTermo({ assets: [], assetIds: [] })));
+    await assertFails(setDoc(doc(as('op1'), 'terms', 'x2'), novoTermo({ kind: 'qualquer' })));
+  });
+
+  it('termo emitido nao tem itens nem numero alterados', async () => {
+    await assertFails(updateDoc(doc(as('op1'), 'terms', 'tr1'), { assets: [{ id: 'b1' }] }));
+    await assertFails(updateDoc(doc(as('op1'), 'terms', 'tr1'), { number: 'TR-2026-9999' }));
+    await assertSucceeds(updateDoc(doc(as('op1'), 'terms', 'tr1'), { status: 'assinado' }));
+  });
+
+  it('a loja confirma o recebimento; cancelar exige gestor', async () => {
+    await assertFails(updateDoc(doc(as('op1'), 'terms', 'tt1'), { status: 'cancelado' }));
+    await assertSucceeds(updateDoc(doc(as('manager1'), 'terms', 'tt1'), { status: 'cancelado' }));
+  });
+
+  it('operador confirma recebimento de transferencia', async () => {
+    await assertSucceeds(updateDoc(doc(as('op1'), 'terms', 'tt1'), { status: 'recebido', receipt: { receivedByName: 'Gerente' } }));
+  });
+
+  it('isola termos entre empresas e exige gestor para excluir', async () => {
+    await assertFails(getDoc(doc(as('betaOwner'), 'terms', 'tr1')));
+    await assertFails(deleteDoc(doc(as('op1'), 'terms', 'tr1')));
+    await assertSucceeds(deleteDoc(doc(as('manager1'), 'terms', 'tr1')));
   });
 });

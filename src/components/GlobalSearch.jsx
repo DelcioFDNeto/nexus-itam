@@ -29,6 +29,7 @@ const TENANT_PAGES = [
   { name: 'Ativos', path: '/assets', cap: 'assets:read' },
   { name: 'Novo ativo', path: '/assets/new', cap: 'assets:write' },
   { name: 'Auditoria', path: '/audit', cap: 'audit:run', feature: 'audit' },
+  { name: 'Termos e transferências', path: '/termos', cap: 'terms:read' },
   { name: 'Equipe', path: '/employees', cap: 'employees:write' },
   { name: 'Projetos', path: '/projects', cap: 'projects:write', feature: 'projects' },
   { name: 'Tarefas', path: '/tasks', cap: 'tasks:write', feature: 'projects' },

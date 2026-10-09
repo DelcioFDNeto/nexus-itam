@@ -30,6 +30,14 @@ export const getAllAssets = async (tenantId) => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
+/** Ativos sob responsabilidade de uma pessoa (pelo nome gravado em `assignedTo`). */
+export const getAssetsAssignedTo = async (tenantId, holderName) => {
+  if (!tenantId || !holderName) return [];
+  const q = query(assetsCollection, where('tenantId', '==', tenantId), where('assignedTo', '==', holderName));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
 export const getGlobalAssets = async () => {
   const q = query(collectionGroup(db, 'assets'), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);

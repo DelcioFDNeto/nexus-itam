@@ -34,22 +34,69 @@ export const getLocations = async (tenantId) => {
   return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
 };
 
-export const addLocation = async ({ name, region, tenantId }) => {
+// -----------------------------------------------------------------------------
+// Tipo do local: separa a matriz (origem das remessas) das lojas que recebem
+// equipamentos. Usado pelo Termo de Transferencia e Recebimento.
+// -----------------------------------------------------------------------------
+
+export const LOCATION_KINDS = {
+  matriz: { label: 'Matriz', plural: 'Matriz' },
+  loja: { label: 'Loja / Filial', plural: 'Lojas e filiais' },
+  deposito: { label: 'Depósito / CD', plural: 'Depósitos' },
+  outro: { label: 'Outro', plural: 'Outros locais' },
+};
+
+export const LOCATION_KIND_ORDER = ['matriz', 'loja', 'deposito', 'outro'];
+
+const normalize = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
+
+/**
+ * Tipo do local. Locais antigos nao tem `kind`: o nome indica o mais provavel
+ * ("Matriz - Belem" -> matriz, "Filial Castanhal" -> loja), ate o dono ajustar.
+ */
+export const locationKind = (location) => {
+  if (location?.kind && LOCATION_KINDS[location.kind]) return location.kind;
+  const name = normalize(location?.name);
+  if (/\b(matriz|sede|escritorio central)\b/.test(name)) return 'matriz';
+  if (/\b(loja|filial|unidade|ponto de venda|pdv)\b/.test(name)) return 'loja';
+  if (/\b(deposito|almoxarifado|estoque|cd|centro de distribuicao|fabrica)\b/.test(name)) return 'deposito';
+  return 'outro';
+};
+
+/** Local marcado (ou inferido) como matriz, origem padrao das transferencias. */
+export const findHeadquarters = (locations = []) =>
+  locations.find((l) => l.kind === 'matriz') || locations.find((l) => locationKind(l) === 'matriz') || null;
+
+const cleanDetails = ({ kind, address, manager, phone }) => ({
+  ...(kind !== undefined ? { kind: LOCATION_KINDS[kind] ? kind : 'outro' } : {}),
+  ...(address !== undefined ? { address: String(address).trim() } : {}),
+  ...(manager !== undefined ? { manager: String(manager).trim() } : {}),
+  ...(phone !== undefined ? { phone: String(phone).trim() } : {}),
+});
+
+export const addLocation = async ({ name, region, tenantId, kind, address, manager, phone }) => {
   if (!tenantId) throw new Error('Nao e possivel criar um local sem inquilino.');
   if (!name?.trim()) throw new Error('O local precisa de um nome.');
   return addDoc(locationsCollection(), {
     name: name.trim(),
     region: region?.trim() || 'Geral',
+    kind: locationKind({ kind, name }),
+    ...cleanDetails({ address, manager, phone }),
     tenantId,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
 };
 
-export const updateLocation = async (id, { name, region }) =>
+export const updateLocation = async (id, { name, region, kind, address, manager, phone }) =>
   updateDoc(doc(db, 'locations', id), {
     ...(name !== undefined ? { name: name.trim() } : {}),
     ...(region !== undefined ? { region: region.trim() || 'Geral' } : {}),
+    ...cleanDetails({ kind, address, manager, phone }),
     updatedAt: serverTimestamp(),
   });
 
@@ -70,6 +117,19 @@ export const groupLocations = (locations = []) => {
     .map(([region, items]) => ({ region, items }))
     .sort((a, b) => a.region.localeCompare(b.region, 'pt-BR'));
 };
+
+/**
+ * Agrupa por tipo (Matriz, Lojas, Depositos, Outros), na ordem de uso das
+ * transferencias. Mesmo formato de `groupLocations` (`region` = rotulo).
+ */
+export const groupLocationsByKind = (locations = []) =>
+  LOCATION_KIND_ORDER.map((kind) => ({
+    region: LOCATION_KINDS[kind].plural,
+    kind,
+    items: locations
+      .filter((l) => locationKind(l) === kind)
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+  })).filter((g) => g.items.length > 0);
 
 /**
  * Lista legada que estava fixa no codigo. Mantida apenas para que o inquilino

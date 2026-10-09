@@ -15,7 +15,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { safeCssColor, safeImageUrl } from './sanitize';
 import { hasFeature } from './entitlements';
 
-const NEXUS_INDIGO = '#4F46E5';
+export const NEXUS_INDIGO = '#4F46E5';
 
 export const escapeHtml = (value) =>
   String(value ?? '')
@@ -30,7 +30,7 @@ const upper = (value) => escapeHtml(String(value ?? '').toLocaleUpperCase('pt-BR
 const qrSvg = (value, size) =>
   ReactDOMServer.renderToStaticMarkup(<QRCodeSVG value={String(value || '-')} size={size} level="M" />);
 
-const NEXUS_MARK_SVG = (size) =>
+export const NEXUS_MARK_SVG = (size) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>`;
 
 /**
@@ -157,115 +157,31 @@ export const buildLabelsDocument = (items, branding, { variant = 'asset', title 
 </body></html>`;
 };
 
-// -----------------------------------------------------------------------------
-// Termo de responsabilidade
-// -----------------------------------------------------------------------------
-
-export const DEFAULT_TERM_CLAUSES = `1. DO USO E FINALIDADE: O(a) Responsável declara ter recebido o equipamento acima descrito em perfeito estado de conservação e funcionamento. Compromete-se a utilizá-lo estrita e exclusivamente para fins profissionais, sendo vedado o uso para fins pessoais, empréstimo a terceiros ou instalação de softwares não autorizados pela TI.
-2. DA GUARDA E CONSERVAÇÃO: É responsabilidade do(a) Responsável zelar pela guarda, segurança e conservação do equipamento. O mau uso, negligência, imprudência ou imperícia que resultar em danos ao equipamento sujeitará o(a) Responsável às sanções cíveis e disciplinares previstas em lei.
-3. DA RESTITUIÇÃO: O equipamento deverá ser devolvido imediatamente à Empresa, em perfeito estado (salvo desgaste natural), nas seguintes hipóteses: a) Rescisão do contrato de trabalho ou encerramento da prestação de serviços; b) Mudança de cargo ou função; c) Solicitação expressa da Empresa a qualquer tempo.
-4. DO EXTRAVIO, DANO OU FURTO: Em conformidade com o Art. 186 do Código Civil e, quando aplicável, Art. 462, §1º da CLT, o(a) Responsável AUTORIZA EXPRESSAMENTE o desconto em seus recebimentos (faturas/notas fiscais), folha de pagamento ou verbas rescisórias dos valores correspondentes ao reparo ou reposição do equipamento, caso seja comprovado que os danos ou o extravio decorreram de DOLO (intenção), NEGLIGÊNCIA (falta de cuidado) ou uso em desconformidade com as normas da empresa (mau uso).
-5. DA SEGURANÇA DA INFORMAÇÃO: O(a) Responsável está ciente de que o equipamento é monitorado e que não deve armazenar dados pessoais sensíveis, responsabilizando-se pelo sigilo de suas senhas e cumprimento das normas de LGPD da empresa.`;
-
 /**
- * Termo de entrega e responsabilidade (A4).
- * @param {{ asset: object, assetId: string, branding: object, termTitle?: string, clauses?: string }} input
+ * Imprime quando o documento terminou de carregar (inclusive o logo). Antes um
+ * atraso fixo de 500 ms podia imprimir a pagina sem a imagem.
  */
-export const buildTermDocument = ({ asset, assetId, branding, termTitle, clauses }) => {
-  const responsible = asset.assignedTo || asset.clientName || '';
-  const cnpj = branding.cnpj || '00.000.000/0001-00';
-  const accessories = Array.isArray(asset.accessories) ? asset.accessories.join(', ') : asset.accessories || '';
-  const peripherals = (asset.peripherals || []).map((p) => p?.name).filter(Boolean).join(', ');
-  const clauseItems = String(clauses || DEFAULT_TERM_CLAUSES)
-    .split('\n')
-    .map((c) => c.trim())
-    .filter(Boolean)
-    .map((c) => `<li class="clause-item">${escapeHtml(c)}</li>`)
-    .join('');
+const printWhenReady = (printWindow) => {
+  const started = Date.now();
+  const tick = () => {
+    if (printWindow.closed) return;
+    const doc = printWindow.document;
+    const ready = doc.readyState === 'complete' && [...doc.images].every((img) => img.complete);
+    if (ready || Date.now() - started > 4000) {
+      printWindow.focus();
+      printWindow.print();
+    } else {
+      setTimeout(tick, 150);
+    }
+  };
+  setTimeout(tick, 250);
+};
 
-  const logo = branding.logoUrl
-    ? `<img class="logo-img" src="${escapeHtml(branding.logoUrl)}" alt="" />`
-    : branding.showNexusBrand
-      ? `<div class="nexus-mark">${NEXUS_MARK_SVG(22)} NEXUS<span style="color:#111827">ITAM</span></div>`
-      : '';
-
-  const footer = branding.showNexusBrand
-    ? `Documento gerado eletronicamente pela plataforma Nexus ITAM. ID: ${escapeHtml(assetId)}`
-    : `Documento gerado eletronicamente por ${escapeHtml(branding.companyName)}. ID: ${escapeHtml(assetId)}`;
-
-  return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Termo_${escapeHtml(asset.internalId || assetId)}</title>
-<style>
-  @page { size: A4; margin: 14mm 15mm; }
-  body { font-family: 'Times New Roman', Times, serif; color: #000; line-height: 1.4; margin: 0; padding: 15px 20px; }
-  .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid ${escapeHtml(branding.color)}; padding-bottom: 12px; margin-bottom: 14px; }
-  .header-left { display: flex; align-items: center; gap: 14px; }
-  .logo-img { height: 44px; max-width: 160px; object-fit: contain; }
-  .nexus-mark { font-weight: 900; font-family: sans-serif; display: flex; align-items: center; gap: 6px; color: ${NEXUS_INDIGO}; font-size: 22px; letter-spacing: -0.5px; }
-  .title { text-align: center; font-weight: bold; font-size: 14px; text-transform: uppercase; margin: 14px 0; }
-  .content { font-size: 10.5px; text-align: justify; margin-bottom: 8px; line-height: 1.4; }
-  .box { border: 1px solid #000; padding: 8px 10px; margin: 10px 0; background-color: #f9f9f9; }
-  .box-title { font-weight: bold; font-size: 11px; margin-bottom: 4px; text-decoration: underline; }
-  .grid-info { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 10.5px; }
-  .label { font-weight: bold; text-transform: uppercase; font-size: 8.5px; color: #333; }
-  .value { font-weight: bold; font-size: 10.5px; margin-left: 3px; }
-  .clauses { padding-left: 0; list-style-type: none; }
-  .clause-item { margin-bottom: 6px; font-size: 10px; line-height: 1.35; text-align: justify; }
-  .signatures { display: flex; justify-content: space-between; margin-top: 40px; text-align: center; }
-  .line { border-top: 1px solid #000; width: 210px; margin-bottom: 5px; }
-  .footer { margin-top: 20px; font-size: 8.5px; text-align: center; border-top: 1px solid #ccc; padding-top: 5px; }
-</style></head><body>
-  <div class="header">
-    <div class="header-left">
-      ${logo}
-      <div>
-        <h1 style="font-size:18px;margin:0;font-weight:900">${upper(branding.companyName)}</h1>
-        <p style="margin:2px 0 0;font-size:9.5px">CNPJ: ${escapeHtml(cnpj)}</p>
-        <p style="margin:0;font-size:9.5px">Departamento de Tecnologia da Informação</p>
-      </div>
-    </div>
-    <div style="text-align:right"><p style="margin:0;font-size:9.5px">Emitido em: ${new Date().toLocaleDateString('pt-BR')}</p></div>
-  </div>
-  <h2 class="title">${escapeHtml(termTitle || 'Termo de Entrega e Responsabilidade')}</h2>
-  <p class="content">
-    Pelo presente instrumento particular, de um lado a empresa <strong>${escapeHtml(branding.companyName)}</strong>, inscrita no CNPJ sob o nº <strong>${escapeHtml(cnpj)}</strong>, e de outro lado o(a) responsável abaixo qualificado(a),
-    celebram o presente termo de responsabilidade e comodato, regido pelas cláusulas e condições seguintes, em conformidade com a legislação civil pertinente e, quando aplicável, com o Art. 462 da CLT.
-  </p>
-  <div class="box">
-    <div class="box-title">1. DADOS DO COLABORADOR(A) / RESPONSÁVEL</div>
-    <div class="grid-info">
-      <div><span class="label">Nome:</span> <span class="value">${upper(responsible || '__________________________')}</span></div>
-      <div><span class="label">CPF:</span> <span class="value">${escapeHtml(asset.clientCpf || '___.___.___-__')}</span></div>
-      <div><span class="label">Departamento/Setor:</span> <span class="value">${upper(asset.sector || 'Adm/Op.')}</span></div>
-      <div><span class="label">Local de Trabalho:</span> <span class="value">${upper(asset.location || 'Local não definido')}</span></div>
-    </div>
-  </div>
-  <div class="box">
-    <div class="box-title">2. OBJETO (EQUIPAMENTO EM COMODATO)</div>
-    <div style="font-size:10.5px;margin-bottom:5px">A empresa cede ao(à) responsável, a título de comodato, para uso EXCLUSIVO no desempenho de suas atividades profissionais, o(s) seguinte(s) bem(ns):</div>
-    <div class="grid-info">
-      <div><span class="label">Equipamento:</span> <span class="value">${escapeHtml(asset.model)}</span></div>
-      <div><span class="label">Tipo:</span> <span class="value">${upper(asset.type || 'N/A')}</span></div>
-      <div><span class="label">Patrimônio (ID):</span> <span class="value">${escapeHtml(asset.internalId)}</span></div>
-      <div><span class="label">Número de Série:</span> <span class="value">${escapeHtml(asset.serialNumber || 'N/A')}</span></div>
-      ${accessories ? `<div><span class="label">Acessórios/Periféricos:</span> <span class="value">${escapeHtml(accessories)}</span></div>` : ''}
-      ${peripherals ? `<div><span class="label">Itens Adicionais:</span> <span class="value">${escapeHtml(peripherals)}</span></div>` : ''}
-    </div>
-  </div>
-  <div class="content">
-    <p style="font-weight:bold;margin-bottom:4px;font-size:10.5px">CLÁUSULAS CONTRATUAIS:</p>
-    <ul class="clauses">${clauseItems}</ul>
-  </div>
-  <div style="margin-top:20px;font-size:10.5px">
-    <p>Li, compreendi e aceito integralmente os termos acima descritos.</p>
-    <p>_______________________, _____ de _______________________ de _________.</p>
-  </div>
-  <div class="signatures">
-    <div><div class="line"></div><span style="font-size:10.5px">${escapeHtml(responsible || '__________________________')}</span><br/><small style="font-size:9px">RECEBEDOR(A) / RESPONSÁVEL</small>${asset.clientCpf ? '' : '<br/><small style="font-size:8px;color:#666">CPF: ___.___.___-__</small>'}</div>
-    <div><div class="line"></div><span style="font-size:10.5px">${escapeHtml(branding.itManager || '__________________________')}</span><br/><small style="font-size:9px">GESTOR DE TI</small></div>
-  </div>
-  <div class="footer">${footer}</div>
-</body></html>`;
+const writeDocument = (printWindow, html) => {
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWhenReady(printWindow);
 };
 
 /**
@@ -275,13 +191,24 @@ export const buildTermDocument = ({ asset, assetId, branding, termTitle, clauses
 export const printHtml = (html) => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) return false;
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.onload = () => {
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-    }, 500);
-  };
+  writeDocument(printWindow, html);
   return true;
+};
+
+/**
+ * Abre a janela de impressao JA no clique, antes de uma operacao assincrona
+ * (ex.: registrar o termo e obter o numero). Navegadores bloqueiam popups
+ * abertos depois de um await. Retorna null se o popup foi bloqueado.
+ *   const win = openPrintWindow();
+ *   const term = await issue(...);
+ *   win.print(html)   // ou win.close() em caso de erro
+ */
+export const openPrintWindow = (message = 'Gerando documento…') => {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return null;
+  printWindow.document.write(`<p style="font-family:sans-serif;padding:32px;color:#555">${escapeHtml(message)}</p>`);
+  return {
+    print: (html) => writeDocument(printWindow, html),
+    close: () => printWindow.close(),
+  };
 };

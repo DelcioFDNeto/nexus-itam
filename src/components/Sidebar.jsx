@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Server, PlusSquare, FileInput,
   Users, LogOut, ClipboardCheck, X, ShieldCheck, Layers, Globe,
-  FolderGit2, Settings, ChevronLeft, ChevronRight, Search, Activity, UserCog, Building2, Moon, Sun,
+  FolderGit2, Settings, ChevronLeft, ChevronRight, Search, Activity, UserCog, Building2, Moon, Sun, FileSignature,
 } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../contexts/AuthContext';
@@ -69,6 +69,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
         title: 'Gestão',
         items: [
           { path: '/audit', icon: ClipboardCheck, label: 'Auditoria', cap: 'audit:run', feature: 'audit' },
+          { path: '/termos', icon: FileSignature, label: 'Termos', cap: 'terms:read' },
           { path: '/employees', icon: Users, label: 'Equipe', cap: 'employees:write' },
           { path: '/licenses', icon: ShieldCheck, label: 'Licenças', cap: 'licenses:write', feature: 'licenses' },
           { path: '/services', icon: Globe, label: 'Contratos', cap: 'contracts:write', feature: 'contracts' },

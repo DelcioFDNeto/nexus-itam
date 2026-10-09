@@ -63,6 +63,12 @@ export const CAPABILITIES = {
   'licenses:write': 'member',
   'contracts:write': 'manager',
   'audit:run': 'operator',
+  // Termos patrimoniais. Espelha /terms em firestore.rules: qualquer membro
+  // le; operador emite, confirma recebimento e marca assinatura; cancelar
+  // ou excluir um termo exige gestor.
+  'terms:read': 'viewer',
+  'terms:issue': 'operator',
+  'terms:cancel': 'manager',
   'agent:read': 'manager',
   'agent:manage': 'admin',
   'users:manage': 'admin',

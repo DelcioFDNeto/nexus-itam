@@ -1,7 +1,7 @@
 // src/components/LocationSelect.jsx
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { groupLocations } from '../services/locationService';
+import { groupLocations, groupLocationsByKind } from '../services/locationService';
 import { useLocations } from '../hooks/useLocations';
 
 /**
@@ -20,16 +20,22 @@ const LocationSelect = ({
   allowEmpty = true,
   emptyLabel = 'Selecione...',
   showManageLink = false,
+  // 'kind' agrupa por Matriz / Lojas / Depositos (transferencias).
+  groupBy = 'region',
+  // Local que nao pode ser escolhido (ex.: a propria origem como destino).
+  exclude,
+  id,
 }) => {
   const { locations, loading } = useLocations();
 
-  const groups = groupLocations(locations);
+  const available = exclude ? locations.filter((l) => l.name !== exclude) : locations;
+  const groups = groupBy === 'kind' ? groupLocationsByKind(available) : groupLocations(available);
   const known = locations.some((l) => l.name === value);
   const isOrphan = Boolean(value) && !known;
 
   return (
     <>
-      <select name={name} value={value || ''} onChange={onChange} className={className} disabled={loading}>
+      <select id={id} name={name} value={value || ''} onChange={onChange} className={className} disabled={loading}>
         {allowEmpty && <option value="">{loading ? 'Carregando locais...' : emptyLabel}</option>}
 
         {/* Mantém o valor histórico visível e selecionável */}
