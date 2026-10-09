@@ -1,10 +1,11 @@
 // src/components/terms/AssetTermsCard.jsx
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileSignature, Printer } from 'lucide-react';
+import { FileCheck2, FileSignature, Printer } from 'lucide-react';
 import { listTermsForAsset } from '../../services/termService';
 import { useTermPrinter } from '../../hooks/useTermPrinter';
 import { TermKindTag, TermStatusBadge } from './termUi';
+import SignedCopyViewer from './SignedCopyViewer';
 
 /**
  * Termos em que o ativo aparece (responsabilidade, devolucao, transferencia),
@@ -13,6 +14,7 @@ import { TermKindTag, TermStatusBadge } from './termUi';
 const AssetTermsCard = ({ tenantId, assetId, refreshKey }) => {
   const { printTerm } = useTermPrinter();
   const [state, setState] = useState({ key: null, terms: [], error: false });
+  const [viewing, setViewing] = useState(null);
   const requestKey = `${tenantId}:${assetId}:${refreshKey}`;
 
   useEffect(() => {
@@ -54,6 +56,17 @@ const AssetTermsCard = ({ tenantId, assetId, refreshKey }) => {
                 </div>
               </Link>
               <TermStatusBadge status={term.status} />
+              {term.signedCopy && (
+                <button
+                  type="button"
+                  onClick={() => setViewing(term)}
+                  aria-label={`Ver ${term.number} assinado`}
+                  title="Ver termo assinado"
+                  className="p-2 rounded-lg text-green-600 hover:bg-white dark:hover:bg-slate-800"
+                >
+                  <FileCheck2 size={15} />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => printTerm(term)}
@@ -67,6 +80,7 @@ const AssetTermsCard = ({ tenantId, assetId, refreshKey }) => {
           ))}
         </ul>
       )}
+      {viewing && <SignedCopyViewer term={viewing} onClose={() => setViewing(null)} />}
     </div>
   );
 };

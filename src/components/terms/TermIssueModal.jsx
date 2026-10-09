@@ -101,7 +101,10 @@ const TermIssueModal = ({ kind = 'responsabilidade', initialAssets = [], initial
         ? await issueReturnTerm({ ...input, returnLocation: effectiveReturnLocation, receivedByName })
         : await issueResponsibilityTerm(input);
       printTerm(term, { win });
-      toast.success(`${term.number} emitido. Colete a assinatura e marque como assinado em Termos.`);
+      toast.success(`${term.number} emitido.`, {
+        description: 'Colete a assinatura e anexe o termo assinado (PDF ou foto) em Termos: ele é concluído sozinho.',
+        duration: 8000,
+      });
       onIssued?.(term);
       onClose();
     } catch (error) {
@@ -199,7 +202,7 @@ const TermIssueModal = ({ kind = 'responsabilidade', initialAssets = [], initial
         <Info size={13} className="shrink-0 mt-0.5 text-brand" />
         {isReturn
           ? 'Ao registrar, os itens ficam sem responsável e voltam como "Disponível" (ou "Defeito", se marcados como avariados).'
-          : `Ao emitir, os itens passam para o nome de ${holder.name || 'quem recebe'}; os que estavam "Disponível" viram "Em Uso". O termo fica aguardando assinatura até você marcá-lo como assinado.`}
+          : `Ao emitir, os itens passam para o nome de ${holder.name || 'quem recebe'}; os que estavam "Disponível" viram "Em Uso". O termo fica aguardando assinatura até o assinado ser anexado em Termos.`}
       </p>
     </TermModalFrame>
   );

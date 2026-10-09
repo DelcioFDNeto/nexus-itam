@@ -415,13 +415,43 @@ service cloud.firestore {
         request.resource.data.assets.size() > 0 &&
         request.resource.data.assets.size() <= 150;
 
+      // Concluir (assinado/recebido) exige o termo assinado anexado; so gestor
+      // conclui sem o papel. O anexo, uma vez gravado, so o gestor substitui.
+      function concludesWithoutCopy() {
+        return request.resource.data.status != resource.data.status &&
+          request.resource.data.status in ['assinado', 'recebido', 'recebido_ressalvas'] &&
+          request.resource.data.get('signedCopy', null) == null;
+      }
+
       allow update: if isMaster() || (
         canOperate(resource.data.tenantId) &&
         request.resource.data.tenantId == resource.data.tenantId &&
         !changed(['kind', 'number', 'year', 'sequence', 'assets', 'assetIds', 'issuedAt', 'issuedBy', 'issuedByName']) &&
-        (request.resource.data.status != 'cancelado' || canManage(resource.data.tenantId))
+        (request.resource.data.status != 'cancelado' || canManage(resource.data.tenantId)) &&
+        (!concludesWithoutCopy() || canManage(resource.data.tenantId)) &&
+        (resource.data.get('signedCopy', null) == null || !changed(['signedCopy']) || canManage(resource.data.tenantId))
       );
 
+      allow delete: if isMaster() || canManage(resource.data.tenantId);
+    }
+
+    // Arquivo do termo assinado, em pedacos de ate ~1 MB (sem Cloud Storage no
+    // plano Spark). Gravado junto com a conclusao do termo; nunca e editado.
+    match /termFiles/{fileId} {
+      allow get: if tenantRead();
+
+      allow create: if tenantCreate() &&
+        request.resource.data.keys().hasOnly(['tenantId', 'termId', 'fileId', 'index', 'total', 'name', 'contentType', 'size', 'data', 'createdAt', 'createdBy']) &&
+        request.resource.data.data is bytes &&
+        request.resource.data.data.size() <= 950000 &&
+        request.resource.data.total is int && request.resource.data.total >= 1 && request.resource.data.total <= 6 &&
+        request.resource.data.index is int && request.resource.data.index >= 0 && request.resource.data.index < request.resource.data.total &&
+        request.resource.data.size is int && request.resource.data.size <= 5242880 &&
+        request.resource.data.contentType in ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] &&
+        fileId == request.resource.data.fileId + '_' + string(request.resource.data.index) &&
+        get(/databases/$(database)/documents/terms/$(request.resource.data.termId)).data.tenantId == request.resource.data.tenantId;
+
+      allow update: if false;
       allow delete: if isMaster() || canManage(resource.data.tenantId);
     }
 

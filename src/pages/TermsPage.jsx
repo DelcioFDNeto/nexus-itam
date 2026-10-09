@@ -1,25 +1,31 @@
 // src/pages/TermsPage.jsx
 // -----------------------------------------------------------------------------
 // Termos patrimoniais: responsabilidade, devolucao e transferencia/recebimento.
-// Lista com pendencias (em transito, aguardando assinatura), reimpressao do
-// documento identico ao emitido, conferencia na loja e cancelamento.
-// /termos/:termId abre direto o detalhe — e o endereco do QR impresso no termo.
+// Fluxo automatico: gerar o termo -> imprimir e assinar -> anexar o assinado.
+// Anexar conclui sozinho (recebimento na loja, assinatura) e o QR impresso
+// identifica cada arquivo no anexo em lote.
+// /termos/:termId abre direto o detalhe — e o endereco do QR impresso no termo;
+// com ?anexar=1 ja abre a conclusao.
 // -----------------------------------------------------------------------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  AlertTriangle, Ban, CheckCircle2, FileSignature, PackageCheck, Printer, RefreshCcw, Search, Truck, Undo2, X,
+  AlertTriangle, Ban, Clock, FileCheck2, FileSignature, Paperclip, Printer, RefreshCcw, Search, Truck, Undo2, UploadCloud, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useTermPrinter } from '../hooks/useTermPrinter';
-import { cancelTransfer, getTerm, listTerms, markTermSigned } from '../services/termService';
+import { cancelTransfer, getTerm, listTerms } from '../services/termService';
 import { can } from '../utils/permissions';
-import { RECEIPT_OUTCOMES, TERM_KINDS, TERM_STATUS } from '../utils/terms';
+import {
+  canAttachSignedCopy, daysSinceIssue, isOverdue, OPEN_TERM_STATUSES, RECEIPT_OUTCOMES, resolveTermOptions, TERM_KINDS, TERM_STATUS,
+} from '../utils/terms';
 import { TermKindTag, TermStatusBadge } from '../components/terms/termUi';
 import TermIssueModal from '../components/terms/TermIssueModal';
 import TransferModal from '../components/terms/TransferModal';
-import TransferReceiptModal from '../components/terms/TransferReceiptModal';
+import ConcludeTermModal from '../components/terms/ConcludeTermModal';
+import SignedCopiesModal from '../components/terms/SignedCopiesModal';
+import SignedCopyViewer from '../components/terms/SignedCopyViewer';
 
 const formatDate = (date) => (date ? date.toLocaleDateString('pt-BR') : '—');
 
@@ -38,13 +44,20 @@ const missingItems = (term) => (term.receipt?.items || []).filter((i) => i.outco
 
 const FILTERS = [
   { id: 'abertos', label: 'Pendências' },
+  { id: 'atrasados', label: 'Atrasados' },
   { id: 'todos', label: 'Todos' },
   { id: 'transferencia', label: 'Transferências' },
   { id: 'responsabilidade', label: 'Responsabilidade' },
   { id: 'devolucao', label: 'Devoluções' },
 ];
 
-const isOpen = (term) => ['pendente', 'em_transito'].includes(term.status) || missingItems(term).length > 0;
+const isOpen = (term) => OPEN_TERM_STATUSES.includes(term.status) || missingItems(term).length > 0;
+
+const STEPS = [
+  { icon: FileSignature, title: 'Gere o termo', text: 'Pelo ativo, pela lista ou aqui. Itens e responsável já vêm preenchidos.' },
+  { icon: Printer, title: 'Imprima e colete as assinaturas', text: 'Na transferência, a via segue com os equipamentos e a loja assina ao receber.' },
+  { icon: UploadCloud, title: 'Anexe o assinado', text: 'O QR identifica o termo e conclui sozinho: itens na loja, termo assinado.' },
+];
 
 const ActionButton = ({ icon: Icon, children, onClick, tone = 'default', disabled, label }) => {
   const tones = {
@@ -66,7 +79,18 @@ const ActionButton = ({ icon: Icon, children, onClick, tone = 'default', disable
   );
 };
 
-const TermDetail = ({ term, onClose, actions }) => {
+const OverdueTag = ({ term, overdueDays }) => {
+  if (!OPEN_TERM_STATUSES.includes(term.status)) return null;
+  const days = daysSinceIssue(term);
+  const late = isOverdue(term, { days: overdueDays });
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase whitespace-nowrap ${late ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400'}`}>
+      <Clock size={11} /> {late ? 'Atrasado · ' : ''}{days === 0 ? 'hoje' : `há ${days} dia${days > 1 ? 's' : ''}`}
+    </span>
+  );
+};
+
+const TermDetail = ({ term, onClose, actions, overdueDays, onViewCopy }) => {
   const outcomes = Object.fromEntries((term.receipt?.items || []).map((i) => [i.id, i]));
   const isTransfer = term.kind === 'transferencia';
   return (
@@ -79,6 +103,7 @@ const TermDetail = ({ term, onClose, actions }) => {
             <h2 className="mt-1 text-xl font-black text-gray-900 dark:text-white font-mono">{term.number}</h2>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <TermStatusBadge status={term.status} />
+              <OverdueTag term={term} overdueDays={overdueDays} />
               <span className="text-[11px] text-gray-500 dark:text-gray-400">Emitido em {formatDate(term.issuedAtDate)} por {term.issuedByName || term.issuedBy}</span>
             </div>
           </div>
@@ -88,6 +113,36 @@ const TermDetail = ({ term, onClose, actions }) => {
         </header>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4">
+          {OPEN_TERM_STATUSES.includes(term.status) && (
+            <p className="rounded-2xl border border-brand/30 bg-brand/5 p-4 text-xs text-gray-700 dark:text-gray-200">
+              <strong>Próximo passo:</strong>{' '}
+              {term.status === 'em_transito'
+                ? `quando a via assinada pela ${term.destination?.name || 'loja'} voltar, anexe o PDF ou a foto. O recebimento é concluído sozinho.`
+                : 'anexe o termo assinado (PDF ou foto). Ele passa para "Assinado".'}
+            </p>
+          )}
+
+          {term.signedCopy ? (
+            <button
+              type="button"
+              onClick={onViewCopy}
+              className="w-full text-left rounded-2xl border border-green-200 bg-green-50 dark:border-green-900/60 dark:bg-green-950/20 p-4 text-xs flex items-center gap-3 hover:border-green-400"
+            >
+              <FileCheck2 size={22} className="text-green-600 shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block font-black text-gray-900 dark:text-white">Termo assinado anexado</span>
+                <span className="block text-gray-600 dark:text-gray-300 truncate">{term.signedCopy.name} · por {term.signedCopy.uploadedByName || term.signedCopy.uploadedBy}</span>
+              </span>
+              <span className="text-[10px] font-black uppercase text-green-700 dark:text-green-300">Ver</span>
+            </button>
+          ) : (
+            !OPEN_TERM_STATUSES.includes(term.status) && term.status !== 'cancelado' && (
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20 p-4 text-xs font-bold text-amber-700 dark:text-amber-300">
+                Concluído sem o termo assinado anexado.
+              </p>
+            )
+          )}
+
           {isTransfer ? (
             <div className="grid grid-cols-2 gap-3">
               {[['Origem', term.origin], ['Destino', term.destination]].map(([label, place]) => (
@@ -122,7 +177,7 @@ const TermDetail = ({ term, onClose, actions }) => {
 
           {term.status === 'assinado' && (
             <p className="rounded-2xl border border-green-200 bg-green-50 dark:border-green-900/60 dark:bg-green-950/20 p-4 text-xs font-bold text-green-700 dark:text-green-300">
-              Assinatura conferida por {term.signedByName || term.signedBy}.
+              Assinatura registrada por {term.signedByName || term.signedBy}.
             </p>
           )}
           {term.status === 'cancelado' && (
@@ -172,9 +227,11 @@ const TermDetail = ({ term, onClose, actions }) => {
 
 const TermsPage = () => {
   const { termId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { printTerm } = useTermPrinter();
+  const { printTerm, settings } = useTermPrinter();
+  const { overdueDays } = resolveTermOptions(settings);
   const canIssue = can(currentUser, 'terms:issue');
   const canCancel = can(currentUser, 'terms:cancel');
 
@@ -216,41 +273,36 @@ const TermsPage = () => {
       .catch(() => toast.error('Termo não encontrado ou sem acesso.'));
   }, [termId, loading, terms, currentUser?.tenantId]);
 
+  // /termos/:id?anexar=1 (botao do ativo em transito): abre direto a conclusao.
+  const autoConclude = canIssue && searchParams.get('anexar') === '1' && selected && canAttachSignedCopy(selected) ? selected : null;
+
   const counts = useMemo(() => ({
     transit: terms.filter((t) => t.status === 'em_transito').length,
     unsigned: terms.filter((t) => t.status === 'pendente').length,
-    issues: terms.filter((t) => t.status === 'recebido_ressalvas').length,
-    missing: terms.reduce((sum, t) => sum + missingItems(t).length, 0),
-  }), [terms]);
+    overdue: terms.filter((t) => isOverdue(t, { days: overdueDays })).length,
+    issues: terms.filter((t) => t.status === 'recebido_ressalvas').length + terms.reduce((sum, t) => sum + missingItems(t).length, 0),
+  }), [terms, overdueDays]);
 
   const visible = useMemo(() => {
     const q = norm(search.trim());
     return terms.filter((t) => {
       if (filter === 'abertos' && !isOpen(t)) return false;
+      if (filter === 'atrasados' && !isOverdue(t, { days: overdueDays })) return false;
       if (TERM_KINDS[filter] && t.kind !== filter) return false;
       if (!q) return true;
       const haystack = [t.number, counterpart(t), t.receiver?.name, ...(t.assets || []).map((a) => `${a.internalId} ${a.model} ${a.serialNumber}`)].join(' ');
       return norm(haystack).includes(q);
     });
-  }, [terms, filter, search]);
+  }, [terms, filter, search, overdueDays]);
 
   const refresh = async () => {
     await load();
     setExtraTerm(null);
   };
 
-  const sign = async (term) => {
-    if (!confirm(`Confirmar que o ${term.number} voltou assinado?`)) return;
-    setBusyId(term.id);
-    try {
-      await markTermSigned({ term, user: currentUser });
-      toast.success(`${term.number} marcado como assinado.`);
-      await refresh();
-    } catch (error) {
-      toast.error(error.message || 'Erro ao registrar a assinatura.');
-    } finally {
-      setBusyId(null);
-    }
+  const closeModal = () => {
+    setModal(null);
+    if (autoConclude) navigate(`/termos/${autoConclude.id}`, { replace: true });
   };
 
   const cancel = async (term) => {
@@ -268,26 +320,29 @@ const TermsPage = () => {
     }
   };
 
-  const rowActions = (term, detailed = false) => (
-    <>
-      <ActionButton icon={Printer} label="Imprimir termo" onClick={() => printTerm(term)}>{detailed ? 'Imprimir' : ''}</ActionButton>
-      {canIssue && term.status === 'em_transito' && (
-        <ActionButton icon={PackageCheck} tone="primary" onClick={() => setModal({ type: 'receipt', term })} disabled={busyId === term.id}>
-          Conferir
-        </ActionButton>
-      )}
-      {canIssue && term.status === 'pendente' && (
-        <ActionButton icon={CheckCircle2} tone={detailed ? 'primary' : 'default'} onClick={() => sign(term)} disabled={busyId === term.id}>
-          Assinado
-        </ActionButton>
-      )}
-      {canCancel && term.status === 'em_transito' && detailed && (
-        <ActionButton icon={Ban} tone="danger" onClick={() => cancel(term)} disabled={busyId === term.id}>
-          Cancelar envio
-        </ActionButton>
-      )}
-    </>
-  );
+  const rowActions = (term, detailed = false) => {
+    const open = OPEN_TERM_STATUSES.includes(term.status);
+    return (
+      <>
+        <ActionButton icon={Printer} label="Imprimir termo" onClick={() => printTerm(term)}>{detailed ? 'Imprimir' : ''}</ActionButton>
+        {term.signedCopy && (
+          <ActionButton icon={FileCheck2} label="Ver termo assinado" onClick={() => setModal({ type: 'viewer', term })}>{detailed ? 'Ver assinado' : ''}</ActionButton>
+        )}
+        {canIssue && canAttachSignedCopy(term) && (
+          <ActionButton icon={Paperclip} tone={open ? 'primary' : 'default'} onClick={() => setModal({ type: 'conclude', term })} disabled={busyId === term.id}>
+            {open ? 'Anexar assinado' : 'Anexar'}
+          </ActionButton>
+        )}
+        {canCancel && term.status === 'em_transito' && detailed && (
+          <ActionButton icon={Ban} tone="danger" onClick={() => cancel(term)} disabled={busyId === term.id}>
+            Cancelar envio
+          </ActionButton>
+        )}
+      </>
+    );
+  };
+
+  const concludeTarget = modal?.type === 'conclude' ? modal.term : autoConclude;
 
   return (
     <div className="max-w-7xl mx-auto pb-24 space-y-6">
@@ -300,6 +355,9 @@ const TermsPage = () => {
         </div>
         {canIssue && (
           <div className="flex flex-wrap lg:flex-nowrap gap-2 shrink-0">
+            <button onClick={() => setModal({ type: 'bulk' })} className="px-4 py-2.5 rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-md">
+              <UploadCloud size={15} /> Anexar assinados
+            </button>
             <button onClick={() => setModal({ type: 'transfer' })} className="px-4 py-2.5 rounded-xl bg-brand text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-md shadow-brand/30">
               <Truck size={15} /> Nova transferência
             </button>
@@ -313,15 +371,31 @@ const TermsPage = () => {
         )}
       </div>
 
+      {/* Como funciona */}
+      <ol className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {STEPS.map(({ icon: Icon, title, text }, index) => (
+          <li key={title} className="flex items-start gap-3 rounded-2xl border border-gray-100 dark:border-slate-700 bg-white/60 dark:bg-slate-800/60 p-3">
+            <span className="relative p-2 rounded-xl bg-brand/10 text-brand shrink-0">
+              <Icon size={16} />
+              <span className="absolute -top-1.5 -left-1.5 h-4 w-4 rounded-full bg-brand text-white text-[9px] font-black flex items-center justify-center">{index + 1}</span>
+            </span>
+            <span className="min-w-0">
+              <span className="block text-xs font-black text-gray-900 dark:text-white">{title}</span>
+              <span className="block text-[11px] text-gray-500 dark:text-gray-400">{text}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+
       {/* Pendencias */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Em trânsito', value: counts.transit, icon: Truck, tone: 'text-blue-600 bg-blue-50 dark:bg-blue-950/40 dark:text-blue-300' },
-          { label: 'Aguardando assinatura', value: counts.unsigned, icon: FileSignature, tone: 'text-amber-600 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300' },
-          { label: 'Recebidos com ressalva', value: counts.issues, icon: AlertTriangle, tone: 'text-orange-600 bg-orange-50 dark:bg-orange-950/40 dark:text-orange-300' },
-          { label: 'Itens não recebidos', value: counts.missing, icon: Ban, tone: 'text-rose-600 bg-rose-50 dark:bg-rose-950/40 dark:text-rose-300' },
-        ].map(({ label, value, icon: Icon, tone }) => (
-          <button key={label} onClick={() => setFilter('abertos')} className="text-left bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-4 shadow-sm flex items-center gap-3">
+          { label: 'Em trânsito', value: counts.transit, icon: Truck, tone: 'text-blue-600 bg-blue-50 dark:bg-blue-950/40 dark:text-blue-300', target: 'transferencia' },
+          { label: 'Aguardando assinatura', value: counts.unsigned, icon: FileSignature, tone: 'text-amber-600 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300', target: 'abertos' },
+          { label: `Atrasados (+${overdueDays} dias)`, value: counts.overdue, icon: Clock, tone: 'text-rose-600 bg-rose-50 dark:bg-rose-950/40 dark:text-rose-300', target: 'atrasados' },
+          { label: 'Ressalvas e faltas', value: counts.issues, icon: AlertTriangle, tone: 'text-orange-600 bg-orange-50 dark:bg-orange-950/40 dark:text-orange-300', target: 'todos' },
+        ].map(({ label, value, icon: Icon, tone, target }) => (
+          <button key={label} onClick={() => setFilter(target)} className="text-left bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-4 shadow-sm flex items-center gap-3">
             <span className={`p-2.5 rounded-xl ${tone}`}><Icon size={18} /></span>
             <span>
               <span className="block text-2xl font-black text-gray-900 dark:text-white tabular-nums">{value}</span>
@@ -368,7 +442,9 @@ const TermsPage = () => {
         ) : visible.length === 0 ? (
           <div className="p-10 text-center">
             <FileSignature size={32} className="mx-auto mb-3 text-gray-300 dark:text-slate-600" />
-            <p className="font-bold text-gray-700 dark:text-gray-200">{filter === 'abertos' ? 'Nenhuma pendência. Tudo assinado e recebido.' : 'Nenhum termo encontrado.'}</p>
+            <p className="font-bold text-gray-700 dark:text-gray-200">
+              {filter === 'abertos' ? 'Nenhuma pendência. Tudo assinado e recebido.' : filter === 'atrasados' ? 'Nada atrasado.' : 'Nenhum termo encontrado.'}
+            </p>
             {canIssue && terms.length === 0 && (
               <p className="text-xs text-gray-400 mt-1">Emita termos pelo detalhe do ativo, pela lista (seleção múltipla) ou pelos botões acima.</p>
             )}
@@ -379,7 +455,10 @@ const TermsPage = () => {
               <li key={term.id} className="flex flex-col md:flex-row md:items-center gap-3 px-4 py-3 hover:bg-gray-50/70 dark:hover:bg-slate-900/40">
                 <button onClick={() => navigate(`/termos/${term.id}`)} className="flex-1 min-w-0 text-left flex items-center gap-4">
                   <div className="w-36 shrink-0">
-                    <p className="font-mono text-sm font-black text-gray-900 dark:text-white">{term.number}</p>
+                    <p className="font-mono text-sm font-black text-gray-900 dark:text-white flex items-center gap-1.5">
+                      {term.number}
+                      {term.signedCopy && <Paperclip size={12} className="text-green-600" aria-label="Assinado anexado" />}
+                    </p>
                     <TermKindTag kind={term.kind} />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -391,7 +470,10 @@ const TermsPage = () => {
                       <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400">{missingItems(term).length} item(ns) não recebido(s)</p>
                     )}
                   </div>
-                  <TermStatusBadge status={term.status} />
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <TermStatusBadge status={term.status} />
+                    <OverdueTag term={term} overdueDays={overdueDays} />
+                  </div>
                 </button>
                 <div className="flex gap-2 md:justify-end shrink-0">{rowActions(term)}</div>
               </li>
@@ -404,7 +486,9 @@ const TermsPage = () => {
         <TermDetail
           key={selected.id}
           term={selected}
+          overdueDays={overdueDays}
           onClose={() => navigate('/termos')}
+          onViewCopy={() => setModal({ type: 'viewer', term: selected })}
           actions={rowActions(selected, true)}
         />
       )}
@@ -413,9 +497,9 @@ const TermsPage = () => {
       {(modal?.type === 'responsabilidade' || modal?.type === 'devolucao') && (
         <TermIssueModal kind={modal.type} onClose={() => setModal(null)} onIssued={refresh} />
       )}
-      {modal?.type === 'receipt' && (
-        <TransferReceiptModal term={modal.term} onClose={() => setModal(null)} onConfirmed={refresh} />
-      )}
+      {concludeTarget && <ConcludeTermModal key={concludeTarget.id} term={concludeTarget} onClose={closeModal} onConcluded={refresh} />}
+      {modal?.type === 'bulk' && <SignedCopiesModal terms={terms} onClose={() => setModal(null)} onDone={refresh} />}
+      {modal?.type === 'viewer' && <SignedCopyViewer term={modal.term} onClose={() => setModal(null)} />}
 
       <p className="text-[11px] text-gray-400 dark:text-gray-500">
         Status possíveis: {Object.values(TERM_STATUS).map((s) => s.label).join(' · ')}.

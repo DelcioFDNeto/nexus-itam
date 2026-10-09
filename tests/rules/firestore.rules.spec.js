@@ -24,6 +24,7 @@ import {
   writeBatch,
   serverTimestamp,
   Timestamp,
+  Bytes,
 } from 'firebase/firestore';
 
 const PROJECT_ID = 'demo-nexus-itam';
@@ -78,6 +79,8 @@ beforeEach(async () => {
       ['agentInbox/in1', { tenantId: 'acme', status: 'pending', agentToken: 'tok-acme' }],
       ['terms/tr1', { tenantId: 'acme', kind: 'responsabilidade', number: 'TR-2026-0001', status: 'pendente', assets: [{ id: 'a1' }], assetIds: ['a1'] }],
       ['terms/tt1', { tenantId: 'acme', kind: 'transferencia', number: 'TT-2026-0003', status: 'em_transito', assets: [{ id: 'a1' }], assetIds: ['a1'] }],
+      ['terms/tr2', { tenantId: 'acme', kind: 'responsabilidade', number: 'TR-2026-0002', status: 'assinado', assets: [{ id: 'a1' }], assetIds: ['a1'], signedCopy: { fileId: 'f0', chunks: 1 } }],
+      ['termFiles/f0_0', { tenantId: 'acme', termId: 'tr2', fileId: 'f0', index: 0, total: 1, contentType: 'application/pdf', size: 3 }],
       ['termCounters/acme/years/2026', { transferencia: 3, responsabilidade: 1 }],
       ['invites/inv1', { tenantId: 'acme', email: 'novo@acme.com', role: 'operator', status: 'pending' }],
       ['invites/expired', {
@@ -358,7 +361,7 @@ describe('termos (responsabilidade, devolucao, transferencia)', () => {
   it('termo emitido nao tem itens nem numero alterados', async () => {
     await assertFails(updateDoc(doc(as('op1'), 'terms', 'tr1'), { assets: [{ id: 'b1' }] }));
     await assertFails(updateDoc(doc(as('op1'), 'terms', 'tr1'), { number: 'TR-2026-9999' }));
-    await assertSucceeds(updateDoc(doc(as('op1'), 'terms', 'tr1'), { status: 'assinado' }));
+    await assertSucceeds(updateDoc(doc(as('op1'), 'terms', 'tr1'), { status: 'assinado', signedCopy: { fileId: 'f1', chunks: 1 } }));
   });
 
   it('a loja confirma o recebimento; cancelar exige gestor', async () => {
@@ -366,8 +369,35 @@ describe('termos (responsabilidade, devolucao, transferencia)', () => {
     await assertSucceeds(updateDoc(doc(as('manager1'), 'terms', 'tt1'), { status: 'cancelado' }));
   });
 
-  it('operador confirma recebimento de transferencia', async () => {
-    await assertSucceeds(updateDoc(doc(as('op1'), 'terms', 'tt1'), { status: 'recebido', receipt: { receivedByName: 'Gerente' } }));
+  it('operador conclui anexando o termo assinado; sem anexo so o gestor', async () => {
+    await assertFails(updateDoc(doc(as('op1'), 'terms', 'tt1'), { status: 'recebido', receipt: { receivedByName: 'Gerente' } }));
+    await assertFails(updateDoc(doc(as('op1'), 'terms', 'tr1'), { status: 'assinado' }));
+    await assertSucceeds(updateDoc(doc(as('op1'), 'terms', 'tt1'), { status: 'recebido', receipt: { receivedByName: 'Gerente' }, signedCopy: { fileId: 'f2', chunks: 1 } }));
+    await assertSucceeds(updateDoc(doc(as('manager1'), 'terms', 'tr1'), { status: 'assinado' }));
+  });
+
+  it('anexo gravado so o gestor substitui', async () => {
+    await assertFails(updateDoc(doc(as('op1'), 'terms', 'tr2'), { signedCopy: { fileId: 'outro', chunks: 1 } }));
+    await assertSucceeds(updateDoc(doc(as('manager1'), 'terms', 'tr2'), { signedCopy: { fileId: 'outro', chunks: 1 } }));
+  });
+
+  it('arquivo do termo assinado: grava em pedacos, nunca edita, isolado por empresa', async () => {
+    const pedaco = (extra = {}) => ({
+      tenantId: 'acme', termId: 'tr1', fileId: 'f9', index: 0, total: 1, name: 'TR.pdf',
+      contentType: 'application/pdf', size: 3, data: Bytes.fromUint8Array(new Uint8Array([1, 2, 3])), createdBy: 'op@acme.com', ...extra,
+    });
+    await assertSucceeds(setDoc(doc(as('op1'), 'termFiles', 'f9_0'), pedaco()));
+    await assertSucceeds(getDoc(doc(as('viewer1'), 'termFiles', 'f0_0')));
+    await assertFails(getDoc(doc(as('betaOwner'), 'termFiles', 'f0_0')));
+    // id precisa ser {fileId}_{index}; tipo e tamanho limitados; termo da mesma empresa
+    await assertFails(setDoc(doc(as('op1'), 'termFiles', 'qualquer'), pedaco()));
+    await assertFails(setDoc(doc(as('op1'), 'termFiles', 'f8_0'), pedaco({ fileId: 'f8', contentType: 'text/html' })));
+    await assertFails(setDoc(doc(as('op1'), 'termFiles', 'f7_0'), pedaco({ fileId: 'f7', data: 'nao-e-bytes' })));
+    await assertFails(setDoc(doc(as('betaOwner'), 'termFiles', 'f6_0'), pedaco({ fileId: 'f6', tenantId: 'beta' })));
+    await assertFails(setDoc(doc(as('viewer1'), 'termFiles', 'f5_0'), pedaco({ fileId: 'f5' })));
+    await assertFails(updateDoc(doc(as('op1'), 'termFiles', 'f0_0'), { name: 'trocado.pdf' }));
+    await assertFails(deleteDoc(doc(as('op1'), 'termFiles', 'f0_0')));
+    await assertSucceeds(deleteDoc(doc(as('manager1'), 'termFiles', 'f0_0')));
   });
 
   it('isola termos entre empresas e exige gestor para excluir', async () => {

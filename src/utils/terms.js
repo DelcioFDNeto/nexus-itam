@@ -156,12 +156,134 @@ export const DEFAULT_TRANSFER_CLAUSES = `1. DA CONFERÊNCIA: O(a) recebedor(a) d
 3. DO PRAZO: Divergências não registradas no ato do recebimento deverão ser comunicadas ao Departamento de TI em até 24 (vinte e quatro) horas.
 4. DO REMANEJAMENTO: Os equipamentos destinam-se às atividades da unidade de destino e não podem ser remanejados para outro local sem nova transferência registrada.`;
 
+/** Situacoes possiveis dos itens quando a transferencia e concluida. */
+export const ARRIVAL_STATUSES = ['Disponível', 'Em Uso'];
+
+export const DEFAULT_OVERDUE_DAYS = 7;
+
 /** Opcoes dos termos gravadas em /settings/{tenantId}. */
-export const resolveTermOptions = (config = {}) => ({
-  city: text(config.termCity),
-  showValue: Boolean(config.termShowValue),
-  witnesses: Boolean(config.termWitnesses),
-  termTitle: text(config.termTitle),
-  clauses: text(config.termClauses) || DEFAULT_TERM_CLAUSES,
-  transferClauses: text(config.transferClauses) || DEFAULT_TRANSFER_CLAUSES,
-});
+export const resolveTermOptions = (config = {}) => {
+  const overdue = Number.parseInt(config.termOverdueDays, 10);
+  return {
+    city: text(config.termCity),
+    showValue: Boolean(config.termShowValue),
+    witnesses: Boolean(config.termWitnesses),
+    termTitle: text(config.termTitle),
+    clauses: text(config.termClauses) || DEFAULT_TERM_CLAUSES,
+    transferClauses: text(config.transferClauses) || DEFAULT_TRANSFER_CLAUSES,
+    // Fluxo automatico: o que acontece com os itens quando o termo assinado e anexado.
+    arrivalStatus: ARRIVAL_STATUSES.includes(config.transferArrivalStatus) ? config.transferArrivalStatus : 'Disponível',
+    assignReceiver: Boolean(config.transferAssignReceiver),
+    overdueDays: Number.isFinite(overdue) ? Math.min(Math.max(overdue, 1), 90) : DEFAULT_OVERDUE_DAYS,
+  };
+};
+
+// -----------------------------------------------------------------------------
+// Termo assinado (anexo) e conclusao automatica
+// -----------------------------------------------------------------------------
+
+/**
+ * O arquivo assinado fica no Firestore, em pedacos (o plano Spark nao tem
+ * Cloud Storage e um documento comporta ate 1 MiB).
+ */
+export const SIGNED_COPY_MAX_BYTES = 5 * 1024 * 1024;
+export const SIGNED_COPY_CHUNK_BYTES = 900 * 1024;
+export const SIGNED_COPY_MAX_CHUNKS = Math.ceil(SIGNED_COPY_MAX_BYTES / SIGNED_COPY_CHUNK_BYTES);
+export const SIGNED_COPY_ACCEPT = 'application/pdf,image/*';
+
+/** Aceita anexo: termos abertos concluem; concluidos sem anexo so arquivam o papel. */
+export const canAttachSignedCopy = (term) => Boolean(term?.id) && term.status !== 'cancelado' && !term.signedCopy;
+
+/** O que anexar o assinado faz com o termo (texto curto para as telas). */
+export const attachOutcome = (term) => {
+  if (term?.status === 'em_transito') return `Recebido em ${term.destination?.name || 'destino'}`;
+  if (term?.status === 'pendente') return 'Assinado';
+  return 'Arquivar o assinado';
+};
+
+export const splitIntoChunks = (bytes, size = SIGNED_COPY_CHUNK_BYTES) => {
+  const chunks = [];
+  for (let start = 0; start < bytes.length; start += size) chunks.push(bytes.subarray(start, start + size));
+  return chunks.length ? chunks : [new Uint8Array(0)];
+};
+
+export const joinChunks = (chunks) => {
+  const total = chunks.reduce((sum, c) => sum + c.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  });
+  return out;
+};
+
+/** Id do termo no texto do QR impresso (".../termos/{id}"). */
+export const termIdFromQr = (value) => {
+  const match = String(value ?? '').match(/\/termos\/([A-Za-z0-9_-]{6,64})(?=$|[/?#])/);
+  return match ? match[1] : null;
+};
+
+/** Numero do termo escrito no nome do arquivo ("TT-2026-0001.pdf", "tt_2026_1 assinado.jpg"). */
+export const termNumberFromText = (value) => {
+  const match = String(value ?? '').match(/(?:^|[^a-z])(TR|TD|TT)[\s._-]*(\d{4})[\s._-]*(\d{1,6})(?!\d)/i);
+  return match ? `${match[1].toUpperCase()}-${match[2]}-${match[3].padStart(4, '0')}` : null;
+};
+
+/**
+ * Descobre de qual termo e o arquivo digitalizado: primeiro pelo QR impresso,
+ * depois pelo numero no nome do arquivo. Quando o QR aponta para um termo fora
+ * da lista carregada, devolve so o id (quem chamou busca o termo).
+ */
+export const matchSignedCopy = ({ qrText, fileName } = {}, terms = []) => {
+  const termId = termIdFromQr(qrText);
+  if (termId) {
+    const term = terms.find((t) => t.id === termId);
+    return term ? { term, via: 'qr' } : { termId, via: 'qr' };
+  }
+  const number = termNumberFromText(fileName);
+  const term = number ? terms.find((t) => t.number === number) : null;
+  return term ? { term, via: 'nome' } : null;
+};
+
+/** Recebedor quando o termo nao nomeia ninguem: o nome esta no papel assinado. */
+export const RECEIVER_FROM_PAPER = 'Conforme termo assinado';
+
+const isoDay = (date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+/**
+ * Recebimento padrao quando a loja devolve o termo assinado: todos os itens
+ * conferidos, recebedor do proprio termo e situacao definida em Configuracoes.
+ */
+export const defaultReceipt = (term, options = {}, now = new Date()) => {
+  const receiver = text(term?.receiver?.name) || text(term?.destination?.manager);
+  return {
+    receivedByName: receiver || RECEIVER_FROM_PAPER,
+    receivedAt: isoDay(now),
+    items: (term?.assets || []).map((a) => ({ id: a.id, outcome: 'ok', note: '' })),
+    newStatus: ARRIVAL_STATUSES.includes(options.arrivalStatus) ? options.arrivalStatus : 'Disponível',
+    // So vira responsavel quem esta identificado no termo.
+    assignToReceiver: Boolean(options.assignReceiver && text(term?.receiver?.name)),
+  };
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+
+/** Dias inteiros desde a emissao. */
+export const daysSinceIssue = (term, now = new Date()) => {
+  const issued = toLocalDate(term?.issuedAtDate || term?.issuedAt);
+  return issued ? Math.max(0, Math.floor((now - issued) / DAY_MS)) : 0;
+};
+
+/**
+ * Pendencia atrasada: transferencia que passou da previsao de chegada (ou,
+ * sem previsao, do prazo padrao) e termo sem assinatura alem do prazo.
+ */
+export const isOverdue = (term, { days = DEFAULT_OVERDUE_DAYS, now = new Date() } = {}) => {
+  if (!OPEN_TERM_STATUSES.includes(term?.status)) return false;
+  const expected = term.status === 'em_transito' ? toLocalDate(term.expectedAt) : null;
+  if (expected) return now > new Date(expected.getFullYear(), expected.getMonth(), expected.getDate() + 1);
+  return daysSinceIssue(term, now) > days;
+};

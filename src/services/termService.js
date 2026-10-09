@@ -24,8 +24,10 @@ import {
   where,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { writeSignedCopy } from './termFileService';
 import {
   cleanPerson,
+  defaultReceipt,
   cleanPlace,
   formatTermNumber,
   MAX_TERM_ASSETS,
@@ -257,12 +259,14 @@ export const dispatchTransfer = ({ tenantId, user, assets, origin, destination, 
 /**
  * Conferencia na loja. Itens "ok" ou "com ressalva" passam para o local de
  * destino; "não recebido" continua em transito, marcado como faltante.
+ * Com `signedCopy` (arquivo preparado por prepareSignedCopy), o termo assinado
+ * e gravado na mesma transacao.
  *
  * @param {{ term: object, user: object, receivedByName: string, receivedAt: string,
  *           items: Array<{id:string, outcome:'ok'|'ressalva'|'nao_recebido', note?:string}>,
- *           newStatus?: string, assignToReceiver?: boolean }} input
+ *           newStatus?: string, assignToReceiver?: boolean, signedCopy?: object }} input
  */
-export const confirmTransferReceipt = async ({ term, user, receivedByName, receivedAt, items, newStatus = 'Disponível', assignToReceiver = false }) => {
+export const confirmTransferReceipt = async ({ term, user, receivedByName, receivedAt, items, newStatus = 'Disponível', assignToReceiver = false, signedCopy = null }) => {
   if (!term?.id) throw new Error('Transferência inválida.');
   const actor = actorOf(user);
   const receiverName = text(receivedByName) || term.receiver?.name || actor.name;
@@ -282,9 +286,11 @@ export const confirmTransferReceipt = async ({ term, user, receivedByName, recei
     if (fresh.data().status !== 'em_transito') throw new Error('Esta transferência já foi conferida ou cancelada.');
     // Leituras antes das escritas (exigencia das transacoes do Firestore).
     const assetSnaps = await Promise.all(outcomes.map((o) => tx.get(doc(db, 'assets', o.id))));
+    const copy = signedCopy ? writeSignedCopy(tx, { tenantId: term.tenantId, termId: term.id, prepared: signedCopy, actor }) : null;
 
     tx.update(termRef, {
       status,
+      ...(copy ? { signedCopy: copy } : {}),
       receipt: {
         receivedByName: receiverName,
         receivedAt: text(receivedAt) || new Date().toISOString().slice(0, 10),
@@ -381,20 +387,63 @@ export const cancelTransfer = async ({ term, user, reason }) => {
 };
 
 /** O papel assinado voltou: o termo deixa a lista de pendencias. */
-export const markTermSigned = async ({ term, user }) => {
+export const markTermSigned = async ({ term, user, signedCopy = null }) => {
   const actor = actorOf(user);
   await runTransaction(db, async (tx) => {
     const ref = doc(db, 'terms', term.id);
     const fresh = await tx.get(ref);
     if (!fresh.exists() || fresh.data().status !== 'pendente') throw new Error('Este termo não está aguardando assinatura.');
+    const copy = signedCopy ? writeSignedCopy(tx, { tenantId: term.tenantId, termId: term.id, prepared: signedCopy, actor }) : null;
     tx.update(ref, {
       status: 'assinado',
+      ...(copy ? { signedCopy: copy } : {}),
       signedAt: serverTimestamp(),
       signedBy: actor.email,
       signedByName: actor.name,
       updatedAt: serverTimestamp(),
     });
   });
+};
+
+/** Arquiva o assinado de um termo ja concluido (ex.: recebido antes do anexo existir). */
+export const attachSignedCopy = async ({ term, user, signedCopy }) => {
+  if (!signedCopy) throw new Error('Selecione o arquivo do termo assinado.');
+  const actor = actorOf(user);
+  await runTransaction(db, async (tx) => {
+    const ref = doc(db, 'terms', term.id);
+    const fresh = await tx.get(ref);
+    if (!fresh.exists()) throw new Error('Termo não encontrado.');
+    if (fresh.data().status === 'cancelado') throw new Error(`${term.number} está cancelado.`);
+    if (fresh.data().signedCopy) throw new Error(`${term.number} já tem o termo assinado anexado.`);
+    tx.update(ref, {
+      signedCopy: writeSignedCopy(tx, { tenantId: term.tenantId, termId: term.id, prepared: signedCopy, actor }),
+      updatedAt: serverTimestamp(),
+    });
+  });
+};
+
+/**
+ * Fluxo automatico: anexar o termo assinado conclui o que estiver pendente.
+ *   em transito -> recebido (todos os itens conferidos, salvo ressalvas informadas)
+ *   aguardando assinatura -> assinado
+ *   ja concluido -> so arquiva o assinado
+ * @param {{ term: object, user: object, signedCopy?: object, receipt?: object, options?: object }} input
+ *   receipt: ajustes da conferencia (itens com ressalva, recebedor, data...)
+ *   options: resolveTermOptions(settings) — situacao dos itens na chegada etc.
+ * @returns {Promise<string>} status final do termo
+ */
+export const concludeTerm = async ({ term, user, signedCopy = null, receipt = {}, options = {} }) => {
+  if (!term?.id) throw new Error('Termo inválido.');
+  if (term.status === 'em_transito') {
+    const result = await confirmTransferReceipt({ term, user, signedCopy, ...defaultReceipt(term, options), ...receipt });
+    return result.status;
+  }
+  if (term.status === 'pendente') {
+    await markTermSigned({ term, user, signedCopy });
+    return 'assinado';
+  }
+  await attachSignedCopy({ term, user, signedCopy });
+  return term.status;
 };
 
 // -----------------------------------------------------------------------------

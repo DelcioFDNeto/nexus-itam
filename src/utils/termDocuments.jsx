@@ -89,6 +89,7 @@ const BASE_STYLES = (color) => `
   .write-lines div { border-bottom: 1px solid #999; height: 16px; }
   .stamp { margin-top: 6px; font-size: 9px; text-align: right; }
   .footer { margin-top: 16px; font-size: 8px; text-align: center; border-top: 1px solid #ccc; padding-top: 4px; color: #444; }
+  .footer-hint { font-size: 8.5px; font-weight: bold; color: #111; margin-bottom: 2px; }
   .status-banner { margin: 8px 0; padding: 6px 10px; border: 2px solid #000; font-family: Arial, sans-serif; font-weight: 900; text-align: center; text-transform: uppercase; }
   .draft-mark { position: fixed; top: 42%; left: 0; right: 0; text-align: center; font: 900 54px Arial, sans-serif; color: rgba(200, 0, 0, 0.13); transform: rotate(-28deg); pointer-events: none; z-index: 10; }
   .page-block { page-break-inside: avoid; }
@@ -115,16 +116,20 @@ const header = ({ branding, number, issuedAt, url }) => {
         <div class="doc-number">${escapeHtml(number || 'RASCUNHO')}</div>
         <p class="doc-meta">Emitido em ${escapeHtml(shortDate(issuedAt) || shortDate(new Date()))}</p>
       </div>
-      ${url ? qrSvg(url, 58) : ''}
+      ${url ? qrSvg(url, 72) : ''}
     </div>
   </div>`;
 };
 
 const footer = ({ branding, number, id }) => {
   const ref = [number, id].filter(Boolean).map(escapeHtml).join(' · ');
+  // Termo emitido (com numero): orienta a devolver o assinado, que o QR identifica.
+  const hint = number
+    ? '<div class="footer-hint">Depois de assinado, digitalize ou fotografe este termo e anexe no sistema — o QR code do cabeçalho identifica o documento e conclui o processo.</div>'
+    : '';
   return branding.showNexusBrand
-    ? `<div class="footer">Documento gerado eletronicamente pela plataforma Nexus ITAM${ref ? ` · ${ref}` : ''}</div>`
-    : `<div class="footer">Documento gerado eletronicamente por ${escapeHtml(branding.companyName)}${ref ? ` · ${ref}` : ''}</div>`;
+    ? `<div class="footer">${hint}Documento gerado eletronicamente pela plataforma Nexus ITAM${ref ? ` · ${ref}` : ''}</div>`
+    : `<div class="footer">${hint}Documento gerado eletronicamente por ${escapeHtml(branding.companyName)}${ref ? ` · ${ref}` : ''}</div>`;
 };
 
 const signature = (name, role, extra = '') =>

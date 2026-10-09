@@ -1,6 +1,7 @@
 // src/components/terms/TransferModal.jsx
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, Eye, Info, MapPin, Send, Store, Truck } from 'lucide-react';
+import { ArrowRight, ChevronDown, Eye, Info, MapPin, Send, Store, Truck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLocations } from '../../hooks/useLocations';
@@ -26,11 +27,14 @@ const PlaceCard = ({ label, place, tone }) => (
 
 /**
  * Transferencia de ativos entre unidades (tipicamente matriz -> loja), com
- * emissao do Termo de Transferencia e Recebimento. Os ativos ficam
- * "Em Trânsito" ate a loja confirmar o recebimento em Termos.
+ * emissao do Termo de Transferencia e Recebimento. So itens e destino sao
+ * obrigatorios: origem (matriz), recebedor (gerente da loja) e transporte vem
+ * preenchidos. Os ativos ficam "Em Trânsito" ate o termo assinado pela loja
+ * ser anexado em Termos — o que conclui o recebimento sozinho.
  */
 const TransferModal = ({ initialAssets = [], onClose, onDispatched }) => {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const { locations } = useLocations();
   const { printTerm, openWindow } = useTermPrinter();
 
@@ -43,6 +47,7 @@ const TransferModal = ({ initialAssets = [], onClose, onDispatched }) => {
   const [transport, setTransport] = useState({ mode: TRANSPORT_MODES[0], carrier: '', document: '' });
   const [expectedAt, setExpectedAt] = useState('');
   const [notes, setNotes] = useState('');
+  const [showDetails, setShowDetails] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const effectiveOrigin = originName === null ? headquarters?.name || initialAssets[0]?.location || '' : originName;
@@ -93,7 +98,11 @@ const TransferModal = ({ initialAssets = [], onClose, onDispatched }) => {
         notes,
       });
       printTerm(term, { win });
-      toast.success(`${term.number}: ${assets.length} item(ns) em trânsito para ${destinationName}.`);
+      toast.success(`${term.number}: ${assets.length} item(ns) em trânsito para ${destinationName}.`, {
+        description: 'Envie a via impressa com os equipamentos. Quando ela voltar assinada, anexe em Termos para concluir.',
+        action: { label: 'Termos', onClick: () => navigate('/termos') },
+        duration: 10000,
+      });
       onDispatched?.(term);
       onClose();
     } catch (error) {
@@ -110,7 +119,7 @@ const TransferModal = ({ initialAssets = [], onClose, onDispatched }) => {
       icon={Truck}
       wide
       title="Transferência para loja"
-      subtitle="Emite o Termo de Transferência e Recebimento. Os itens ficam em trânsito até a loja confirmar."
+      subtitle="Escolha os itens e a loja. O termo sai impresso e os itens ficam em trânsito até o assinado ser anexado."
       onClose={onClose}
       footer={
         <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -178,39 +187,60 @@ const TransferModal = ({ initialAssets = [], onClose, onDispatched }) => {
         </p>
       )}
 
-      <section>
-        <SectionTitle>Quem recebe na loja</SectionTitle>
-        <PersonFields value={receiver} onChange={setReceiver} title="Recebedor" preferBranch={destinationName} idPrefix="transfer-receiver" />
-      </section>
+      <button
+        type="button"
+        onClick={() => setShowDetails((v) => !v)}
+        aria-expanded={showDetails}
+        aria-controls="transfer-details"
+        className="w-full flex items-center justify-between gap-3 rounded-2xl border border-gray-200 dark:border-slate-700 px-4 py-3 text-left hover:border-brand/40"
+      >
+        <span className="min-w-0">
+          <span className="block text-[11px] font-black uppercase tracking-widest text-gray-500 dark:text-gray-400">Recebedor, transporte e observações (opcional)</span>
+          <span className="block text-xs font-semibold text-gray-700 dark:text-gray-200 truncate">
+            {receiver.name ? `Recebe: ${receiver.name}` : 'Recebedor em branco (preenchido no papel)'} · {transport.mode}
+            {transport.carrier ? ` · ${transport.carrier}` : ''}
+            {expectedAt ? ` · chega ${expectedAt.split('-').reverse().join('/')}` : ''}
+          </span>
+        </span>
+        <ChevronDown size={18} className={`shrink-0 text-gray-400 transition-transform ${showDetails ? 'rotate-180' : ''}`} />
+      </button>
 
-      <section>
-        <SectionTitle>Transporte</SectionTitle>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label htmlFor="transfer-mode" className={labelClass}>Meio de transporte</label>
-            <select id="transfer-mode" value={transport.mode} onChange={(e) => setTransport({ ...transport, mode: e.target.value })} className={fieldClass}>
-              {TRANSPORT_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="transfer-carrier" className={labelClass}>Transportador / motorista</label>
-            <input id="transfer-carrier" value={transport.carrier} onChange={(e) => setTransport({ ...transport, carrier: e.target.value })} className={fieldClass} placeholder="Nome de quem leva" />
-          </div>
-          <div>
-            <label htmlFor="transfer-document" className={labelClass}>NF / romaneio</label>
-            <input id="transfer-document" value={transport.document} onChange={(e) => setTransport({ ...transport, document: e.target.value })} className={fieldClass} placeholder="Opcional" />
-          </div>
-          <div>
-            <label htmlFor="transfer-expected" className={labelClass}>Previsão de chegada</label>
-            <input id="transfer-expected" type="date" value={expectedAt} onChange={(e) => setExpectedAt(e.target.value)} className={fieldClass} />
-          </div>
-        </div>
-      </section>
+      {/* Fica montado mesmo recolhido: o recebedor sugerido completa CPF/cargo pelo cadastro. */}
+      <div id="transfer-details" className={showDetails ? 'space-y-5' : 'hidden'}>
+        <section>
+          <SectionTitle>Quem recebe na loja</SectionTitle>
+          <PersonFields value={receiver} onChange={setReceiver} title="Recebedor" preferBranch={destinationName} idPrefix="transfer-receiver" />
+        </section>
 
-      <section>
-        <label htmlFor="transfer-notes" className={labelClass}>Observações (saem no termo)</label>
-        <textarea id="transfer-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={`${fieldClass} resize-y`} placeholder="Ex.: caixa lacrada; entregar ao gerente." />
-      </section>
+        <section>
+          <SectionTitle>Transporte</SectionTitle>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="transfer-mode" className={labelClass}>Meio de transporte</label>
+              <select id="transfer-mode" value={transport.mode} onChange={(e) => setTransport({ ...transport, mode: e.target.value })} className={fieldClass}>
+                {TRANSPORT_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="transfer-carrier" className={labelClass}>Transportador / motorista</label>
+              <input id="transfer-carrier" value={transport.carrier} onChange={(e) => setTransport({ ...transport, carrier: e.target.value })} className={fieldClass} placeholder="Nome de quem leva" />
+            </div>
+            <div>
+              <label htmlFor="transfer-document" className={labelClass}>NF / romaneio</label>
+              <input id="transfer-document" value={transport.document} onChange={(e) => setTransport({ ...transport, document: e.target.value })} className={fieldClass} placeholder="Opcional" />
+            </div>
+            <div>
+              <label htmlFor="transfer-expected" className={labelClass}>Previsão de chegada</label>
+              <input id="transfer-expected" type="date" value={expectedAt} onChange={(e) => setExpectedAt(e.target.value)} className={fieldClass} />
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <label htmlFor="transfer-notes" className={labelClass}>Observações (saem no termo)</label>
+          <textarea id="transfer-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={`${fieldClass} resize-y`} placeholder="Ex.: caixa lacrada; entregar ao gerente." />
+        </section>
+      </div>
     </TermModalFrame>
   );
 };

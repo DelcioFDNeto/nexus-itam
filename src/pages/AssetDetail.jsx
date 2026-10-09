@@ -552,21 +552,31 @@ const AssetDetail = () => {
         </div>
       </div>
 
-      {/* Ativo em transito: so muda de local quando a loja confirmar o recebimento */}
+      {/* Ativo em transito: so muda de local quando o termo assinado pela loja for anexado */}
       {asset.transit && (
         <div className={`mb-6 flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border px-5 py-4 ${asset.transit.missing ? "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300" : "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300"}`}>
           <Truck size={20} className="shrink-0" />
           <p className="text-sm font-bold flex-1">
             {asset.transit.missing
               ? `Não recebido em ${asset.transit.to}: a loja registrou a falta deste item na conferência (${asset.transit.number}).`
-              : `Em trânsito de ${asset.transit.from} para ${asset.transit.to}${asset.transit.since ? ` desde ${new Date(asset.transit.since).toLocaleDateString("pt-BR")}` : ""}. O local muda quando a loja confirmar o recebimento.`}
+              : `Em trânsito de ${asset.transit.from} para ${asset.transit.to}${asset.transit.since ? ` desde ${new Date(asset.transit.since).toLocaleDateString("pt-BR")}` : ""}. O local muda quando o termo assinado pela loja for anexado.`}
           </p>
-          <button
-            onClick={() => navigate(`/termos/${asset.transit.termId}`)}
-            className="shrink-0 rounded-xl bg-white/70 dark:bg-slate-900/60 px-4 py-2 text-xs font-black uppercase tracking-wider"
-          >
-            Abrir {asset.transit.number}
-          </button>
+          <div className="flex gap-2 shrink-0">
+            <button
+              onClick={() => navigate(`/termos/${asset.transit.termId}`)}
+              className="rounded-xl bg-white/70 dark:bg-slate-900/60 px-4 py-2 text-xs font-black uppercase tracking-wider"
+            >
+              Abrir {asset.transit.number}
+            </button>
+            {canIssueTerms && !asset.transit.missing && (
+              <button
+                onClick={() => navigate(`/termos/${asset.transit.termId}?anexar=1`)}
+                className="rounded-xl bg-blue-600 text-white px-4 py-2 text-xs font-black uppercase tracking-wider hover:bg-blue-700"
+              >
+                Anexar assinado
+              </button>
+            )}
+          </div>
         </div>
       )}
 

@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
+  canAttachSignedCopy,
   cleanPlace,
+  daysSinceIssue,
+  defaultReceipt,
+  isOverdue,
+  joinChunks,
+  matchSignedCopy,
+  splitIntoChunks,
+  termIdFromQr,
+  termNumberFromText,
   formatTermNumber,
   parseMoney,
   receiptStatus,
@@ -73,5 +82,73 @@ describe('utilitarios', () => {
     expect(options.transferClauses).toBe(DEFAULT_TRANSFER_CLAUSES);
     expect(options.showValue).toBe(false);
     expect(resolveTermOptions({ termWitnesses: true, termCity: 'Belém' })).toMatchObject({ witnesses: true, city: 'Belém' });
+  });
+});
+
+describe('termo assinado e conclusao automatica', () => {
+  const terms = [
+    { id: 'abc123XYZ789', number: 'TT-2026-0001', status: 'em_transito' },
+    { id: 'def456', number: 'TR-2026-0012', status: 'pendente' },
+  ];
+
+  it('le o id do termo no QR impresso', () => {
+    expect(termIdFromQr('https://nexus.app/termos/abc123XYZ789')).toBe('abc123XYZ789');
+    expect(termIdFromQr('http://localhost:5173/termos/abc123XYZ789?x=1')).toBe('abc123XYZ789');
+    expect(termIdFromQr('https://nexus.app/assets/abc123XYZ789')).toBeNull();
+    expect(termIdFromQr(null)).toBeNull();
+  });
+
+  it('le o numero do termo no nome do arquivo', () => {
+    expect(termNumberFromText('TT-2026-0001 assinado.pdf')).toBe('TT-2026-0001');
+    expect(termNumberFromText('scan_tr_2026_12.jpg')).toBe('TR-2026-0012');
+    expect(termNumberFromText('Digitalizar_20261009.pdf')).toBeNull();
+  });
+
+  it('casa o arquivo pelo QR antes do nome e avisa QR de termo fora da lista', () => {
+    expect(matchSignedCopy({ qrText: 'https://x/termos/abc123XYZ789', fileName: 'TR-2026-0012.pdf' }, terms)).toMatchObject({ term: { number: 'TT-2026-0001' }, via: 'qr' });
+    expect(matchSignedCopy({ fileName: 'tr-2026-12.pdf' }, terms)).toMatchObject({ term: { id: 'def456' }, via: 'nome' });
+    expect(matchSignedCopy({ qrText: 'https://x/termos/outroTermo1' }, terms)).toEqual({ termId: 'outroTermo1', via: 'qr' });
+    expect(matchSignedCopy({ fileName: 'foto.jpg' }, terms)).toBeNull();
+  });
+
+  it('so aceita um anexo por termo e nunca em cancelado', () => {
+    expect(canAttachSignedCopy({ id: 'a', status: 'em_transito' })).toBe(true);
+    expect(canAttachSignedCopy({ id: 'a', status: 'recebido' })).toBe(true);
+    expect(canAttachSignedCopy({ id: 'a', status: 'assinado', signedCopy: { fileId: 'f' } })).toBe(false);
+    expect(canAttachSignedCopy({ id: 'a', status: 'cancelado' })).toBe(false);
+  });
+
+  it('divide e remonta o arquivo sem perder bytes', () => {
+    const bytes = Uint8Array.from({ length: 2500 }, (_, i) => i % 251);
+    const chunks = splitIntoChunks(bytes, 1000);
+    expect(chunks.map((c) => c.length)).toEqual([1000, 1000, 500]);
+    expect(joinChunks(chunks)).toEqual(bytes);
+    expect(splitIntoChunks(new Uint8Array(0))).toHaveLength(1);
+  });
+
+  it('recebimento padrao: tudo OK, recebedor do termo e situacao da empresa', () => {
+    const term = { receiver: { name: 'Carlos' }, destination: { name: 'Loja', manager: 'Outro' }, assets: [{ id: 'a1' }, { id: 'a2' }] };
+    const receipt = defaultReceipt(term, { arrivalStatus: 'Em Uso', assignReceiver: true }, new Date(2026, 9, 9));
+    expect(receipt).toMatchObject({ receivedByName: 'Carlos', receivedAt: '2026-10-09', newStatus: 'Em Uso', assignToReceiver: true });
+    expect(receipt.items.every((i) => i.outcome === 'ok')).toBe(true);
+    // sem recebedor identificado: nao atribui a ninguem
+    const blank = defaultReceipt({ destination: { name: 'Loja' }, assets: [] }, { assignReceiver: true });
+    expect(blank).toMatchObject({ receivedByName: 'Conforme termo assinado', assignToReceiver: false, newStatus: 'Disponível' });
+  });
+
+  it('marca como atrasado pela previsao de chegada ou pelo prazo padrao', () => {
+    const now = new Date(2026, 9, 20, 10);
+    const old = { status: 'em_transito', issuedAtDate: new Date(2026, 9, 1) };
+    expect(daysSinceIssue(old, now)).toBe(19);
+    expect(isOverdue(old, { now })).toBe(true);
+    expect(isOverdue({ ...old, expectedAt: '2026-10-25' }, { now })).toBe(false);
+    expect(isOverdue({ status: 'em_transito', issuedAtDate: new Date(2026, 9, 18), expectedAt: '2026-10-19' }, { now })).toBe(true);
+    expect(isOverdue({ status: 'pendente', issuedAtDate: new Date(2026, 9, 15) }, { now, days: 7 })).toBe(false);
+    expect(isOverdue({ status: 'recebido', issuedAtDate: new Date(2026, 0, 1) }, { now })).toBe(false);
+  });
+
+  it('opcoes do fluxo automatico tem padrao seguro', () => {
+    expect(resolveTermOptions({})).toMatchObject({ arrivalStatus: 'Disponível', assignReceiver: false, overdueDays: 7 });
+    expect(resolveTermOptions({ transferArrivalStatus: 'Baixado', termOverdueDays: '500' })).toMatchObject({ arrivalStatus: 'Disponível', overdueDays: 90 });
   });
 });

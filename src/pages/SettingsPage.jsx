@@ -15,7 +15,7 @@ import { can } from '../utils/permissions';
 import { FEATURES, formatUsage, hasFeature, usageRatio, usageTone } from '../utils/entitlements';
 import { contrastRatio, rgbChannels } from '../utils/color';
 import { safeCssColor, safeImageUrl } from '../utils/sanitize';
-import { DEFAULT_TERM_CLAUSES, DEFAULT_TRANSFER_CLAUSES } from '../utils/terms';
+import { ARRIVAL_STATUSES, DEFAULT_TERM_CLAUSES, DEFAULT_TRANSFER_CLAUSES } from '../utils/terms';
 import { invalidateTenantSettings } from '../hooks/useTenantSettings';
 import LocationManager from '../components/settings/LocationManager';
 import AssetTypeManager from '../components/settings/AssetTypeManager';
@@ -36,6 +36,9 @@ const EMPTY_CONFIG = {
   termShowValue: false,
   termWitnesses: false,
   transferClauses: '',
+  transferArrivalStatus: 'Disponível',
+  transferAssignReceiver: false,
+  termOverdueDays: 7,
   logoUrl: '',
   primaryColor: '',
   customFields: [],
@@ -487,6 +490,29 @@ const SettingsPage = () => {
                     <RotateCcw size={12} /> Carregar texto padrão para editar
                   </button>
                 </Field>
+
+                <div className="rounded-xl border border-gray-200 dark:border-slate-600 p-4 space-y-3">
+                  <div>
+                    <p className="text-xs font-black text-gray-800 dark:text-gray-100">Conclusão automática</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      Ao anexar o termo assinado, o sistema conclui sozinho: a transferência vira "Recebido" e os itens passam para a loja; o termo de responsabilidade vira "Assinado".
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                    <Field label="Itens que chegam na loja ficam">
+                      <select className={inputClass} value={config.transferArrivalStatus} onChange={(e) => set('transferArrivalStatus', e.target.value)}>
+                        {ARRIVAL_STATUSES.map((status) => <option key={status} value={status}>{status === 'Disponível' ? 'Disponível (estoque da loja)' : status}</option>)}
+                      </select>
+                    </Field>
+                    <label className="flex items-center gap-2 pb-2 text-xs font-bold text-gray-600 dark:text-gray-300 cursor-pointer">
+                      <input type="checkbox" checked={Boolean(config.transferAssignReceiver)} onChange={(e) => set('transferAssignReceiver', e.target.checked)} className="h-4 w-4" />
+                      Registrar o recebedor da loja como responsável pelos itens
+                    </label>
+                    <Field label="Pendência atrasada após (dias)" hint="Sem previsão de chegada, vale este prazo.">
+                      <input type="number" min={1} max={90} className={inputClass} value={config.termOverdueDays} onChange={(e) => set('termOverdueDays', Number(e.target.value) || '')} />
+                    </Field>
+                  </div>
+                </div>
 
                 {/* Etiqueta de exemplo com os dados em edicao */}
                 <div className="rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 p-4">
