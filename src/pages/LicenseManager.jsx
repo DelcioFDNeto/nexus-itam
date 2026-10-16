@@ -3,6 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { getLicenses, createLicense, deleteLicense, assignLicense, unassignLicense } from '../services/licenseService';
 import { useAssets } from '../hooks/useAssets';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../components/ConfirmDialog';
+import { can } from '../utils/permissions';
+import { isRetired } from '../utils/assetStatus';
+import { toLocalDate, formatDateBR, today } from '../utils/dates';
 import {
   Key, ShieldCheck, Plus, Trash2, Search, Monitor,
   X, Copy, CheckCircle, AlertTriangle, Calendar
@@ -13,8 +17,11 @@ const LicenseManager = () => {
   const [licenses, setLicenses] = useState([]);
   const { assets } = useAssets();
   const { currentUser } = useAuth();
+  const confirm = useConfirm();
   const tenantId = currentUser?.tenantId;
+  const canWrite = can(currentUser, 'licenses:write');
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Controle de exibição das janelas sobrepostas para criação e atribuição
@@ -68,6 +75,7 @@ const LicenseManager = () => {
       toast.error("Sem contexto de tenant.");
       return;
     }
+    setSaving(true);
     try {
       await createLicense({ ...formData, tenantId });
       toast.success("Licença cadastrada!");
@@ -77,13 +85,27 @@ const LicenseManager = () => {
     } catch (error) {
       console.error(error);
       toast.error("Erro ao salvar.");
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (confirm("Excluir esta licença?")) {
+    const ok = await confirm({
+      title: "Excluir Licença",
+      message: "Deseja excluir esta licença e todas as suas ativações?",
+      danger: true,
+      confirmLabel: "Excluir"
+    });
+    if (!ok) return;
+
+    try {
       await deleteLicense(id);
+      toast.success("Licença excluída.");
       loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao excluir licença.");
     }
   };
 
@@ -94,22 +116,39 @@ const LicenseManager = () => {
     if (used >= selectedLicense.totalSeats) return toast.warning("Todas as ativações foram usadas!");
 
     const assetObj = assets.find(a => a.id === selectedAssetId);
+    if (!assetObj) return;
 
+    setSaving(true);
     try {
-      await assignLicense(selectedLicense.id, assetObj.id, `${assetObj.model} (${assetObj.internalId})`);
+      const label = `${assetObj.model || 'Ativo'} (${assetObj.internalId || assetObj.id})`;
+      await assignLicense(selectedLicense.id, assetObj.id, label);
       toast.success("Ativo vinculado!");
       setIsAssignOpen(false);
       loadData();
     } catch (error) {
       console.error(error);
       toast.error("Erro ao vincular.");
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleUnassign = async (license, assetObj) => {
-    if (confirm(`Remover a licença de ${assetObj.name}?`)) {
+    const ok = await confirm({
+      title: "Desvincular Licença",
+      message: `Remover a licença de ${assetObj.name || 'este ativo'}?`,
+      danger: true,
+      confirmLabel: "Desvincular"
+    });
+    if (!ok) return;
+
+    try {
       await unassignLicense(license.id, assetObj);
+      toast.success("Ativo desvinculado.");
       loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao desvincular.");
     }
   };
 
@@ -125,8 +164,7 @@ const LicenseManager = () => {
   );
 
   return (
-    <div className="p-8 max-w-[1600px] mx-auto pb-24"> {/* Adicionado pb-24 para scroll e footer */}
-
+    <div className="p-4 md:p-8 max-w-[1600px] mx-auto pb-24">
       {/* Área superior com o título e o botão de partida para registrar novas compras */}
       <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div>
@@ -135,237 +173,254 @@ const LicenseManager = () => {
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">Gestão de chaves, contratos e ativações.</p>
         </div>
-        <button onClick={() => setIsFormOpen(true)} className="bg-black text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-gray-800 transition shadow-lg hover:scale-105 active:scale-95">
-          <Plus size={20} /> Nova Licença
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => setIsFormOpen(true)}
+            className="bg-black text-white dark:bg-white dark:text-slate-900 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-gray-800 dark:hover:bg-slate-200 transition shadow-lg hover:scale-105 active:scale-95"
+          >
+            <Plus size={20} /> Nova Licença
+          </button>
+        )}
       </div>
 
       {/* Barra fixa na tela dedicada à localização de pacotes específicos rapidamente */}
-      <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-slate-600 mb-6 flex items-center gap-3 sticky top-0 z-10"> {/* Preso no topo para sempre estar à mão */}
+      <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 mb-6 flex items-center gap-3 sticky top-0 z-10">
         <Search className="text-gray-400 dark:text-gray-500" size={20} />
         <input
           type="text"
           placeholder="Buscar software (Office, Windows, Adobe...)"
-          className="flex-1 outline-none text-sm bg-transparent"
+          className="flex-1 outline-none text-sm bg-transparent text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
         {searchTerm && (
-            <button onClick={() => setSearchTerm('')} className="text-gray-400 dark:text-gray-500 hover:text-gray-600">
-                <X size={16} />
-            </button>
+          <button onClick={() => setSearchTerm('')} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
+            <X size={16} />
+          </button>
         )}
       </div>
 
       {/* Renderiza os cartões densos de informação mostrando uso, chaves e vencimentos de cada pacote */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"> {/* Auto-organiza em colunas dependendo do monitor */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (
-            <div className="col-span-full text-center py-10">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-                <p className="mt-2 text-gray-500 dark:text-gray-400">Carregando licenças...</p>
-            </div>
+          <div className="col-span-full text-center py-10">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white"></div>
+            <p className="mt-2 text-gray-500 dark:text-gray-400">Carregando licenças...</p>
+          </div>
         ) : filteredLicenses.length === 0 ? (
-            <div className="col-span-full text-center py-10 text-gray-500 dark:text-gray-400">
-                Nenhuma licença encontrada.
-            </div>
+          <div className="col-span-full text-center py-10 text-gray-500 dark:text-gray-400">
+            Nenhuma licença encontrada.
+          </div>
         ) : (
           filteredLicenses.map(license => {
             const used = license.assignedAssets?.length || 0;
-            const total = parseInt(license.totalSeats) || 1;
+            const total = parseInt(license.totalSeats, 10) || 1;
             const percentage = Math.min((used / total) * 100, 100);
-            const isExpired = license.expirationDate && new Date(license.expirationDate) < new Date();
-            const daysToExpire = license.expirationDate ? Math.ceil((new Date(license.expirationDate) - new Date()) / (1000 * 60 * 60 * 24)) : null;
-
+            const expDate = license.expirationDate ? toLocalDate(license.expirationDate) : null;
+            const isExpired = expDate ? expDate < today() : false;
+            const daysToExpire = expDate ? Math.ceil((expDate - today()) / (1000 * 60 * 60 * 24)) : null;
 
             return (
-              <div key={license.id} className={`bg-white dark:bg-slate-800 p-5 rounded-xl border border-gray-200 dark:border-slate-600 shadow-sm hover:shadow-md transition-all flex flex-col justify-between ${isExpired ? 'border-red-300 bg-red-50' : ''}`}>
-                
+              <div
+                key={license.id}
+                className={`bg-white dark:bg-slate-800 p-5 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all flex flex-col justify-between ${
+                  isExpired ? 'border-red-300 dark:border-red-900/50 bg-red-50 dark:bg-red-950/20' : ''
+                }`}
+              >
                 {/* Título do software e os rótulos dinâmicos alertando prazos de vencimento */}
                 <div>
-                    <div className="flex justify-between items-start mb-3">
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-lg ${isExpired ? 'bg-red-200 text-red-700' : 'bg-blue-50 text-blue-600'}`}>
-                                <Key size={20} />
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-lg text-gray-900 dark:text-white line-clamp-1" title={license.softwareName}>{license.softwareName}</h3>
-                                <div className="flex gap-2 text-xs mt-1">
-                                    <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded border border-gray-200 dark:border-slate-600">{license.type}</span>
-                                    {isExpired ? (
-                                        <span className="bg-red-100 text-red-700 font-bold px-2 py-0.5 rounded flex items-center gap-1"><AlertTriangle size={10}/> VENCIDA</span>
-                                    ) : daysToExpire !== null && daysToExpire <= 30 ? (
-                                        <span className="bg-yellow-100 text-yellow-800 font-bold px-2 py-0.5 rounded flex items-center gap-1"><AlertTriangle size={10}/> Vence em {daysToExpire} dias</span>
-                                    ) : null}
-                                </div>
-                            </div>
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${isExpired ? 'bg-red-200 dark:bg-red-900/40 text-red-700 dark:text-red-300' : 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400'}`}>
+                        <Key size={20} />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-lg text-gray-900 dark:text-white line-clamp-1" title={license.softwareName}>{license.softwareName}</h3>
+                        <div className="flex gap-2 text-xs mt-1">
+                          <span className="bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded border border-gray-200 dark:border-slate-600">{license.type}</span>
+                          {isExpired ? (
+                            <span className="bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-bold px-2 py-0.5 rounded flex items-center gap-1"><AlertTriangle size={10}/> VENCIDA</span>
+                          ) : daysToExpire !== null && daysToExpire <= 30 ? (
+                            <span className="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300 font-bold px-2 py-0.5 rounded flex items-center gap-1"><AlertTriangle size={10}/> Vence em {daysToExpire} dias</span>
+                          ) : null}
                         </div>
-                        <button onClick={() => handleDelete(license.id)} className="text-gray-300 hover:text-red-500 p-1 rounded hover:bg-gray-100 transition-colors" title="Excluir Licença">
-                            <Trash2 size={18} />
-                        </button>
+                      </div>
                     </div>
+                    {canWrite && (
+                      <button onClick={() => handleDelete(license.id)} className="text-gray-300 dark:text-gray-600 hover:text-red-500 p-1 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors" title="Excluir Licença">
+                        <Trash2 size={18} />
+                      </button>
+                    )}
+                  </div>
 
-                    {/* A serial key em si, destacada e com acesso de um clique para cópia */}
-                    <div className="flex items-center gap-2 text-sm font-mono bg-gray-50 dark:bg-slate-900 p-2 rounded border border-gray-200 dark:border-slate-600 mb-4 select-all relative group">
-                        <span className="text-gray-500 dark:text-gray-400 font-bold text-xs select-none">KEY:</span>
-                        <span className="font-bold text-gray-800 dark:text-gray-100 truncate flex-1" title={license.key}>{license.key}</span>
-                        <button 
-                            onClick={() => { navigator.clipboard.writeText(license.key); toast.success("Chave copiada para a área de transferência!"); }} 
-                            className="text-gray-400 dark:text-gray-500 hover:text-blue-600 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity absolute right-1 bg-gray-50 dark:bg-slate-900"
-                            title="Copiar Chave"
-                        >
-                            <Copy size={14} />
-                        </button>
+                  {/* A serial key em si, destacada e com acesso de um clique para cópia */}
+                  <div className="flex items-center gap-2 text-sm font-mono bg-gray-50 dark:bg-slate-900 p-2 rounded border border-gray-200 dark:border-slate-700 mb-4 select-all relative group">
+                    <span className="text-gray-500 dark:text-gray-400 font-bold text-xs select-none">KEY:</span>
+                    <span className="font-bold text-gray-800 dark:text-gray-100 truncate flex-1" title={license.key}>{license.key}</span>
+                    <button 
+                      onClick={() => { navigator.clipboard.writeText(license.key); toast.success("Chave copiada para a área de transferência!"); }} 
+                      className="text-gray-400 dark:text-gray-500 hover:text-blue-600 p-1 rounded opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity absolute right-1 bg-gray-50 dark:bg-slate-900"
+                      title="Copiar Chave"
+                    >
+                      <Copy size={14} />
+                    </button>
+                  </div>
+
+                  {/* Termômetro visual para ver de longe a porcentagem de instalações executadas vs compradas */}
+                  <div className="mb-4">
+                    <div className="flex justify-between text-xs font-bold uppercase mb-1 text-gray-500 dark:text-gray-400">
+                      <span>Utilização</span>
+                      <span className={`${used >= total ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>{used} / {total}</span>
                     </div>
+                    <div className="w-full bg-gray-100 dark:bg-slate-700 rounded-full h-2 overflow-hidden border border-gray-100 dark:border-slate-700">
+                      <div className={`h-full rounded-full transition-all duration-500 ${getUsageColor(used, total)}`} style={{ width: `${percentage}%` }}></div>
+                    </div>
+                  </div>
 
-                    {/* Termômetro visual para ver de longe a porcentagem de instalações executadas vs compradas */}
-                    <div className="mb-4">
-                        <div className="flex justify-between text-xs font-bold uppercase mb-1 text-gray-500 dark:text-gray-400">
-                            <span>Utilização</span>
-                            <span className={`${used >= total ? 'text-red-600' : 'text-green-600'}`}>{used} / {total}</span>
+                  {/* Relação restrita indicando quais computadores específicos engoliram essas ativações */}
+                  <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar mb-4 pr-1">
+                    {license.assignedAssets?.length > 0 ? (
+                      license.assignedAssets.map((asset, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-gray-50 dark:bg-slate-900 px-2 py-1.5 rounded text-xs border border-gray-100 dark:border-slate-700 group/item hover:border-gray-300 dark:hover:border-slate-600 transition-colors">
+                          <div className="flex items-center gap-2 truncate">
+                            <Monitor size={12} className="text-gray-400 dark:text-gray-500" />
+                            <span className="font-medium text-gray-700 dark:text-gray-200 truncate" title={asset.name}>{asset.name}</span>
+                          </div>
+                          {canWrite && (
+                            <button onClick={() => handleUnassign(license, asset)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 opacity-100 md:opacity-0 md:group-hover/item:opacity-100 transition-opacity" title="Desvincular">
+                              <X size={12} />
+                            </button>
+                          )}
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden border border-gray-100 dark:border-slate-700">
-                            <div className={`h-full rounded-full transition-all duration-500 ${getUsageColor(used, total)}`} style={{ width: `${percentage}%` }}></div>
-                        </div>
-                    </div>
-
-                    {/* Relação restrita indicando quais computadores específicos engoliram essas ativações */}
-                    <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar mb-4 pr-1">
-                        {license.assignedAssets?.length > 0 ? (
-                            license.assignedAssets.map((asset, idx) => (
-                                <div key={idx} className="flex items-center justify-between bg-gray-50 dark:bg-slate-900 px-2 py-1.5 rounded text-xs border border-gray-100 dark:border-slate-700 group/item hover:border-gray-300 transition-colors">
-                                    <div className="flex items-center gap-2 truncate">
-                                        <Monitor size={12} className="text-gray-400 dark:text-gray-500" />
-                                        <span className="font-medium text-gray-700 dark:text-gray-200 truncate" title={asset.name}>{asset.name}</span>
-                                    </div>
-                                    <button onClick={() => handleUnassign(license, asset)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-opacity" title="Desvincular">
-                                        <X size={12} />
-                                    </button>
-                                </div>
-                            ))
-                        ) : (
-                            <p className="text-xs text-gray-400 dark:text-gray-500 italic text-center py-2">Nenhum ativo vinculado.</p>
-                        )}
-                    </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 italic text-center py-2">Nenhum ativo vinculado.</p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Fechamento do cartão reforçando validades e deixando engatilhado o botão de adicionar mais computadores */}
                 <div className="pt-3 border-t border-gray-100 dark:border-slate-700 flex justify-between items-center mt-auto">
-                    <div className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
-                        {license.expirationDate ? (
-                            <>
-                                <Calendar size={12}/> Vence em {new Date(license.expirationDate).toLocaleDateString('pt-BR')}
-                            </>
-                        ) : (
-                            <>
-                                <CheckCircle size={12} className="text-green-500"/> Permanente
-                            </>
-                        )}
-                    </div>
-                    
-                    {used < total && !isExpired && (
-                        <button 
-                            onClick={() => { setSelectedLicense(license); setIsAssignOpen(true); }}
-                            className="flex items-center gap-1 bg-black text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 transition-colors shadow-sm hover:shadow"
-                        >
-                            <Plus size={12} /> Vincular
-                        </button>
+                  <div className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                    {license.expirationDate ? (
+                      <>
+                        <Calendar size={12}/> Vence em {formatDateBR(toLocalDate(license.expirationDate))}
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle size={12} className="text-green-500"/> Permanente
+                      </>
                     )}
+                  </div>
+                  
+                  {canWrite && used < total && !isExpired && (
+                    <button 
+                      onClick={() => { setSelectedLicense(license); setIsAssignOpen(true); }}
+                      className="flex items-center gap-1 bg-black text-white dark:bg-white dark:text-slate-900 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-800 dark:hover:bg-slate-200 transition-colors shadow-sm hover:shadow"
+                    >
+                      <Plus size={12} /> Vincular
+                    </button>
+                  )}
                 </div>
-
               </div>
             );
           })
         )}
       </div>
 
-      {/* Formulário principal que cadastra o coração do software adquirido (Nota: Fica oculto até pedirem) */}
+      {/* Formulário principal que cadastra o software adquirido */}
       {isFormOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-            <div className="bg-black p-4 text-white flex justify-between items-center">
+          <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200 border border-gray-200 dark:border-slate-700">
+            <div className="bg-black dark:bg-slate-900 p-4 text-white flex justify-between items-center">
               <h3 className="font-bold flex items-center gap-2 text-lg"><Key size={20} /> Cadastrar Software</h3>
-              <button onClick={() => setIsFormOpen(false)} className="hover:bg-gray-800 p-1 rounded transition-colors"><X size={20} /></button>
+              <button onClick={() => setIsFormOpen(false)} className="hover:bg-gray-800 dark:hover:bg-slate-700 p-1 rounded transition-colors"><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Nome do Software</label>
-                  <input required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none transition-all" placeholder="Ex: Microsoft Office 2021 Home & Business" value={formData.softwareName} onChange={e => setFormData({ ...formData, softwareName: e.target.value })} />
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Nome do Software</label>
+                <input required className="w-full p-3 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all text-sm" placeholder="Ex: Microsoft Office 2021 Home & Business" value={formData.softwareName} onChange={e => setFormData({ ...formData, softwareName: e.target.value })} />
               </div>
               <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Chave de Ativação (Key)</label>
-                  <input required className="w-full p-3 border border-gray-300 rounded-lg font-mono bg-gray-50 dark:bg-slate-900 text-sm focus:ring-2 focus:ring-black outline-none transition-all" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" value={formData.key} onChange={e => setFormData({ ...formData, key: e.target.value })} />
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Chave de Ativação (Key)</label>
+                <input required className="w-full p-3 border border-gray-300 dark:border-slate-700 rounded-lg font-mono bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" value={formData.key} onChange={e => setFormData({ ...formData, key: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Tipo</label>
-                    <div className="relative">
-                        <select className="w-full p-3 border border-gray-300 rounded-lg bg-white dark:bg-slate-800 appearance-none focus:ring-2 focus:ring-black outline-none transition-all cursor-pointer" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })}>
-                            <option>Vitalícia</option>
-                            <option>Assinatura Anual</option>
-                            <option>Assinatura Mensal</option>
-                            <option>OEM</option>
-                            <option>Open License (Volume)</option>
-                        </select>
-                        <div className="absolute right-3 top-3.5 pointer-events-none text-gray-400 dark:text-gray-500 text-xs">▼</div>
-                    </div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Tipo</label>
+                  <div className="relative">
+                    <select className="w-full p-3 border border-gray-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-white appearance-none focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all cursor-pointer text-sm" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })}>
+                      <option className="dark:bg-slate-900">Vitalícia</option>
+                      <option className="dark:bg-slate-900">Assinatura Anual</option>
+                      <option className="dark:bg-slate-900">Assinatura Mensal</option>
+                      <option className="dark:bg-slate-900">OEM</option>
+                      <option className="dark:bg-slate-900">Open License (Volume)</option>
+                    </select>
+                    <div className="absolute right-3 top-3.5 pointer-events-none text-gray-400 dark:text-gray-500 text-xs">▼</div>
+                  </div>
                 </div>
                 <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Quantidade (Seats)</label>
-                    <input type="number" min="1" required className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none transition-all" value={formData.totalSeats} onChange={e => setFormData({ ...formData, totalSeats: e.target.value })} />
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Quantidade (Seats)</label>
+                  <input type="number" min="1" required className="w-full p-3 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all text-sm" value={formData.totalSeats} onChange={e => setFormData({ ...formData, totalSeats: e.target.value })} />
                 </div>
               </div>
               <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Expiração (Opcional)</label>
-                  <input type="date" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black outline-none transition-all text-gray-600" value={formData.expirationDate} onChange={e => setFormData({ ...formData, expirationDate: e.target.value })} />
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Expiração (Opcional)</label>
+                <input type="date" className="w-full p-3 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all text-sm" value={formData.expirationDate} onChange={e => setFormData({ ...formData, expirationDate: e.target.value })} />
               </div>
               <div className="pt-2">
-                  <button type="submit" className="w-full bg-black hover:bg-gray-800 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg active:scale-95 text-sm uppercase tracking-wide">
-                      Salvar Licença
-                  </button>
+                <button type="submit" disabled={saving} className="w-full bg-black dark:bg-white text-white dark:text-slate-900 hover:bg-gray-800 dark:hover:bg-slate-200 font-bold py-3.5 rounded-xl transition-all shadow-lg active:scale-95 text-sm uppercase tracking-wide disabled:opacity-50">
+                  {saving ? "Salvando..." : "Salvar Licença"}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Caixinha rápida focada em fazer o encontro do Hardware escolhido com a Licença atual */}
+      {/* Caixinha rápida focada em fazer o vínculo do ativo com a licença */}
       {isAssignOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-            <div className="bg-black p-4 text-white flex justify-between items-center">
+          <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in duration-200 border border-gray-200 dark:border-slate-700">
+            <div className="bg-black dark:bg-slate-900 p-4 text-white flex justify-between items-center">
               <h3 className="font-bold text-lg">Vincular a Ativo</h3>
-              <button onClick={() => setIsAssignOpen(false)} className="hover:bg-gray-800 p-1 rounded transition-colors"><X size={20} /></button>
+              <button onClick={() => setIsAssignOpen(false)} className="hover:bg-gray-800 dark:hover:bg-slate-700 p-1 rounded transition-colors"><X size={20} /></button>
             </div>
             <div className="p-6">
-              <p className="text-sm text-gray-600 mb-4">
-                  Selecione qual máquina receberá uma ativação de <strong className="text-black">{selectedLicense?.softwareName}</strong>.
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                Selecione qual máquina receberá uma ativação de <strong className="text-black dark:text-white">{selectedLicense?.softwareName}</strong>.
               </p>
               
               <div className="relative mb-6">
-                  <select 
-                    className="w-full p-3 border border-gray-300 rounded-xl bg-white dark:bg-slate-800 appearance-none focus:ring-2 focus:ring-black outline-none transition-all cursor-pointer font-medium text-gray-700 dark:text-gray-200" 
-                    value={selectedAssetId} 
-                    onChange={e => setSelectedAssetId(e.target.value)}
-                  >
-                    <option value="">Selecione um ativo...</option>
-                    {[...assets].sort((a, b) => a.model.localeCompare(b.model)).map(asset => (
-                      <option key={asset.id} value={asset.id}>{asset.model} ({asset.internalId})</option>
+                <select 
+                  className="w-full p-3 border border-gray-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 appearance-none focus:ring-2 focus:ring-black dark:focus:ring-white outline-none transition-all cursor-pointer font-medium text-gray-900 dark:text-white text-sm" 
+                  value={selectedAssetId} 
+                  onChange={e => setSelectedAssetId(e.target.value)}
+                >
+                  <option value="" className="dark:bg-slate-900">Selecione um ativo...</option>
+                  {[...assets]
+                    .filter(a => !isRetired(a.status))
+                    .sort((a, b) => String(a.model || '').localeCompare(String(b.model || '')))
+                    .map(asset => (
+                      <option key={asset.id} value={asset.id} className="dark:bg-slate-900">
+                        {asset.model || 'Ativo'} ({asset.internalId || asset.id})
+                      </option>
                     ))}
-                  </select>
-                  <div className="absolute right-3 top-3.5 pointer-events-none text-gray-400 dark:text-gray-500 text-xs">▼</div>
+                </select>
+                <div className="absolute right-3 top-3.5 pointer-events-none text-gray-400 dark:text-gray-500 text-xs">▼</div>
               </div>
 
               <button 
                 onClick={handleAssign} 
-                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg active:scale-95 text-sm uppercase tracking-wide flex justify-center items-center gap-2"
+                disabled={saving || !selectedAssetId}
+                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg active:scale-95 text-sm uppercase tracking-wide flex justify-center items-center gap-2 disabled:opacity-50"
               >
-                  <CheckCircle size={18} /> Confirmar Vínculo
+                <CheckCircle size={18} /> {saving ? "Vinculando..." : "Confirmar Vínculo"}
               </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 };

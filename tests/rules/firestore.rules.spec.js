@@ -34,6 +34,7 @@ const USERS = {
   owner1: { tenantId: 'acme', role: 'owner', status: 'active', email: 'owner@acme.com' },
   admin1: { tenantId: 'acme', role: 'admin', status: 'active', email: 'admin@acme.com' },
   manager1: { tenantId: 'acme', role: 'manager', status: 'active', email: 'manager@acme.com' },
+  member1: { tenantId: 'acme', role: 'member', status: 'active', email: 'member@acme.com' },
   op1: { tenantId: 'acme', role: 'operator', status: 'active', email: 'op@acme.com' },
   viewer1: { tenantId: 'acme', role: 'viewer', status: 'active', email: 'viewer@acme.com' },
   blocked1: { tenantId: 'acme', role: 'operator', status: 'suspended', email: 'blocked@acme.com' },
@@ -210,10 +211,12 @@ describe('gestao de papeis', () => {
     await assertSucceeds(updateDoc(doc(as('owner1'), 'users', 'op1'), { role: 'admin' }));
   });
 
-  it('ninguem altera o proprio papel ou status', async () => {
+  it('ninguem altera o proprio papel ou status e respeita allowlist', async () => {
     await assertFails(updateDoc(doc(as('op1'), 'users', 'op1'), { role: 'manager' }));
     await assertFails(updateDoc(doc(as('blocked1'), 'users', 'blocked1'), { status: 'active' }));
-    await assertSucceeds(updateDoc(doc(as('op1'), 'users', 'op1'), { name: 'Novo Nome' }));
+    await assertFails(updateDoc(doc(as('blocked1'), 'users', 'blocked1'), { name: 'Troca' }));
+    await assertFails(updateDoc(doc(as('op1'), 'users', 'op1'), { arbitraryField: 'bad' }));
+    await assertSucceeds(updateDoc(doc(as('op1'), 'users', 'op1'), { name: 'Novo Nome', theme: 'dark' }));
   });
 
   it('BLOQUEIA admin convidando owner/admin', async () => {
@@ -262,6 +265,22 @@ describe('suspensao e isolamento', () => {
 
   it('BLOQUEIA mover ativo para outra empresa', async () => {
     await assertFails(updateDoc(doc(as('owner1'), 'assets', 'a1'), { tenantId: 'beta' }));
+  });
+
+  it('aplica RBAC por papel minimo em colecoes operacionais', async () => {
+    // employees e projects: member+
+    await assertFails(setDoc(doc(as('op1'), 'employees', 'e1'), { tenantId: 'acme', name: 'Fulano' }));
+    await assertSucceeds(setDoc(doc(as('member1'), 'employees', 'e1'), { tenantId: 'acme', name: 'Fulano' }));
+    await assertFails(setDoc(doc(as('op1'), 'projects', 'p1'), { tenantId: 'acme', name: 'Proj' }));
+    await assertSucceeds(setDoc(doc(as('member1'), 'projects', 'p1'), { tenantId: 'acme', name: 'Proj' }));
+
+    // contracts: manager+
+    await assertFails(setDoc(doc(as('member1'), 'contracts', 'c1'), { tenantId: 'acme', title: 'Contrato' }));
+    await assertSucceeds(setDoc(doc(as('manager1'), 'contracts', 'c1'), { tenantId: 'acme', title: 'Contrato' }));
+
+    // tasks: operator+
+    await assertFails(setDoc(doc(as('viewer1'), 'tasks', 't1'), { tenantId: 'acme', title: 'Tarefa' }));
+    await assertSucceeds(setDoc(doc(as('op1'), 'tasks', 't1'), { tenantId: 'acme', title: 'Tarefa' }));
   });
 });
 
@@ -339,6 +358,8 @@ describe('termos (responsabilidade, devolucao, transferencia)', () => {
   it('contador novo comeca em 1', async () => {
     await assertSucceeds(setDoc(doc(as('op1'), 'termCounters/acme/years/2027'), { devolucao: 1 }));
     await assertFails(setDoc(doc(as('op1'), 'termCounters/acme/years/2028'), { devolucao: 50 }));
+    await assertFails(setDoc(doc(as('op1'), 'termCounters/acme/years/2029'), { devolucao: -1 }));
+    await assertFails(setDoc(doc(as('op1'), 'termCounters/acme/years/2029'), { devolucao: '1' }));
   });
 
   it('BLOQUEIA pular numeracao ou mexer no contador de outra empresa', async () => {

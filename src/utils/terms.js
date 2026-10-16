@@ -4,6 +4,8 @@
 // pelo servico, pelas telas e pelos documentos impressos).
 // -----------------------------------------------------------------------------
 
+import { toLocalDate, isoDay } from './dates';
+
 export const TERM_KINDS = {
   responsabilidade: { prefix: 'TR', label: 'Termo de Responsabilidade', short: 'Responsabilidade' },
   devolucao: { prefix: 'TD', label: 'Termo de Devolução', short: 'Devolução' },
@@ -130,16 +132,9 @@ export const parseMoney = (value) => {
 };
 
 /** Data de formulario (AAAA-MM-DD), Date ou Timestamp -> Date local. */
-export const toLocalDate = (value) => {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value.toDate === 'function') return value.toDate();
-  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  // "2026-10-09" via new Date() vira meia-noite UTC: no Brasil, dia 08.
-  if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
+// "2026-10-09" via new Date() vira meia-noite UTC: no Brasil, dia 08.
+// Implementacao unica em utils/dates.js; reexportada aqui por compatibilidade.
+export { toLocalDate };
 
 // -----------------------------------------------------------------------------
 // Textos padrao (editaveis em Configuracoes)
@@ -248,9 +243,6 @@ export const matchSignedCopy = ({ qrText, fileName } = {}, terms = []) => {
 
 /** Recebedor quando o termo nao nomeia ninguem: o nome esta no papel assinado. */
 export const RECEIVER_FROM_PAPER = 'Conforme termo assinado';
-
-const isoDay = (date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
 /**
  * Recebimento padrao quando a loja devolve o termo assinado: todos os itens

@@ -17,6 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTermPrinter } from '../hooks/useTermPrinter';
 import { cancelTransfer, getTerm, listTerms } from '../services/termService';
 import { can } from '../utils/permissions';
+import { useConfirm } from '../components/ConfirmDialog';
 import {
   canAttachSignedCopy, daysSinceIssue, isOverdue, OPEN_TERM_STATUSES, RECEIPT_OUTCOMES, resolveTermOptions, TERM_KINDS, TERM_STATUS,
 } from '../utils/terms';
@@ -230,6 +231,7 @@ const TermsPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const confirm = useConfirm();
   const { printTerm, settings } = useTermPrinter();
   const { overdueDays } = resolveTermOptions(settings);
   const canIssue = can(currentUser, 'terms:issue');
@@ -306,8 +308,18 @@ const TermsPage = () => {
   };
 
   const cancel = async (term) => {
-    const reason = prompt(`Cancelar ${term.number}? Os itens voltam ao status anterior.\n\nMotivo do cancelamento:`);
-    if (reason === null) return;
+    const reason = await confirm({
+      title: `Cancelar ${term.number}`,
+      message: 'Os itens transferidos voltam ao status e local anteriores.',
+      danger: true,
+      confirmLabel: 'Cancelar Termo',
+      input: {
+        label: 'Motivo do cancelamento',
+        placeholder: 'Descreva o motivo...',
+        required: true,
+      },
+    });
+    if (!reason) return;
     setBusyId(term.id);
     try {
       await cancelTransfer({ term, user: currentUser, reason });

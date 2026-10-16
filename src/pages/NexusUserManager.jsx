@@ -20,6 +20,7 @@ import { describeFirebaseError } from '../services/tenantService';
 import { MASTER_TENANT, ROLE_LABELS, TENANT_ROLES } from '../utils/permissions';
 import { isUserBlocked } from '../utils/entitlements';
 import { relativeDays } from '../utils/consoleMetrics';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const ROLE_STYLE = {
   superadmin: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
@@ -36,6 +37,7 @@ const toDate = (value) => (value?.toDate ? value.toDate() : null);
 
 const NexusUserManager = () => {
   const { currentUser, resetPassword } = useAuth();
+  const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [users, setUsers] = useState([]);
@@ -107,7 +109,14 @@ const NexusUserManager = () => {
 
   const handleToggleStatus = async (user) => {
     const suspend = !isUserBlocked(user.status);
-    if (!confirm(`${suspend ? 'Suspender' : 'Reativar'} o acesso de ${user.name || user.email}?`)) return;
+    const verb = suspend ? 'Suspender' : 'Reativar';
+    const ok = await confirm({
+      title: `${verb} Acesso`,
+      message: `${verb} o acesso de ${user.name || user.email}?`,
+      danger: suspend,
+      confirmLabel: verb,
+    });
+    if (!ok) return;
     try {
       await updateDoc(doc(db, 'users', user.id), { status: suspend ? 'suspended' : 'active', updatedAt: serverTimestamp() });
       setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, status: suspend ? 'suspended' : 'active' } : u)));

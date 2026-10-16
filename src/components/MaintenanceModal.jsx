@@ -52,10 +52,10 @@ const MaintenanceModal = ({ isOpen, onClose, asset, onConfirm }) => {
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           
-          <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 flex gap-3">
+          <div className="bg-orange-50 dark:bg-orange-950/30 p-3 rounded-lg border border-orange-100 dark:border-orange-900/50 flex gap-3">
              <AlertTriangle className="text-orange-500 shrink-0" size={20} />
-             <p className="text-xs text-orange-800">
-                Ao confirmar, o status do ativo <span className="inline-flex items-center gap-1 mx-1 align-bottom rounded bg-white dark:bg-slate-800 px-1 border border-orange-200"><AssetIcon type={asset?.type} category={asset?.category} model={asset?.model} internalId={asset?.internalId} size={14} /> <strong>{asset?.internalId}</strong></span> mudará automaticamente para <strong>EM MANUTENÇÃO</strong>.
+             <p className="text-xs text-orange-800 dark:text-orange-300">
+                Ao confirmar, o status do ativo <span className="inline-flex items-center gap-1 mx-1 align-bottom rounded bg-white dark:bg-slate-800 px-1 border border-orange-200 dark:border-orange-900"><AssetIcon type={asset?.type} category={asset?.category} model={asset?.model} internalId={asset?.internalId} size={14} /> <strong>{asset?.internalId}</strong></span> mudará automaticamente para <strong>EM MANUTENÇÃO</strong>.
              </p>
           </div>
 
@@ -63,8 +63,9 @@ const MaintenanceModal = ({ isOpen, onClose, asset, onConfirm }) => {
             <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-1">Defeito Apresentado</label>
             <input 
                 type="text" required
+                disabled={loading}
                 placeholder="Ex: Tela piscando, HD queimado..."
-                className="w-full p-2 border rounded focus:ring-2 focus:ring-orange-500 outline-none"
+                className="w-full p-2.5 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
                 value={formData.defect}
                 onChange={e => setFormData({...formData, defect: e.target.value})}
             />
@@ -75,8 +76,9 @@ const MaintenanceModal = ({ isOpen, onClose, asset, onConfirm }) => {
                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-1">Fornecedor / Técnico</label>
                 <input 
                     type="text" required
+                    disabled={loading}
                     placeholder="Ex: Dell Support, Assistência Local"
-                    className="w-full p-2 border rounded focus:ring-2 focus:ring-orange-500 outline-none"
+                    className="w-full p-2.5 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
                     value={formData.provider}
                     onChange={e => setFormData({...formData, provider: e.target.value})}
                 />
@@ -86,12 +88,13 @@ const MaintenanceModal = ({ isOpen, onClose, asset, onConfirm }) => {
                 <div className="relative">
                     <input 
                         type="text"
+                        disabled={loading}
                         placeholder="0,00"
-                        className="w-full p-2 pl-8 border rounded focus:ring-2 focus:ring-orange-500 outline-none font-mono"
+                        className="w-full p-2.5 pl-8 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-orange-500 outline-none font-mono"
                         value={formData.cost}
                         onChange={handleCostChange}
                     />
-                    <DollarSign size={16} className="absolute left-2.5 top-2.5 text-gray-400 dark:text-gray-500" />
+                    <DollarSign size={16} className="absolute left-2.5 top-3 text-gray-400 dark:text-gray-500" />
                 </div>
             </div>
           </div>
@@ -99,7 +102,8 @@ const MaintenanceModal = ({ isOpen, onClose, asset, onConfirm }) => {
           <div>
             <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-1">Relatório Técnico / Observações</label>
             <textarea 
-                className="w-full p-2 border rounded focus:ring-2 focus:ring-orange-500 outline-none h-24 text-sm"
+                disabled={loading}
+                className="w-full p-2.5 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-orange-500 outline-none h-24 text-sm"
                 placeholder="Detalhes do serviço realizado..."
                 value={formData.description}
                 onChange={e => setFormData({...formData, description: e.target.value})}
@@ -108,7 +112,7 @@ const MaintenanceModal = ({ isOpen, onClose, asset, onConfirm }) => {
 
           <button 
             type="submit" disabled={loading}
-            className="w-full py-3 bg-orange-600 text-white font-bold rounded-lg hover:bg-orange-700 transition flex items-center justify-center gap-2"
+            className="w-full py-3 bg-orange-600 text-white font-bold rounded-lg hover:bg-orange-700 transition flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {loading ? "Salvando..." : <><Save size={18} /> Confirmar Entrada em Manutenção</>}
           </button>

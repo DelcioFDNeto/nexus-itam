@@ -80,10 +80,12 @@ service cloud.firestore {
       return signedIn() && tenantOf() == 'nexus-master' && roleOf() == 'superadmin';
     }
 
+    function hasAuthEmail() {
+      return ('email' in request.auth.token) && request.auth.token.email is string;
+    }
+
     function authEmail() {
-      return ('email' in request.auth.token) && request.auth.token.email is string
-        ? request.auth.token.email.lower()
-        : null;
+      return hasAuthEmail() ? request.auth.token.email.lower() : '';
     }
 
     // Usuario suspenso pelo owner/admin ou pelo master. Continua lendo o
@@ -117,6 +119,11 @@ service cloud.firestore {
     // Gestao: exclusao de ativos e leitura da caixa do agente
     function canManage(t) {
       return sameTenant(t) && roleOf() in ['owner', 'admin', 'manager'];
+    }
+
+    // Papeis autorizados a gravar dados de membro (equipe, projetos, licencas, setores)
+    function canMember(t) {
+      return sameTenant(t) && roleOf() in ['owner', 'admin', 'manager', 'member'];
     }
 
     // Papeis autorizados a gravar dados operacionais do tenant
@@ -160,6 +167,32 @@ service cloud.firestore {
       return isMaster() || canOperate(resource.data.tenantId);
     }
 
+    function memberCreate() {
+      return isMaster() || canMember(request.resource.data.tenantId);
+    }
+
+    function memberUpdate() {
+      return isMaster() || (
+        canMember(resource.data.tenantId) &&
+        request.resource.data.tenantId == resource.data.tenantId
+      );
+    }
+
+    function memberDelete() {
+      return isMaster() || canMember(resource.data.tenantId);
+    }
+
+    function managerCreate() {
+      return isMaster() || canManage(request.resource.data.tenantId);
+    }
+
+    function managerUpdate() {
+      return isMaster() || (
+        canManage(resource.data.tenantId) &&
+        request.resource.data.tenantId == resource.data.tenantId
+      );
+    }
+
     function managerDelete() {
       return isMaster() || canManage(resource.data.tenantId);
     }
@@ -178,7 +211,7 @@ service cloud.firestore {
       return invite.status == 'pending' &&
         invite.tenantId == data.tenantId &&
         invite.role == data.role &&
-        authEmail() != null &&
+        authEmail() != '' &&
         invite.email == authEmail() &&
         (invite.get('expiresAt', null) == null || invite.expiresAt > request.time) &&
         getAfter(invitePath(data.inviteId)).data.status == 'accepted';
@@ -213,8 +246,16 @@ service cloud.firestore {
       );
 
       allow update: if isMaster()
-        // O proprio usuario edita o perfil, mas nunca role / tenantId / status.
-        || (signedIn() && request.auth.uid == userId && !changed(['role', 'tenantId', 'status', 'inviteId']))
+        // O proprio usuario edita o perfil (se nao bloqueado), apenas campos permitidos
+        || (
+          signedIn() &&
+          request.auth.uid == userId &&
+          !memberBlocked() &&
+          !tenantBlocked(resource.data.tenantId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'photoURL', 'theme', 'accentColor', 'lastLoginAt', 'updatedAt', 'email', 'phone'
+          ])
+        )
         // Owner/admin gerencia OUTROS membros do proprio tenant, sem trocar o
         // tenant e sem ultrapassar o proprio nivel (admin nao toca em owner/admin).
         || (
@@ -319,7 +360,7 @@ service cloud.firestore {
     // ---------------------------------------------------------------------
     match /invites/{inviteId} {
       function isInvitee() {
-        return signedIn() && authEmail() != null && resource.data.email == authEmail();
+        return signedIn() && authEmail() != '' && resource.data.email == authEmail();
       }
 
       allow get: if isMaster() || isTenantAdmin(resource.data.tenantId) || isInvitee();
@@ -382,14 +423,14 @@ service cloud.firestore {
     // ---------------------------------------------------------------------
     // Excluir ativo apaga o registro patrimonial: exige gestor ('assets:delete').
     match /assets/{docId}        { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if managerDelete(); }
-    match /employees/{docId}     { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
-    match /sectors/{docId}       { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
-    match /locations/{docId}     { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if isMaster() || isTenantAdmin(resource.data.tenantId); }
-    match /projects/{docId}      { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
+    match /employees/{docId}     { allow read: if tenantRead(); allow create: if memberCreate(); allow update: if memberUpdate(); allow delete: if memberDelete(); }
+    match /sectors/{docId}       { allow read: if tenantRead(); allow create: if memberCreate(); allow update: if memberUpdate(); allow delete: if memberDelete(); }
+    match /locations/{docId}     { allow read: if tenantRead(); allow create: if isMaster() || isTenantAdmin(request.resource.data.tenantId); allow update: if isMaster() || (isTenantAdmin(resource.data.tenantId) && request.resource.data.tenantId == resource.data.tenantId); allow delete: if isMaster() || isTenantAdmin(resource.data.tenantId); }
+    match /projects/{docId}      { allow read: if tenantRead(); allow create: if memberCreate(); allow update: if memberUpdate(); allow delete: if memberDelete(); }
     match /tasks/{docId}         { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
-    match /licenses/{docId}      { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
-    match /contracts/{docId}     { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
-    match /serviceOrders/{docId} { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
+    match /licenses/{docId}      { allow read: if tenantRead(); allow create: if memberCreate(); allow update: if memberUpdate(); allow delete: if memberDelete(); }
+    match /contracts/{docId}     { allow read: if tenantRead(); allow create: if managerCreate(); allow update: if managerUpdate(); allow delete: if managerDelete(); }
+    match /serviceOrders/{docId} { allow read: if tenantRead(); allow create: if managerCreate(); allow update: if managerUpdate(); allow delete: if managerDelete(); }
     match /audits/{docId}        { allow read: if tenantRead(); allow create: if tenantCreate(); allow update: if tenantUpdate(); allow delete: if tenantDelete(); }
 
     // Trilha de auditoria: append-only. Ninguem reescreve o passado, exceto o master.
@@ -472,14 +513,26 @@ service cloud.firestore {
       allow create: if isMaster() || (
         canOperate(tenantId) &&
         request.resource.data.keys().hasOnly(counterKeys()) &&
+        request.resource.data.get('responsabilidade', 0) is int &&
+        request.resource.data.get('responsabilidade', 0) >= 0 &&
         request.resource.data.get('responsabilidade', 0) <= 1 &&
+        request.resource.data.get('devolucao', 0) is int &&
+        request.resource.data.get('devolucao', 0) >= 0 &&
         request.resource.data.get('devolucao', 0) <= 1 &&
+        request.resource.data.get('transferencia', 0) is int &&
+        request.resource.data.get('transferencia', 0) >= 0 &&
         request.resource.data.get('transferencia', 0) <= 1
       );
 
       allow update: if isMaster() || (
         canOperate(tenantId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(counterKeys()) &&
+        request.resource.data.get('responsabilidade', 0) is int &&
+        request.resource.data.get('responsabilidade', 0) >= 0 &&
+        request.resource.data.get('devolucao', 0) is int &&
+        request.resource.data.get('devolucao', 0) >= 0 &&
+        request.resource.data.get('transferencia', 0) is int &&
+        request.resource.data.get('transferencia', 0) >= 0 &&
         bumpedAtMostOne('responsabilidade') &&
         bumpedAtMostOne('devolucao') &&
         bumpedAtMostOne('transferencia')

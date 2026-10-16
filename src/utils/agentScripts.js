@@ -11,9 +11,12 @@ function Get-ItamPayload {
   $sys = Get-CimInstance Win32_ComputerSystem
   $bios = Get-CimInstance Win32_BIOS
   $board = Get-CimInstance Win32_BaseBoard
-  $cpu = Get-CimInstance Win32_Processor
+  $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
   $rams = Get-CimInstance Win32_PhysicalMemory
-  $netAdapter = Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled -eq $true } | Select-Object -First 1
+  $netAdapter = Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled -eq $true -and $null -ne $_.DefaultIPGateway } | Select-Object -First 1
+  if (-not $netAdapter) {
+    $netAdapter = Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled -eq $true } | Select-Object -First 1
+  }
   $disks = Get-CimInstance Win32_DiskDrive | ForEach-Object {
     $size = if ($_.Size) { [math]::Round($_.Size / 1GB, 2) } else { 0 }
     "$($_.Model) ($size GB) Serial: $($_.SerialNumber)"
@@ -29,11 +32,17 @@ function Get-ItamPayload {
 
   $monitorsList = Get-CimInstance Win32_DesktopMonitor | Where-Object { $_.Availability -ne $null -and $_.Name -ne 'Monitor Genérico' } | Select-Object -ExpandProperty Name
 
+  $ip = ""
+  if ($netAdapter -and $netAdapter.IPAddress) {
+    $ip = $netAdapter.IPAddress | Where-Object { $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$' } | Select-Object -First 1
+    if (-not $ip) { $ip = $netAdapter.IPAddress[0] }
+  }
+
   return @{
     hostname = $env:COMPUTERNAME
     usuario_logado = $env:USERNAME
     mac_address = if ($netAdapter -and $netAdapter.MACAddress) { $netAdapter.MACAddress } else { "" }
-    ip_address = if ($netAdapter -and $netAdapter.IPAddress) { $netAdapter.IPAddress[0] } else { "" }
+    ip_address = $ip
     sistema_operacional = "$($os.Caption) $($os.OSArchitecture)"
     data_coleta = (Get-Date).ToString("o")
     software = if ($softwareList) { $softwareList -join "||" } else { "" }
@@ -50,7 +59,7 @@ function Get-ItamPayload {
       bios_serial = $bios.SerialNumber
       pc_system_type = $sys.PCSystemType
       chassis_types = ($sys.ChassisSKUNumber, ((Get-CimInstance Win32_SystemEnclosure).ChassisTypes -join ",")) -join "|"
-      processador = $cpu.Name
+      processador = if ($cpu) { $cpu.Name } else { "" }
       ram_gb = if ($rams) { [math]::Round(($rams | Measure-Object Capacity -Sum).Sum / 1GB, 2) } else { 0 }
       storage = ($disks -join " | ")
     }
@@ -112,9 +121,9 @@ if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 }
 
-$AgentCode = @"
-\${baseScript}
-"@
+$AgentCode = @'
+${baseScript}
+'@
 
 $AgentCode | Out-File -FilePath $ScriptPath -Encoding UTF8 -Force
 
@@ -135,17 +144,22 @@ Write-Host "Agente instalado com sucesso."
 export const buildLinuxScript = (projectId, apiKey, tenantId, agentToken, mode = 'portable') => {
   const baseScript = `#!/bin/bash
 # Agente ITAM Linux
+export LC_ALL=C
 
 PROJECT_ID="${projectId}"
 API_KEY="${apiKey}"
 TENANT_ID="${tenantId}"
 AGENT_TOKEN="${agentToken}"
 
-HOSTNAME=$(hostname)
-USER_LOGGED=$(who | awk '{print $1}' | head -n 1)
-MAC_ADDR=$(ip link | awk '/ether/ {print $2}' | head -n 1)
-IP_ADDR=$(hostname -I | awk '{print $1}')
-OS_CAPTION=$(grep PRETTY_NAME /etc/os-release | cut -d '"' -f 2)
+json_escape() {
+  printf '%s' "$1" | sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g' | tr -d '\\r\\n'
+}
+
+HOSTNAME=$(hostname 2>/dev/null || echo "")
+USER_LOGGED=$(who 2>/dev/null | awk '{print $1}' | head -n 1)
+MAC_ADDR=$(ip link 2>/dev/null | awk '/ether/ {print $2}' | head -n 1)
+IP_ADDR=$(hostname -I 2>/dev/null | awk '{print $1}')
+OS_CAPTION=$(grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d '"' -f 2)
 
 # Hardware
 MFG=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || echo "Desconhecido")
@@ -153,16 +167,17 @@ MODEL=$(cat /sys/class/dmi/id/product_name 2>/dev/null || echo "Desconhecido")
 BOARD=$(cat /sys/class/dmi/id/board_name 2>/dev/null || echo "Desconhecido")
 SERIAL=$(cat /sys/class/dmi/id/product_serial 2>/dev/null || echo "Desconhecido")
 BIOS=$(cat /sys/class/dmi/id/bios_version 2>/dev/null || echo "Desconhecido")
-CPU=$(grep "model name" /proc/cpuinfo | head -n 1 | cut -d ":" -f 2 | sed 's/^ //g')
-RAM_TOTAL=$(free -m | awk '/^Mem:/{print $2}')
-RAM_GB=$(awk "BEGIN {print $RAM_TOTAL/1024}")
-DISKS=$(df -h --output=source,size / | tail -n 1 | awk '{print $1 " (" $2 ")"}')
+CPU=$(grep "model name" /proc/cpuinfo 2>/dev/null | head -n 1 | cut -d ":" -f 2 | sed 's/^ //g')
+RAM_TOTAL=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}')
+RAM_GB=$(awk "BEGIN {print $RAM_TOTAL/1024}" 2>/dev/null || echo "0")
+RAM_GB=\${RAM_GB:-0}
+DISKS=$(df -h --output=source,size / 2>/dev/null | tail -n 1 | awk '{print $1 " (" $2 ")"}')
 
 # Software
 if command -v dpkg &> /dev/null; then
-    SOFTWARES=$(dpkg-query -W -f='\${Package}\\n' | paste -sd "||" -)
+    SOFTWARES=$(dpkg-query -W -f='\${Package}\\n' 2>/dev/null | paste -sd "||" - | tr -d '"\\\\')
 elif command -v rpm &> /dev/null; then
-    SOFTWARES=$(rpm -qa | paste -sd "||" -)
+    SOFTWARES=$(rpm -qa 2>/dev/null | paste -sd "||" - | tr -d '"\\\\')
 else
     SOFTWARES=""
 fi
@@ -175,24 +190,24 @@ PAYLOAD=$(cat <<EOF
     "payload": {
       "mapValue": {
         "fields": {
-          "hostname": { "stringValue": "$HOSTNAME" },
-          "usuario_logado": { "stringValue": "$USER_LOGGED" },
-          "mac_address": { "stringValue": "$MAC_ADDR" },
-          "ip_address": { "stringValue": "$IP_ADDR" },
-          "sistema_operacional": { "stringValue": "$OS_CAPTION" },
+          "hostname": { "stringValue": "$(json_escape "$HOSTNAME")" },
+          "usuario_logado": { "stringValue": "$(json_escape "$USER_LOGGED")" },
+          "mac_address": { "stringValue": "$(json_escape "$MAC_ADDR")" },
+          "ip_address": { "stringValue": "$(json_escape "$IP_ADDR")" },
+          "sistema_operacional": { "stringValue": "$(json_escape "$OS_CAPTION")" },
           "data_coleta": { "stringValue": "$DATE_NOW" },
-          "software": { "stringValue": "$SOFTWARES" },
+          "software": { "stringValue": "$(json_escape "$SOFTWARES")" },
           "hardware": {
             "mapValue": {
               "fields": {
-                "fabricante": { "stringValue": "$MFG" },
-                "modelo_sistema": { "stringValue": "$MODEL" },
-                "modelo_placa": { "stringValue": "$BOARD" },
-                "placa_mae_serial": { "stringValue": "$SERIAL" },
-                "bios_serial": { "stringValue": "$BIOS" },
-                "processador": { "stringValue": "$CPU" },
+                "fabricante": { "stringValue": "$(json_escape "$MFG")" },
+                "modelo_sistema": { "stringValue": "$(json_escape "$MODEL")" },
+                "modelo_placa": { "stringValue": "$(json_escape "$BOARD")" },
+                "placa_mae_serial": { "stringValue": "$(json_escape "$SERIAL")" },
+                "bios_serial": { "stringValue": "$(json_escape "$BIOS")" },
+                "processador": { "stringValue": "$(json_escape "$CPU")" },
                 "ram_gb": { "doubleValue": $RAM_GB },
-                "storage": { "stringValue": "$DISKS" }
+                "storage": { "stringValue": "$(json_escape "$DISKS")" }
               }
             }
           }
@@ -201,13 +216,13 @@ PAYLOAD=$(cat <<EOF
     },
     "source": { "stringValue": "Agente ITAM Bash (Linux)" },
     "status": { "stringValue": "pending" },
-    "hostname": { "stringValue": "$HOSTNAME" },
+    "hostname": { "stringValue": "$(json_escape "$HOSTNAME")" },
     "internalId": { "stringValue": "" },
-    "serialNumber": { "stringValue": "$SERIAL" },
+    "serialNumber": { "stringValue": "$(json_escape "$SERIAL")" },
     "createdAt": { "stringValue": "$DATE_NOW" },
     "tenantId": { "stringValue": "$TENANT_ID" },
     "agentToken": { "stringValue": "$AGENT_TOKEN" },
-    "ip_address": { "stringValue": "$IP_ADDR" }
+    "ip_address": { "stringValue": "$(json_escape "$IP_ADDR")" }
   }
 }
 EOF
@@ -223,10 +238,10 @@ curl -s -X POST "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databa
     return `#!/bin/bash
 # Instala o script no crontab para rodar a cada boot
 SCRIPT_PATH="/usr/local/bin/nexus-agent.sh"
-cat << 'EOFAGENT' > $SCRIPT_PATH
+cat << 'EOFAGENT' | sudo tee "$SCRIPT_PATH" > /dev/null
 ${baseScript}
 EOFAGENT
-chmod +x $SCRIPT_PATH
+sudo chmod +x "$SCRIPT_PATH"
 (crontab -l 2>/dev/null; echo "@reboot $SCRIPT_PATH") | crontab -
 echo "Agente instalado no crontab."
 `;
@@ -238,28 +253,34 @@ echo "Agente instalado no crontab."
 export const buildMacScript = (projectId, apiKey, tenantId, agentToken, mode = 'portable') => {
   const baseScript = `#!/bin/bash
 # Agente ITAM macOS
+export LC_ALL=C
 
 PROJECT_ID="${projectId}"
 API_KEY="${apiKey}"
 TENANT_ID="${tenantId}"
 AGENT_TOKEN="${agentToken}"
 
-HOSTNAME=$(scutil --get LocalHostName)
-USER_LOGGED=$(whoami)
-MAC_ADDR=$(ifconfig en0 | grep ether | awk '{print $2}')
-IP_ADDR=$(ipconfig getifaddr en0)
-OS_CAPTION=$(sw_vers -productName) $(sw_vers -productVersion)
+json_escape() {
+  printf '%s' "$1" | sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g' | tr -d '\\r\\n'
+}
+
+HOSTNAME=$(scutil --get LocalHostName 2>/dev/null || hostname)
+USER_LOGGED=$(whoami 2>/dev/null || echo "")
+MAC_ADDR=$(ifconfig en0 2>/dev/null | grep ether | awk '{print $2}')
+IP_ADDR=$(ipconfig getifaddr en0 2>/dev/null || echo "")
+OS_CAPTION="$(sw_vers -productName 2>/dev/null) $(sw_vers -productVersion 2>/dev/null)"
 
 MFG="Apple Inc."
-MODEL=$(system_profiler SPHardwareDataType | grep "Model Identifier" | awk -F': ' '{print $2}')
-SERIAL=$(system_profiler SPHardwareDataType | grep "Serial Number" | awk -F': ' '{print $2}')
-CPU=$(system_profiler SPHardwareDataType | grep "Processor Name" | awk -F': ' '{print $2}')
-if [ -z "$CPU" ]; then CPU=$(system_profiler SPHardwareDataType | grep "Chip" | awk -F': ' '{print $2}'); fi
-RAM_GB=$(system_profiler SPHardwareDataType | grep "Memory" | awk '{print $2}')
-DISKS=$(system_profiler SPStorageDataType | grep "Capacity" | head -n 1 | awk -F': ' '{print $2}')
+MODEL=$(system_profiler SPHardwareDataType 2>/dev/null | grep "Model Identifier" | awk -F': ' '{print $2}')
+SERIAL=$(system_profiler SPHardwareDataType 2>/dev/null | grep "Serial Number" | awk -F': ' '{print $2}')
+CPU=$(system_profiler SPHardwareDataType 2>/dev/null | grep "Processor Name" | awk -F': ' '{print $2}')
+if [ -z "$CPU" ]; then CPU=$(system_profiler SPHardwareDataType 2>/dev/null | grep "Chip" | awk -F': ' '{print $2}'); fi
+RAM_GB=$(system_profiler SPHardwareDataType 2>/dev/null | grep "Memory" | awk '{print $2}')
+RAM_GB=\${RAM_GB:-0}
+DISKS=$(system_profiler SPStorageDataType 2>/dev/null | grep "Capacity" | head -n 1 | awk -F': ' '{print $2}')
 
 # Softwares instalados (/Applications)
-SOFTWARES=$(ls /Applications | sed 's/.app//g' | paste -sd "||" -)
+SOFTWARES=$(ls /Applications 2>/dev/null | sed 's/\\.app//g' | tr -d '"\\\\' | paste -sd "||" -)
 
 DATE_NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
@@ -269,24 +290,24 @@ PAYLOAD=$(cat <<EOF
     "payload": {
       "mapValue": {
         "fields": {
-          "hostname": { "stringValue": "$HOSTNAME" },
-          "usuario_logado": { "stringValue": "$USER_LOGGED" },
-          "mac_address": { "stringValue": "$MAC_ADDR" },
-          "ip_address": { "stringValue": "$IP_ADDR" },
-          "sistema_operacional": { "stringValue": "$OS_CAPTION" },
+          "hostname": { "stringValue": "$(json_escape "$HOSTNAME")" },
+          "usuario_logado": { "stringValue": "$(json_escape "$USER_LOGGED")" },
+          "mac_address": { "stringValue": "$(json_escape "$MAC_ADDR")" },
+          "ip_address": { "stringValue": "$(json_escape "$IP_ADDR")" },
+          "sistema_operacional": { "stringValue": "$(json_escape "$OS_CAPTION")" },
           "data_coleta": { "stringValue": "$DATE_NOW" },
-          "software": { "stringValue": "$SOFTWARES" },
+          "software": { "stringValue": "$(json_escape "$SOFTWARES")" },
           "hardware": {
             "mapValue": {
               "fields": {
-                "fabricante": { "stringValue": "$MFG" },
-                "modelo_sistema": { "stringValue": "$MODEL" },
-                "modelo_placa": { "stringValue": "$MODEL" },
-                "placa_mae_serial": { "stringValue": "$SERIAL" },
-                "bios_serial": { "stringValue": "$SERIAL" },
-                "processador": { "stringValue": "$CPU" },
+                "fabricante": { "stringValue": "$(json_escape "$MFG")" },
+                "modelo_sistema": { "stringValue": "$(json_escape "$MODEL")" },
+                "modelo_placa": { "stringValue": "$(json_escape "$MODEL")" },
+                "placa_mae_serial": { "stringValue": "$(json_escape "$SERIAL")" },
+                "bios_serial": { "stringValue": "$(json_escape "$SERIAL")" },
+                "processador": { "stringValue": "$(json_escape "$CPU")" },
                 "ram_gb": { "doubleValue": $RAM_GB },
-                "storage": { "stringValue": "$DISKS" }
+                "storage": { "stringValue": "$(json_escape "$DISKS")" }
               }
             }
           }
@@ -295,13 +316,13 @@ PAYLOAD=$(cat <<EOF
     },
     "source": { "stringValue": "Agente ITAM Bash (macOS)" },
     "status": { "stringValue": "pending" },
-    "hostname": { "stringValue": "$HOSTNAME" },
+    "hostname": { "stringValue": "$(json_escape "$HOSTNAME")" },
     "internalId": { "stringValue": "" },
-    "serialNumber": { "stringValue": "$SERIAL" },
+    "serialNumber": { "stringValue": "$(json_escape "$SERIAL")" },
     "createdAt": { "stringValue": "$DATE_NOW" },
     "tenantId": { "stringValue": "$TENANT_ID" },
     "agentToken": { "stringValue": "$AGENT_TOKEN" },
-    "ip_address": { "stringValue": "$IP_ADDR" }
+    "ip_address": { "stringValue": "$(json_escape "$IP_ADDR")" }
   }
 }
 EOF
@@ -319,12 +340,12 @@ curl -s -X POST "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databa
 PLIST_PATH="/Library/LaunchDaemons/com.nexus.agent.plist"
 SCRIPT_PATH="/usr/local/bin/nexus-agent.sh"
 
-sudo cat << 'EOFAGENT' > $SCRIPT_PATH
+cat << 'EOFAGENT' | sudo tee "$SCRIPT_PATH" > /dev/null
 ${baseScript}
 EOFAGENT
-sudo chmod +x $SCRIPT_PATH
+sudo chmod +x "$SCRIPT_PATH"
 
-sudo cat << 'EOFPLIST' > $PLIST_PATH
+cat << 'EOFPLIST' | sudo tee "$PLIST_PATH" > /dev/null
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -341,7 +362,7 @@ sudo cat << 'EOFPLIST' > $PLIST_PATH
 </plist>
 EOFPLIST
 
-sudo launchctl load $PLIST_PATH
+sudo launchctl load "$PLIST_PATH" 2>/dev/null || sudo launchctl bootstrap system "$PLIST_PATH"
 echo "Agente instalado como LaunchDaemon no macOS."
 `;
   }

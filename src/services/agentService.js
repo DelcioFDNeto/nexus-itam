@@ -163,9 +163,11 @@ const resolveNextSequenceFromAssets = (assets, namingConfig) => {
 export const resolveAgentNamingFromDatabase = async (payload = {}, options = {}) => {
   const tenantId = requireTenant(options.tenantId);
   const assetType = inferAgentAssetType(payload);
-  const q = query(assetsCollection, where('tenantId', '==', tenantId));
-  const snapshot = await getDocs(q);
-  const assets = snapshot.docs.map((assetDoc) => ({ id: assetDoc.id, ...assetDoc.data() }));
+  const assets = options.context?.existingAssets || options.existingAssets || (await (async () => {
+    const q = query(assetsCollection, where('tenantId', '==', tenantId));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((assetDoc) => ({ id: assetDoc.id, ...assetDoc.data() }));
+  })());
   const typeCode = resolveTypeCodeFromAssets(assets, assetType, options.namingConfig);
   const baseConfig = {
     ...DEFAULT_AGENT_NAMING,
@@ -256,10 +258,35 @@ const toAssetData = (normalized) => ({
   },
 });
 
-export const findDuplicateAsset = async ({ internalId, serialNumber, tenantId }) => {
+export const findDuplicateAsset = async ({ internalId, serialNumber, tenantId, context }) => {
   const targetInternalId = normalizeComparable(internalId);
   const targetSerialNumber = normalizeComparable(serialNumber);
   const targetTenantId = requireTenant(tenantId);
+
+  const existingAssets = context?.existingAssets;
+  if (Array.isArray(existingAssets)) {
+    if (isUsableIdentifier(internalId)) {
+      const found = existingAssets.find((a) => isUsableIdentifier(a.internalId) && a.internalId === internalId);
+      if (found) return { id: found.id, matchField: 'internalId', ...found };
+    }
+    if (isUsableIdentifier(serialNumber)) {
+      const found = existingAssets.find((a) => isUsableIdentifier(a.serialNumber) && a.serialNumber === serialNumber);
+      if (found) return { id: found.id, matchField: 'serialNumber', ...found };
+    }
+    if (targetInternalId || targetSerialNumber) {
+      const found = existingAssets.find((a) => (
+        (targetInternalId && normalizeComparable(a.internalId) === targetInternalId) ||
+        (targetSerialNumber && normalizeComparable(a.serialNumber) === targetSerialNumber)
+      ));
+      if (found) {
+        const matchField = targetInternalId && normalizeComparable(found.internalId) === targetInternalId
+          ? 'internalId'
+          : 'serialNumber';
+        return { id: found.id, matchField, ...found };
+      }
+    }
+    return null;
+  }
 
   if (isUsableIdentifier(internalId)) {
     const byInternalId = query(
@@ -321,7 +348,7 @@ export const previewAgentPayload = async (payload, options = {}) => {
     assetType: resolved?.assetType,
     namingConfig: resolved?.namingConfig || options.namingConfig,
   });
-  const duplicate = await findDuplicateAsset({ ...normalized, tenantId });
+  const duplicate = await findDuplicateAsset({ ...normalized, tenantId, context: options.context });
   return {
     normalized,
     resolvedNaming: resolved,
@@ -333,11 +360,6 @@ export const previewAgentPayload = async (payload, options = {}) => {
 /**
  * Dedução automática de licenças (SAM): cruza os softwares coletados com as
  * licenças cadastradas e consome uma ativação por equipamento.
- *
- * Os nomes de campo seguem o LicenseManager (`softwareName`, `totalSeats`,
- * `assignedAssets`). A versão anterior lia `license.name`, `license.used` e
- * `license.quantity` — campos que não existem: `license.name.toLowerCase()`
- * lançava TypeError, o catch engolia o erro e a dedução nunca aconteceu.
  */
 export const matchLicensesForSoftware = (licenses, softwareList, assetId) => {
   const installed = (softwareList || []).map((sw) => String(sw || '').toLowerCase()).filter(Boolean);
@@ -345,7 +367,7 @@ export const matchLicensesForSoftware = (licenses, softwareList, assetId) => {
 
   return (licenses || []).filter((license) => {
     const name = String(license.softwareName || license.name || '').trim().toLowerCase();
-    if (name.length < 3) return false; // nome curto demais casaria com qualquer coisa
+    if (name.length < 3) return false;
 
     const assigned = Array.isArray(license.assignedAssets) ? license.assignedAssets : [];
     if (assigned.some((a) => a?.id === assetId)) return false;
@@ -357,10 +379,10 @@ export const matchLicensesForSoftware = (licenses, softwareList, assetId) => {
   });
 };
 
-const processSoftwareLicenses = async (assetId, assetName, softwareList, tenantId) => {
+const processSoftwareLicenses = async (assetId, assetName, softwareList, tenantId, context) => {
   if (!softwareList || softwareList.length === 0) return;
   try {
-    const licenses = await getLicenses(tenantId);
+    const licenses = context?.existingLicenses || (await getLicenses(tenantId));
     for (const license of matchLicensesForSoftware(licenses, softwareList, assetId)) {
       await assignLicense(license.id, assetId, assetName);
     }
@@ -379,7 +401,7 @@ export const registerAgentAsset = async (payload, options = {}) => {
     namingConfig: resolved?.namingConfig || options.namingConfig,
   });
   const assetData = toAssetData(normalized);
-  const duplicate = await findDuplicateAsset({ ...normalized, tenantId });
+  const duplicate = await findDuplicateAsset({ ...normalized, tenantId, context: options.context });
   const user = options.user || 'Agente ITAM';
 
   if (duplicate) {
@@ -405,7 +427,7 @@ export const registerAgentAsset = async (payload, options = {}) => {
     });
 
     // Dedução automática de licenças (SAM) para atualizações
-    await processSoftwareLicenses(duplicate.id, duplicate.model || assetData.model, assetData.specs?.software, tenantId);
+    await processSoftwareLicenses(duplicate.id, duplicate.model || assetData.model, assetData.specs?.software, tenantId, options.context);
 
     return {
       action: 'updated',
@@ -422,14 +444,16 @@ export const registerAgentAsset = async (payload, options = {}) => {
   });
 
   // Dedução automática de licenças (SAM)
-  await processSoftwareLicenses(docRef.id, assetData.model, assetData.specs?.software, tenantId);
+  await processSoftwareLicenses(docRef.id, assetData.model, assetData.specs?.software, tenantId, options.context);
 
+  const createdItem = { id: docRef.id, ...assetData };
   return {
     action: 'created',
     assetId: docRef.id,
     duplicate: null,
     resolvedNaming: resolved,
     assetData,
+    newAsset: createdItem,
   };
 };
 

@@ -49,22 +49,40 @@ const MASTER_PAGES = [
   { name: 'Planos e limites', path: '/admin/plans' },
 ];
 
+const CACHE_TTL_MS = 3 * 60 * 1000;
+const globalSearchCache = {
+  key: null,
+  timestamp: 0,
+  data: null,
+};
+
 const GlobalSearch = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const inputRef = useRef(null);
   const [term, setTerm] = useState('');
-  const [data, setData] = useState(null); // carregado uma vez por abertura
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState(0);
 
   const master = isSuperadmin(currentUser);
   const tenantId = currentUser?.tenantId;
+  const cacheKey = master ? 'nexus-master' : tenantId;
 
   useEffect(() => {
     if (!isOpen) return undefined;
     const timer = setTimeout(() => inputRef.current?.focus(), 50);
     let cancelled = false;
+
+    const now = Date.now();
+    if (
+      globalSearchCache.key === cacheKey &&
+      globalSearchCache.data &&
+      now - globalSearchCache.timestamp < CACHE_TTL_MS
+    ) {
+      setData(globalSearchCache.data);
+      return () => clearTimeout(timer);
+    }
 
     const load = async () => {
       setLoading(true);
@@ -75,10 +93,14 @@ const GlobalSearch = ({ isOpen, onClose }) => {
             getDocs(collection(db, 'users')),
           ]);
           if (!cancelled) {
-            setData({
+            const fetchedData = {
               tenants: tenantsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
               users: usersSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-            });
+            };
+            globalSearchCache.key = cacheKey;
+            globalSearchCache.timestamp = Date.now();
+            globalSearchCache.data = fetchedData;
+            setData(fetchedData);
           }
         } else if (tenantId) {
           const [assetsSnap, employeesSnap] = await Promise.all([
@@ -88,10 +110,14 @@ const GlobalSearch = ({ isOpen, onClose }) => {
               : Promise.resolve({ docs: [] }),
           ]);
           if (!cancelled) {
-            setData({
+            const fetchedData = {
               assets: assetsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
               employees: employeesSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-            });
+            };
+            globalSearchCache.key = cacheKey;
+            globalSearchCache.timestamp = Date.now();
+            globalSearchCache.data = fetchedData;
+            setData(fetchedData);
           }
         }
       } catch (error) {
@@ -108,7 +134,7 @@ const GlobalSearch = ({ isOpen, onClose }) => {
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, master, tenantId]);
+  }, [isOpen, master, tenantId, cacheKey]);
 
   const results = useMemo(() => {
     const q = norm(term.trim());
@@ -147,7 +173,6 @@ const GlobalSearch = ({ isOpen, onClose }) => {
   const close = () => {
     setTerm('');
     setCursor(0);
-    setData(null);
     onClose();
   };
 

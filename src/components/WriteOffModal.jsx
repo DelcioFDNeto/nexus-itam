@@ -2,8 +2,7 @@
 import React, { useState } from 'react';
 import { Archive, AlertTriangle, X } from 'lucide-react';
 import { RETIRED_STATUSES, WRITE_OFF_REASONS } from '../utils/assetStatus';
-
-const hoje = () => new Date().toISOString().slice(0, 10);
+import { today } from '../utils/dates';
 
 /**
  * Baixa patrimonial.
@@ -14,7 +13,7 @@ const hoje = () => new Date().toISOString().slice(0, 10);
 const WriteOffModal = ({ isOpen, onClose, asset, onConfirm, saving = false }) => {
   const [form, setForm] = useState({
     status: 'Baixado',
-    date: hoje(),
+    date: today(),
     reason: '',
     residualValue: '',
     notes: '',
@@ -86,7 +85,7 @@ const WriteOffModal = ({ isOpen, onClose, asset, onConfirm, saving = false }) =>
               <input
                 type="date"
                 required
-                max={hoje()}
+                max={today()}
                 value={form.date}
                 onChange={(e) => setForm({ ...form, date: e.target.value })}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-900 outline-none focus:border-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"

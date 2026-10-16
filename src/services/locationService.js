@@ -92,13 +92,59 @@ export const addLocation = async ({ name, region, tenantId, kind, address, manag
   });
 };
 
-export const updateLocation = async (id, { name, region, kind, address, manager, phone }) =>
-  updateDoc(doc(db, 'locations', id), {
+export const updateLocation = async (id, { name, region, kind, address, manager, phone }, oldName = null, tenantId = null) => {
+  await updateDoc(doc(db, 'locations', id), {
     ...(name !== undefined ? { name: name.trim() } : {}),
     ...(region !== undefined ? { region: region.trim() || 'Geral' } : {}),
     ...cleanDetails({ kind, address, manager, phone }),
     updatedAt: serverTimestamp(),
   });
+
+  let updatedAssetsCount = 0;
+  let updatedEmployeesCount = 0;
+  const newName = name?.trim();
+  if (oldName && newName && oldName.trim() !== newName && tenantId) {
+    // Atualiza location nos assets
+    const assetQ = query(
+      collection(db, 'assets'),
+      where('tenantId', '==', tenantId),
+      where('location', '==', oldName.trim())
+    );
+    const assetSnap = await getDocs(assetQ);
+    if (!assetSnap.empty) {
+      const CHUNK = 400;
+      for (let i = 0; i < assetSnap.docs.length; i += CHUNK) {
+        const batch = writeBatch(db);
+        assetSnap.docs.slice(i, i + CHUNK).forEach((d) => {
+          batch.update(d.ref, { location: newName, updatedAt: serverTimestamp() });
+        });
+        await batch.commit();
+      }
+      updatedAssetsCount = assetSnap.docs.length;
+    }
+
+    // Atualiza branch nos employees
+    const empQ = query(
+      collection(db, 'employees'),
+      where('tenantId', '==', tenantId),
+      where('branch', '==', oldName.trim())
+    );
+    const empSnap = await getDocs(empQ);
+    if (!empSnap.empty) {
+      const CHUNK = 400;
+      for (let i = 0; i < empSnap.docs.length; i += CHUNK) {
+        const batch = writeBatch(db);
+        empSnap.docs.slice(i, i + CHUNK).forEach((d) => {
+          batch.update(d.ref, { branch: newName, updatedAt: serverTimestamp() });
+        });
+        await batch.commit();
+      }
+      updatedEmployeesCount = empSnap.docs.length;
+    }
+  }
+
+  return { updatedAssetsCount, updatedEmployeesCount };
+};
 
 export const deleteLocation = async (id) => deleteDoc(doc(db, 'locations', id));
 

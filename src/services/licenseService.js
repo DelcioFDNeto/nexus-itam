@@ -1,7 +1,7 @@
 // src/services/licenseService.js
 import { db } from './firebase';
 import { 
-  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp, arrayUnion, arrayRemove, where, increment 
+  collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp, where, runTransaction 
 } from 'firebase/firestore';
 
 const licenseCollection = collection(db, 'licenses');
@@ -45,20 +45,56 @@ export const deleteLicense = async (id) => {
 
 export const assignLicense = async (licenseId, assetId, assetName) => {
   const licenseRef = doc(db, 'licenses', licenseId);
-  
-  await updateDoc(licenseRef, {
-    assignedAssets: arrayUnion({ id: assetId, name: assetName }),
-    usedCount: increment(1),
-    updatedAt: serverTimestamp()
+  return await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(licenseRef);
+    if (!snap.exists()) throw new Error("Licença não encontrada.");
+    const data = snap.data();
+    const current = Array.isArray(data.assignedAssets) ? data.assignedAssets : [];
+    const filtered = current.filter(a => a?.id !== assetId);
+    const updated = [...filtered, { id: assetId, name: assetName }];
+    transaction.update(licenseRef, {
+      assignedAssets: updated,
+      usedCount: updated.length,
+      updatedAt: serverTimestamp()
+    });
   });
 };
 
-export const unassignLicense = async (licenseId, assetObjectToRemove) => {
+export const unassignLicense = async (licenseId, assetIdOrObject) => {
+  const targetId = typeof assetIdOrObject === 'string' ? assetIdOrObject : assetIdOrObject?.id;
   const licenseRef = doc(db, 'licenses', licenseId);
-  
-  await updateDoc(licenseRef, {
-    assignedAssets: arrayRemove(assetObjectToRemove),
-    usedCount: increment(-1),
-    updatedAt: serverTimestamp()
+  return await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(licenseRef);
+    if (!snap.exists()) throw new Error("Licença não encontrada.");
+    const data = snap.data();
+    const current = Array.isArray(data.assignedAssets) ? data.assignedAssets : [];
+    const updated = current.filter(a => a?.id !== targetId);
+    transaction.update(licenseRef, {
+      assignedAssets: updated,
+      usedCount: updated.length,
+      updatedAt: serverTimestamp()
+    });
   });
 };
+
+export const releaseAssetFromLicenses = async (tenantId, assetId) => {
+  if (!tenantId || !assetId) return 0;
+  const q = query(licenseCollection, where('tenantId', '==', tenantId));
+  const snapshot = await getDocs(q);
+  let updatedCount = 0;
+  const docs = snapshot?.docs || [];
+  for (const docSnap of docs) {
+    const data = docSnap.data();
+    const current = Array.isArray(data.assignedAssets) ? data.assignedAssets : [];
+    if (current.some(a => a?.id === assetId)) {
+      const updated = current.filter(a => a?.id !== assetId);
+      await updateDoc(docSnap.ref, {
+        assignedAssets: updated,
+        usedCount: updated.length,
+        updatedAt: serverTimestamp()
+      });
+      updatedCount++;
+    }
+  }
+  return updatedCount;
+};

@@ -86,8 +86,22 @@ export const countAssets = (tenantId) => countWhere('assets', tenantId);
 
 export const countMembers = (tenantId) => countWhere('users', tenantId);
 
-export const countPendingInvites = (tenantId) =>
-  countWhere('invites', tenantId, [where('status', '==', 'pending')]);
+export const countPendingInvites = async (tenantId) => {
+  if (!tenantId) return 0;
+  const snap = await getDocs(
+    query(collection(db, 'invites'), where('tenantId', '==', tenantId), where('status', '==', 'pending'))
+  );
+  const now = new Date();
+  let count = 0;
+  snap.docs.forEach((d) => {
+    const data = d.data();
+    const exp = data.expiresAt?.toDate ? data.expiresAt.toDate() : (data.expiresAt ? new Date(data.expiresAt) : null);
+    if (!exp || exp > now) {
+      count++;
+    }
+  });
+  return count;
+};
 
 /**
  * Garante espaco no limite antes de criar itens. Nao consulta nada quando o

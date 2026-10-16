@@ -6,11 +6,12 @@ import {
 } from '../services/employeeService';
 import { 
   Users, Briefcase, Plus, Trash2, Search, Edit,
-  UserCircle, Building2, MapPin, Mail, Save, X, CreditCard, FileSignature, Undo2
+  UserCircle, Building2, MapPin, Mail, Save, X, CreditCard, FileSignature, Undo2, RefreshCcw
 } from 'lucide-react';
 import { getAssetsAssignedTo } from '../services/assetService';
 import { isRetired } from '../utils/assetStatus';
 import { can } from '../utils/permissions';
+import { useConfirm } from '../components/ConfirmDialog';
 import TermIssueModal from '../components/terms/TermIssueModal';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,8 +20,11 @@ import LocationSelect from '../components/LocationSelect';
 
 const EmployeeManager = () => {
   const { currentUser } = useAuth();
+  const confirm = useConfirm();
   const tenantId = currentUser?.tenantId;
+  const canWrite = can(currentUser, 'employees:write');
   const canIssueTerms = can(currentUser, 'terms:issue');
+  const [saving, setSaving] = useState(false);
   // { kind, assets, holder } — termo do colaborador com os ativos que estao no nome dele
   const [termModal, setTermModal] = useState(null);
   const [loadingTermFor, setLoadingTermFor] = useState(null);
@@ -133,37 +137,51 @@ const EmployeeManager = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    setSaving(true);
     try {
         if (activeTab === 'employees') {
             const payload = {
-                name: formData.name,
-                role: formData.role,
-                email: formData.email,
-                cpf: formData.cpf,
+                name: formData.name.trim(),
+                role: formData.role.trim(),
+                email: formData.email.trim(),
+                cpf: formData.cpf.trim(),
                 branch: formData.branch,
                 sector: formData.sectorId || 'Geral',
                 tenantId: tenantId,
-                updatedAt: new Date()
             };
 
             if (editingId) {
-                await updateEmployee(editingId, payload);
+                const oldName = employees.find(emp => emp.id === editingId)?.name || null;
+                const res = await updateEmployee(editingId, payload, oldName, tenantId);
+                if (res?.updatedAssetsCount > 0) {
+                  toast.success(`Colaborador atualizado! ${res.updatedAssetsCount} ativo(s) vinculado(s) foram atualizados em cascata.`);
+                } else {
+                  toast.success('Colaborador atualizado com sucesso!');
+                }
             } else {
-                await addEmployee({ ...payload, createdAt: new Date() });
+                await addEmployee(payload);
+                toast.success('Colaborador cadastrado com sucesso!');
             }
         } else {
             const payload = {
-                name: formData.sectorName,
-                manager: formData.manager,
-                description: formData.description,
+                name: formData.sectorName.trim(),
+                manager: formData.manager.trim(),
+                description: formData.description.trim(),
                 tenantId: tenantId,
-                updatedAt: new Date()
             };
 
             if (editingId) {
-                await updateSector(editingId, payload);
+                const oldName = sectors.find(sec => sec.id === editingId)?.name || null;
+                const res = await updateSector(editingId, payload, oldName, tenantId);
+                const total = (res?.updatedEmployeesCount || 0) + (res?.updatedAssetsCount || 0);
+                if (total > 0) {
+                  toast.success(`Setor atualizado! Vínculos em cascata atualizados (${res.updatedEmployeesCount} colaborador(es), ${res.updatedAssetsCount} ativo(s)).`);
+                } else {
+                  toast.success('Setor atualizado com sucesso!');
+                }
             } else {
-                await addSector({ ...payload, createdAt: new Date() });
+                await addSector(payload);
+                toast.success('Setor cadastrado com sucesso!');
             }
         }
         setIsModalOpen(false);
@@ -171,14 +189,53 @@ const EmployeeManager = () => {
     } catch (err) {
         console.error(err);
         toast.error("Erro ao salvar.");
+    } finally {
+        setSaving(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (confirm("Tem certeza que deseja excluir este registro?")) {
-        if (activeTab === 'employees') await deleteEmployee(id);
-        else await deleteSector(id);
+    if (activeTab === 'employees') {
+      const emp = employees.find(e => e.id === id);
+      const assignedAssets = (emp?.name && tenantId) ? await getAssetsAssignedTo(tenantId, emp.name) : [];
+      const msg = assignedAssets.length > 0
+        ? `Este colaborador possui ${assignedAssets.length} ativo(s) vinculado(s) sob sua responsabilidade. A exclusão não apagará os ativos, mas removerá o vínculo. Deseja excluir "${emp?.name || ''}"?`
+        : `Tem certeza que deseja excluir o colaborador "${emp?.name || ''}"?`;
+
+      const ok = await confirm({
+        title: 'Excluir Colaborador',
+        message: msg,
+        danger: true,
+        confirmLabel: 'Excluir Colaborador'
+      });
+      if (!ok) return;
+
+      try {
+        await deleteEmployee(id);
+        toast.success('Colaborador excluído com sucesso.');
         loadData();
+      } catch (err) {
+        console.error(err);
+        toast.error('Erro ao excluir colaborador.');
+      }
+    } else {
+      const sec = sectors.find(s => s.id === id);
+      const ok = await confirm({
+        title: 'Excluir Setor',
+        message: `Tem certeza que deseja excluir o setor "${sec?.name || ''}"?`,
+        danger: true,
+        confirmLabel: 'Excluir Setor'
+      });
+      if (!ok) return;
+
+      try {
+        await deleteSector(id);
+        toast.success('Setor excluído com sucesso.');
+        loadData();
+      } catch (err) {
+        console.error(err);
+        toast.error('Erro ao excluir setor.');
+      }
     }
   };
 
@@ -200,9 +257,11 @@ const EmployeeManager = () => {
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">Mantenha a estrutura organizacional atualizada</p>
         </div>
-        <button onClick={openCreateModal} className="bg-black text-white px-5 py-2.5 rounded-xl font-bold hover:bg-gray-800 flex items-center gap-2 shadow-lg transition-all active:scale-95">
-            <Plus size={20}/> {activeTab === 'employees' ? 'Novo Colaborador' : 'Novo Setor'}
-        </button>
+        {canWrite && (
+          <button onClick={openCreateModal} className="bg-black text-white dark:bg-white dark:text-slate-900 px-5 py-2.5 rounded-xl font-bold hover:bg-gray-800 dark:hover:bg-gray-100 flex items-center gap-2 shadow-lg transition-all active:scale-95">
+              <Plus size={20}/> {activeTab === 'employees' ? 'Novo Colaborador' : 'Novo Setor'}
+          </button>
+        )}
       </div>
 
       {/* Chaves principais que alternam a visão entre pessoas ou a visão por hierarquia */}
@@ -251,18 +310,20 @@ const EmployeeManager = () => {
                                   <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">{emp.role || "Cargo não inf."}</p>
                               </div>
                           </div>
-                          <div className="flex gap-1">
-                              <button onClick={() => openEditModal(emp)} className="text-gray-400 dark:text-gray-500 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 transition-colors"><Edit size={16}/></button>
-                              <button onClick={() => handleDelete(emp.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition-colors"><Trash2 size={16}/></button>
-                          </div>
+                          {canWrite && (
+                              <div className="flex gap-1">
+                                  <button onClick={() => openEditModal(emp)} className="text-gray-400 dark:text-gray-500 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-slate-750 transition-colors"><Edit size={16}/></button>
+                                  <button onClick={() => handleDelete(emp.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-slate-750 transition-colors"><Trash2 size={16}/></button>
+                              </div>
+                          )}
                       </div>
                       
                       <div className="mt-auto space-y-2 pt-3 border-t border-gray-50">
                           <div className="flex items-center gap-2 text-xs text-gray-600">
                               <Briefcase size={14} className="text-brand"/> 
-                              <span className="font-bold bg-gray-100 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded">{emp.sector}</span>
+                              <span className="font-bold bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded">{emp.sector}</span>
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-gray-600">
+                          <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
                               <MapPin size={14} className="text-gray-400 dark:text-gray-500"/> {emp.branch}
                           </div>
                           {emp.email && (
@@ -306,10 +367,12 @@ const EmployeeManager = () => {
                           <div className="p-3 bg-gray-50 dark:bg-slate-900 rounded-xl">
                               <Building2 size={24} className="text-gray-700 dark:text-gray-200"/>
                           </div>
-                          <div className="flex gap-1">
-                              <button onClick={() => openEditModal(sec)} className="text-gray-400 dark:text-gray-500 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 transition-colors"><Edit size={16}/></button>
-                              <button onClick={() => handleDelete(sec.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition-colors"><Trash2 size={16}/></button>
-                          </div>
+                          {canWrite && (
+                              <div className="flex gap-1">
+                                  <button onClick={() => openEditModal(sec)} className="text-gray-400 dark:text-gray-500 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-slate-750 transition-colors"><Edit size={16}/></button>
+                                  <button onClick={() => handleDelete(sec.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-slate-750 transition-colors"><Trash2 size={16}/></button>
+                              </div>
+                          )}
                       </div>
                       
                       <h3 className="text-xl font-black text-gray-900 dark:text-white mb-1">{sec.name}</h3>
@@ -345,46 +408,47 @@ const EmployeeManager = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 border border-gray-200 dark:border-slate-700 animate-in zoom-in-95">
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2">
                     {editingId ? <Edit size={20}/> : <Plus size={20}/>} 
                     {editingId ? 'Editar' : 'Novo'} {activeTab === 'employees' ? 'Colaborador' : 'Setor'}
                 </h2>
-                <button onClick={() => setIsModalOpen(false)} className="p-1 rounded hover:bg-gray-100"><X size={20}/></button>
+                <button disabled={saving} onClick={() => setIsModalOpen(false)} className="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"><X size={20}/></button>
             </div>
             
             <form onSubmit={handleSave} className="space-y-4">
               
               {activeTab === 'employees' ? (
-                  // Campos moldados individualmente focado apenas para montar a ficha do peão
+                  // Campos moldados individualmente focado apenas para montar a ficha do peao
                   <>
                     <div>
                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Nome Completo</label>
-                        <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 border rounded-xl font-bold outline-none focus:border-black" />
+                        <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl font-bold outline-none focus:border-black dark:focus:border-brand" />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
                             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Cargo</label>
-                            <input value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full p-3 border rounded-xl outline-none focus:border-black" />
+                            <input value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full p-3 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl outline-none focus:border-black dark:focus:border-brand" />
                         </div>
                         <div>
                             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Setor</label>
-                            <select value={formData.sectorId} onChange={e => setFormData({...formData, sectorId: e.target.value})} className="w-full p-3 border rounded-xl bg-white dark:bg-slate-800 outline-none focus:border-black cursor-pointer">
+                            <select value={formData.sectorId} onChange={e => setFormData({...formData, sectorId: e.target.value})} className="w-full p-3 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl outline-none focus:border-black dark:focus:border-brand cursor-pointer">
                                 <option value="">Selecione...</option>
-                                {/* Extrai os setores já consolidados do banco e cria uma listinha rápida */}
-                                {sectors.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                <option value="Geral">Geral</option>
+                                {/* Extrai os setores ja consolidados do banco e cria uma listinha rapida */}
+                                {sectors.filter(s => s.name !== 'Geral').map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                 <option value="Outro">Outro / Externo</option>
                             </select>
                         </div>
                     </div>
                     <div>
                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Email</label>
-                        <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-3 border rounded-xl outline-none focus:border-black" />
+                        <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-3 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl outline-none focus:border-black dark:focus:border-brand" />
                     </div>
                     <div>
                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">CPF</label>
-                        <input value={formData.cpf} onChange={e => setFormData({...formData, cpf: e.target.value})} placeholder="000.000.000-00" className="w-full p-3 border rounded-xl outline-none focus:border-black font-mono" />
+                        <input value={formData.cpf} onChange={e => setFormData({...formData, cpf: e.target.value})} placeholder="000.000.000-00" className="w-full p-3 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl outline-none focus:border-black dark:focus:border-brand font-mono" />
                     </div>
                     <div>
                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Unidade / Base</label>
@@ -393,36 +457,37 @@ const EmployeeManager = () => {
                             onChange={e => setFormData({...formData, branch: e.target.value})}
                             name="branch"
                             showManageLink
-                            className="w-full p-3 border rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white outline-none focus:border-black"
+                            className="w-full p-3 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl outline-none focus:border-black dark:focus:border-brand"
                         />
                     </div>
                   </>
               ) : (
-                  // Config para criar áreas independentemente das pessoas
+                  // Config para criar areas independentemente das pessoas
                   <>
                     <div>
                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Nome do Setor</label>
-                        <input required value={formData.sectorName} onChange={e => setFormData({...formData, sectorName: e.target.value})} className="w-full p-3 border rounded-xl font-bold outline-none focus:border-black" placeholder="Ex: Financeiro, TI..." />
+                        <input required value={formData.sectorName} onChange={e => setFormData({...formData, sectorName: e.target.value})} className="w-full p-3 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl font-bold outline-none focus:border-black dark:focus:border-brand" placeholder="Ex: Financeiro, TI..." />
                     </div>
                     <div>
                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Gestor Responsável</label>
-                        <select value={formData.manager} onChange={e => setFormData({...formData, manager: e.target.value})} className="w-full p-3 border rounded-xl bg-white dark:bg-slate-800 outline-none focus:border-black cursor-pointer">
+                        <select value={formData.manager} onChange={e => setFormData({...formData, manager: e.target.value})} className="w-full p-3 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl outline-none focus:border-black dark:focus:border-brand cursor-pointer">
                             <option value="">Selecione um colaborador...</option>
-                            {/* Permite usar a lista de funcionários para atrelar a liderança de forma amarrada */}
+                            {/* Permite usar a lista de funcionarios para atrelar a lideranca de forma amarrada */}
                             {employees.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
                         </select>
                     </div>
                     <div>
                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Descrição</label>
-                        <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-3 border rounded-xl outline-none focus:border-black" rows="3" placeholder="Função deste departamento..."></textarea>
+                        <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-3 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl outline-none focus:border-black dark:focus:border-brand" rows="3" placeholder="Função deste departamento..."></textarea>
                     </div>
                   </>
               )}
 
-              <div className="flex gap-3 pt-4 border-t border-gray-50 mt-2">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl font-bold text-gray-600 hover:bg-gray-50 dark:hover:bg-slate-900">Cancelar</button>
-                <button type="submit" className="flex-1 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 shadow-lg flex justify-center items-center gap-2">
-                    <Save size={18}/> Salvar
+              <div className="flex gap-3 pt-4 border-t border-gray-100 dark:border-slate-700 mt-2">
+                <button type="button" disabled={saving} onClick={() => setIsModalOpen(false)} className="flex-1 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50">Cancelar</button>
+                <button type="submit" disabled={saving} className="flex-1 py-3 bg-black dark:bg-brand text-white rounded-xl font-bold hover:bg-gray-800 dark:hover:opacity-90 shadow-lg flex justify-center items-center gap-2 transition-all disabled:opacity-50">
+                    {saving ? <RefreshCcw className="animate-spin" size={18}/> : <Save size={18}/>}
+                    {saving ? 'Salvando…' : 'Salvar'}
                 </button>
               </div>
             </form>

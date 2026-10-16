@@ -13,6 +13,7 @@ import {
   collectionGroup,
   writeBatch
 } from 'firebase/firestore';
+import { releaseAssetFromLicenses } from './licenseService';
 
 const assetsCollection = collection(db, 'assets');
 const historyCollection = collection(db, 'history'); // Coleção Global de Histórico
@@ -191,16 +192,17 @@ export const updateAsset = async (id, assetData, historyOptions = null) => {
 
 export const deleteAsset = async (id, tenantId, user = 'Sistema') => {
   const assetRef = doc(db, 'assets', id);
+  const resolvedTenantId = await resolveTenantId(id, tenantId);
   const batch = writeBatch(db);
 
   batch.delete(assetRef);
   
   // Log de Exclusão
-  if (tenantId) {
+  if (resolvedTenantId) {
     const historyRef = doc(historyCollection);
     batch.set(historyRef, {
       assetId: id,
-      tenantId: tenantId,
+      tenantId: resolvedTenantId,
       type: 'deletion',
       action: 'Ativo Excluído',
       date: serverTimestamp(),
@@ -210,6 +212,16 @@ export const deleteAsset = async (id, tenantId, user = 'Sistema') => {
   }
 
   await batch.commit();
+
+  // Libera assentos de licenças vinculadas a este ativo (não-bloqueante)
+  if (resolvedTenantId) {
+    try {
+      await releaseAssetFromLicenses(resolvedTenantId, id);
+    } catch (err) {
+      console.warn('Falha ao desalocar licenças do ativo excluído:', err);
+    }
+  }
+
   return true;
 };
 

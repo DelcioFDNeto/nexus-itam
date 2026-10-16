@@ -4,9 +4,9 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+import { collection, getCountFromServer, query, where } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { getAllAssets, getRecentActivity } from '../services/assetService';
-import { getEmployees } from '../services/employeeService';
-import { getProjects } from '../services/projectService';
 import { useAuth } from '../contexts/AuthContext';
 import { isRetired } from '../utils/assetStatus';
 import { getAssetType } from '../utils/assetTypes';
@@ -79,16 +79,25 @@ const TenantDashboard = () => {
     if (!tenantId) return undefined;
     let cancelled = false;
     (async () => {
+      const countEmployees = async (tId) => {
+        const snap = await getCountFromServer(query(collection(db, 'employees'), where('tenantId', '==', tId)));
+        return snap.data().count;
+      };
+      const countProjects = async (tId) => {
+        const snap = await getCountFromServer(query(collection(db, 'projects'), where('tenantId', '==', tId)));
+        return snap.data().count;
+      };
+
       const results = await Promise.allSettled([
         getAllAssets(tenantId),
-        getEmployees(tenantId),
-        showProjects ? getProjects(tenantId) : Promise.resolve([]),
+        countEmployees(tenantId),
+        showProjects ? countProjects(tenantId) : Promise.resolve(0),
         getRecentActivity(tenantId, 6),
       ]);
       if (cancelled) return;
       setAssets(results[0].status === 'fulfilled' ? results[0].value : []);
-      setTotalEmployees(results[1].status === 'fulfilled' ? results[1].value.length : 0);
-      setTotalProjects(results[2].status === 'fulfilled' ? results[2].value.length : 0);
+      setTotalEmployees(results[1].status === 'fulfilled' ? results[1].value : 0);
+      setTotalProjects(results[2].status === 'fulfilled' ? results[2].value : 0);
       setRecentActivity(results[3].status === 'fulfilled' ? results[3].value : []);
       results.forEach((r, i) => { if (r.status === 'rejected') console.error(`Falha ao carregar o painel [${i}]:`, r.reason); });
       setLoading(false);

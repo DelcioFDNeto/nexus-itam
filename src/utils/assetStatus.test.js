@@ -91,4 +91,12 @@ describe('warrantyStatus', () => {
   it('o ultimo dia ainda conta como coberto', () => {
     expect(warrantyStatus(em(0), hoje).state).toBe('expirando');
   });
+
+  it('nao muta o objeto Date passado como entrada', () => {
+    const inputDate = new Date(2026, 5, 20, 10, 0, 0);
+    const originalTime = inputDate.getTime();
+    warrantyStatus(inputDate, hoje);
+    expect(inputDate.getTime()).toBe(originalTime);
+  });
 });
+

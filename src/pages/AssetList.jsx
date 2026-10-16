@@ -12,6 +12,8 @@ import { getAssetType } from "../utils/assetTypes";
 import { can } from "../utils/permissions";
 import { hasFeature } from "../utils/entitlements";
 import { buildLabelsDocument, printHtml, resolvePrintBranding } from "../utils/printTemplates";
+import { useConfirm } from "../components/ConfirmDialog";
+import { isoDay } from "../utils/dates";
 import StatusBadge from "../components/StatusBadge";
 import AssetListSkeleton from "../components/assets/AssetListSkeleton";
 import AssetIcon from "../components/AssetIcon";
@@ -54,11 +56,13 @@ const isPromotional = (asset) =>
 const AssetList = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const confirm = useConfirm();
   const tenantId = currentUser?.tenantId;
   const [searchParams] = useSearchParams();
   const canWrite = can(currentUser, "assets:write");
   const canImport = can(currentUser, "assets:import") && hasFeature(currentUser, "import");
   const canIssueTerms = can(currentUser, "terms:issue");
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   // 'responsabilidade' | 'transferencia' para os itens selecionados
   const [termModal, setTermModal] = useState(null);
 
@@ -260,7 +264,12 @@ const AssetList = () => {
 
   // Métodos que manipulam a API/banco de dados ou processam a lista num contexto maior
   const handleBulkStatusChange = async (newStatus) => {
-    if (!confirm(`Mudar status de ${selectedIds.length} ativos para "${newStatus}"?`)) return;
+    const ok = await confirm({
+      title: "Alteração em Massa",
+      message: `Mudar status de ${selectedIds.length} ativo(s) para "${newStatus}"?`,
+      confirmLabel: "Confirmar Alteração",
+    });
+    if (!ok) return;
     setBulkProcessing(true);
     const userEmail = currentUser?.email || "Usuário Desconhecido";
     // Sem tenantId o registro na timeline era recusado pelas regras: o status
@@ -313,7 +322,7 @@ const AssetList = () => {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Ativos");
     // Data ISO: "28/09/2026" gerava barras no nome do arquivo.
-    XLSX.writeFile(workbook, `Inventario_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(workbook, `Inventario_${tenantId || "Nexus"}_${isoDay()}.xlsx`);
   };
 
   // Abas de tipo montadas a partir do inventário da própria empresa: cada
@@ -361,19 +370,88 @@ const AssetList = () => {
       <div className="px-4 md:px-8 pb-6 bg-slate-50 dark:bg-slate-950 sticky top-0 md:static z-20">
         <div className="bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col md:flex-row gap-4 items-center">
           {/* Campo de pesquisa global que abrange IDs e Nomes */}
-          <div className="relative w-full md:flex-1">
-            <Search
-              className="absolute left-4 top-3.5 text-gray-400 dark:text-gray-500"
-              size={20}
-            />
-            <input
-              type="text"
-              placeholder="Buscar por tag, modelo, serial ou responsável..."
-              className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-slate-900 border-transparent focus:bg-white dark:focus:bg-slate-800 border-2 focus:border-brand rounded-2xl outline-none font-bold text-sm text-gray-800 dark:text-gray-100 transition-all"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="flex w-full md:flex-1 gap-2 items-center">
+            <div className="relative flex-1">
+              <Search
+                className="absolute left-4 top-3.5 text-gray-400 dark:text-gray-500"
+                size={20}
+              />
+              <input
+                type="text"
+                placeholder="Buscar por tag, modelo, serial ou responsável..."
+                className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-slate-900 border-transparent focus:bg-white dark:focus:bg-slate-800 border-2 focus:border-brand rounded-2xl outline-none font-bold text-sm text-gray-800 dark:text-gray-100 transition-all"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowMobileFilters((prev) => !prev)}
+              className={`md:hidden p-3 rounded-2xl border transition-colors ${showMobileFilters ? "bg-black text-white dark:bg-white dark:text-slate-900 border-black" : "bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200"}`}
+              title="Filtros avançados"
+              aria-label="Filtros avançados"
+            >
+              <Filter size={20} />
+            </button>
           </div>
+
+          {showMobileFilters && (
+            <div className="md:hidden w-full flex flex-wrap gap-2 pt-3 border-t border-gray-100 dark:border-slate-700 animate-in slide-in-from-top-2">
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="flex-1 p-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 text-xs font-bold text-gray-800 dark:text-gray-100 outline-none"
+              >
+                <option value="Todos">Todos os Status</option>
+                {statusOptions.map((st) => (
+                  <option key={st} value={st}>
+                    {st}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={() => setShowRetired((v) => !v)}
+                className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
+                  showRetired
+                    ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
+                    : "border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 text-gray-600 dark:text-gray-300"
+                }`}
+              >
+                <Archive size={14} />
+                <span>Baixados</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
+                className="p-2.5 bg-gray-50 dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300"
+                title="Inverter ordenação"
+              >
+                {sortOrder === "asc" ? <ArrowDownAZ size={16} /> : <ArrowUpAZ size={16} />}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                className="p-2.5 bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-400 rounded-xl border border-green-200 dark:border-green-900/50"
+                title="Exportar Excel"
+              >
+                <Download size={16} />
+              </button>
+
+              {canImport && (
+                <Link
+                  to="/import"
+                  className="p-2.5 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 rounded-xl border border-blue-200 dark:border-blue-900/50"
+                  title="Importar"
+                >
+                  <FileText size={16} />
+                </Link>
+              )}
+            </div>
+          )}
 
           {/* Controles maiores ou que tomam muito espaço sendo mostrados apenas nos computadores */}
           <div className="hidden md:flex gap-2 items-center">

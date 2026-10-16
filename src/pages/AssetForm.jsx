@@ -359,9 +359,9 @@ const AssetForm = () => {
                 )}
 
                 {/* Campo de notas em formato livre para registrar informações adicionais e histórico manual */}
-                <div className="bg-yellow-50 p-6 md:p-8 rounded-[2rem] border border-yellow-100">
-                    <h3 className="text-xs font-bold text-yellow-700 uppercase tracking-widest mb-4 flex items-center gap-2"><FileText size={16}/> Notas & Observações</h3>
-                    <textarea name="notes" value={formData.notes} onChange={handleChange} rows="4" className="w-full p-4 bg-white dark:bg-slate-800 border border-yellow-200 rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 text-gray-700 dark:text-gray-200 leading-relaxed resize-none" placeholder="Detalhes adicionais, histórico breve, avarias conhecidas..." />
+                <div className="bg-yellow-50 dark:bg-yellow-950/20 p-6 md:p-8 rounded-[2rem] border border-yellow-100 dark:border-yellow-900/40">
+                    <h3 className="text-xs font-bold text-yellow-700 dark:text-yellow-400 uppercase tracking-widest mb-4 flex items-center gap-2"><FileText size={16}/> Notas & Observações</h3>
+                    <textarea name="notes" value={formData.notes} onChange={handleChange} rows="4" className="w-full p-4 bg-white dark:bg-slate-900 border border-yellow-200 dark:border-yellow-900/60 rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 text-gray-700 dark:text-gray-200 leading-relaxed resize-none" placeholder="Detalhes adicionais, histórico breve, avarias conhecidas..." />
                 </div>
             </div>
 
@@ -457,9 +457,9 @@ const AssetForm = () => {
                      </div>
 
                      {isPromotional && (
-                         <div className="bg-pink-50 p-3 rounded-xl border border-pink-100 mb-4">
-                             <label className="text-[10px] font-bold text-pink-700 uppercase mb-1 block">Vendedor Responsável</label>
-                             <input name="vendedor" value={formData.vendedor} onChange={handleChange} className="w-full p-2 bg-white dark:bg-slate-800 border border-pink-200 rounded-lg text-sm focus:ring-2 focus:ring-pink-500 outline-none" placeholder="Nome do Vendedor..." />
+                         <div className="bg-pink-50 dark:bg-pink-950/20 p-3 rounded-xl border border-pink-100 dark:border-pink-900/40 mb-4">
+                             <label className="text-[10px] font-bold text-pink-700 dark:text-pink-400 uppercase mb-1 block">Vendedor Responsável</label>
+                             <input name="vendedor" value={formData.vendedor} onChange={handleChange} className="w-full p-2 bg-white dark:bg-slate-900 border border-pink-200 dark:border-pink-900/60 rounded-lg text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-pink-500 outline-none" placeholder="Nome do Vendedor..." />
                          </div>
                      )}
 
@@ -519,7 +519,7 @@ const AssetForm = () => {
                 </div>
 
                 {/* Botão final que efetiva o salvamento das informações digitadas */}
-                <button disabled={loading} className="w-full py-4 bg-black text-white rounded-2xl font-black text-lg hover:bg-gray-800 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-3">
+                <button type="submit" disabled={loading} className="w-full py-4 bg-black dark:bg-brand text-white rounded-2xl font-black text-lg hover:bg-gray-800 dark:hover:opacity-90 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed">
                     {loading ? (
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
                     ) : (

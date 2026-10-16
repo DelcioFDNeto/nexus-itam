@@ -1,4 +1,5 @@
 // src/utils/assetStatus.js
+import { endOfLocalDay } from './dates';
 // -----------------------------------------------------------------------------
 // Ciclo de vida do ativo.
 //
@@ -70,7 +71,6 @@ const DOT = {
 
 export const statusBadgeClass = (status) => BADGE[getStatus(status).tone] || BADGE.slate;
 export const statusDotClass = (status) => DOT[getStatus(status).tone] || DOT.slate;
-
 // ---------------------------------------------------------------------------
 // GARANTIA
 // ---------------------------------------------------------------------------
@@ -84,10 +84,13 @@ const DAY = 24 * 60 * 60 * 1000;
  */
 export const warrantyStatus = (warrantyEnd, today = new Date()) => {
   if (!warrantyEnd) return null;
-  const end = warrantyEnd instanceof Date ? warrantyEnd : new Date(warrantyEnd);
-  if (Number.isNaN(end.getTime())) return null;
+  const end = endOfLocalDay(warrantyEnd);
+  if (!end || Number.isNaN(end.getTime())) return null;
 
-  const days = Math.ceil((end.setHours(23, 59, 59, 999) - today.getTime()) / DAY);
+  const todayEnd = endOfLocalDay(today);
+  if (!todayEnd || Number.isNaN(todayEnd.getTime())) return null;
+
+  const days = Math.round((end.getTime() - todayEnd.getTime()) / DAY);
   if (days < 0) return { state: 'expirada', days };
   if (days <= 30) return { state: 'expirando', days };
   return { state: 'vigente', days };

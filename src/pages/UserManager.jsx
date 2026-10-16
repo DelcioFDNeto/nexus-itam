@@ -40,6 +40,7 @@ import {
 import { formatUsage, isUserBlocked, usageRatio, usageTone } from '../utils/entitlements';
 import { assertWithinLimit, describeFirebaseError } from '../services/tenantService';
 import ManagerSkeleton from '../components/dashboard/ManagerSkeleton';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const INVITE_TTL_DAYS = 7;
 
@@ -77,6 +78,7 @@ const inviteLink = (invite, companyName) => {
 
 const UserManager = () => {
   const { currentUser } = useAuth();
+  const confirm = useConfirm();
   const tenantId = currentUser?.tenantId;
   const companyName = currentUser?.companyName;
 
@@ -180,7 +182,13 @@ const UserManager = () => {
   };
 
   const handleRevokeInvite = async (invite) => {
-    if (!confirm(`Revogar o convite de ${invite.email}? O link deixará de funcionar.`)) return;
+    const ok = await confirm({
+      title: 'Revogar Convite',
+      message: `Revogar o convite de ${invite.email}? O link deixará de funcionar.`,
+      danger: true,
+      confirmLabel: 'Revogar',
+    });
+    if (!ok) return;
     try {
       await deleteDoc(doc(db, 'invites', invite.id));
       setInvites((prev) => prev.filter((i) => i.id !== invite.id));
@@ -206,16 +214,27 @@ const UserManager = () => {
     }
   };
 
-  const handleChangeRole = (member, role) => {
+  const handleChangeRole = async (member, role) => {
     if (role === member.role) return;
-    if (!confirm(`Alterar ${member.name || member.email} para ${ROLE_LABELS[role]}?`)) return;
+    const ok = await confirm({
+      title: 'Alterar Papel',
+      message: `Alterar ${member.name || member.email} para ${ROLE_LABELS[role]}?`,
+      confirmLabel: 'Alterar',
+    });
+    if (!ok) return;
     updateMember(member, { role }, 'Nível de acesso atualizado.');
   };
 
-  const handleToggleStatus = (member) => {
+  const handleToggleStatus = async (member) => {
     const suspend = !isUserBlocked(member.status);
     const verb = suspend ? 'Suspender' : 'Reativar';
-    if (!confirm(`${verb} o acesso de ${member.name || member.email}?`)) return;
+    const ok = await confirm({
+      title: `${verb} Acesso`,
+      message: `${verb} o acesso de ${member.name || member.email}?`,
+      danger: suspend,
+      confirmLabel: verb,
+    });
+    if (!ok) return;
     updateMember(
       member,
       { status: suspend ? 'suspended' : 'active' },
@@ -224,7 +243,13 @@ const UserManager = () => {
   };
 
   const handleRemove = async (member) => {
-    if (!confirm(`Remover ${member.name || member.email} da empresa? A conta de login continua existindo, mas sem acesso aos dados.`)) return;
+    const ok = await confirm({
+      title: 'Remover Membro',
+      message: `Remover ${member.name || member.email} da empresa? A conta de login continua existindo, mas sem acesso aos dados.`,
+      danger: true,
+      confirmLabel: 'Remover',
+    });
+    if (!ok) return;
     setBusyId(member.id);
     try {
       await deleteDoc(doc(db, 'users', member.id));

@@ -13,7 +13,7 @@ export const useAssets = () => {
   const tenantId = currentUser?.tenantId;
 
   const [assets, setAssets] = useState([]);
-  const [loading, setLoading] = useState(!tenantId);
+  const [loading, setLoading] = useState(Boolean(tenantId));
   const [error, setError] = useState(null);
 
   useEffect(() => {

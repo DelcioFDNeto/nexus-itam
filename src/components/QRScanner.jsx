@@ -7,23 +7,83 @@ import { X, Camera, AlertTriangle, RefreshCcw } from 'lucide-react';
 // Som de Bip simples (placeholder, reservado para uso futuro)
 // const beepSound = ...;
 
+import { useAuth } from '../contexts/AuthContext';
+import { db } from '../services/firebase';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+
 const QRScanner = ({ onClose, onScan }) => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const tenantId = currentUser?.tenantId;
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const lastScanRef = useRef(null);
   const scannerRef = useRef(null);
 
-  function handleScanSuccess(decodedText) {
+  async function handleScanSuccess(decodedText) {
     const text = decodedText.trim();
     
     if (onScan) {
-        onScan(text);
-    } else {
-        if (scannerRef.current) scannerRef.current.pause();
-        navigate(`/assets/${text}`);
-        if (onClose) onClose();
+      onScan(text);
+      return;
     }
+
+    if (scannerRef.current) {
+      try {
+        scannerRef.current.pause();
+      } catch {
+        // Ignora erro se pause falhar
+      }
+    }
+
+    // Se for URL, tenta extrair rota de ativo ou termo
+    if (text.startsWith('http://') || text.startsWith('https://')) {
+      try {
+        const url = new URL(text);
+        if (url.pathname.includes('/assets/')) {
+          const assetId = url.pathname.split('/assets/')[1]?.split('/')[0]?.split('?')[0];
+          if (assetId) {
+            navigate(`/assets/${assetId}`);
+            if (onClose) onClose();
+            return;
+          }
+        }
+        if (url.pathname.includes('/termos/')) {
+          const termId = url.pathname.split('/termos/')[1]?.split('/')[0]?.split('?')[0];
+          if (termId) {
+            navigate(`/termos/${termId}`);
+            if (onClose) onClose();
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("URL parse error:", e);
+      }
+    }
+
+    // Busca por internalId no tenant atual
+    try {
+      if (tenantId) {
+        const q = query(
+          collection(db, 'assets'),
+          where('tenantId', '==', tenantId),
+          where('internalId', '==', text),
+          limit(1)
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          navigate(`/assets/${snap.docs[0].id}`);
+          if (onClose) onClose();
+          return;
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao buscar ativo pelo patrimônio:", err);
+    }
+
+    // Se não encontrou por internalId nem URL, tenta navegar diretamente pelo id do documento
+    navigate(`/assets/${text}`);
+    if (onClose) onClose();
   }
 
   useEffect(() => {

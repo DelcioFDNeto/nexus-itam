@@ -27,8 +27,11 @@ import WriteOffModal from "../components/WriteOffModal";
 import StatusBadge from "../components/StatusBadge";
 import { isRetired, warrantyStatus, WARRANTY_BADGE, WARRANTY_LABEL } from "../utils/assetStatus";
 import { useAuth } from "../contexts/AuthContext";
+import { useConfirm } from "../components/ConfirmDialog";
 import { safeLinkUrl } from "../utils/sanitize";
 import { can } from "../utils/permissions";
+import { toLocalDate, formatDateBR } from "../utils/dates";
+import { parseMoney } from "../utils/terms";
 import { buildLabelsDocument, printHtml, resolvePrintBranding } from "../utils/printTemplates";
 import TermIssueModal from "../components/terms/TermIssueModal";
 import TransferModal from "../components/terms/TransferModal";
@@ -70,6 +73,7 @@ const AssetDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const confirm = useConfirm();
 
   const tenantId = currentUser?.tenantId;
 
@@ -77,9 +81,13 @@ const AssetDetail = () => {
   const [asset, setAsset] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isDeleting, setIsDeleting] = useState(false); // eslint-disable-line no-unused-vars
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isReactivating, setIsReactivating] = useState(false);
   const [notes, setNotes] = useState("");
+  const notesLoadedRef = React.useRef(false);
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [cpfInput, setCpfInput] = useState("");
+  const [savingCpf, setSavingCpf] = useState(false);
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const [isMaintModalOpen, setIsMaintModalOpen] = useState(false);
   const [isWriteOffOpen, setIsWriteOffOpen] = useState(false);
@@ -96,8 +104,6 @@ const AssetDetail = () => {
   const [isAddingPeripheral, setIsAddingPeripheral] = useState(false);
 
   // Configurações da empresa para impressão de termos e etiquetas.
-  // Sem padrões fixos: antes toda empresa sem e-mail configurado imprimia o
-  // e-mail de suporte da primeira cliente.
   const [config, setConfig] = useState({});
   const canWrite = can(currentUser, "assets:write");
   const canRetire = can(currentUser, "assets:delete");
@@ -120,8 +126,6 @@ const AssetDetail = () => {
   }, [tenantId]);
 
   // Impressos com a identidade da empresa e todos os campos escapados
-  // (utils/printTemplates). Antes o HTML interpolava modelo, responsavel e
-  // clausulas sem escape dentro de document.write.
   const openPrint = (html) => {
     if (!printHtml(html)) toast.error('Popup bloqueado! Permita popups para imprimir.');
   };
@@ -151,9 +155,6 @@ const AssetDetail = () => {
 
   // Busca de dados no banco (Firestore)
   const fetchHistory = async (historyTenantId) => {
-    // Sem `tenantId` a consulta varre o historico global. As regras nao
-    // conseguem provar que o resultado e seguro e rejeitam a query inteira —
-    // a timeline vinha vazia sem nenhum erro visivel.
     if (!historyTenantId) return;
     try {
       const q = query(
@@ -171,6 +172,7 @@ const AssetDetail = () => {
   };
 
   useEffect(() => {
+    notesLoadedRef.current = false;
     setLoading(true);
     const assetRef = doc(db, "assets", id);
     const unsubscribe = onSnapshot(
@@ -179,7 +181,11 @@ const AssetDetail = () => {
         if (docSnap.exists()) {
           const data = { id: docSnap.id, ...docSnap.data() };
           setAsset(data);
-          if (loading) setNotes(data.notes || "");
+          if (!notesLoadedRef.current) {
+            setNotes(data.notes || "");
+            setCpfInput(data.clientCpf || "");
+            notesLoadedRef.current = true;
+          }
           fetchHistory(data.tenantId || currentUser?.tenantId);
         } else {
           navigate("/assets");
@@ -275,13 +281,21 @@ const AssetDetail = () => {
     }
   };
 
-  const handleDeleteLink = async (linkToDelete) => {
-    if (!confirm("Remover este link?")) return;
+  const handleDeleteLink = async (indexToDelete) => {
+    const linkToDelete = asset.attachments?.[indexToDelete];
+    if (!linkToDelete) return;
+    const ok = await confirm({
+      title: "Remover Anexo/Link",
+      message: `Remover o link ou anexo "${linkToDelete.name || 'documento'}"?`,
+      danger: true,
+      confirmLabel: "Remover",
+    });
+    if (!ok) return;
     const userEmail = currentUser?.email || "Usuário Desconhecido";
     const tenantId = asset?.tenantId || currentUser?.tenantId;
     try {
       const currentLinks = asset.attachments || [];
-      const newLinks = currentLinks.filter((l) => l.url !== linkToDelete.url);
+      const newLinks = currentLinks.filter((_, idx) => idx !== indexToDelete);
       await updateAsset(
         id,
         { attachments: newLinks, tenantId },
@@ -328,15 +342,21 @@ const AssetDetail = () => {
     }
   };
 
-  const handleDeletePeripheral = async (itemToDelete) => {
-    if (!confirm(`Remover ${itemToDelete.name}?`)) return;
+  const handleDeletePeripheral = async (indexToDelete) => {
+    const itemToDelete = asset.peripherals?.[indexToDelete];
+    if (!itemToDelete) return;
+    const ok = await confirm({
+      title: "Remover Acessório",
+      message: `Remover o acessório "${itemToDelete.name}"?`,
+      danger: true,
+      confirmLabel: "Remover",
+    });
+    if (!ok) return;
     const userEmail = currentUser?.email || "Usuário Desconhecido";
     const tenantId = asset?.tenantId || currentUser?.tenantId;
     try {
       const currentPeripherals = asset.peripherals || [];
-      const newPeripherals = currentPeripherals.filter(
-        (p) => p.name !== itemToDelete.name,
-      );
+      const newPeripherals = currentPeripherals.filter((_, idx) => idx !== indexToDelete);
       await updateAsset(
         id,
         { peripherals: newPeripherals, tenantId },
@@ -369,35 +389,72 @@ const AssetDetail = () => {
   };
 
   const handleReactivate = async () => {
-    if (!window.confirm("Devolver este ativo ao inventário como Disponível?")) return;
+    const ok = await confirm({
+      title: "Reativar Ativo",
+      message: "Devolver este ativo ao inventário como Disponível?",
+      confirmLabel: "Reativar",
+    });
+    if (!ok) return;
+    setIsReactivating(true);
     try {
       await reactivateAsset(id, asset, currentUser?.email || "Sistema");
       toast.success("Ativo reativado.");
     } catch (err) {
       console.error(err);
       toast.error(err.message || "Erro ao reativar.");
+    } finally {
+      setIsReactivating(false);
     }
   };
 
   const handleDelete = async () => {
-    // Excluir apaga a timeline junto. Para aposentar um equipamento a via
-    // correta e a baixa, que preserva o historico patrimonial.
     if (!isRetired(asset?.status)) {
       toast.error('Dê baixa no ativo antes de excluir — a exclusão apaga todo o histórico.');
       return;
     }
-    if (window.confirm("TEM CERTEZA? A exclusão é irreversível e remove o registro patrimonial.")) {
-      setIsDeleting(true);
-      try {
-        // Com tenantId a exclusão fica registrada na trilha de auditoria.
-        await deleteAsset(id, asset?.tenantId || currentUser?.tenantId, currentUser?.email || "Sistema");
-        toast.success("Ativo excluído.");
-        navigate("/assets");
-      } catch (err) {
-        console.error(err);
-        toast.error(err?.code === "permission-denied" ? "Seu perfil não pode excluir ativos." : "Erro ao excluir o ativo.");
-        setIsDeleting(false);
-      }
+    const ok = await confirm({
+      title: "Excluir Ativo",
+      message: "TEM CERTEZA? A exclusão é irreversível e remove o registro patrimonial.",
+      danger: true,
+      confirmLabel: "Excluir definitivamente",
+    });
+    if (!ok) return;
+    setIsDeleting(true);
+    try {
+      await deleteAsset(id, asset?.tenantId || currentUser?.tenantId, currentUser?.email || "Sistema");
+      toast.success("Ativo excluído.");
+      navigate("/assets");
+    } catch (err) {
+      console.error(err);
+      toast.error(err?.code === "permission-denied" ? "Seu perfil não pode excluir ativos." : "Erro ao excluir o ativo.");
+      setIsDeleting(false);
+    }
+  };
+
+  const handleSaveCpf = async () => {
+    if (!canWrite) return;
+    setSavingCpf(true);
+    const userEmail = currentUser?.email || "Usuário Desconhecido";
+    const tenantId = asset?.tenantId || currentUser?.tenantId;
+    try {
+      const cpfValue = cpfInput.trim();
+      await updateAsset(
+        id,
+        { clientCpf: cpfValue, tenantId },
+        {
+          action: "CPF Atualizado",
+          details: `CPF do responsável ${cpfValue ? "definido como: " + cpfValue : "removido"}.`,
+          type: "update",
+          user: userEmail,
+          tenantId,
+        },
+      );
+      toast.success("CPF atualizado!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao salvar CPF.");
+    } finally {
+      setSavingCpf(false);
     }
   };
 
@@ -423,17 +480,8 @@ const AssetDetail = () => {
   const expandLocation = (loc) => loc || "Local não definido";
   const formatDate = (d) => {
     if (!d) return "N/A";
-    let date;
-    if (d?.toDate) {
-      // Firestore Timestamp
-      date = d.toDate();
-    } else if (d?.seconds) {
-      // Firestore Timestamp serializado
-      date = new Date(d.seconds * 1000);
-    } else {
-      date = new Date(d);
-    }
-    return isNaN(date.getTime()) ? "N/A" : date.toLocaleDateString("pt-BR");
+    const local = toLocalDate(d);
+    return local ? formatDateBR(local) : "N/A";
   };
   const garantia = warrantyStatus(asset.warrantyEnd);
 
@@ -524,10 +572,11 @@ const AssetDetail = () => {
             isRetired(asset?.status) ? (
               <button
                 onClick={handleReactivate}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 rounded-xl font-bold text-sm hover:bg-emerald-100 transition-all whitespace-nowrap"
+                disabled={isReactivating}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 rounded-xl font-bold text-sm hover:bg-emerald-100 transition-all whitespace-nowrap disabled:opacity-50"
               >
                 <RotateCcw size={16} />{" "}
-                <span className="hidden sm:inline">Reativar</span>
+                <span className="hidden sm:inline">{isReactivating ? "Reativando..." : "Reativar"}</span>
               </button>
             ) : (
               <button
@@ -542,9 +591,10 @@ const AssetDetail = () => {
           {canRetire && (
             <button
               onClick={handleDelete}
+              disabled={isDeleting}
               title="Excluir ativo"
               aria-label="Excluir ativo"
-              className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400 rounded-xl font-bold text-sm hover:bg-red-100 dark:hover:bg-red-900/40 transition-all ml-auto hover:scale-105"
+              className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400 rounded-xl font-bold text-sm hover:bg-red-100 dark:hover:bg-red-900/40 transition-all ml-auto hover:scale-105 disabled:opacity-50"
             >
               <Trash2 size={16} />
             </button>
@@ -583,7 +633,7 @@ const AssetDetail = () => {
       {/* Quadro de destaque no topo, exibindo a visão geral principal do equipamento */}
       <div className="bg-white dark:bg-slate-800 rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100 dark:border-slate-700 relative overflow-hidden mb-8 group">
         <div
-          className={`absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-gray-50 to-gray-100 rounded-bl-full -mr-16 -mt-16 opacity-50 pointer-events-none transition-all duration-700 group-hover:scale-110`}
+          className={`absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-700/30 dark:to-slate-700/10 rounded-bl-full -mr-16 -mt-16 opacity-50 pointer-events-none transition-all duration-700 group-hover:scale-110`}
         ></div>
 
         <div className="flex flex-col md:flex-row gap-8 relative z-10">
@@ -624,11 +674,11 @@ const AssetDetail = () => {
 
             <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-sm font-medium text-gray-500 dark:text-gray-400">
               <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-gray-100 dark:border-slate-700 group">
-                <Tag size={16} className="text-black" />
+                <Tag size={16} className="text-black dark:text-white" />
                 <span className="font-mono font-bold text-gray-900 dark:text-white">
                   {asset.internalId}
                 </span>
-                <button onClick={() => { navigator.clipboard.writeText(asset.internalId); toast.success("Patrimônio copiado!"); }} className="opacity-0 group-hover:opacity-100 text-gray-400 dark:text-gray-500 hover:text-black transition-all" title="Copiar Patrimônio">
+                <button onClick={() => { navigator.clipboard.writeText(asset.internalId); toast.success("Patrimônio copiado!"); }} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white transition-all" title="Copiar Patrimônio">
                   <Copy size={14} />
                 </button>
               </div>
@@ -636,7 +686,7 @@ const AssetDetail = () => {
                 <div className="flex items-center gap-2 px-2 py-1.5 group">
                   <BarcodeIcon className="text-gray-400 dark:text-gray-500" />
                   <span className="font-mono">SN: {asset.serialNumber}</span>
-                  <button onClick={() => { navigator.clipboard.writeText(asset.serialNumber); toast.success("Serial copiado!"); }} className="opacity-0 group-hover:opacity-100 text-gray-400 dark:text-gray-500 hover:text-black transition-all" title="Copiar Serial">
+                  <button onClick={() => { navigator.clipboard.writeText(asset.serialNumber); toast.success("Serial copiado!"); }} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-gray-400 dark:text-gray-500 hover:text-black dark:hover:text-white transition-all" title="Copiar Serial">
                     <Copy size={14} />
                   </button>
                 </div>
@@ -651,16 +701,16 @@ const AssetDetail = () => {
       </div>
 
       {/* Sistema de abas presente apenas na visão mobile para poupar espaço vertical na tela */}
-      <div className="md:hidden flex mb-6 bg-gray-100 p-1 rounded-xl">
+      <div className="md:hidden flex mb-6 bg-gray-100 dark:bg-slate-900 p-1 rounded-xl">
         <button
           onClick={() => setActiveTab("details")}
-          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "details" ? "bg-white dark:bg-slate-800 shadow-sm text-black" : "text-gray-500 dark:text-gray-400"}`}
+          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "details" ? "bg-white dark:bg-slate-800 shadow-sm text-black dark:text-white" : "text-gray-500 dark:text-gray-400"}`}
         >
           Detalhes
         </button>
         <button
           onClick={() => setActiveTab("history")}
-          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "history" ? "bg-white dark:bg-slate-800 shadow-sm text-black" : "text-gray-500 dark:text-gray-400"}`}
+          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "history" ? "bg-white dark:bg-slate-800 shadow-sm text-black dark:text-white" : "text-gray-500 dark:text-gray-400"}`}
         >
           Histórico
         </button>
@@ -708,52 +758,37 @@ const AssetDetail = () => {
             </div>
 
             {/* Campo editável para adicionar ou alterar o CPF do responsável pelo ativo */}
-            <div className="mt-6 bg-gray-50 dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-700">
-              <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2 block">
-                CPF do Responsável
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="000.000.000-00"
-                  defaultValue={asset.clientCpf || ""}
-                  className="flex-1 px-4 py-2.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl font-mono font-bold text-sm text-gray-800 dark:text-gray-100 outline-none focus:border-black transition-colors"
-                  onKeyDown={async (e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      const cpfValue = e.target.value.trim();
-                      const userEmail = currentUser?.email || "Usuário Desconhecido";
-                      await updateAsset(id, { clientCpf: cpfValue }, {
-                        action: "CPF Atualizado",
-                        details: `CPF do responsável ${cpfValue ? "definido como: " + cpfValue : "removido"}.`,
-                        type: "update",
-                        user: userEmail,
-                      });
-                      toast.success("CPF atualizado!");
-                    }
-                  }}
-                  id="cpf-input"
-                />
-                <button
-                  onClick={async (e) => {
-                    const cpfInput = e.currentTarget.previousElementSibling;
-                    const cpfValue = cpfInput ? cpfInput.value.trim() : '';
-                    const userEmail = currentUser?.email || "Usuário Desconhecido";
-                    await updateAsset(id, { clientCpf: cpfValue }, {
-                      action: "CPF Atualizado",
-                      details: `CPF do responsável ${cpfValue ? "definido como: " + cpfValue : "removido"}.`,
-                      type: "update",
-                      user: userEmail,
-                    });
-                    toast.success("CPF atualizado!");
-                  }}
-                  className="px-4 py-2.5 bg-black text-white rounded-xl font-bold text-sm hover:bg-gray-800 transition-all active:scale-95 flex items-center gap-2"
-                >
-                  <Save size={14} /> Salvar
-                </button>
+            {canWrite && (
+              <div className="mt-6 bg-gray-50 dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-700">
+                <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2 block">
+                  CPF do Responsável
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="000.000.000-00"
+                    value={cpfInput}
+                    onChange={(e) => setCpfInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleSaveCpf();
+                      }
+                    }}
+                    className="flex-1 px-4 py-2.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl font-mono font-bold text-sm text-gray-800 dark:text-gray-100 outline-none focus:border-black dark:focus:border-white transition-colors"
+                    id="cpf-input"
+                  />
+                  <button
+                    onClick={handleSaveCpf}
+                    disabled={savingCpf}
+                    className="px-4 py-2.5 bg-black text-white dark:bg-white dark:text-slate-900 rounded-xl font-bold text-sm hover:bg-gray-800 dark:hover:bg-slate-200 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <Save size={14} /> {savingCpf ? "Salvando..." : "Salvar"}
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2">Este CPF será usado automaticamente no Termo de Responsabilidade.</p>
               </div>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2">Este CPF será usado automaticamente no Termo de Responsabilidade.</p>
-            </div>
+            )}
           </div>
 
           {/* Card listando todas as chaves técnicas do hardware como identificadores e valores de componentes */}
@@ -813,13 +848,14 @@ const AssetDetail = () => {
 
               <SpecItem
                 label="Data de Aquisição"
-                value={formatDate(asset.acquisitionDate)}
+                value={formatDate(asset.purchaseDate || asset.acquisitionDate)}
               />
               <SpecItem
                 label="Valor Estimado"
-                value={
-                  asset.value ? `R$ ${parseFloat(asset.value).toFixed(2)}` : "-"
-                }
+                value={(() => {
+                  const val = parseMoney(asset.valor ?? asset.value);
+                  return val > 0 ? val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "-";
+                })()}
               />
               {asset.invoiceNumber && (
                 <SpecItem label="Nota Fiscal" value={asset.invoiceNumber} />
@@ -856,19 +892,21 @@ const AssetDetail = () => {
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
                       {item.name}
                     </span>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                    <div className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity ml-2">
                       <button
                         onClick={() => handlePrintPeripheral(item)}
-                        className="p-1 hover:bg-blue-50 text-blue-600 rounded"
+                        className="p-1 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded"
                       >
                         <Printer size={12} />
                       </button>
-                      <button
-                        onClick={() => handleDeletePeripheral(item)}
-                        className="p-1 hover:bg-red-50 text-red-600 rounded"
-                      >
-                        <X size={12} />
-                      </button>
+                      {canWrite && (
+                        <button
+                          onClick={() => handleDeletePeripheral(idx)}
+                          className="p-1 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 rounded"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))
@@ -879,23 +917,25 @@ const AssetDetail = () => {
               )}
             </div>
 
-            <div className="bg-gray-50 dark:bg-slate-900 rounded-2xl p-2 flex gap-2">
-              <input
-                type="text"
-                placeholder="Adicionar (ex: Mouse Logitech, Base Dell...)"
-                className="flex-1 bg-transparent px-4 text-sm font-medium outline-none"
-                value={newPeripheral}
-                onChange={(e) => setNewPeripheral(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddPeripheral()}
-              />
-              <button
-                onClick={handleAddPeripheral}
-                disabled={isAddingPeripheral}
-                className="bg-black text-white p-2 rounded-xl hover:bg-gray-800 disabled:opacity-50"
-              >
-                <Plus size={18} />
-              </button>
-            </div>
+            {canWrite && (
+              <div className="bg-gray-50 dark:bg-slate-900 rounded-2xl p-2 flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Adicionar (ex: Mouse Logitech, Base Dell...)"
+                  className="flex-1 bg-transparent px-4 text-sm font-medium outline-none text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  value={newPeripheral}
+                  onChange={(e) => setNewPeripheral(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddPeripheral()}
+                />
+                <button
+                  onClick={handleAddPeripheral}
+                  disabled={isAddingPeripheral}
+                  className="bg-black text-white dark:bg-white dark:text-slate-900 p-2 rounded-xl hover:bg-gray-800 dark:hover:bg-slate-200 disabled:opacity-50"
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Agrupamento final para notas detalhadas e armazenamento de links e arquivos digitais */}
@@ -905,25 +945,28 @@ const AssetDetail = () => {
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                   <StickyNote size={20} /> Notas
                 </h3>
-                <button
-                  onClick={handleSaveNotes}
-                  disabled={isSavingNotes}
-                  className="text-xs font-bold bg-green-50 text-green-700 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
-                >
-                  {isSavingNotes ? (
-                    "Salvando..."
-                  ) : (
-                    <>
-                      <Save size={12} /> Salvar
-                    </>
-                  )}
-                </button>
+                {canWrite && (
+                  <button
+                    onClick={handleSaveNotes}
+                    disabled={isSavingNotes}
+                    className="text-xs font-bold bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50"
+                  >
+                    {isSavingNotes ? (
+                      "Salvando..."
+                    ) : (
+                      <>
+                        <Save size={12} /> Salvar
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
               <textarea
-                className="w-full flex-1 bg-yellow-50/50 border border-yellow-100 rounded-xl p-4 text-sm text-gray-700 dark:text-gray-200 leading-relaxed focus:bg-white dark:bg-slate-800 focus:border-yellow-300 focus:ring-4 focus:ring-yellow-50 outline-none transition-all resize-none min-h-[150px]"
-                placeholder="Digite observações importantes sobre o ativo..."
+                className="w-full flex-1 bg-yellow-50/50 dark:bg-slate-900/50 border border-yellow-100 dark:border-yellow-900/30 rounded-xl p-4 text-sm text-gray-700 dark:text-gray-200 leading-relaxed focus:bg-white dark:focus:bg-slate-900 focus:border-yellow-300 dark:focus:border-yellow-600 focus:ring-4 focus:ring-yellow-50 dark:focus:ring-yellow-950/20 outline-none transition-all resize-none min-h-[150px] disabled:opacity-75"
+                placeholder={canWrite ? "Digite observações importantes sobre o ativo..." : "Nenhuma observação registrada."}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
+                readOnly={!canWrite}
               ></textarea>
             </div>
 
@@ -934,39 +977,40 @@ const AssetDetail = () => {
 
               <div className="flex-1 space-y-2 mb-4 overflow-y-auto max-h-[150px] custom-scrollbar">
                 {asset.attachments?.map((link, i) => {
-                  // URL vem do banco: um `javascript:` aqui executaria script no clique.
                   const href = safeLinkUrl(link.url);
                   return (
-                  <div
-                    key={i}
-                    className="flex justify-between items-center p-3 rounded-xl bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 hover:border-blue-200 transition-colors group"
-                  >
-                    {href ? (
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 text-sm font-medium text-blue-600 hover:underline truncate"
+                    <div
+                      key={i}
+                      className="flex justify-between items-center p-3 rounded-xl bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 hover:border-blue-200 dark:hover:border-slate-600 transition-colors group"
                     >
-                      <FileText size={14} className="text-gray-400 dark:text-gray-500" />{" "}
-                      {link.name}
-                    </a>
-                    ) : (
-                    <span
-                      title="Endereco bloqueado por seguranca"
-                      className="flex items-center gap-3 text-sm font-medium text-gray-400 line-through truncate"
-                    >
-                      <FileText size={14} />{" "}
-                      {link.name}
-                    </span>
-                    )}
-                    <button
-                      onClick={() => handleDeleteLink(link)}
-                      className="text-gray-400 dark:text-gray-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all ml-2"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                      {href ? (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline truncate"
+                        >
+                          <FileText size={14} className="text-gray-400 dark:text-gray-500" />{" "}
+                          {link.name}
+                        </a>
+                      ) : (
+                        <span
+                          title="Endereço bloqueado por segurança"
+                          className="flex items-center gap-3 text-sm font-medium text-gray-400 line-through truncate"
+                        >
+                          <FileText size={14} />{" "}
+                          {link.name}
+                        </span>
+                      )}
+                      {canWrite && (
+                        <button
+                          onClick={() => handleDeleteLink(i)}
+                          className="text-gray-400 dark:text-gray-500 hover:text-red-500 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all ml-2"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
                 {(!asset.attachments || asset.attachments.length === 0) && (
@@ -976,31 +1020,33 @@ const AssetDetail = () => {
                 )}
               </div>
 
-              <div className="flex flex-col gap-2 bg-gray-50 dark:bg-slate-900 p-3 rounded-2xl">
-                <input
-                  type="text"
-                  placeholder="Nome (ex: Manual PDF)"
-                  className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-black"
-                  value={newLinkName}
-                  onChange={(e) => setNewLinkName(e.target.value)}
-                />
-                <div className="flex gap-2">
+              {canWrite && (
+                <div className="flex flex-col gap-2 bg-gray-50 dark:bg-slate-900 p-3 rounded-2xl">
                   <input
-                    type="url"
-                    placeholder="https://..."
-                    className="flex-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg px-3 py-2 text-xs outline-none focus:border-black"
-                    value={newLinkUrl}
-                    onChange={(e) => setNewLinkUrl(e.target.value)}
+                    type="text"
+                    placeholder="Nome (ex: Manual PDF)"
+                    className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg px-3 py-2 text-xs font-bold text-gray-900 dark:text-white outline-none focus:border-black dark:focus:border-white"
+                    value={newLinkName}
+                    onChange={(e) => setNewLinkName(e.target.value)}
                   />
-                  <button
-                    onClick={handleAddLink}
-                    disabled={isAddingLink}
-                    className="bg-black text-white p-2 rounded-lg hover:bg-gray-800 disabled:opacity-50"
-                  >
-                    <Plus size={16} />
-                  </button>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      placeholder="https://..."
+                      className="flex-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-black dark:focus:border-white"
+                      value={newLinkUrl}
+                      onChange={(e) => setNewLinkUrl(e.target.value)}
+                    />
+                    <button
+                      onClick={handleAddLink}
+                      disabled={isAddingLink}
+                      className="bg-black text-white dark:bg-white dark:text-slate-900 p-2 rounded-lg hover:bg-gray-800 dark:hover:bg-slate-200 disabled:opacity-50"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

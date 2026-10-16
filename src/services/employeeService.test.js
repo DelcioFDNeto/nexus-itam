@@ -18,6 +18,10 @@ vi.mock('firebase/firestore', () => {
     where: vi.fn(),
     collectionGroup: vi.fn(),
     serverTimestamp: vi.fn(),
+    writeBatch: vi.fn(() => ({
+      update: vi.fn(),
+      commit: vi.fn().mockResolvedValue()
+    })),
     getFirestore: vi.fn()
   };
 });
@@ -88,6 +92,22 @@ describe('employeeService', () => {
 
       await updateEmployee('1', { role: 'Developer' });
       expect(updateDoc).toHaveBeenCalled();
+    });
+
+    it('cascades employee name change to assigned assets', async () => {
+      updateDoc.mockResolvedValueOnce();
+      const mockAssets = {
+        empty: false,
+        docs: [
+          { id: 'a1', ref: { id: 'a1' }, data: () => ({ assignedTo: 'Old Name' }) },
+          { id: 'a2', ref: { id: 'a2' }, data: () => ({ assignedTo: 'Old Name' }) }
+        ]
+      };
+      getDocs.mockResolvedValueOnce(mockAssets);
+
+      const res = await updateEmployee('1', { name: 'New Name' }, 'Old Name', 'tenant1');
+      expect(updateDoc).toHaveBeenCalled();
+      expect(res.updatedAssetsCount).toBe(2);
     });
 
     it('deletes an employee successfully', async () => {

@@ -12,6 +12,7 @@ import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import PWAToast from './components/PWAToast';
+import { ConfirmProvider } from './components/ConfirmDialog';
 
 const PageLoader = () => (
   <div className="flex min-h-[50vh] flex-col items-center justify-center">
@@ -89,6 +90,7 @@ function App() {
     <ErrorBoundary>
       <AuthProvider>
         <ThemeProvider>
+          <ConfirmProvider>
           <Router>
             <PWAToast />
             <Routes>
@@ -133,6 +135,7 @@ function App() {
               <Route path="*" element={<AppRoute element={<NotFound />} />} />
             </Routes>
           </Router>
+          </ConfirmProvider>
         </ThemeProvider>
       </AuthProvider>
     </ErrorBoundary>

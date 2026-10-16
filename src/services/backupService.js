@@ -1,8 +1,13 @@
+// src/services/backupService.js
 import { db } from './firebase';
 import { collection, getDocs, writeBatch, doc, getDoc, serverTimestamp, query, where } from 'firebase/firestore';
+import { assertWithinLimit } from './tenantService';
+import { invalidateTenantSettings } from '../hooks/useTenantSettings';
 
 // -----------------------------------------------------------------------------
 // Colecoes de dados operacionais. Todas sao escopadas por `tenantId`.
+// NOTA IMPORTANTE: 'termFiles' contem arquivos pesados (fotos/PDFs em base64/chunks)
+// e foi propositalmente excluida do backup JSON para preservar memoria e conexao.
 // -----------------------------------------------------------------------------
 const TENANT_COLLECTIONS = [
   'assets',
@@ -16,6 +21,9 @@ const TENANT_COLLECTIONS = [
   'agentInbox',
   'serviceOrders',
   'audits',
+  'locations',
+  'terms',
+  'termCounters',
 ];
 
 // Exportadas para leitura/arquivamento, mas NUNCA restauraveis pelo cliente.
@@ -26,16 +34,63 @@ const EXPORT_ONLY_COLLECTIONS = ['settings', 'tenants', 'users'];
 const COLLECTIONS_TO_BACKUP = [...TENANT_COLLECTIONS, ...EXPORT_ONLY_COLLECTIONS];
 
 // Campos que o arquivo de backup nunca pode reescrever, mesmo em colecao valida.
-// `status` saiu da lista: users/tenants/settings ja nao sao restauraveis, entao
-// a protecao so alcancava ativos — e apagava o estado de baixa na restauracao.
 const PROTECTED_FIELDS = ['tenantId', 'role', 'plan', 'limits', 'agentToken'];
 
-const serializeValue = (value) => {
-  if (value && typeof value === 'object' && typeof value.toDate === 'function') {
-    return value.toDate().toISOString();
+const isTimestamp = (value) =>
+  value && typeof value === 'object' && (
+    typeof value.toDate === 'function' ||
+    (typeof value.seconds === 'number' && typeof value.nanoseconds === 'number')
+  );
+
+const toIsoString = (value) => {
+  if (typeof value.toDate === 'function') return value.toDate().toISOString();
+  if (typeof value.seconds === 'number') return new Date(value.seconds * 1000).toISOString();
+  return new Date(value).toISOString();
+};
+
+export const serializeDeep = (value) => {
+  if (value === null || value === undefined) return value;
+  if (isTimestamp(value)) {
+    return { __ts: toIsoString(value) };
   }
-  if (value && typeof value === 'object' && typeof value.seconds === 'number') {
-    return new Date(value.seconds * 1000).toISOString();
+  if (value instanceof Date) {
+    return { __ts: value.toISOString() };
+  }
+  if (Array.isArray(value)) {
+    return value.map(serializeDeep);
+  }
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, serializeDeep(v)])
+    );
+  }
+  return value;
+};
+
+const LEGACY_DATE_FIELDS = new Set([
+  'createdAt', 'updatedAt', 'date', 'issuedAt', 'receivedAt', 'cancelledAt',
+  'purchaseDate', 'acquisitionDate', 'warrantyEnd', 'expiresAt', 'deadline', 'startDate', 'endDate'
+]);
+
+export const deserializeDeep = (value, parentKey = '') => {
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'object' && value.__ts && typeof value.__ts === 'string') {
+    return new Date(value.__ts);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => deserializeDeep(item, parentKey));
+  }
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, deserializeDeep(v, k)])
+    );
+  }
+  if (
+    typeof value === 'string' &&
+    LEGACY_DATE_FIELDS.has(parentKey) &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)
+  ) {
+    return new Date(value);
   }
   return value;
 };
@@ -52,7 +107,7 @@ export const generateFullBackup = async (tenantId, isSuperAdmin = false) => {
 
   const backupData = {
     meta: {
-      version: '2.1',
+      version: '2.2',
       date: new Date().toISOString(),
       type: isSuperAdmin ? 'global_backup' : 'tenant_backup',
       tenantId: isSuperAdmin ? null : tenantId,
@@ -76,9 +131,7 @@ export const generateFullBackup = async (tenantId, isSuperAdmin = false) => {
             docs: snap.exists()
               ? [{
                   _id: snap.id,
-                  ...Object.fromEntries(
-                    Object.entries(snap.data()).map(([k, v]) => [k, serializeValue(v)]),
-                  ),
+                  ...serializeDeep(snap.data()),
                 }]
               : [],
           };
@@ -91,7 +144,7 @@ export const generateFullBackup = async (tenantId, isSuperAdmin = false) => {
           name: colName,
           docs: snapshot.docs.map((snap) => ({
             _id: snap.id,
-            ...Object.fromEntries(Object.entries(snap.data()).map(([k, v]) => [k, serializeValue(v)])),
+            ...serializeDeep(snap.data()),
           })),
         };
       } catch (err) {
@@ -126,13 +179,19 @@ export const generateFullBackup = async (tenantId, isSuperAdmin = false) => {
  * @param {Object} backupData
  * @param {Function} onProgress callback (percentual, mensagem)
  * @param {string} targetTenantId inquilino de destino — obrigatorio
+ * @param {Object} currentUser usuario logado para validacao de limites
  */
-export const restoreBackup = async (backupData, onProgress, targetTenantId = null) => {
+export const restoreBackup = async (backupData, onProgress, targetTenantId = null, currentUser = null) => {
   if (!backupData || !backupData.meta || !backupData.data) {
     throw new Error('Arquivo de backup invalido ou corrompido.');
   }
   if (!targetTenantId) {
     throw new Error('Restauracao exige um inquilino de destino explicito.');
+  }
+
+  // Valida limite de ativos antes de comecar
+  if (currentUser && Array.isArray(backupData.data?.assets) && backupData.data.assets.length > 0) {
+    await assertWithinLimit(currentUser, 'assets', backupData.data.assets.length);
   }
 
   const stats = {
@@ -183,12 +242,10 @@ export const restoreBackup = async (backupData, onProgress, targetTenantId = nul
             return null;
           }
 
-          const clean = Object.entries(data).reduce((acc, [key, value]) => {
+          const deserialized = deserializeDeep(data);
+          const clean = Object.entries(deserialized).reduce((acc, [key, value]) => {
             if (PROTECTED_FIELDS.includes(key)) return acc;
-            acc[key] =
-              typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)
-                ? new Date(value)
-                : value;
+            acc[key] = value;
             return acc;
           }, {});
 
@@ -216,6 +273,11 @@ export const restoreBackup = async (backupData, onProgress, targetTenantId = nul
 
     stats.collectionsUpdated.push(colName);
     processedCollections++;
+  }
+
+  // Invalida cache de settings da empresa
+  if (targetTenantId) {
+    invalidateTenantSettings(targetTenantId);
   }
 
   if (onProgress) onProgress(100, 'Restauracao finalizada.');

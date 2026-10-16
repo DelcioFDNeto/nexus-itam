@@ -7,15 +7,34 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': o PWAToast pergunta antes de trocar de versao. Com
+      // 'autoUpdate' o service worker assumia no meio da sessao e as rotas
+      // lazy ainda nao abertas apontavam para chunks que ja nao existiam.
+      registerType: 'prompt',
       injectRegister: 'inline',
       includeAssets: ['logo.webp', 'logo.png', 'pwa-192x192.png', 'pwa-512x512.png', 'carbon-fibre.png', 'vite.svg'],
+      workbox: {
+        // Bibliotecas pesadas usadas sob demanda (leitura de PDF, Excel,
+        // exportacao em PDF) ficam fora do precache obrigatorio: so quem usa
+        // baixa, e o cache de runtime guarda depois.
+        globIgnores: ['**/pdf.worker*', '**/pdf-*.js', '**/xlsx-*.js', '**/jspdf*.js', '**/html2canvas*.js'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => /\/assets\/(pdf|xlsx|jspdf|html2canvas)[^/]*\.m?js$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'nexus-on-demand-libs',
+              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            },
+          },
+        ],
+      },
       manifest: {
         name: 'Nexus ITAM',
         short_name: 'ITAM',
         description: 'Gestão de Ativos Nexus ITAM',
-        theme_color: '#0a0a0c',
-        background_color: '#0a0a0c',
+        theme_color: '#020617',
+        background_color: '#020617',
         display: 'standalone',
         // 'portrait' travava o PWA instalado em tablets e desktops.
         orientation: 'any',

@@ -8,7 +8,7 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 const {
-  findHeadquarters, getLocations, groupLocations, groupLocationsByKind, locationKind, LEGACY_LOCATIONS, STARTER_LOCATIONS,
+  findHeadquarters, getLocations, groupLocations, groupLocationsByKind, locationKind, LEGACY_LOCATIONS, STARTER_LOCATIONS, updateLocation
 } = await import('./locationService');
 
 describe('getLocations', () => {
@@ -77,5 +77,29 @@ describe('tipo do local', () => {
     const grupos = groupLocationsByKind([{ id: '1', name: 'Loja B' }, { id: '2', name: 'Matriz' }, { id: '3', name: 'Loja A' }]);
     expect(grupos.map((g) => g.kind)).toEqual(['matriz', 'loja']);
     expect(grupos[1].items.map((l) => l.name)).toEqual(['Loja A', 'Loja B']);
+  });
+});
+
+describe('updateLocation cascade', () => {
+  it('cascades location name change to assets and employees', async () => {
+    const { getDocs, updateDoc, writeBatch } = await import('firebase/firestore');
+    updateDoc.mockResolvedValueOnce();
+    const mockBatch = { update: vi.fn(), commit: vi.fn().mockResolvedValue() };
+    writeBatch.mockReturnValue(mockBatch);
+
+    const mockAssets = {
+      empty: false,
+      docs: [{ id: 'a1', ref: { id: 'a1' } }]
+    };
+    const mockEmployees = {
+      empty: false,
+      docs: [{ id: 'e1', ref: { id: 'e1' } }, { id: 'e2', ref: { id: 'e2' } }]
+    };
+    getDocs.mockResolvedValueOnce(mockAssets).mockResolvedValueOnce(mockEmployees);
+
+    const res = await updateLocation('loc1', { name: 'Matriz Nova' }, 'Matriz Antiga', 'tenant1');
+    expect(updateDoc).toHaveBeenCalled();
+    expect(res.updatedAssetsCount).toBe(1);
+    expect(res.updatedEmployeesCount).toBe(2);
   });
 });

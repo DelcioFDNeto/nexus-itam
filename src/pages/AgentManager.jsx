@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import {
   Activity,
   AlertTriangle,
@@ -24,8 +24,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../components/ConfirmDialog';
 import { assertWithinLimit } from '../services/tenantService';
 import { migrateLegacyAgentToken, rotateAgentToken } from '../services/tenantSecretService';
+import { getLicenses } from '../services/licenseService';
 import { db } from '../services/firebase';
 import { updateAsset } from '../services/assetService';
 import {
@@ -62,13 +64,6 @@ const normalizeNamingConfig = (config = {}) => ({
   padLength: Number(config.padLength) || DEFAULT_AGENT_NAMING.padLength,
 });
 
-// Geradores de script movidos para ../utils/agentScripts
-
-/**
- * O IP pertence a faixa confiavel? Aceita prefixo ("192.168.1.") ou prefixo
- * sem o ponto final ("192.168.1") — neste caso exige o limite do octeto, para
- * "192.168.1" nao aceitar "192.168.10.5" como antes.
- */
 const isTrustedIp = (ip, range) => {
   if (!ip || !range) return false;
   const prefix = range.trim();
@@ -106,6 +101,7 @@ const buildJsonPayload = (currentText) => {
 
 const AgentManager = () => {
   const { currentUser } = useAuth();
+  const confirm = useConfirm();
   const tenantId = currentUser?.tenantId;
   const [jsonText, setJsonText] = useState(JSON.stringify(samplePayload, null, 2));
   const [preview, setPreview] = useState(null);
@@ -121,8 +117,8 @@ const AgentManager = () => {
   const [autoAcceptEnabled, setAutoAcceptEnabled] = useState(false);
   const [selectedSubmissions, setSelectedSubmissions] = useState([]);
   const [autoNamingPreview, setAutoNamingPreview] = useState(null);
-  const [deployMode, setDeployMode] = useState('portable'); // 'portable' ou 'service'
-  const [targetOS, setTargetOS] = useState('windows'); // 'windows', 'linux', 'mac'
+  const [deployMode, setDeployMode] = useState('portable');
+  const [targetOS, setTargetOS] = useState('windows');
 
   const pendingSubmissions = useMemo(
     () => submissions.filter((item) => item.status !== 'processed'),
@@ -148,7 +144,6 @@ const AgentManager = () => {
       }, { merge: true });
       toast.success('Configurações salvas.');
       setNamingConfig(configToSave);
-      // if (!silent) toast.success('Padrão de nomenclatura salvo.');
     } catch (error) {
       console.error(error);
       toast.error('Erro ao salvar nomenclatura do agente.');
@@ -159,15 +154,19 @@ const AgentManager = () => {
 
   const generateAgentToken = async () => {
     if (!tenantId) return toast.error('Sem contexto de inquilino.');
-    if (agentToken && !confirm('Gerar um novo token invalida o token atual: todos os agentes ja instalados deixam de reportar ate serem reconfigurados. Continuar?')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Gerar Novo Token',
+      message: 'Gerar um novo token invalida o token atual: todos os agentes já instalados deixam de reportar até serem reconfigurados. Continuar?',
+      danger: true,
+      confirmLabel: 'Gerar Novo Token',
+    });
+    if (!ok) return;
+
     setSavingConfig(true);
     try {
-      // O token nao mora mais em /settings (documento legivel pelo tenant inteiro).
       const newToken = await rotateAgentToken(tenantId, currentUser?.email || 'sistema');
       setAgentToken(newToken);
-      toast.success('Token de seguranca gerado. Reinstale os agentes com o novo script.');
+      toast.success('Token de segurança gerado. Reinstale os agentes com o novo script.');
     } catch (error) {
       console.error(error);
       toast.error('Erro ao gerar token.');
@@ -213,41 +212,61 @@ const AgentManager = () => {
       const settingsRef = doc(db, 'settings', tenantId);
       const snap = await getDoc(settingsRef);
       const autoAccept = snap.data()?.autoAcceptEnabled;
-      const ips = (snap.data()?.trustedIps || '').split(',').map(s=>s.trim()).filter(Boolean);
+      const ips = (snap.data()?.trustedIps || '').split(',').map(s => s.trim()).filter(Boolean);
 
-      const enriched = await Promise.all(
-        data.map(async (submission) => {
-          // Já processadas não precisam de pré-visualização: cada preview varre o
-          // inventário inteiro atrás de duplicatas.
-          if (submission.status === 'processed') return submission;
-          try {
-            const agentPreview = await previewAgentPayload(submission.payload || {}, { namingConfig: normalizedNamingConfig, tenantId });
-            // O IP fica em `normalized` (ou no topo do envio). A versão anterior lia
-            // `agentPreview.ipAddress`, sempre indefinido: o aceite automático
-            // nunca disparava.
-            const ip = agentPreview.normalized?.ipAddress || submission.ip_address || '';
+      // Carrega inventario de ativos e licenças UMA vez para evitar N+1 queries
+      const [assetsSnap, licenseList] = await Promise.all([
+        getDocs(query(collection(db, 'assets'), where('tenantId', '==', tenantId))),
+        getLicenses(tenantId).catch(() => []),
+      ]);
+      const existingAssets = assetsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const context = { existingAssets, existingLicenses: licenseList };
 
-            if (autoAccept && submission.status === 'pending' && ips.some((range) => isTrustedIp(ip, range))) {
-              // Ativo novo respeita o limite do plano; se estourar, o envio fica
-              // pendente para aprovação manual em vez de falhar em silêncio.
-              if (!agentPreview.duplicate) {
-                try {
-                  await assertWithinLimit(currentUser, 'assets', 1);
-                } catch {
-                  return { ...submission, preview: agentPreview };
-                }
+      const enriched = [];
+      for (const submission of data) {
+        if (submission.status === 'processed') {
+          enriched.push(submission);
+          continue;
+        }
+
+        try {
+          const agentPreview = await previewAgentPayload(submission.payload || {}, {
+            namingConfig: normalizedNamingConfig,
+            tenantId,
+            context,
+          });
+          const ip = agentPreview.normalized?.ipAddress || submission.ip_address || '';
+
+          if (autoAccept && submission.status === 'pending' && ips.some((range) => isTrustedIp(ip, range))) {
+            if (!agentPreview.duplicate) {
+              try {
+                await assertWithinLimit(currentUser, 'assets', 1);
+              } catch {
+                toast.warning('Limite do plano atingido no auto-aceite. O envio permanecerá pendente.');
+                enriched.push({ ...submission, preview: agentPreview });
+                continue;
               }
-              const result = await registerAgentAsset(submission.payload, { user: 'Agente ITAM (Auto)', namingConfig: normalizedNamingConfig, tenantId });
-              await markAgentSubmission(submission.id, { status: 'processed', result });
-              return { ...submission, status: 'processed', preview: agentPreview };
             }
-
-            return { ...submission, preview: agentPreview };
-          } catch {
-            return submission;
+            const result = await registerAgentAsset(submission.payload, {
+              user: 'Agente ITAM (Auto)',
+              namingConfig: normalizedNamingConfig,
+              tenantId,
+              context,
+            });
+            if (result.action === 'created' && result.newAsset) {
+              context.existingAssets.push(result.newAsset);
+            }
+            await markAgentSubmission(submission.id, { status: 'processed', result });
+            enriched.push({ ...submission, status: 'processed', preview: agentPreview });
+            continue;
           }
-        }),
-      );
+
+          enriched.push({ ...submission, preview: agentPreview });
+        } catch {
+          enriched.push(submission);
+        }
+      }
+
       setSubmissions(enriched);
     } catch (error) {
       console.error(error);
@@ -260,15 +279,14 @@ const AgentManager = () => {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-      const settingsRef = doc(db, 'settings', tenantId);
-      const snap = await getDoc(settingsRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        setNamingConfig(normalizeNamingConfig(data.agentNaming || {}));
-        setTrustedIps(data.trustedIps || '');
-        setAutoAcceptEnabled(!!data.autoAcceptEnabled);
-      }
-        // Token vem do cofre do inquilino; migra sozinho quem ainda esta no formato antigo.
+        const settingsRef = doc(db, 'settings', tenantId);
+        const snap = await getDoc(settingsRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          setNamingConfig(normalizeNamingConfig(data.agentNaming || {}));
+          setTrustedIps(data.trustedIps || '');
+          setAutoAcceptEnabled(!!data.autoAcceptEnabled);
+        }
         const stored = await migrateLegacyAgentToken(tenantId);
         setAgentToken(stored || '');
       } catch (error) {
@@ -289,7 +307,10 @@ const AgentManager = () => {
   }, [tenantId, normalizedNamingConfig]);
 
   useEffect(() => {
-    refreshAutoNamingPreview();
+    const timer = setTimeout(() => {
+      refreshAutoNamingPreview();
+    }, 400);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jsonText, normalizedNamingConfig, tenantId]);
 
@@ -309,23 +330,51 @@ const AgentManager = () => {
     if (selectedSubmissions.length === 0) return;
     setProcessing(true);
     try {
-      // Só os envios sem duplicata viram ativos novos e contam no limite do plano.
-      const creating = selectedSubmissions
-        .map((id) => pendingSubmissions.find((s) => s.id === id))
-        .filter((s) => s && !s.preview?.duplicate).length;
-      await assertWithinLimit(currentUser, 'assets', creating);
+      // Carrega o contexto uma vez antes de processar o lote
+      const [assetsSnap, licenseList] = await Promise.all([
+        getDocs(query(collection(db, 'assets'), where('tenantId', '==', tenantId))),
+        getLicenses(tenantId).catch(() => []),
+      ]);
+      const context = {
+        existingAssets: assetsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+        existingLicenses: licenseList,
+      };
+
+      let processedCount = 0;
       for (const id of selectedSubmissions) {
-        const submission = pendingSubmissions.find(s => s.id === id);
+        const submission = pendingSubmissions.find((s) => s.id === id);
         if (submission) {
+          const previewResult = await previewAgentPayload(submission.payload || {}, {
+            namingConfig: normalizedNamingConfig,
+            tenantId,
+            context,
+          });
+
+          if (!previewResult.duplicate) {
+            try {
+              await assertWithinLimit(currentUser, 'assets', 1);
+            } catch {
+              toast.error(`Limite do plano atingido após processar ${processedCount} ativo(s). Interrompendo lote.`);
+              break;
+            }
+          }
+
           const result = await registerAgentAsset(submission.payload, {
             user: currentUser?.email || 'Agente ITAM',
             namingConfig: normalizedNamingConfig,
             tenantId,
+            context,
           });
+
+          if (result.action === 'created' && result.newAsset) {
+            context.existingAssets.push(result.newAsset);
+          }
+
           await markAgentSubmission(submission.id, { status: 'processed', result });
+          processedCount++;
         }
       }
-      toast.success(`${selectedSubmissions.length} ativos incorporados com sucesso.`);
+      toast.success(`${processedCount} ativo(s) incorporado(s) com sucesso.`);
       setSelectedSubmissions([]);
       await loadInbox();
     } catch (error) {
@@ -340,6 +389,9 @@ const AgentManager = () => {
     setProcessing(true);
     try {
       const payload = preview?.payload || parsePayload(jsonText);
+      if (!preview?.duplicate) {
+        await assertWithinLimit(currentUser, 'assets', 1);
+      }
       const result = await registerAgentAsset(payload, {
         user: currentUser?.email || 'Agente ITAM',
         namingConfig: normalizedNamingConfig,
@@ -427,7 +479,10 @@ const AgentManager = () => {
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (evt) => setJsonText(evt.target.result);
+    reader.onload = (evt) => {
+      setJsonText(evt.target.result);
+      event.target.value = '';
+    };
     reader.readAsText(file);
   };
 
@@ -468,7 +523,7 @@ const AgentManager = () => {
               <div className="mt-4 flex bg-slate-800/50 p-1.5 rounded-xl border border-white/10 max-w-md relative z-10 gap-1">
                 <button 
                   onClick={() => setDeployMode('portable')}
-                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${deployMode === 'portable' ? 'bg-white dark:bg-slate-800 text-slate-900 shadow-md' : 'text-slate-400 hover:text-white'}`}
+                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${deployMode === 'portable' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
                 >
                   Modo Portátil (1-Click)
                 </button>
@@ -504,18 +559,18 @@ const AgentManager = () => {
               </h3>
               
               {deployMode === 'portable' ? (
-                <div className="space-y-3 text-sm text-gray-600 bg-blue-50 border border-blue-100 p-5 rounded-2xl">
-                  <p><strong>Uso ideal:</strong> Técnicos de suporte rodando o script via pendrive ou pasta de rede compartilhada durante manutenções.</p>
-                  <p><strong>Como usar:</strong> Basta dar dois cliques ou rodar o script no PowerShell da máquina alvo. Ele lerá os dados e os enviará diretamente para a nuvem da sua empresa.</p>
+                <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300 bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 p-5 rounded-2xl">
+                  <p><strong className="text-gray-900 dark:text-white">Uso ideal:</strong> Técnicos de suporte rodando o script via pendrive ou pasta de rede compartilhada durante manutenções.</p>
+                  <p><strong className="text-gray-900 dark:text-white">Como usar:</strong> Basta dar dois cliques ou rodar o script no PowerShell da máquina alvo. Ele lerá os dados e os enviará diretamente para a nuvem da sua empresa.</p>
                 </div>
               ) : (
-                <div className="space-y-3 text-sm text-gray-600 bg-slate-50 border border-gray-200 dark:border-slate-600 p-5 rounded-2xl">
-                  <p><strong>Uso ideal:</strong> Active Directory (GPO) ou Microsoft Intune para dezenas/centenas de máquinas.</p>
+                <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300 bg-slate-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-5 rounded-2xl">
+                  <p><strong className="text-gray-900 dark:text-white">Uso ideal:</strong> Active Directory (GPO) ou Microsoft Intune para dezenas/centenas de máquinas.</p>
                   <ol className="list-decimal pl-5 space-y-2 mt-2">
                     <li>Baixe o script <code>Instalar_Agente_Nexus_Background.ps1</code>.</li>
                     <li>Crie uma nova GPO de <strong>Startup Script</strong> (Configurações do Computador) no AD.</li>
                     <li>Aponte a GPO para executar este script de instalação.</li>
-                    <li><strong>Resultado:</strong> O script criará silenciosamente uma Tarefa Agendada no Windows. Sempre que um usuário logar, o inventário será feito e enviado invisivelmente.</li>
+                    <li><strong className="text-gray-900 dark:text-white">Resultado:</strong> O script criará silenciosamente uma Tarefa Agendada no Windows. Sempre que um usuário logar, o inventário será feito e enviado invisivelmente.</li>
                   </ol>
                 </div>
               )}
@@ -626,7 +681,7 @@ const AgentManager = () => {
               </div>
             </div>
 
-            <div className="p-6 md:p-8 bg-slate-50">
+            <div className="p-6 md:p-8 bg-slate-50 dark:bg-slate-900/50">
                <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 mb-4 text-sm"><FileJson size={16}/> Simulador de Payload (JSON)</h3>
                <textarea
                   value={jsonText}
@@ -652,7 +707,7 @@ const AgentManager = () => {
           
           {/* Caixa de Entrada (Fila do Agente) */}
           <section className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-3xl shadow-sm overflow-hidden flex flex-col h-[500px]">
-            <div className="p-4 md:p-5 border-b border-gray-100 dark:border-slate-700 flex flex-col gap-3 bg-slate-50">
+            <div className="p-4 md:p-5 border-b border-gray-100 dark:border-slate-700 flex flex-col gap-3 bg-slate-50 dark:bg-slate-900/50">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="font-black text-gray-900 dark:text-white text-lg tracking-tight">Fila de Recepção</h2>
@@ -725,12 +780,12 @@ const AgentManager = () => {
                 <h2 className="font-black text-gray-900 dark:text-white flex items-center gap-2"><Laptop size={18} className="text-indigo-500"/> Resultado da Análise</h2>
               </div>
               <div className="p-5 md:p-6 space-y-4">
-                <div className={`rounded-2xl p-4 border ${preview.duplicate ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                <div className={`rounded-2xl p-4 border ${preview.duplicate ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/40' : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/40'}`}>
                   <div className="flex items-center gap-2 font-black text-sm text-gray-900 dark:text-white">
-                    {preview.duplicate ? <AlertTriangle size={18} className="text-amber-600" /> : <CheckCircle size={18} className="text-emerald-600" />}
+                    {preview.duplicate ? <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400" /> : <CheckCircle size={18} className="text-emerald-600 dark:text-emerald-400" />}
                     {preview.duplicate ? 'Ativo Já Registrado' : 'Ativo Inédito'}
                   </div>
-                  <p className="text-xs text-gray-600 mt-2 leading-relaxed">
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 leading-relaxed">
                     {preview.duplicate
                       ? `Encontramos um registro com a chave ${preview.duplicate.matchField}. Se incorporado, o agente fará apenas a ATUALIZAÇÃO de hardware e dados.`
                       : 'Nenhum patrimônio ou número de série bateu com a base. Um novo registro será criado.'}

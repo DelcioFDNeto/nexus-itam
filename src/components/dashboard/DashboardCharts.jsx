@@ -49,7 +49,7 @@ const toneOf = (status) => getStatus(status).tone || 'slate';
 const brandChannels = () => {
   if (typeof window === 'undefined') return '79, 70, 229';
   const raw = getComputedStyle(document.documentElement).getPropertyValue('--color-brand-rgb').trim();
-  return raw ? raw.split(/s+/).join(', ') : '79, 70, 229';
+  return raw ? raw.replace(/,/g, ' ').trim().split(/\s+/).join(', ') : '79, 70, 229';
 };
 
 const DashboardCharts = ({ typeCounts, statusCounts, totalAssets }) => {

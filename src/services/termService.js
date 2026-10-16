@@ -37,6 +37,7 @@ import {
   TERM_KINDS,
   transferBlocker,
 } from '../utils/terms';
+import { today, toLocalDate } from '../utils/dates';
 
 const text = (value) => String(value ?? '').trim();
 
@@ -293,7 +294,7 @@ export const confirmTransferReceipt = async ({ term, user, receivedByName, recei
       ...(copy ? { signedCopy: copy } : {}),
       receipt: {
         receivedByName: receiverName,
-        receivedAt: text(receivedAt) || new Date().toISOString().slice(0, 10),
+        receivedAt: text(receivedAt) || today(),
         confirmedBy: actor.email,
         confirmedByName: actor.name,
         confirmedAt: serverTimestamp(),
@@ -450,12 +451,7 @@ export const concludeTerm = async ({ term, user, signedCopy = null, receipt = {}
 // Leitura
 // -----------------------------------------------------------------------------
 
-const toDate = (value) => {
-  if (!value) return null;
-  if (typeof value.toDate === 'function') return value.toDate();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
+const toDate = (value) => toLocalDate(value);
 
 const withDates = (d) => {
   const data = d.data();

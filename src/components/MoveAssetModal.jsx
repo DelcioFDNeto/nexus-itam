@@ -1,62 +1,71 @@
 // src/components/MoveAssetModal.jsx
 import React, { useState, useEffect } from 'react';
-import { X, MapPin, User, Calendar, Truck, Search, ArrowRight, ArrowRightLeft } from 'lucide-react';
+import { X, MapPin, User, Truck, Search, ArrowRight, ArrowRightLeft, RefreshCcw } from 'lucide-react';
 import LocationSelect from './LocationSelect';
 import { getEmployees } from '../services/employeeService';
 import AssetIcon from './AssetIcon';
 import { useAuth } from '../contexts/AuthContext';
+import { today } from '../utils/dates';
 import { toast } from 'sonner';
 
 const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
   const { currentUser } = useAuth();
   const [employees, setEmployees] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
   
   const [formData, setFormData] = useState({
     newLocation: '',
     newResponsible: '',
     newCpf: '',
-    date: new Date().toISOString().split('T')[0],
+    date: today(),
     reason: ''
   });
 
   useEffect(() => {
     if (isOpen && currentUser?.tenantId) {
-        const fetchEmps = async () => {
-            const data = await getEmployees(currentUser.tenantId);
-            setEmployees(data);
-            // Inicializa o formulário após carregar os employees
-            setFormData({
-                newLocation: '',
-                newResponsible: asset?.assignedTo || '',
-                newCpf: '',
-                date: new Date().toISOString().split('T')[0],
-                reason: ''
-            });
-        };
-        fetchEmps();
+      const fetchEmps = async () => {
+        const data = await getEmployees(currentUser.tenantId);
+        setEmployees(data);
+        setFormData({
+          newLocation: '',
+          newResponsible: asset?.assignedTo || '',
+          newCpf: '',
+          date: today(),
+          reason: ''
+        });
+      };
+      fetchEmps();
     }
   }, [isOpen, asset, currentUser]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.newLocation) return toast.error('Selecione o novo local.');
-    onConfirm(formData);
-    onClose();
+    setSubmitting(true);
+    try {
+      await onConfirm(formData);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      toast.error('Erro ao transferir ativo.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleResponsibleSelect = (e) => {
-      const selectedName = e.target.value;
-      const emp = employees.find(ep => ep.name === selectedName);
-      setFormData({ ...formData, newResponsible: selectedName, newCpf: emp?.cpf || '' });
+    const selectedName = e.target.value;
+    const emp = employees.find(ep => ep.name === selectedName);
+    setFormData({ ...formData, newResponsible: selectedName, newCpf: emp?.cpf || '' });
   };
 
   const isCustomResponsible = formData.newResponsible && !employees.find(e => e.name === formData.newResponsible);
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200 dark:border-slate-600">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200 dark:border-slate-700">
         
         {/* Header Modal */}
         <div className="bg-brand p-5 flex justify-between items-center text-white shadow-md">
@@ -69,120 +78,126 @@ const MoveAssetModal = ({ isOpen, onClose, asset, onConfirm }) => {
               {asset?.model} ({asset?.internalId})
             </p>
           </div>
-          <button onClick={onClose} aria-label="Fechar" className="p-2 hover:bg-white/15 rounded-lg transition-colors text-white">
+          <button disabled={submitting} onClick={onClose} aria-label="Fechar" className="p-2 hover:bg-white/15 rounded-lg transition-colors text-white disabled:opacity-50">
             <X size={20} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           
-          {/* --- QUADRO DE PRÉVIA (ORIGEM -> DESTINO) --- */}
+          {/* --- QUADRO DE PREVIA (ORIGEM -> DESTINO) --- */}
           <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
-              
-              {/* ORIGEM (ATUAL) */}
-              <div className="bg-gray-100 dark:bg-slate-900 p-3 rounded-xl border border-gray-200 dark:border-slate-600 flex flex-col h-full justify-center opacity-70">
-                  <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Origem (Atual)</span>
-                  <div className="flex items-center gap-1.5 text-gray-700 dark:text-gray-200 font-bold text-xs mb-1">
-                      <MapPin size={12}/> <span className="truncate">{asset?.location || "N/A"}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 font-medium text-[10px]">
-                      <User size={12}/> <span className="truncate">{asset?.assignedTo || "Sem resp."}</span>
-                  </div>
+            
+            {/* ORIGEM (ATUAL) */}
+            <div className="bg-gray-100 dark:bg-slate-900 p-3 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col h-full justify-center opacity-70">
+              <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Origem (Atual)</span>
+              <div className="flex items-center gap-1.5 text-gray-700 dark:text-gray-200 font-bold text-xs mb-1">
+                <MapPin size={12}/> <span className="truncate">{asset?.location || 'N/A'}</span>
               </div>
+              <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 font-medium text-[10px]">
+                <User size={12}/> <span className="truncate">{asset?.assignedTo || 'Sem resp.'}</span>
+              </div>
+            </div>
 
-              {/* SETA */}
-              <div className="flex justify-center text-gray-300">
-                  <ArrowRight size={24} />
-              </div>
+            {/* SETA */}
+            <div className="flex justify-center text-gray-300 dark:text-slate-600">
+              <ArrowRight size={24} />
+            </div>
 
-              {/* DESTINO (NOVO) */}
-              <div className={`p-3 rounded-xl border flex flex-col h-full justify-center transition-all ${formData.newLocation ? 'bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900' : 'bg-white dark:bg-slate-800 border-dashed border-gray-300 dark:border-slate-600'}`}>
-                  <span className={`text-[10px] font-black uppercase tracking-wider mb-1 ${formData.newLocation ? 'text-blue-600' : 'text-gray-300'}`}>Destino (Novo)</span>
-                  <div className={`flex items-center gap-1.5 font-bold text-xs mb-1 ${formData.newLocation ? 'text-blue-900 dark:text-blue-200' : 'text-gray-300'}`}>
-                      <MapPin size={12}/> <span className="truncate">{formData.newLocation || "Selecione..."}</span>
-                  </div>
-                  <div className={`flex items-center gap-1.5 font-medium text-[10px] ${formData.newResponsible ? 'text-blue-700' : 'text-gray-300'}`}>
-                      <User size={12}/> <span className="truncate">{formData.newResponsible || "..."}</span>
-                  </div>
+            {/* DESTINO (NOVO) */}
+            <div className={`p-3 rounded-xl border flex flex-col h-full justify-center transition-all ${formData.newLocation ? 'bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900' : 'bg-white dark:bg-slate-800 border-dashed border-gray-300 dark:border-slate-700'}`}>
+              <span className={`text-[10px] font-black uppercase tracking-wider mb-1 ${formData.newLocation ? 'text-blue-600 dark:text-blue-400' : 'text-gray-300 dark:text-slate-500'}`}>Destino (Novo)</span>
+              <div className={`flex items-center gap-1.5 font-bold text-xs mb-1 ${formData.newLocation ? 'text-blue-900 dark:text-blue-200' : 'text-gray-300 dark:text-slate-500'}`}>
+                <MapPin size={12}/> <span className="truncate">{formData.newLocation || 'Selecione...'}</span>
               </div>
+              <div className={`flex items-center gap-1.5 font-medium text-[10px] ${formData.newResponsible ? 'text-blue-700 dark:text-blue-300' : 'text-gray-300 dark:text-slate-500'}`}>
+                <User size={12}/> <span className="truncate">{formData.newResponsible || '...'}</span>
+              </div>
+            </div>
           </div>
 
-          <p className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-900 rounded-xl px-3 py-2">
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-900 rounded-xl px-3 py-2 border border-gray-100 dark:border-slate-700/60">
             Movimentação interna, sem termo. Para enviar a uma loja com Termo de Transferência e Recebimento (o ativo fica em trânsito até a loja conferir), use <strong>Enviar p/ loja</strong>.
           </p>
 
-          {/* --- FORMULÁRIO --- */}
+          {/* --- FORMULARIO --- */}
           <div className="space-y-4">
-              
-              {/* Seleção de Local (LISTA COMPLETA) */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Novo Local / Filial</label>
-                <div className="relative">
-                    <LocationSelect
-                        value={formData.newLocation}
-                        onChange={(e) => setFormData({ ...formData, newLocation: e.target.value })}
-                        name="newLocation"
-                        emptyLabel="Selecione o destino..."
-                        showManageLink
-                        className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 rounded-xl outline-none focus:border-brand font-bold bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-100 appearance-none text-sm transition-all focus:shadow-md"
-                    />
-                    <div className="absolute right-4 top-3.5 pointer-events-none text-gray-400 dark:text-gray-500">▼</div>
-                </div>
+            
+            {/* Selecao de Local */}
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Novo Local / Filial</label>
+              <div className="relative">
+                <LocationSelect
+                  value={formData.newLocation}
+                  onChange={(e) => setFormData({ ...formData, newLocation: e.target.value })}
+                  name="newLocation"
+                  emptyLabel="Selecione o destino..."
+                  showManageLink
+                  className="w-full p-3 border-2 border-gray-200 dark:border-slate-700 rounded-xl outline-none focus:border-brand font-bold bg-white dark:bg-slate-900 text-gray-800 dark:text-gray-100 appearance-none text-sm transition-all focus:shadow-md"
+                />
+                <div className="absolute right-4 top-3.5 pointer-events-none text-gray-400 dark:text-gray-500">▼</div>
               </div>
+            </div>
 
-              {/* Novo Responsável */}
-              <div>
-                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Novo Responsável</label>
-                <div className="relative">
-                    <select 
-                        value={formData.newResponsible} 
-                        onChange={handleResponsibleSelect}
-                        className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 rounded-xl outline-none focus:border-brand font-medium bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-100 appearance-none pr-10 text-sm"
-                    >
-                        <option value="">Manter atual / Sem responsável</option>
-                        {employees.map(emp => (
-                            <option key={emp.id} value={emp.name}>{emp.name} - {emp.sector}</option>
-                        ))}
-                        {isCustomResponsible && <option value={formData.newResponsible}>{formData.newResponsible}</option>}
-                    </select>
-                    <Search size={16} className="absolute right-4 top-3.5 text-gray-400 dark:text-gray-500 pointer-events-none"/>
-                </div>
-                {(!formData.newResponsible || isCustomResponsible) && (
-                    <input 
-                        value={formData.newResponsible} 
-                        onChange={(e) => setFormData({...formData, newResponsible: e.target.value})} 
-                        className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 rounded-xl outline-none focus:border-brand text-sm mt-2 bg-gray-50 dark:bg-slate-900 placeholder-gray-400 font-bold text-gray-700 dark:text-gray-200 animate-in slide-in-from-top-1"
-                        placeholder="Ou digite o nome manualmente..." 
-                    />
-                )}
+            {/* Novo Responsavel */}
+            <div>
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Novo Responsável</label>
+              <div className="relative">
+                <select 
+                  value={formData.newResponsible} 
+                  onChange={handleResponsibleSelect}
+                  className="w-full p-3 border-2 border-gray-200 dark:border-slate-700 rounded-xl outline-none focus:border-brand font-medium bg-white dark:bg-slate-900 text-gray-800 dark:text-gray-100 appearance-none pr-10 text-sm"
+                >
+                  <option value="">Manter atual / Sem responsável</option>
+                  {employees.map(emp => (
+                    <option key={emp.id} value={emp.name}>{emp.name} - {emp.sector}</option>
+                  ))}
+                  {isCustomResponsible && <option value={formData.newResponsible}>{formData.newResponsible}</option>}
+                </select>
+                <Search size={16} className="absolute right-4 top-3.5 text-gray-400 dark:text-gray-500 pointer-events-none"/>
               </div>
+              {(!formData.newResponsible || isCustomResponsible) && (
+                <input 
+                  value={formData.newResponsible} 
+                  onChange={(e) => setFormData({...formData, newResponsible: e.target.value})} 
+                  className="w-full p-3 border-2 border-gray-200 dark:border-slate-700 rounded-xl outline-none focus:border-brand text-sm mt-2 bg-gray-50 dark:bg-slate-900 placeholder-gray-400 font-bold text-gray-700 dark:text-gray-200 animate-in slide-in-from-top-1"
+                  placeholder="Ou digite o nome manualmente..." 
+                />
+              )}
+            </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Data</label>
-                    <input 
-                        type="date"
-                        required
-                        value={formData.date} 
-                        onChange={(e) => setFormData({...formData, date: e.target.value})} 
-                        className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 rounded-xl outline-none focus:border-brand text-sm font-bold text-gray-700 dark:text-gray-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Motivo</label>
-                    <input 
-                        value={formData.reason} 
-                        onChange={(e) => setFormData({...formData, reason: e.target.value})} 
-                        className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 rounded-xl outline-none focus:border-brand text-sm font-bold text-gray-700 dark:text-gray-200"
-                        placeholder="Ex: Promoção..." 
-                    />
-                  </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Data</label>
+                <input 
+                  type="date"
+                  required
+                  max={today()}
+                  value={formData.date} 
+                  onChange={(e) => setFormData({...formData, date: e.target.value})} 
+                  className="w-full p-3 border-2 border-gray-200 dark:border-slate-700 rounded-xl outline-none focus:border-brand text-sm font-bold bg-white dark:bg-slate-900 text-gray-700 dark:text-gray-200"
+                />
               </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Motivo</label>
+                <input 
+                  value={formData.reason} 
+                  onChange={(e) => setFormData({...formData, reason: e.target.value})} 
+                  className="w-full p-3 border-2 border-gray-200 dark:border-slate-700 rounded-xl outline-none focus:border-brand text-sm font-bold bg-white dark:bg-slate-900 text-gray-700 dark:text-gray-200"
+                  placeholder="Ex: Mudança de setor..." 
+                />
+              </div>
+            </div>
           </div>
 
           <div className="pt-2">
-            <button type="submit" className="w-full bg-black text-white dark:bg-white dark:text-slate-900 py-4 rounded-xl font-black hover:bg-gray-900 transition shadow-lg flex justify-center items-center gap-2 uppercase tracking-wide text-sm group">
-                <ArrowRightLeft size={18} className="group-hover:scale-110 transition-transform"/> Confirmar Transferência
+            <button 
+              type="submit" 
+              disabled={submitting}
+              className="w-full bg-black text-white dark:bg-white dark:text-slate-900 py-4 rounded-xl font-black hover:bg-gray-900 transition shadow-lg flex justify-center items-center gap-2 uppercase tracking-wide text-sm group disabled:opacity-50"
+            >
+              {submitting ? <RefreshCcw size={18} className="animate-spin" /> : <ArrowRightLeft size={18} className="group-hover:scale-110 transition-transform"/>}
+              {submitting ? 'Transferindo…' : 'Confirmar Transferência'}
             </button>
           </div>
 

@@ -16,6 +16,8 @@ import { FEATURES, formatUsage, hasFeature, usageRatio, usageTone } from '../uti
 import { contrastRatio, rgbChannels } from '../utils/color';
 import { safeCssColor, safeImageUrl } from '../utils/sanitize';
 import { ARRIVAL_STATUSES, DEFAULT_TERM_CLAUSES, DEFAULT_TRANSFER_CLAUSES } from '../utils/terms';
+import { isoDay } from '../utils/dates';
+import { useConfirm } from '../components/ConfirmDialog';
 import { invalidateTenantSettings } from '../hooks/useTenantSettings';
 import LocationManager from '../components/settings/LocationManager';
 import AssetTypeManager from '../components/settings/AssetTypeManager';
@@ -112,6 +114,7 @@ const BrandPreview = ({ companyName, logoUrl, color }) => {
 
 const SettingsPage = () => {
   const { currentUser, refreshProfile } = useAuth();
+  const confirm = useConfirm();
   const { theme, setTheme, accentColor, setAccentColor, tenantBrand } = useTheme();
   const tenantId = currentUser?.tenantId;
 
@@ -255,7 +258,7 @@ const SettingsPage = () => {
     setBackupLoading(true);
     try {
       const backupData = await generateFullBackup(tenantId, false);
-      downloadJson(backupData, `BACKUP_NEXUS_${new Date().toISOString().slice(0, 10)}.json`);
+      downloadJson(backupData, `BACKUP_NEXUS_${isoDay()}.json`);
       toast.success('Backup gerado.');
     } catch (error) {
       console.error(error);
@@ -287,6 +290,7 @@ const SettingsPage = () => {
   const handleFile = (file) => {
     if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
       toast.error('Arquivo inválido. Envie um JSON.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
     const reader = new FileReader();
@@ -308,6 +312,8 @@ const SettingsPage = () => {
         });
       } catch (err) {
         toast.error(`Erro ao ler o arquivo JSON: ${err.message}`);
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
     reader.readAsText(file);
@@ -323,15 +329,29 @@ const SettingsPage = () => {
   const confirmRestore = async () => {
     if (!importSummary) return;
     const summary = importSummary;
+
+    const confirmed = await confirm({
+      title: 'Confirmar Restauração de Backup',
+      message: 'Registros com o mesmo ID serão atualizados e os demais serão criados. Deseja prosseguir?',
+      danger: true,
+      confirmLabel: 'Restaurar Dados'
+    });
+    if (!confirmed) return;
+
     setImportSummary(null);
     setRestoreLoading(true);
     setRestoreProgress(0);
     setRestoreStatus('Inicializando...');
     try {
-      const stats = await restoreBackup(summary.rawData, (progress, message) => {
-        setRestoreProgress(progress);
-        setRestoreStatus(message);
-      }, tenantId);
+      const stats = await restoreBackup(
+        summary.rawData,
+        (progress, message) => {
+          setRestoreProgress(progress);
+          setRestoreStatus(message);
+        },
+        tenantId,
+        currentUser
+      );
       const notes = [
         `Documentos restaurados: ${stats.totalDocsProcessed}`,
         stats.rejectedDocs ? `Recusados (outra empresa ou ID inválido): ${stats.rejectedDocs}` : null,
@@ -345,6 +365,7 @@ const SettingsPage = () => {
     } finally {
       setRestoreLoading(false);
       setRestoreStatus('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -723,7 +744,7 @@ const SettingsPage = () => {
           </Card>
 
           {canBackup && (
-            <Card icon={Download} title="Backup" subtitle="Arquivo JSON com todos os dados da empresa">
+            <Card icon={Download} title="Backup" subtitle="Arquivo JSON com os dados da empresa (exceto cópias de PDFs de termos assinados)">
               <button onClick={handleFullBackup} disabled={backupLoading} className="w-full bg-blue-600 text-white px-5 py-3 rounded-xl font-bold hover:bg-blue-700 flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-60">
                 {backupLoading ? <RefreshCcw className="animate-spin" size={18} /> : <FileJson size={18} />}
                 {backupLoading ? 'Gerando arquivo...' : 'Baixar backup completo'}
@@ -754,16 +775,18 @@ const SettingsPage = () => {
                     <button type="button" onClick={handleDownloadTemplate} className="text-[10px] bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 px-2 py-1 rounded font-bold text-gray-700 dark:text-gray-200">Baixar modelo</button>
                   </div>
                   <pre className="bg-gray-900 text-gray-100 p-3 rounded-xl overflow-x-auto font-mono text-[11px]">{`{
-  "meta": { "version": "2.0", "date": "2026-01-01T10:00:00Z" },
+  "meta": { "version": "2.2", "date": "2026-01-01T10:00:00Z" },
   "data": {
     "assets": [ { "internalId": "NB-001", "model": "Dell", ... } ],
     "employees": [ ... ],
-    "history": [ ... ]
+    "history": [ ... ],
+    "locations": [ ... ],
+    "terms": [ ... ]
   }
 }`}</pre>
                   <p className="flex items-start gap-1.5 text-orange-700 bg-orange-50 dark:bg-orange-950/30 dark:text-orange-300 p-2.5 rounded-lg">
                     <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-                    Registros com o mesmo ID são atualizados; os demais são criados. Usuários, planos e configurações nunca são restaurados.
+                    Registros com o mesmo ID são atualizados; os demais são criados. Usuários, planos, configurações de segurança e cópias pesadas de termos não entram na restauração.
                   </p>
                 </div>
               )}

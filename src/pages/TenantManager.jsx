@@ -23,6 +23,7 @@ import { TENANT_STATUSES } from '../utils/entitlements';
 import { brl, brlCompact, relativeDays, tenantAlerts } from '../utils/consoleMetrics';
 import { PlanBadge, TenantStatusBadge, UsageBar } from '../components/console/consoleUi';
 import TenantDetailDrawer from '../components/console/TenantDetailDrawer';
+import { useConfirm } from '../components/ConfirmDialog';
 
 const EMPTY_PROVISION = { companyName: '', adminName: '', email: '', password: '', plan: 'starter' };
 
@@ -30,6 +31,7 @@ const fieldClass =
   'w-full px-3 py-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand text-sm font-semibold text-gray-900 dark:text-white';
 
 const TenantManager = () => {
+  const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
   const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -99,7 +101,14 @@ const TenantManager = () => {
 
   const quickToggle = async (tenant) => {
     const suspend = ['active', 'trial'].includes(tenant.status);
-    if (!confirm(`${suspend ? 'Suspender' : 'Reativar'} o acesso de "${tenant.companyName || tenant.id}"?`)) return;
+    const verb = suspend ? 'Suspender' : 'Reativar';
+    const ok = await confirm({
+      title: `${verb} Empresa`,
+      message: `${verb} o acesso de "${tenant.companyName || tenant.id}"?`,
+      danger: suspend,
+      confirmLabel: verb,
+    });
+    if (!ok) return;
     try {
       await updateTenant(tenant.id, { status: suspend ? 'suspended' : 'active' });
       toast.success(suspend ? 'Empresa suspensa: acesso bloqueado.' : 'Empresa reativada.');
