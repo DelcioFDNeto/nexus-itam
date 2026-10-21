@@ -25,7 +25,7 @@ import MoveAssetModal from "../components/MoveAssetModal";
 import MaintenanceModal from "../components/MaintenanceModal";
 import WriteOffModal from "../components/WriteOffModal";
 import StatusBadge from "../components/StatusBadge";
-import { isRetired, warrantyStatus, WARRANTY_BADGE, WARRANTY_LABEL } from "../utils/assetStatus";
+import { isRetired, lifecycleBlocker, warrantyStatus, WARRANTY_BADGE, WARRANTY_LABEL } from "../utils/assetStatus";
 import { useAuth } from "../contexts/AuthContext";
 import { useConfirm } from "../components/ConfirmDialog";
 import { safeLinkUrl } from "../utils/sanitize";
@@ -36,6 +36,7 @@ import { buildLabelsDocument, printHtml, resolvePrintBranding } from "../utils/p
 import TermIssueModal from "../components/terms/TermIssueModal";
 import TransferModal from "../components/terms/TransferModal";
 import AssetTermsCard from "../components/terms/AssetTermsCard";
+import AgentInventoryCard from "../components/assets/AgentInventoryCard";
 import { toast } from "sonner";
 import {
   Archive,
@@ -210,14 +211,14 @@ const AssetDetail = () => {
       toast.success(`Ativo movido para ${moveData.newLocation}.`);
     } catch (err) {
       console.error(err);
-      toast.error("Erro ao movimentar o ativo.");
+      toast.error(err.message || "Erro ao movimentar o ativo.");
     }
   };
 
   const handleMaintenanceConfirm = async (maintData) => {
     const userEmail = currentUser?.email || "Usuário Desconhecido";
     const tenantId = asset?.tenantId || currentUser?.tenantId;
-    await registerMaintenance(id, { ...maintData, tenantId }, userEmail);
+    await registerMaintenance(id, { ...maintData, tenantId, asset }, userEmail);
   };
 
   const handleSaveNotes = async () => {
@@ -514,14 +515,18 @@ const AssetDetail = () => {
               </button>
               <button
                 onClick={() => setIsMoveModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
+                disabled={Boolean(lifecycleBlocker(asset, "movimentar"))}
+                title={lifecycleBlocker(asset, "movimentar") || "Movimentar"}
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all hover:scale-105 active:scale-95 whitespace-nowrap disabled:opacity-40 disabled:hover:scale-100"
               >
                 <ArrowRightLeft size={16} />{" "}
                 <span className="hidden sm:inline">Movimentar</span>
               </button>
               <button
                 onClick={() => setIsMaintModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap"
+                disabled={Boolean(lifecycleBlocker(asset, "enviar para manutenção"))}
+                title={lifecycleBlocker(asset, "enviar para manutenção") || "Manutenção"}
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap disabled:opacity-40"
               >
                 <Wrench size={16} />{" "}
                 <span className="hidden sm:inline">Manutenção</span>
@@ -581,7 +586,9 @@ const AssetDetail = () => {
             ) : (
               <button
                 onClick={() => setIsWriteOffOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap"
+                disabled={Boolean(asset?.transit)}
+                title={asset?.transit ? lifecycleBlocker(asset, "dar baixa") : "Dar baixa"}
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all whitespace-nowrap disabled:opacity-40"
               >
                 <Archive size={16} />{" "}
                 <span className="hidden sm:inline">Dar baixa</span>
@@ -1049,6 +1056,7 @@ const AssetDetail = () => {
               )}
             </div>
           </div>
+          {asset.agent && <AgentInventoryCard asset={{ ...asset, id }} />}
         </div>
 
         {/* Coluna secundária reservada exclusivamente para a linha do tempo e registro do que aconteceu no sistema */}

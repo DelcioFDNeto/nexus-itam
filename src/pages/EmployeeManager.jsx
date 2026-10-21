@@ -63,7 +63,7 @@ const EmployeeManager = () => {
 
   // Molde padrão para dar reset no formulário sem precisar limpar campo por campo
   const initialForm = {
-    name: '', role: '', email: '', cpf: '', branch: '', sectorId: '',
+    name: '', role: '', email: '', login: '', cpf: '', branch: '', sectorId: '',
     sectorName: '', manager: '', description: ''
   };
   const [formData, setFormData] = useState(initialForm);
@@ -119,6 +119,7 @@ const EmployeeManager = () => {
               name: item.name,
               role: item.role,
               email: item.email,
+              login: item.login || '',
               cpf: item.cpf,
               branch: item.branch,
               sectorId: item.sector // Transporta o setor em que o cara trabalha; como às vezes vem apenas o nome, acopla no ID mesmo assim
@@ -144,6 +145,7 @@ const EmployeeManager = () => {
                 name: formData.name.trim(),
                 role: formData.role.trim(),
                 email: formData.email.trim(),
+                login: (formData.login || '').trim(),
                 cpf: formData.cpf.trim(),
                 branch: formData.branch,
                 sector: formData.sectorId || 'Geral',
@@ -445,6 +447,11 @@ const EmployeeManager = () => {
                     <div>
                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Email</label>
                         <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-3 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl outline-none focus:border-black dark:focus:border-brand" />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Login de rede (Windows)</label>
+                        <input value={formData.login} onChange={e => setFormData({...formData, login: e.target.value})} placeholder="Ex.: joao.silva" className="w-full p-3 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white rounded-xl outline-none focus:border-black dark:focus:border-brand font-mono" />
+                        <p className="mt-1 text-[10px] text-gray-400">O Agente ITAM usa para saber quem está usando cada máquina. Sem ele, tenta pelo e-mail e pelo nome.</p>
                     </div>
                     <div>
                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">CPF</label>

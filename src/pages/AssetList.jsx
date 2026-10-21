@@ -7,7 +7,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { safeSpreadsheetCell } from "../utils/sanitize";
-import { ACTIVE_STATUSES, ASSET_STATUSES, isRetired } from "../utils/assetStatus";
+import { ASSET_STATUSES, MANUAL_STATUSES, isRetired, lifecycleBlocker } from "../utils/assetStatus";
 import { getAssetType } from "../utils/assetTypes";
 import { can } from "../utils/permissions";
 import { hasFeature } from "../utils/entitlements";
@@ -264,9 +264,16 @@ const AssetList = () => {
 
   // Métodos que manipulam a API/banco de dados ou processam a lista num contexto maior
   const handleBulkStatusChange = async (newStatus) => {
+    // Em transito so muda pela transferencia; baixado precisa ser reativado.
+    const eligible = selectedAssetsData.filter((asset) => !lifecycleBlocker(asset));
+    const blocked = selectedAssetsData.length - eligible.length;
+    if (eligible.length === 0) {
+      toast.error("Nenhum dos ativos selecionados pode mudar de status: estão em trânsito ou baixados.");
+      return;
+    }
     const ok = await confirm({
       title: "Alteração em Massa",
-      message: `Mudar status de ${selectedIds.length} ativo(s) para "${newStatus}"?`,
+      message: `Mudar status de ${eligible.length} ativo(s) para "${newStatus}"?${blocked ? ` ${blocked} em trânsito ou baixado(s) ficarão de fora.` : ""}`,
       confirmLabel: "Confirmar Alteração",
     });
     if (!ok) return;
@@ -275,7 +282,7 @@ const AssetList = () => {
     // Sem tenantId o registro na timeline era recusado pelas regras: o status
     // mudava, mas a tela acusava erro e o historico ficava sem a alteracao.
     const results = await Promise.allSettled(
-      selectedAssetsData.map((asset) =>
+      eligible.map((asset) =>
         updateAsset(
           asset.id,
           { status: newStatus, tenantId: asset.tenantId || tenantId },
@@ -355,7 +362,7 @@ const AssetList = () => {
   // Lista unica de status, vinda do catalogo de ciclo de vida.
   const statusOptions = ASSET_STATUSES.map((st) => st.id);
   // Em massa, só status ativos: baixa exige data e motivo (tela de detalhe).
-  const bulkStatusOptions = ACTIVE_STATUSES.map((st) => st.id);
+  const bulkStatusOptions = MANUAL_STATUSES.map((st) => st.id);
 
   if (loading) return <AssetListSkeleton />;
 

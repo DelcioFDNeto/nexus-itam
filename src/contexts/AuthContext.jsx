@@ -8,7 +8,7 @@ import {
   sendPasswordResetEmail,
   createUserWithEmailAndPassword,
 } from 'firebase/auth';
-import { doc, getDoc, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { MASTER_TENANT } from '../utils/permissions';
 import { isTenantBlocked, isUserBlocked, resolveEntitlements } from '../utils/entitlements';
 import { safeCssColor, safeImageUrl } from '../utils/sanitize';
@@ -47,6 +47,30 @@ const readDoc = async (path) => {
   }
 };
 
+// Ultima empresa deste usuario neste navegador. E so uma DICA para buscar
+// empresa e identidade visual em paralelo com o perfil; a autorizacao continua
+// vindo do perfil/claims (dica errada = leitura descartada e refeita).
+const tenantHintKey = (uid) => `nexus:tenant-hint:${uid}`;
+const readTenantHint = (uid) => {
+  try {
+    return localStorage.getItem(tenantHintKey(uid));
+  } catch {
+    return null;
+  }
+};
+const writeTenantHint = (uid, tenantId) => {
+  try {
+    localStorage.setItem(tenantHintKey(uid), tenantId);
+  } catch {
+    /* modo privado: so nao guarda a dica */
+  }
+};
+
+const readPlans = () =>
+  getDocs(collection(db, 'plans'))
+    .then((snap) => Object.fromEntries(snap.docs.map((d) => [d.id, d.data()])))
+    .catch(() => ({}));
+
 /**
  * Resolve o usuario autenticado em uma sessao do app.
  * Nunca lanca: falhas viram `error` (texto para a UI) com tenant nulo, que as
@@ -64,6 +88,15 @@ const resolveSession = async (user) => {
     const tokenResult = await user.getIdTokenResult();
     const claimTenantId = tokenResult.claims.tenantId || null;
     const claimRole = tokenResult.claims.role || null;
+
+    // Leituras em paralelo: antes eram 3 idas ao Firestore em sequencia
+    // (perfil -> empresa/identidade -> plano) e a tela de login ficava parada
+    // nesse intervalo, parecendo que tinha voltado ao inicio.
+    const hintedTenant = claimTenantId || readTenantHint(user.uid);
+    const plansPromise = readPlans();
+    const prefetched = hintedTenant
+      ? Promise.all([readDoc(['tenants', hintedTenant]), readDoc(['settings', hintedTenant])])
+      : null;
 
     const userSnap = await getDoc(doc(db, 'users', user.uid));
     const profile = userSnap.exists() ? userSnap.data() : null;
@@ -88,10 +121,10 @@ const resolveSession = async (user) => {
 
     // 2) Empresa, identidade visual e plano. Falhas de leitura aqui nao
     //    bloqueiam: o bloqueio real esta nas regras do Firestore.
-    const [tenant, settings] = await Promise.all([
-      readDoc(['tenants', tenantId]),
-      readDoc(['settings', tenantId]),
-    ]);
+    const [tenant, settings] = prefetched && hintedTenant === tenantId
+      ? await prefetched
+      : await Promise.all([readDoc(['tenants', tenantId]), readDoc(['settings', tenantId])]);
+    writeTenantHint(user.uid, tenantId);
 
     if (tenantId !== MASTER_TENANT && tenant && isTenantBlocked(tenant.status)) {
       return denied(
@@ -102,7 +135,8 @@ const resolveSession = async (user) => {
       );
     }
 
-    const plan = tenant?.plan ? await readDoc(['plans', String(tenant.plan).toLowerCase()]) : null;
+    const plans = await plansPromise;
+    const plan = tenant?.plan ? plans[String(tenant.plan).toLowerCase()] || null : null;
     const entitlements = resolveEntitlements({ tenant, plan });
     const branding = settings || {};
 

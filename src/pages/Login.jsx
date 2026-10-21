@@ -26,7 +26,10 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  // Do clique ate o painel abrir: o signIn termina antes de o perfil carregar,
+  // e nesse intervalo o formulario reaparecia parado — parecia que a pagina
+  // tinha recarregado e voltado para o login.
+  const [signingIn, setSigningIn] = useState(false);
 
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
@@ -48,17 +51,34 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+    setSigningIn(true);
+    // Baixa a tela inicial enquanto o perfil e validado.
+    if (destination === '/dashboard') import('./Dashboard').catch(() => {});
     try {
-      setError('');
-      setLoading(true);
       await login(email, password);
+      // Sucesso: continua em "Entrando…" ate o efeito acima navegar.
     } catch (err) {
       console.error(err);
       setError(loginErrorMessage(err));
-    } finally {
-      setLoading(false);
+      setSigningIn(false);
     }
   };
+
+  // Sessao salva sendo validada (reabrir o app) ou login em andamento.
+  if (authLoading || (signingIn && !error)) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4" aria-busy="true">
+        <div className="flex flex-col items-center gap-4 opacity-0 animate-[loginFadeUp_0.4s_ease-out_0.25s_both]" role="status">
+          <Logo size="lg" className="drop-shadow-[0_0_15px_rgba(79,70,229,0.5)]" />
+          <Orbit className="animate-spin text-brand" size={22} />
+          <p className="text-[11px] font-black uppercase tracking-[0.25em] text-gray-400">
+            {signingIn ? 'Entrando…' : 'Abrindo o sistema…'}
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   const handleResetPassword = async (e) => {
     e.preventDefault();
@@ -155,11 +175,11 @@ const Login = () => {
             <div className="pt-2 animate-[loginFadeUp_0.6s_ease-out_0.4s_both]">
               <button 
                 type="submit" 
-                disabled={loading}
+                disabled={signingIn}
                 className="w-full relative group overflow-hidden bg-white text-black font-black py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_25px_rgba(255,255,255,0.2)] hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70"
               >
                 <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-gray-200 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
-                {loading ? (
+                {signingIn ? (
                   <Orbit className="animate-spin text-brand" size={18} />
                 ) : (
                   <>Autenticar <ArrowRight size={18} className="text-brand group-hover:translate-x-1 transition-transform" /></>

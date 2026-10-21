@@ -39,6 +39,30 @@ export const RETIRED_STATUSES = ASSET_STATUSES.filter((s) => s.stage === 'retire
 /** O ativo saiu do patrimonio? Nao entra em contagem, valor nem auditoria. */
 export const isRetired = (status) => getStatus(status).stage === 'retired';
 
+/**
+ * Status que so os fluxos proprios aplicam (transferencia com termo). Nao
+ * aparecem para escolha manual: marcar "Em Trânsito" a mao deixava o ativo
+ * preso sem documento, e tirar dele a mao deixava a transferencia orfa.
+ */
+export const SYSTEM_STATUSES = ['Em Trânsito'];
+
+export const MANUAL_STATUSES = ACTIVE_STATUSES.filter((s) => !SYSTEM_STATUSES.includes(s.id));
+
+/**
+ * O que impede movimentar, mandar para manutencao, dar baixa ou trocar o
+ * status do ativo? Devolve o motivo (ou null). Um ativo em transito so muda
+ * pela transferencia; um baixado precisa ser reativado antes.
+ * @param {object} asset
+ * @param {string} action verbo para a mensagem ("movimentar", "dar baixa"...)
+ */
+export const lifecycleBlocker = (asset, action = 'alterar') => {
+  if (asset?.transit?.termId) {
+    return `O ativo está em trânsito (${asset.transit.number || 'transferência aberta'}). Conclua ou cancele a transferência em Termos antes de ${action}.`;
+  }
+  if (isRetired(asset?.status)) return `O ativo está baixado. Reative-o antes de ${action}.`;
+  return null;
+};
+
 /** Motivos de baixa aceitos. O motivo e obrigatorio para registrar a saida. */
 export const WRITE_OFF_REASONS = [
   'Fim de vida útil',

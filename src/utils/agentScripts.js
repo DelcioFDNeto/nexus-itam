@@ -1,371 +1,117 @@
-export const buildWindowsScript = (projectId, apiKey, tenantId, agentToken, mode = 'portable') => {
-  const baseScript = `
-$ProjectId = "${projectId}"
-$ApiKey = "${apiKey}"
-$TenantId = "${tenantId}"
-$AgentToken = "${agentToken}"
+// src/utils/agentScripts.js
+// -----------------------------------------------------------------------------
+// Monta os scripts do Agente ITAM a partir dos arquivos em src/agent/.
+// Os scripts sao arquivos de verdade (.ps1/.sh) — antes viviam dentro de
+// strings JavaScript, onde barras invertidas e "${}" quebravam o codigo gerado.
+// -----------------------------------------------------------------------------
+import windowsAgent from '../agent/windows/nexus-agent.ps1?raw';
+import windowsInstaller from '../agent/windows/install.ps1?raw';
+import linuxAgent from '../agent/linux/nexus-agent.sh?raw';
+import linuxInstaller from '../agent/linux/install.sh?raw';
+import macAgent from '../agent/mac/nexus-agent.sh?raw';
+import macInstaller from '../agent/mac/install.sh?raw';
+import { AGENT_VERSION } from './agentInventory';
 
-function Get-ItamPayload {
-  $ErrorActionPreference = "SilentlyContinue"
-  $os = Get-CimInstance Win32_OperatingSystem
-  $sys = Get-CimInstance Win32_ComputerSystem
-  $bios = Get-CimInstance Win32_BIOS
-  $board = Get-CimInstance Win32_BaseBoard
-  $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
-  $rams = Get-CimInstance Win32_PhysicalMemory
-  $netAdapter = Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled -eq $true -and $null -ne $_.DefaultIPGateway } | Select-Object -First 1
-  if (-not $netAdapter) {
-    $netAdapter = Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled -eq $true } | Select-Object -First 1
-  }
-  $disks = Get-CimInstance Win32_DiskDrive | ForEach-Object {
-    $size = if ($_.Size) { [math]::Round($_.Size / 1GB, 2) } else { 0 }
-    "$($_.Model) ($size GB) Serial: $($_.SerialNumber)"
-  }
-
-  $softwareList = @()
-  $softwareList += Get-ItemProperty HKLM:\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* | Where-Object { $_.DisplayName } | Select-Object -ExpandProperty DisplayName
-  $softwareList += Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* | Where-Object { $_.DisplayName } | Select-Object -ExpandProperty DisplayName
-  $softwareList = $softwareList | Sort-Object -Unique
-
-  $avList = Get-CimInstance -Namespace root\\SecurityCenter2 -Class AntivirusProduct | Select-Object -ExpandProperty displayName
-  $fwList = Get-NetFirewallProfile | Where-Object { $_.Enabled -eq $true } | Select-Object -ExpandProperty Name
-
-  $monitorsList = Get-CimInstance Win32_DesktopMonitor | Where-Object { $_.Availability -ne $null -and $_.Name -ne 'Monitor Genérico' } | Select-Object -ExpandProperty Name
-
-  $ip = ""
-  if ($netAdapter -and $netAdapter.IPAddress) {
-    $ip = $netAdapter.IPAddress | Where-Object { $_ -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$' } | Select-Object -First 1
-    if (-not $ip) { $ip = $netAdapter.IPAddress[0] }
-  }
-
-  return @{
-    hostname = $env:COMPUTERNAME
-    usuario_logado = $env:USERNAME
-    mac_address = if ($netAdapter -and $netAdapter.MACAddress) { $netAdapter.MACAddress } else { "" }
-    ip_address = $ip
-    sistema_operacional = "$($os.Caption) $($os.OSArchitecture)"
-    data_coleta = (Get-Date).ToString("o")
-    software = if ($softwareList) { $softwareList -join "||" } else { "" }
-    security = @{
-      antivirus = if ($avList) { $avList -join ", " } else { "Nenhum detectado" }
-      firewall = if ($fwList) { $fwList -join ", " } else { "Desativado" }
-    }
-    monitors = if ($monitorsList) { $monitorsList -join "||" } else { "" }
-    hardware = @{
-      fabricante = $sys.Manufacturer
-      modelo_sistema = $sys.Model
-      modelo_placa = $board.Product
-      placa_mae_serial = $board.SerialNumber
-      bios_serial = $bios.SerialNumber
-      pc_system_type = $sys.PCSystemType
-      chassis_types = ($sys.ChassisSKUNumber, ((Get-CimInstance Win32_SystemEnclosure).ChassisTypes -join ",")) -join "|"
-      processador = if ($cpu) { $cpu.Name } else { "" }
-      ram_gb = if ($rams) { [math]::Round(($rams | Measure-Object Capacity -Sum).Sum / 1GB, 2) } else { 0 }
-      storage = ($disks -join " | ")
-    }
-  }
-}
-
-function ConvertTo-FirestoreValue {
-  param($Value)
-  if ($null -eq $Value) { return @{ nullValue = $null } }
-  if ($Value -is [hashtable]) {
-    $fields = @{}
-    foreach ($key in $Value.Keys) { $fields[$key] = ConvertTo-FirestoreValue $Value[$key] }
-    return @{ mapValue = @{ fields = $fields } }
-  }
-  if ($Value -is [int] -or $Value -is [long]) { return @{ integerValue = "$Value" } }
-  if ($Value -is [double] -or $Value -is [decimal] -or $Value -is [float]) { return @{ doubleValue = [double]$Value } }
-  if ($Value -is [bool]) { return @{ booleanValue = $Value } }
-  return @{ stringValue = [string]$Value }
-}
-
-function Send-ItamPayload {
-  param($Payload)
-  $endpoint = "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/agentInbox?key=$ApiKey"
-  $document = @{
-    fields = @{
-      payload = ConvertTo-FirestoreValue $Payload
-      source = @{ stringValue = "Agente ITAM PowerShell" }
-      status = @{ stringValue = "pending" }
-      hostname = @{ stringValue = [string]$Payload.hostname }
-      internalId = @{ stringValue = "" }
-      serialNumber = @{ stringValue = [string]$Payload.hardware.bios_serial }
-      createdAt = @{ stringValue = (Get-Date).ToString("o") }
-      tenantId = @{ stringValue = $TenantId }
-      agentToken = @{ stringValue = $AgentToken }
-      ip_address = @{ stringValue = [string]$Payload.ip_address }
-    }
-  }
-  $body = $document | ConvertTo-Json -Depth 20
-  Invoke-RestMethod -Method Post -Uri $endpoint -Body $body -ContentType "application/json" | Out-Null
-}
-
-$payload = Get-ItamPayload
-try {
-  Send-ItamPayload $payload
-} catch {
-  Write-Warning "Falha ao enviar."
-}
-`;
-
-  if (mode === 'service') {
-    return `# Agente ITAM - Auto Instalador de Serviço (Scheduled Task)
-Requires -RunAsAdministrator
-
-$InstallDir = "C:\\ProgramData\\NexusITAM"
-$ScriptPath = Join-Path $InstallDir "NexusAgent.ps1"
-$TaskName = "NexusITAM_AgentSync"
-
-if (-not (Test-Path $InstallDir)) {
-    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-}
-
-$AgentCode = @'
-${baseScript}
-'@
-
-$AgentCode | Out-File -FilePath $ScriptPath -Encoding UTF8 -Force
-
-$Action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File \\"$ScriptPath\\""
-$Trigger = New-ScheduledTaskTrigger -AtLogOn
-$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -Hidden
-$Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-
-Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal -Force | Out-Null
-
-Write-Host "Agente instalado com sucesso."
-`;
-  }
-
-  return `# Agente ITAM Ativo - Portatil\n${baseScript}`;
+export const AGENT_TARGETS = {
+  windows: { label: 'Windows', ext: '.ps1' },
+  linux: { label: 'Linux', ext: '.sh' },
+  mac: { label: 'macOS', ext: '.sh' },
 };
 
-export const buildLinuxScript = (projectId, apiKey, tenantId, agentToken, mode = 'portable') => {
-  const baseScript = `#!/bin/bash
-# Agente ITAM Linux
-export LC_ALL=C
-
-PROJECT_ID="${projectId}"
-API_KEY="${apiKey}"
-TENANT_ID="${tenantId}"
-AGENT_TOKEN="${agentToken}"
-
-json_escape() {
-  printf '%s' "$1" | sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g' | tr -d '\\r\\n'
-}
-
-HOSTNAME=$(hostname 2>/dev/null || echo "")
-USER_LOGGED=$(who 2>/dev/null | awk '{print $1}' | head -n 1)
-MAC_ADDR=$(ip link 2>/dev/null | awk '/ether/ {print $2}' | head -n 1)
-IP_ADDR=$(hostname -I 2>/dev/null | awk '{print $1}')
-OS_CAPTION=$(grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d '"' -f 2)
-
-# Hardware
-MFG=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || echo "Desconhecido")
-MODEL=$(cat /sys/class/dmi/id/product_name 2>/dev/null || echo "Desconhecido")
-BOARD=$(cat /sys/class/dmi/id/board_name 2>/dev/null || echo "Desconhecido")
-SERIAL=$(cat /sys/class/dmi/id/product_serial 2>/dev/null || echo "Desconhecido")
-BIOS=$(cat /sys/class/dmi/id/bios_version 2>/dev/null || echo "Desconhecido")
-CPU=$(grep "model name" /proc/cpuinfo 2>/dev/null | head -n 1 | cut -d ":" -f 2 | sed 's/^ //g')
-RAM_TOTAL=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}')
-RAM_GB=$(awk "BEGIN {print $RAM_TOTAL/1024}" 2>/dev/null || echo "0")
-RAM_GB=\${RAM_GB:-0}
-DISKS=$(df -h --output=source,size / 2>/dev/null | tail -n 1 | awk '{print $1 " (" $2 ")"}')
-
-# Software
-if command -v dpkg &> /dev/null; then
-    SOFTWARES=$(dpkg-query -W -f='\${Package}\\n' 2>/dev/null | paste -sd "||" - | tr -d '"\\\\')
-elif command -v rpm &> /dev/null; then
-    SOFTWARES=$(rpm -qa 2>/dev/null | paste -sd "||" - | tr -d '"\\\\')
-else
-    SOFTWARES=""
-fi
-
-DATE_NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-PAYLOAD=$(cat <<EOF
-{
-  "fields": {
-    "payload": {
-      "mapValue": {
-        "fields": {
-          "hostname": { "stringValue": "$(json_escape "$HOSTNAME")" },
-          "usuario_logado": { "stringValue": "$(json_escape "$USER_LOGGED")" },
-          "mac_address": { "stringValue": "$(json_escape "$MAC_ADDR")" },
-          "ip_address": { "stringValue": "$(json_escape "$IP_ADDR")" },
-          "sistema_operacional": { "stringValue": "$(json_escape "$OS_CAPTION")" },
-          "data_coleta": { "stringValue": "$DATE_NOW" },
-          "software": { "stringValue": "$(json_escape "$SOFTWARES")" },
-          "hardware": {
-            "mapValue": {
-              "fields": {
-                "fabricante": { "stringValue": "$(json_escape "$MFG")" },
-                "modelo_sistema": { "stringValue": "$(json_escape "$MODEL")" },
-                "modelo_placa": { "stringValue": "$(json_escape "$BOARD")" },
-                "placa_mae_serial": { "stringValue": "$(json_escape "$SERIAL")" },
-                "bios_serial": { "stringValue": "$(json_escape "$BIOS")" },
-                "processador": { "stringValue": "$(json_escape "$CPU")" },
-                "ram_gb": { "doubleValue": $RAM_GB },
-                "storage": { "stringValue": "$(json_escape "$DISKS")" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "source": { "stringValue": "Agente ITAM Bash (Linux)" },
-    "status": { "stringValue": "pending" },
-    "hostname": { "stringValue": "$(json_escape "$HOSTNAME")" },
-    "internalId": { "stringValue": "" },
-    "serialNumber": { "stringValue": "$(json_escape "$SERIAL")" },
-    "createdAt": { "stringValue": "$DATE_NOW" },
-    "tenantId": { "stringValue": "$TENANT_ID" },
-    "agentToken": { "stringValue": "$AGENT_TOKEN" },
-    "ip_address": { "stringValue": "$(json_escape "$IP_ADDR")" }
-  }
-}
-EOF
-)
-
-curl -s -X POST "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/agentInbox?key=$API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d "$PAYLOAD" > /dev/null
-
-`;
-
-  if (mode === 'service') {
-    return `#!/bin/bash
-# Instala o script no crontab para rodar a cada boot
-SCRIPT_PATH="/usr/local/bin/nexus-agent.sh"
-cat << 'EOFAGENT' | sudo tee "$SCRIPT_PATH" > /dev/null
-${baseScript}
-EOFAGENT
-sudo chmod +x "$SCRIPT_PATH"
-(crontab -l 2>/dev/null; echo "@reboot $SCRIPT_PATH") | crontab -
-echo "Agente instalado no crontab."
-`;
-  }
-
-  return baseScript;
+export const AGENT_MODES = {
+  portable: 'Coleta única',
+  service: 'Instalar (automático)',
+  uninstall: 'Desinstalar',
 };
 
-export const buildMacScript = (projectId, apiKey, tenantId, agentToken, mode = 'portable') => {
-  const baseScript = `#!/bin/bash
-# Agente ITAM macOS
-export LC_ALL=C
+export const DEFAULT_FIRESTORE_BASE = 'https://firestore.googleapis.com/v1';
 
-PROJECT_ID="${projectId}"
-API_KEY="${apiKey}"
-TENANT_ID="${tenantId}"
-AGENT_TOKEN="${agentToken}"
+// O valor vai para dentro de aspas no script: so caracteres inofensivos.
+const SAFE_VALUE = /^[A-Za-z0-9_.:-]+$/;
+const SAFE_URL = /^https?:\/\/[A-Za-z0-9_.:/-]+$/;
 
-json_escape() {
-  printf '%s' "$1" | sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g' | tr -d '\\r\\n'
-}
-
-HOSTNAME=$(scutil --get LocalHostName 2>/dev/null || hostname)
-USER_LOGGED=$(whoami 2>/dev/null || echo "")
-MAC_ADDR=$(ifconfig en0 2>/dev/null | grep ether | awk '{print $2}')
-IP_ADDR=$(ipconfig getifaddr en0 2>/dev/null || echo "")
-OS_CAPTION="$(sw_vers -productName 2>/dev/null) $(sw_vers -productVersion 2>/dev/null)"
-
-MFG="Apple Inc."
-MODEL=$(system_profiler SPHardwareDataType 2>/dev/null | grep "Model Identifier" | awk -F': ' '{print $2}')
-SERIAL=$(system_profiler SPHardwareDataType 2>/dev/null | grep "Serial Number" | awk -F': ' '{print $2}')
-CPU=$(system_profiler SPHardwareDataType 2>/dev/null | grep "Processor Name" | awk -F': ' '{print $2}')
-if [ -z "$CPU" ]; then CPU=$(system_profiler SPHardwareDataType 2>/dev/null | grep "Chip" | awk -F': ' '{print $2}'); fi
-RAM_GB=$(system_profiler SPHardwareDataType 2>/dev/null | grep "Memory" | awk '{print $2}')
-RAM_GB=\${RAM_GB:-0}
-DISKS=$(system_profiler SPStorageDataType 2>/dev/null | grep "Capacity" | head -n 1 | awk -F': ' '{print $2}')
-
-# Softwares instalados (/Applications)
-SOFTWARES=$(ls /Applications 2>/dev/null | sed 's/\\.app//g' | tr -d '"\\\\' | paste -sd "||" -)
-
-DATE_NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-PAYLOAD=$(cat <<EOF
-{
-  "fields": {
-    "payload": {
-      "mapValue": {
-        "fields": {
-          "hostname": { "stringValue": "$(json_escape "$HOSTNAME")" },
-          "usuario_logado": { "stringValue": "$(json_escape "$USER_LOGGED")" },
-          "mac_address": { "stringValue": "$(json_escape "$MAC_ADDR")" },
-          "ip_address": { "stringValue": "$(json_escape "$IP_ADDR")" },
-          "sistema_operacional": { "stringValue": "$(json_escape "$OS_CAPTION")" },
-          "data_coleta": { "stringValue": "$DATE_NOW" },
-          "software": { "stringValue": "$(json_escape "$SOFTWARES")" },
-          "hardware": {
-            "mapValue": {
-              "fields": {
-                "fabricante": { "stringValue": "$(json_escape "$MFG")" },
-                "modelo_sistema": { "stringValue": "$(json_escape "$MODEL")" },
-                "modelo_placa": { "stringValue": "$(json_escape "$MODEL")" },
-                "placa_mae_serial": { "stringValue": "$(json_escape "$SERIAL")" },
-                "bios_serial": { "stringValue": "$(json_escape "$SERIAL")" },
-                "processador": { "stringValue": "$(json_escape "$CPU")" },
-                "ram_gb": { "doubleValue": $RAM_GB },
-                "storage": { "stringValue": "$(json_escape "$DISKS")" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "source": { "stringValue": "Agente ITAM Bash (macOS)" },
-    "status": { "stringValue": "pending" },
-    "hostname": { "stringValue": "$(json_escape "$HOSTNAME")" },
-    "internalId": { "stringValue": "" },
-    "serialNumber": { "stringValue": "$(json_escape "$SERIAL")" },
-    "createdAt": { "stringValue": "$DATE_NOW" },
-    "tenantId": { "stringValue": "$TENANT_ID" },
-    "agentToken": { "stringValue": "$AGENT_TOKEN" },
-    "ip_address": { "stringValue": "$(json_escape "$IP_ADDR")" }
+const assertSafe = (name, value, pattern = SAFE_VALUE) => {
+  if (!pattern.test(String(value ?? ''))) {
+    throw new Error(`Parâmetro inválido para o script do agente: ${name}.`);
   }
-}
-EOF
-)
-
-curl -s -X POST "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/agentInbox?key=$API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d "$PAYLOAD" > /dev/null
-
-`;
-
-  if (mode === 'service') {
-    return `#!/bin/bash
-# Instala o script via LaunchDaemon
-PLIST_PATH="/Library/LaunchDaemons/com.nexus.agent.plist"
-SCRIPT_PATH="/usr/local/bin/nexus-agent.sh"
-
-cat << 'EOFAGENT' | sudo tee "$SCRIPT_PATH" > /dev/null
-${baseScript}
-EOFAGENT
-sudo chmod +x "$SCRIPT_PATH"
-
-cat << 'EOFPLIST' | sudo tee "$PLIST_PATH" > /dev/null
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.nexus.agent</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$SCRIPT_PATH</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-</dict>
-</plist>
-EOFPLIST
-
-sudo launchctl load "$PLIST_PATH" 2>/dev/null || sudo launchctl bootstrap system "$PLIST_PATH"
-echo "Agente instalado como LaunchDaemon no macOS."
-`;
-  }
-
-  return baseScript;
 };
+
+const lf = (code) => code.replace(/\r\n/g, '\n');
+const crlf = (code) => lf(code).replace(/\n/g, '\r\n');
+
+// split/join e nao replace(): o codigo tem "$$" e "$'", que o replace() com string interpretaria.
+const fill = (template, values) =>
+  Object.entries(values).reduce((code, [key, value]) => code.split(`__${key}__`).join(String(value)), template);
+
+const toBase64Utf8 = (value) => {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+};
+
+const UNINSTALL = {
+  windows: `#Requires -RunAsAdministrator
+# Nexus ITAM - remove o agente deste computador
+Unregister-ScheduledTask -TaskName 'NexusITAM_AgentSync' -Confirm:$false -ErrorAction SilentlyContinue
+Remove-Item -Path (Join-Path $env:ProgramData 'NexusITAM') -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host 'Agente Nexus ITAM removido.'
+`,
+  linux: `#!/usr/bin/env bash
+# Nexus ITAM - remove o agente deste computador (rode com sudo)
+rm -f /etc/cron.d/nexus-itam
+rm -rf /opt/nexus-itam
+echo 'Agente Nexus ITAM removido.'
+`,
+  mac: `#!/bin/bash
+# Nexus ITAM - remove o agente deste computador (rode com sudo)
+launchctl bootout system /Library/LaunchDaemons/com.nexusitam.agent.plist 2>/dev/null || true
+rm -f /Library/LaunchDaemons/com.nexusitam.agent.plist
+rm -rf /usr/local/nexus-itam
+echo 'Agente Nexus ITAM removido.'
+`,
+};
+
+/**
+ * @param {{ os: 'windows'|'linux'|'mac', mode: 'portable'|'service'|'uninstall',
+ *           projectId: string, apiKey: string, tenantId: string, agentToken: string,
+ *           firestoreBase?: string }} options
+ * @returns {{ content: string, filename: string, mime: string }}
+ */
+export const buildAgentScript = ({ os = 'windows', mode = 'portable', projectId, apiKey, tenantId, agentToken, firestoreBase = DEFAULT_FIRESTORE_BASE }) => {
+  const target = AGENT_TARGETS[os];
+  if (!target) throw new Error(`Sistema não suportado: ${os}.`);
+  if (!AGENT_MODES[mode]) throw new Error(`Modo não suportado: ${mode}.`);
+  const filename = `nexus-agente-${os}-${mode === 'portable' ? 'coleta' : mode === 'service' ? 'instalar' : 'remover'}${target.ext}`;
+  const finish = (code) => ({
+    // BOM: o PowerShell 5.1 le .ps1 sem BOM como ANSI.
+    content: os === 'windows' ? `\uFEFF${crlf(code)}` : lf(code),
+    filename,
+    mime: 'text/plain;charset=utf-8',
+  });
+
+  if (mode === 'uninstall') return finish(UNINSTALL[os]);
+
+  assertSafe('projectId', projectId);
+  assertSafe('apiKey', apiKey);
+  assertSafe('tenantId', tenantId);
+  assertSafe('token', agentToken);
+  assertSafe('endpoint', firestoreBase, SAFE_URL);
+
+  const values = { AGENT_VERSION, PROJECT_ID: projectId, API_KEY: apiKey, TENANT_ID: tenantId, AGENT_TOKEN: agentToken, FIRESTORE_BASE: firestoreBase.replace(/\/+$/, '') };
+  const agent = fill({ windows: windowsAgent, linux: linuxAgent, mac: macAgent }[os], values);
+  if (mode === 'portable') return finish(agent);
+
+  if (os === 'windows') {
+    return finish(fill(windowsInstaller, { AGENT_VERSION, AGENT_CODE_BASE64: toBase64Utf8(crlf(agent)) }));
+  }
+  const installer = os === 'linux' ? linuxInstaller : macInstaller;
+  return finish(fill(installer, { AGENT_VERSION, AGENT_CODE: lf(agent).trimEnd() }));
+};
+
+// Assinaturas antigas (mantidas para quem ainda chama assim).
+const legacy = (os) => (projectId, apiKey, tenantId, agentToken, mode = 'portable') =>
+  buildAgentScript({ os, mode, projectId, apiKey, tenantId, agentToken }).content;
+export const buildWindowsScript = legacy('windows');
+export const buildLinuxScript = legacy('linux');
+export const buildMacScript = legacy('mac');

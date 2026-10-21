@@ -247,6 +247,11 @@ const LocationManager = ({ showHeader = true }) => {
                             Telefone
                             <input defaultValue={loc.phone || ''} onBlur={(e) => handleChange(loc, 'phone', e.target.value)} placeholder="(00) 0000-0000" className={`${fieldClass} mt-1 normal-case font-normal`} />
                           </label>
+                          <label className="sm:col-span-3 text-[10px] font-bold uppercase text-gray-400">
+                            Redes do local (Agente ITAM)
+                            <input defaultValue={loc.networks || ''} onBlur={(e) => handleChange(loc, 'networks', e.target.value)} placeholder="Ex.: 10.20.1.0/24, 192.168.5." className={`${fieldClass} mt-1 normal-case font-mono font-normal`} />
+                            <span className="mt-1 block normal-case font-normal text-gray-400">O agente identifica a loja pelo IP da máquina: cadastra no local certo e avisa quando um equipamento aparece em outra loja.</span>
+                          </label>
                         </div>
                       )}
                     </div>

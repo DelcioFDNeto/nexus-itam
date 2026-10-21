@@ -14,6 +14,12 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { releaseAssetFromLicenses } from './licenseService';
+import { lifecycleBlocker } from '../utils/assetStatus';
+
+const assertOperable = (asset, action) => {
+  const reason = lifecycleBlocker(asset, action);
+  if (reason) throw new Error(reason);
+};
 
 const assetsCollection = collection(db, 'assets');
 const historyCollection = collection(db, 'history'); // Coleção Global de Histórico
@@ -196,6 +202,8 @@ export const deleteAsset = async (id, tenantId, user = 'Sistema') => {
   const batch = writeBatch(db);
 
   batch.delete(assetRef);
+  // Inventario do Agente ITAM vai junto (sem ele o documento ficaria orfao).
+  batch.delete(doc(db, 'assetInventory', id));
   
   // Log de Exclusão
   if (resolvedTenantId) {
@@ -229,16 +237,26 @@ export const deleteAsset = async (id, tenantId, user = 'Sistema') => {
 
 // Realiza a movimentação atomicamente
 export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema') => {
+  // Antes: movimentava ativo em transito (a transferencia ficava orfa) e
+  // gravava sempre "Em Uso" — reativando em silencio um ativo baixado e
+  // tirando da manutencao um equipamento que ainda estava no conserto.
+  assertOperable(currentData, 'movimentar');
   const assetRef = doc(db, 'assets', assetId);
   const batch = writeBatch(db);
   const historyRef = doc(historyCollection);
 
+  const holder = (moveData.newResponsible || '').trim();
+  const previousStatus = currentData.status || 'Disponível';
+  const status = holder
+    ? (['Disponível', 'Em Uso'].includes(previousStatus) ? 'Em Uso' : previousStatus)
+    : (previousStatus === 'Em Uso' ? 'Disponível' : previousStatus);
+
   // 1. Atualiza o Ativo
   const updateData = {
-    assignedTo: moveData.newResponsible || '',
-    clientCpf: moveData.newCpf || '',
+    assignedTo: holder,
+    clientCpf: holder ? moveData.newCpf || '' : '',
     location: moveData.newLocation,
-    status: 'Em Uso',
+    status,
     updatedAt: serverTimestamp()
   };
 
@@ -283,6 +301,9 @@ export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema'
 export const writeOffAsset = async (assetId, currentData, writeOff, user = 'Sistema') => {
   if (!writeOff?.reason) throw new Error('A baixa exige um motivo.');
   if (!writeOff?.date) throw new Error('A baixa exige a data.');
+  // Baixar em transito deixava a transferencia viva: ao concluir, o termo
+  // devolvia o ativo ao inventario como "Disponível".
+  if (currentData?.transit?.termId) assertOperable(currentData, 'dar baixa');
 
   const tenantId = currentData?.tenantId;
   if (!tenantId) throw new Error('Ativo sem inquilino: baixa nao registrada.');
@@ -302,6 +323,7 @@ export const writeOffAsset = async (assetId, currentData, writeOff, user = 'Sist
     // Solta o responsavel: um ativo baixado nao fica sob a guarda de ninguem.
     assignedTo: '',
     employeeId: '',
+    clientCpf: '',
     updatedAt: serverTimestamp()
   });
 
@@ -324,6 +346,13 @@ export const writeOffAsset = async (assetId, currentData, writeOff, user = 'Sist
   });
 
   await batch.commit();
+
+  // Equipamento baixado nao consome licenca (SAM). Nao bloqueia a baixa.
+  try {
+    await releaseAssetFromLicenses(tenantId, assetId);
+  } catch (err) {
+    console.warn('Falha ao liberar licenças do ativo baixado:', err);
+  }
   return true;
 };
 
@@ -365,6 +394,7 @@ export const reactivateAsset = async (assetId, currentData, user = 'Sistema', ne
 
 // Registra manutenção atomicamente
 export const registerMaintenance = async (assetId, maintenanceData, user = 'Sistema') => {
+  if (maintenanceData?.asset) assertOperable(maintenanceData.asset, 'enviar para manutenção');
   const assetRef = doc(db, 'assets', assetId);
   const tenantId = await resolveTenantId(assetId, maintenanceData?.tenantId);
   const batch = writeBatch(db);
@@ -384,6 +414,7 @@ export const registerMaintenance = async (assetId, maintenanceData, user = 'Sist
     action: 'Manutenção Iniciada',
     date: serverTimestamp(),
     
+    previousStatus: maintenanceData.asset?.status || 'N/A',
     cost: maintenanceData.cost || '0,00',
     provider: maintenanceData.provider || 'Interno',
     defect: maintenanceData.defect || 'Não informado',

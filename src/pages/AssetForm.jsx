@@ -14,7 +14,7 @@ import { buildAssetCatalog, SPEC_FIELDS, isRootSpec } from '../utils/assetTypes'
 import LocationSelect from '../components/LocationSelect';
 import StatusBadge from '../components/StatusBadge';
 import {
-  ACTIVE_STATUSES,
+  MANUAL_STATUSES,
   isRetired,
   statusDotClass,
   warrantyStatus,
@@ -29,6 +29,8 @@ const AssetForm = () => {
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState([]); 
   const [initialData, setInitialData] = useState(null);
+  // Transferencia aberta (Termos): status e local ficam travados no formulario.
+  const [transit, setTransit] = useState(null);
   // Inquilino dono do registro: a edição nunca move o ativo de empresa.
   const [originalTenantId, setOriginalTenantId] = useState(null);
   const [customFieldsDef, setCustomFieldsDef] = useState([]);
@@ -123,6 +125,7 @@ const AssetForm = () => {
                     };
                     setFormData(loadedData);
                     setInitialData(loadedData);
+                    setTransit(data.transit || null);
                     setOriginalTenantId(data.tenantId || null);
                 }
             }
@@ -180,6 +183,12 @@ const AssetForm = () => {
                 });
             }
 
+            // Em transito, status e local so mudam pela transferencia (Termos).
+            if (transit && initialData) {
+                cleanData.status = initialData.status;
+                cleanData.location = initialData.location;
+            }
+
             const detailsText = diffs.length > 0 ? diffs.join(', ') : 'Dados atualizados sem modificações rastreadas.';
             const tenantId = originalTenantId || currentUser?.tenantId;
 
@@ -225,6 +234,10 @@ const AssetForm = () => {
   // Ativo baixado nao volta ao inventario por um <select>: a reativacao e um
   // evento registrado na timeline, feita na tela de detalhe.
   const baixado = isRetired(formData.status);
+  // "Em Trânsito" so a transferencia aplica; se ja estiver gravado, continua visivel.
+  const statusOptions = MANUAL_STATUSES.some((st) => st.id === formData.status)
+    ? MANUAL_STATUSES
+    : [...MANUAL_STATUSES, { id: formData.status, label: formData.status }];
   const activeSpecs = catalog.find(t => t.id === formData.type)?.specs || [];
 
   return (
@@ -375,7 +388,14 @@ const AssetForm = () => {
                      <div className="mb-4">
                          <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Status Atual</label>
 
-                         {baixado ? (
+                         {transit ? (
+                           <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 p-3">
+                             <StatusBadge status={formData.status} />
+                             <p className="mt-2 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                               Em trânsito de {transit.from} para {transit.to} ({transit.number}). Status e local mudam quando a transferência for concluída ou cancelada em Termos.
+                             </p>
+                           </div>
+                         ) : baixado ? (
                            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-3">
                              <div className="flex items-center gap-2">
                                <Archive size={15} className="text-slate-400" />
@@ -394,7 +414,7 @@ const AssetForm = () => {
                          ) : (
                            <div className="relative">
                              <select name="status" value={formData.status} onChange={handleChange} className="w-full p-3 pl-3 pr-8 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl appearance-none font-bold text-sm text-gray-900 dark:text-white outline-none focus:border-black cursor-pointer">
-                                 {ACTIVE_STATUSES.map(st => (
+                                 {statusOptions.map(st => (
                                    <option key={st.id} value={st.id}>{st.label}</option>
                                  ))}
                              </select>
@@ -470,6 +490,7 @@ const AssetForm = () => {
                             <LocationSelect
                                 value={formData.location}
                                 onChange={handleChange}
+                                disabled={Boolean(transit)}
                                 showManageLink
                                 className="w-full pl-9 p-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 rounded-xl text-sm font-bold text-gray-900 dark:text-white focus:border-black outline-none cursor-pointer"
                             />

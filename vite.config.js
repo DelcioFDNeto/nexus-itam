@@ -11,7 +11,9 @@ export default defineConfig({
       // 'autoUpdate' o service worker assumia no meio da sessao e as rotas
       // lazy ainda nao abertas apontavam para chunks que ja nao existiam.
       registerType: 'prompt',
-      injectRegister: 'inline',
+      // Quem registra e o PWAToast (virtual:pwa-register); o script inline
+      // registrava o mesmo service worker uma segunda vez.
+      injectRegister: false,
       includeAssets: ['logo.webp', 'logo.png', 'pwa-192x192.png', 'pwa-512x512.png', 'carbon-fibre.png', 'vite.svg'],
       workbox: {
         // Bibliotecas pesadas usadas sob demanda (leitura de PDF, Excel,

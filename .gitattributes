@@ -1,0 +1,3 @@
+# Scripts do agente: bash exige LF; o app normaliza ao gerar, mas o repo tambem.
+src/agent/**/*.sh text eol=lf
+src/agent/**/*.ps1 text eol=crlf

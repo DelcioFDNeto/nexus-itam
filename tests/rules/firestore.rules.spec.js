@@ -78,6 +78,9 @@ beforeEach(async () => {
       ['assets/b1', { tenantId: 'beta', model: 'Desktop' }],
       ['assets/s1', { tenantId: 'susp', model: 'Impressora' }],
       ['agentInbox/in1', { tenantId: 'acme', status: 'pending', agentToken: 'tok-acme' }],
+      ['agentInbox/beta_dev1', { tenantId: 'beta', status: 'processed', deviceKey: 'dev1' }],
+      ['assetInventory/a1', { tenantId: 'acme', assetId: 'a1', inventory: { hostname: 'PC' } }],
+      ['audits/au1', { tenantId: 'acme', location: 'Loja', status: 'Parcial', stats: { expected: 2, found: 1 } }],
       ['terms/tr1', { tenantId: 'acme', kind: 'responsabilidade', number: 'TR-2026-0001', status: 'pendente', assets: [{ id: 'a1' }], assetIds: ['a1'] }],
       ['terms/tt1', { tenantId: 'acme', kind: 'transferencia', number: 'TT-2026-0003', status: 'em_transito', assets: [{ id: 'a1' }], assetIds: ['a1'] }],
       ['terms/tr2', { tenantId: 'acme', kind: 'responsabilidade', number: 'TR-2026-0002', status: 'assinado', assets: [{ id: 'a1' }], assetIds: ['a1'], signedCopy: { fileId: 'f0', chunks: 1 } }],
@@ -307,6 +310,7 @@ describe('empresa, configuracoes e segredos', () => {
     await assertFails(setDoc(doc(as('admin1'), 'settings', 'acme'), { primaryColor: '#000000' }, { merge: true }));
     await assertSucceeds(setDoc(doc(as('admin1'), 'settings', 'acme'), { agentNaming: { companyPrefix: 'ACM' }, trustedIps: '10.0.' }, { merge: true }));
     await assertFails(setDoc(doc(as('admin1'), 'settings', 'acme'), { agentToken: 'vazado' }, { merge: true }));
+    await assertSucceeds(setDoc(doc(as('admin1'), 'settings', 'acme'), { agentPolicy: { blockedSoftware: ['utorrent'], staleDays: 10 } }, { merge: true }));
   });
 
   it('segredo do agente e restrito a owner/admin da propria empresa', async () => {
@@ -324,7 +328,10 @@ describe('empresa, configuracoes e segredos', () => {
 // -----------------------------------------------------------------------------
 describe('agente sem login (drop-box)', () => {
   const submission = (tenantId, agentToken) => ({
-    tenantId, agentToken, status: 'pending', hostname: 'PC-01', createdAt: new Date().toISOString(),
+    tenantId, agentToken, status: 'pending', hostname: 'PC-01', createdAt: new Date().toISOString(), payload: { hostname: 'PC-01' },
+  });
+  const v2 = (extra = {}) => ({
+    ...submission('acme', 'tok-acme'), deviceKey: 'abc123', agentVersion: '2.0.0', createdAt: Timestamp.now(), ...extra,
   });
 
   it('aceita envio com o token correto', async () => {
@@ -337,6 +344,55 @@ describe('agente sem login (drop-box)', () => {
 
   it('recusa envio de empresa suspensa', async () => {
     await assertFails(setDoc(doc(anon(), 'agentInbox', 'susp1'), submission('susp', 'tok-susp')));
+  });
+
+  it('2.x: um documento por maquina, regravado a cada coleta', async () => {
+    await assertSucceeds(setDoc(doc(anon(), 'agentInbox', 'acme_abc123'), v2()));
+    await assertSucceeds(setDoc(doc(anon(), 'agentInbox', 'acme_abc123'), v2({ hostname: 'PC-01-NOVO' })));
+  });
+
+  it('2.x: ID precisa ser a maquina da propria empresa', async () => {
+    await assertFails(setDoc(doc(anon(), 'agentInbox', 'acme_outro'), v2()));
+    await assertFails(setDoc(doc(anon(), 'agentInbox', 'beta_dev1'), v2({ deviceKey: 'dev1' })));
+  });
+
+  it('formato fechado: sem campos extras nem status ja processado', async () => {
+    await assertFails(setDoc(doc(anon(), 'agentInbox', 'x1'), { ...submission('acme', 'tok-acme'), result: { action: 'created' } }));
+    await assertFails(setDoc(doc(anon(), 'agentInbox', 'x2'), { ...submission('acme', 'tok-acme'), status: 'processed' }));
+    await assertFails(setDoc(doc(anon(), 'agentInbox', 'x3'), { ...submission('acme', 'tok-acme'), payload: 'texto' }));
+  });
+
+  it('agente sem token nao le a fila', async () => {
+    await assertFails(getDoc(doc(anon(), 'agentInbox', 'in1')));
+  });
+});
+
+// -----------------------------------------------------------------------------
+describe('inventario das maquinas e trilha de auditoria', () => {
+  it('inventario: empresa le, operador grava, outra empresa nao', async () => {
+    await assertSucceeds(getDoc(doc(as('viewer1'), 'assetInventory', 'a1')));
+    await assertSucceeds(setDoc(doc(as('op1'), 'assetInventory', 'a2'), { tenantId: 'acme', assetId: 'a2', inventory: {} }));
+    await assertFails(setDoc(doc(as('op1'), 'assetInventory', 'a3'), { tenantId: 'acme', assetId: 'outro', inventory: {} }));
+    await assertFails(getDoc(doc(as('betaOwner'), 'assetInventory', 'a1')));
+    await assertFails(setDoc(doc(as('viewer1'), 'assetInventory', 'a4'), { tenantId: 'acme', assetId: 'a4', inventory: {} }));
+  });
+
+  it('relatorio de auditoria: operador registra, ninguem reescreve, gestor exclui', async () => {
+    const audit = (date) => ({ tenantId: 'acme', location: 'Loja', status: 'Completa', stats: { expected: 1, found: 1 }, date });
+    await assertSucceeds(setDoc(doc(as('op1'), 'audits', 'au2'), audit(serverTimestamp())));
+    await assertFails(setDoc(doc(as('op1'), 'audits', 'au3'), audit(Timestamp.fromDate(new Date('2024-01-01')))));
+    await assertFails(updateDoc(doc(as('op1'), 'audits', 'au1'), { status: 'Completa' }));
+    await assertFails(updateDoc(doc(as('manager1'), 'audits', 'au1'), { stats: { expected: 2, found: 2 } }));
+    await assertFails(deleteDoc(doc(as('op1'), 'audits', 'au1')));
+    await assertFails(getDoc(doc(as('betaOwner'), 'audits', 'au1')));
+    await assertSucceeds(deleteDoc(doc(as('manager1'), 'audits', 'au1')));
+  });
+
+  it('historico so com a data do servidor; owner restaura data antiga', async () => {
+    const entry = (date) => ({ tenantId: 'acme', assetId: 'a1', action: 'Teste', user: 'op@acme.com', date });
+    await assertSucceeds(setDoc(doc(as('op1'), 'history', 'h1'), entry(serverTimestamp())));
+    await assertFails(setDoc(doc(as('op1'), 'history', 'h2'), entry(Timestamp.fromDate(new Date('2024-01-01')))));
+    await assertSucceeds(setDoc(doc(as('owner1'), 'history', 'h3'), entry(Timestamp.fromDate(new Date('2024-01-01')))));
   });
 });
 

@@ -11,6 +11,7 @@ import { invalidateTenantSettings } from '../hooks/useTenantSettings';
 // -----------------------------------------------------------------------------
 const TENANT_COLLECTIONS = [
   'assets',
+  'assetInventory',
   'employees',
   'history',
   'projects',

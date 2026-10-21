@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { can, isSuperadmin, ROLE_LABELS } from '../utils/permissions';
 import { hasFeature, isModuleEnabled } from '../utils/entitlements';
+import { useAgentAutoSync } from '../hooks/useAgentAutoSync';
 
 const SIDEBAR_KEY = 'sidebar_collapsed';
 
@@ -32,6 +33,8 @@ const Layout = ({ children }) => {
   const navigate = useNavigate();
 
   const master = isSuperadmin(currentUser);
+  // Aceite automatico do Agente ITAM em segundo plano (so admin, se ligado).
+  useAgentAutoSync();
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);

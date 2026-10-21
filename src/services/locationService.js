@@ -71,8 +71,17 @@ export const locationKind = (location) => {
 export const findHeadquarters = (locations = []) =>
   locations.find((l) => l.kind === 'matriz') || locations.find((l) => locationKind(l) === 'matriz') || null;
 
-const cleanDetails = ({ kind, address, manager, phone }) => ({
+/** Faixas de rede do local ("10.20.1.0/24, 192.168.5."): o Agente ITAM localiza a maquina por elas. */
+const cleanNetworks = (value) =>
+  String(value ?? '')
+    .split(/[,;\s]+/)
+    .map((part) => part.trim())
+    .filter((part) => /^\d{1,3}(\.\d{1,3}){0,3}\.?(\/\d{1,2})?$/.test(part))
+    .join(', ');
+
+const cleanDetails = ({ kind, address, manager, phone, networks }) => ({
   ...(kind !== undefined ? { kind: LOCATION_KINDS[kind] ? kind : 'outro' } : {}),
+  ...(networks !== undefined ? { networks: cleanNetworks(networks) } : {}),
   ...(address !== undefined ? { address: String(address).trim() } : {}),
   ...(manager !== undefined ? { manager: String(manager).trim() } : {}),
   ...(phone !== undefined ? { phone: String(phone).trim() } : {}),
@@ -92,11 +101,11 @@ export const addLocation = async ({ name, region, tenantId, kind, address, manag
   });
 };
 
-export const updateLocation = async (id, { name, region, kind, address, manager, phone }, oldName = null, tenantId = null) => {
+export const updateLocation = async (id, { name, region, kind, address, manager, phone, networks }, oldName = null, tenantId = null) => {
   await updateDoc(doc(db, 'locations', id), {
     ...(name !== undefined ? { name: name.trim() } : {}),
     ...(region !== undefined ? { region: region.trim() || 'Geral' } : {}),
-    ...cleanDetails({ kind, address, manager, phone }),
+    ...cleanDetails({ kind, address, manager, phone, networks }),
     updatedAt: serverTimestamp(),
   });
 

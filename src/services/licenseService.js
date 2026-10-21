@@ -43,7 +43,11 @@ export const deleteLicense = async (id) => {
   await deleteDoc(docRef);
 };
 
-export const assignLicense = async (licenseId, assetId, assetName) => {
+/**
+ * Atribui uma ativacao ao ativo. `source` = 'agent' marca o que o Agente ITAM
+ * atribuiu sozinho: so essas ele devolve quando o programa sai da maquina.
+ */
+export const assignLicense = async (licenseId, assetId, assetName, source = 'manual') => {
   const licenseRef = doc(db, 'licenses', licenseId);
   return await runTransaction(db, async (transaction) => {
     const snap = await transaction.get(licenseRef);
@@ -51,7 +55,7 @@ export const assignLicense = async (licenseId, assetId, assetName) => {
     const data = snap.data();
     const current = Array.isArray(data.assignedAssets) ? data.assignedAssets : [];
     const filtered = current.filter(a => a?.id !== assetId);
-    const updated = [...filtered, { id: assetId, name: assetName }];
+    const updated = [...filtered, { id: assetId, name: assetName || '', source }];
     transaction.update(licenseRef, {
       assignedAssets: updated,
       usedCount: updated.length,

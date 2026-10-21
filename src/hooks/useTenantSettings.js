@@ -8,7 +8,14 @@ import { useAuth } from '../contexts/AuthContext';
 // o mesmo /settings sem repetir a leitura a cada abertura de modal.
 const cache = new Map();
 
-export const invalidateTenantSettings = (tenantId) => cache.delete(tenantId);
+// Telas abertas releem quando alguem salva as configuracoes (ex.: ligar o
+// aceite automatico do agente vale na hora, sem recarregar a pagina).
+const listeners = new Set();
+
+export const invalidateTenantSettings = (tenantId) => {
+  cache.delete(tenantId);
+  listeners.forEach((listener) => listener(tenantId));
+};
 
 const loadSettings = (tenantId) => {
   if (!cache.has(tenantId)) {
@@ -31,6 +38,15 @@ export const useTenantSettings = () => {
   const { currentUser } = useAuth();
   const tenantId = currentUser?.tenantId;
   const [state, setState] = useState({ tenantId: null, settings: {} });
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    const listener = (changed) => {
+      if (changed === tenantId) setVersion((v) => v + 1);
+    };
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  }, [tenantId]);
 
   useEffect(() => {
     if (!tenantId) return undefined;
@@ -41,7 +57,7 @@ export const useTenantSettings = () => {
     return () => {
       active = false;
     };
-  }, [tenantId]);
+  }, [tenantId, version]);
 
   return {
     settings: state.tenantId === tenantId ? state.settings : {},

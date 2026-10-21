@@ -64,7 +64,7 @@ describe('licenseService', () => {
     expect(mockTransaction.update).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        assignedAssets: [{ id: 'asset1', name: 'Dell Latitude (NTB-001)' }],
+        assignedAssets: [{ id: 'asset1', name: 'Dell Latitude (NTB-001)', source: 'manual' }],
         usedCount: 1
       })
     );

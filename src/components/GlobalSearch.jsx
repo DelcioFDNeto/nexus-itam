@@ -39,6 +39,10 @@ const TENANT_PAGES = [
   { name: 'Importação', path: '/import', cap: 'assets:import', feature: 'import' },
   { name: 'Acessos', path: '/users', cap: 'users:manage' },
   { name: 'Configurações', path: '/settings', cap: 'settings:read' },
+  { name: 'Filiais e locais', path: '/settings?secao=locais', cap: 'settings:read' },
+  { name: 'Termos: textos e regras', path: '/settings?secao=documentos', cap: 'settings:read' },
+  { name: 'Identidade visual', path: '/settings?secao=identidade', cap: 'settings:read' },
+  { name: 'Backup', path: '/settings?secao=backup', cap: 'backup:create' },
 ];
 
 const MASTER_PAGES = [

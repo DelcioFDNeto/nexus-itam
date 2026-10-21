@@ -25,6 +25,7 @@ const LocationSelect = ({
   // Local que nao pode ser escolhido (ex.: a propria origem como destino).
   exclude,
   id,
+  disabled = false,
 }) => {
   const { locations, loading } = useLocations();
 
@@ -35,7 +36,7 @@ const LocationSelect = ({
 
   return (
     <>
-      <select id={id} name={name} value={value || ''} onChange={onChange} className={className} disabled={loading}>
+      <select id={id} name={name} value={value || ''} onChange={onChange} className={className} disabled={loading || disabled}>
         {allowEmpty && <option value="">{loading ? 'Carregando locais...' : emptyLabel}</option>}
 
         {/* Mantém o valor histórico visível e selecionável */}
@@ -56,7 +57,7 @@ const LocationSelect = ({
         <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-500">
           Nenhum local cadastrado.{' '}
           {showManageLink && (
-            <Link to="/settings" className="font-bold underline">
+            <Link to="/settings?secao=locais" className="font-bold underline">
               Cadastrar filiais
             </Link>
           )}

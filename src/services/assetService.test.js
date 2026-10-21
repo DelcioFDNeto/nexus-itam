@@ -121,7 +121,8 @@ describe('assetService (atomic writeBatch)', () => {
   it('deletes an asset and records history atomically via writeBatch', async () => {
     await deleteAsset('1', 'tenant1', 'admin@example.com');
     
-    expect(mockBatch.delete).toHaveBeenCalledTimes(1);
+    // ativo + inventario do Agente ITAM, no mesmo lote
+    expect(mockBatch.delete).toHaveBeenCalledTimes(2);
     expect(mockBatch.set).toHaveBeenCalledTimes(1);
     expect(mockBatch.set.mock.calls[0][1]).toMatchObject({
       assetId: '1',
@@ -155,6 +156,25 @@ describe('assetService (atomic writeBatch)', () => {
       newHolder: 'Maria'
     });
     expect(mockBatch.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('movimentacao nao reativa baixado, nao mexe em transito e preserva o status', async () => {
+    await expect(moveAsset('1', { tenantId: 't', status: 'Baixado' }, { newLocation: 'X' })).rejects.toThrow(/baixado/);
+    await expect(moveAsset('1', { tenantId: 't', status: 'Em Trânsito', transit: { termId: 'tt', number: 'TT-2026-0001' } }, { newLocation: 'X' })).rejects.toThrow(/TT-2026-0001/);
+    expect(mockBatch.commit).not.toHaveBeenCalled();
+
+    await moveAsset('1', { tenantId: 't', status: 'Manutenção', assignedTo: 'Ana' }, { newLocation: 'Oficina', newResponsible: 'Ana' });
+    expect(mockBatch.update.mock.calls[0][1]).toMatchObject({ status: 'Manutenção', location: 'Oficina' });
+
+    mockBatch.update.mockClear();
+    await moveAsset('1', { tenantId: 't', status: 'Em Uso', assignedTo: 'Ana', clientCpf: '1' }, { newLocation: 'Estoque', newResponsible: '' });
+    expect(mockBatch.update.mock.calls[0][1]).toMatchObject({ status: 'Disponível', assignedTo: '', clientCpf: '' });
+  });
+
+  it('baixa e manutencao recusam ativo em transito', async () => {
+    const inTransit = { tenantId: 't', status: 'Em Trânsito', transit: { termId: 'tt', number: 'TT-2026-0002' } };
+    await expect(writeOffAsset('1', inTransit, { date: '2026-10-01', reason: 'Perda' })).rejects.toThrow(/trânsito/);
+    await expect(registerMaintenance('1', { tenantId: 't', asset: inTransit })).rejects.toThrow(/trânsito/);
   });
 
   it('writes off an asset and records history atomically via writeBatch', async () => {
