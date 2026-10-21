@@ -368,6 +368,58 @@ describe('agente sem login (drop-box)', () => {
 });
 
 // -----------------------------------------------------------------------------
+describe('agentDevices e agentControl (RMM e acesso remoto)', () => {
+  const devicePayload = (extra = {}) => ({
+    tenantId: 'acme',
+    agentToken: 'tok-acme',
+    deviceKey: 'dev01',
+    accessId: '842 910 305',
+    hostname: 'SHL-BEL-NTB-001',
+    status: 'online',
+    metrics: { cpuPercent: 18, ramPercent: 54, diskPercent: 41 },
+    lastSeenAt: serverTimestamp(),
+    ...extra,
+  });
+
+  it('agente grava telemetria e frame em agentDevices com token valido; bloqueia token invalido ou docId de outra empresa', async () => {
+    await assertSucceeds(setDoc(doc(anon(), 'agentDevices', 'acme_dev01'), devicePayload()));
+    await assertSucceeds(setDoc(doc(anon(), 'agentDevices', 'acme_dev01'), devicePayload({ screenFrame: { data: 'base64jpeg', seq: 1 } })));
+    await assertFails(setDoc(doc(anon(), 'agentDevices', 'acme_dev01'), devicePayload({ agentToken: 'errado' })));
+    await assertFails(setDoc(doc(anon(), 'agentDevices', 'beta_dev01'), devicePayload()));
+    await assertFails(setDoc(doc(anon(), 'agentDevices', 'acme_outro'), devicePayload()));
+  });
+
+  it('agentDevices: apenas gestao da empresa le; anonimo e outra empresa nao leem', async () => {
+    await setDoc(doc(anon(), 'agentDevices', 'acme_dev01'), devicePayload());
+    await assertSucceeds(getDoc(doc(as('manager1'), 'agentDevices', 'acme_dev01')));
+    await assertFails(getDoc(doc(anon(), 'agentDevices', 'acme_dev01')));
+    await assertFails(getDoc(doc(as('op1'), 'agentDevices', 'acme_dev01')));
+    await assertFails(getDoc(doc(as('betaOwner'), 'agentDevices', 'acme_dev01')));
+  });
+
+  it('agentControl: gestor envia comando/sessao remota e agente (anon) consegue ler via getDoc, mas nao alterar', async () => {
+    await assertSucceeds(setDoc(doc(as('manager1'), 'agentControl', 'acme_dev01'), {
+      tenantId: 'acme',
+      deviceKey: 'dev01',
+      remoteSession: { status: 'requesting', mode: 'unattended', sessionId: 's1' },
+    }));
+    await assertSucceeds(getDoc(doc(anon(), 'agentControl', 'acme_dev01')));
+    await assertFails(updateDoc(doc(anon(), 'agentControl', 'acme_dev01'), {
+      remoteSession: { status: 'closed' },
+    }));
+    await assertFails(setDoc(doc(as('op1'), 'agentControl', 'acme_dev01'), {
+      tenantId: 'acme',
+      deviceKey: 'dev01',
+    }));
+    await assertFails(setDoc(doc(as('manager1'), 'agentControl', 'acme_dev01'), {
+      tenantId: 'acme',
+      deviceKey: 'dev01',
+      agentToken: 'tok-acme',
+    }));
+  });
+});
+
+// -----------------------------------------------------------------------------
 describe('inventario das maquinas e trilha de auditoria', () => {
   it('inventario: empresa le, operador grava, outra empresa nao', async () => {
     await assertSucceeds(getDoc(doc(as('viewer1'), 'assetInventory', 'a1')));

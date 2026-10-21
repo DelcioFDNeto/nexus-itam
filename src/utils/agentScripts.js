@@ -1,11 +1,11 @@
 // src/utils/agentScripts.js
 // -----------------------------------------------------------------------------
-// Monta os scripts do Agente ITAM a partir dos arquivos em src/agent/.
-// Os scripts sao arquivos de verdade (.ps1/.sh) — antes viviam dentro de
-// strings JavaScript, onde barras invertidas e "${}" quebravam o codigo gerado.
+// Monta os scripts e pacotes instaladores do Agente ITAM (incluindo o executavel
+// nativo NexusAgent.exe com Acesso Remoto e RMM no Windows) a partir de src/agent/.
 // -----------------------------------------------------------------------------
 import windowsAgent from '../agent/windows/nexus-agent.ps1?raw';
 import windowsInstaller from '../agent/windows/install.ps1?raw';
+import windowsAgentCs from '../agent/windows/NexusAgent.cs?raw';
 import linuxAgent from '../agent/linux/nexus-agent.sh?raw';
 import linuxInstaller from '../agent/linux/install.sh?raw';
 import macAgent from '../agent/mac/nexus-agent.sh?raw';
@@ -19,8 +19,8 @@ export const AGENT_TARGETS = {
 };
 
 export const AGENT_MODES = {
-  portable: 'Coleta única',
-  service: 'Instalar (automático)',
+  service: 'Instalar Agente + Acesso Remoto (.exe)',
+  portable: 'Coleta única (Inventário)',
   uninstall: 'Desinstalar',
 };
 
@@ -52,8 +52,12 @@ const toBase64Utf8 = (value) => {
 
 const UNINSTALL = {
   windows: `#Requires -RunAsAdministrator
-# Nexus ITAM - remove o agente deste computador
+# Nexus ITAM - remove o agente e o executavel nativo deste computador
+Get-Process -Name 'NexusAgent' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName 'NexusITAM_AgentSync' -Confirm:$false -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'NexusITAMAgent' -ErrorAction SilentlyContinue
+$pubDesk = [Environment]::GetFolderPath('CommonDesktopDirectory')
+if ($pubDesk) { Remove-Item -Path (Join-Path $pubDesk 'Nexus ITAM - Suporte e Agente.lnk') -Force -ErrorAction SilentlyContinue }
 Remove-Item -Path (Join-Path $env:ProgramData 'NexusITAM') -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host 'Agente Nexus ITAM removido.'
 `,
@@ -103,10 +107,64 @@ export const buildAgentScript = ({ os = 'windows', mode = 'portable', projectId,
   if (mode === 'portable') return finish(agent);
 
   if (os === 'windows') {
-    return finish(fill(windowsInstaller, { AGENT_VERSION, AGENT_CODE_BASE64: toBase64Utf8(crlf(agent)) }));
+    return finish(fill(windowsInstaller, {
+      AGENT_VERSION,
+      PROJECT_ID: projectId,
+      TENANT_ID: tenantId,
+      AGENT_TOKEN: agentToken,
+      AGENT_CODE_BASE64: toBase64Utf8(crlf(agent)),
+      AGENT_CS_BASE64: toBase64Utf8(crlf(windowsAgentCs)),
+    }));
   }
   const installer = os === 'linux' ? linuxInstaller : macInstaller;
   return finish(fill(installer, { AGENT_VERSION, AGENT_CODE: lf(agent).trimEnd() }));
+};
+
+/**
+ * Gera um instalador Windows .cmd de clique duplo que solicita elevação UAC
+ * automaticamente e instala o NexusAgent.exe + bandeja + acesso remoto + inventário.
+ */
+export const buildWindowsCmdInstaller = ({ projectId, apiKey, tenantId, agentToken, firestoreBase = DEFAULT_FIRESTORE_BASE }) => {
+  const ps1 = buildAgentScript({ os: 'windows', mode: 'service', projectId, apiKey, tenantId, agentToken, firestoreBase }).content.replace(/^\uFEFF/, '');
+  const ps1Base64 = toBase64Utf8(ps1);
+  const cmd = crlf(`@echo off
+chcp 65001 >nul
+title Instalador Nexus ITAM - Agente & Acesso Remoto
+echo ============================================================================
+echo   NEXUS ITAM - Instalando Agente Nativo (NexusAgent.exe) e Acesso Remoto...
+echo ============================================================================
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$b64 = '${ps1Base64}'; $code = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64)); $tmp = Join-Path $env:TEMP 'nexus-agent-setup.ps1'; [System.IO.File]::WriteAllText($tmp, $code, (New-Object System.Text.UTF8Encoding($true))); Start-Process powershell.exe -Verb RunAs -Wait -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File ' + [char]34 + $tmp + [char]34); Remove-Item $tmp -Force -ErrorAction SilentlyContinue"
+echo.
+echo Instalacao concluida! O icone do Nexus ITAM ja esta ativo perto do relogio.
+timeout /t 4
+`);
+  return {
+    content: cmd,
+    filename: 'nexus-agente-windows-instalar.cmd',
+    mime: 'application/x-bat;charset=utf-8',
+  };
+};
+
+/**
+ * Gera o arquivo config.json pré-configurado para uso junto ao NexusAgent.exe.
+ */
+export const buildAgentConfigJson = ({ projectId = 'itam-nexus', tenantId, agentToken, patrimony = '' }) => {
+  assertSafe('projectId', projectId);
+  assertSafe('tenantId', tenantId);
+  assertSafe('token', agentToken);
+  const payload = {
+    projectId,
+    tenantId,
+    agentToken,
+    patrimony,
+    serverUrl: 'https://itam-nexus.web.app',
+    unattendedEnabled: true,
+  };
+  return {
+    content: JSON.stringify(payload, null, 2),
+    filename: 'config.json',
+    mime: 'application/json;charset=utf-8',
+  };
 };
 
 // Assinaturas antigas (mantidas para quem ainda chama assim).

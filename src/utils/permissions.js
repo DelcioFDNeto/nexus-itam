@@ -70,6 +70,7 @@ export const CAPABILITIES = {
   'terms:issue': 'operator',
   'terms:cancel': 'manager',
   'agent:read': 'manager',
+  'agent:remote': 'manager',
   'agent:manage': 'admin',
   'users:manage': 'admin',
   'settings:read': 'admin',

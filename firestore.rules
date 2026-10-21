@@ -442,6 +442,61 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------------
+    // AGENTE ITAM RMM & ACESSO REMOTO (NexusAgent.exe)
+    // Canal full-duplex sem colisao de escrita:
+    //  - /agentDevices/{tenantId}_{deviceKey}: telemetria ao vivo, frames de tela,
+    //    resultado de comandos e chamados enviados pelo agente (autenticado via
+    //    agentToken da empresa). Leitura restrita a gestao da empresa.
+    //  - /agentControl/{tenantId}_{deviceKey}: comandos remotos e eventos de
+    //    mouse/teclado enviados pelo console web (gestor/admin/owner). Nao contem
+    //    agentToken; o agente le o proprio documento via get.
+    // ---------------------------------------------------------------------
+    match /agentDevices/{docId} {
+      function agentDeviceFields() {
+        return [
+          'tenantId', 'agentToken', 'deviceKey', 'accessId', 'hostname',
+          'serialNumber', 'deviceId', 'internalId', 'assetId', 'ipAddress',
+          'macAddress', 'osCaption', 'loggedUser', 'agentVersion', 'status',
+          'lastSeenAt', 'updatedAt', 'metrics', 'topProcesses',
+          'remoteState', 'screenFrame', 'lastCommandResult', 'supportRequest'
+        ];
+      }
+
+      function validAgentDeviceWrite() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(agentDeviceFields()) &&
+          d.tenantId is string &&
+          d.agentToken is string &&
+          d.deviceKey is string && d.deviceKey.size() > 0 && d.deviceKey.size() <= 80 &&
+          docId == d.tenantId + '_' + d.deviceKey &&
+          exists(/databases/$(database)/documents/tenantSecrets/$(d.tenantId)) &&
+          get(/databases/$(database)/documents/tenantSecrets/$(d.tenantId)).data.agentToken == d.agentToken &&
+          !tenantBlocked(d.tenantId);
+      }
+
+      allow read: if isMaster() || canManage(resource.data.tenantId);
+      allow create: if managerCreate() || validAgentDeviceWrite();
+      allow update: if managerUpdate()
+        || (validAgentDeviceWrite() && resource.data.tenantId == request.resource.data.tenantId);
+      allow delete: if managerDelete();
+    }
+
+    match /agentControl/{docId} {
+      allow get: if true;
+      allow list: if isMaster() || canManage(resource.data.tenantId);
+      allow create: if managerCreate() &&
+        request.resource.data.deviceKey is string &&
+        request.resource.data.deviceKey.size() > 0 &&
+        request.resource.data.deviceKey.size() <= 80 &&
+        docId == request.resource.data.tenantId + '_' + request.resource.data.deviceKey &&
+        !('agentToken' in request.resource.data);
+      allow update: if managerUpdate() &&
+        request.resource.data.deviceKey == resource.data.deviceKey &&
+        !('agentToken' in request.resource.data);
+      allow delete: if managerDelete();
+    }
+
+    // ---------------------------------------------------------------------
     // COLECOES OPERACIONAIS ESCOPADAS POR TENANT
     // ---------------------------------------------------------------------
     // Excluir ativo apaga o registro patrimonial: exige gestor ('assets:delete').

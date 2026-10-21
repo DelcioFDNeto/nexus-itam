@@ -1,16 +1,23 @@
 // src/components/assets/AgentInventoryCard.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Activity, AlertTriangle, Battery, CheckCircle2, Cpu, HardDrive, Monitor, Network, Package, Search, ShieldAlert, ShieldCheck, UserCheck, Users,
+  Activity, AlertTriangle, Battery, CheckCircle2, Cpu, HardDrive, Monitor, Network, Package, Search, ShieldAlert, ShieldCheck, Terminal, UserCheck, Users, Wifi,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTenantSettings } from '../../hooks/useTenantSettings';
 import { getAssetInventory } from '../../services/agentService';
 import { moveAsset } from '../../services/assetService';
+import {
+  findLiveDeviceForAsset,
+  formatAccessId,
+  isDeviceOnline,
+  subscribeAgentDevices,
+} from '../../services/rmmService';
 import { agentHealth, ALERT_LEVELS, resolveAgentPolicy } from '../../utils/agentInventory';
 import { lifecycleBlocker } from '../../utils/assetStatus';
 import { can } from '../../utils/permissions';
+import RemoteControlModal from '../agent/RemoteControlModal';
 
 const LEVEL_STYLE = {
   high: 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300',
@@ -44,11 +51,22 @@ const AgentInventoryCard = ({ asset }) => {
   const { settings } = useTenantSettings();
   const policy = resolveAgentPolicy(settings);
   const canWrite = can(currentUser, 'assets:write');
+  const canRemote = can(currentUser, 'agent:remote');
   const [state, setState] = useState({ assetId: null, inventory: null, error: false });
   const [search, setSearch] = useState('');
   const [showAllSoftware, setShowAllSoftware] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [liveDevices, setLiveDevices] = useState([]);
+  const [remoteModal, setRemoteModal] = useState({ open: false, tab: 'screen' });
   const lastSeenKey = String(asset.agent?.collectedAt || '');
+
+  useEffect(() => {
+    if (!currentUser?.tenantId || !canRemote) return undefined;
+    const unsub = subscribeAgentDevices(currentUser.tenantId, (list) => {
+      setLiveDevices(list);
+    });
+    return () => unsub();
+  }, [currentUser?.tenantId, canRemote]);
 
   useEffect(() => {
     let active = true;
@@ -92,23 +110,64 @@ const AgentInventoryCard = ({ asset }) => {
     }
   };
 
-  const healthBadge = health.state === 'online'
+  const liveDevice = useMemo(() => findLiveDeviceForAsset(asset, liveDevices), [asset, liveDevices]);
+  const onlineNow = isDeviceOnline(liveDevice);
+  const accessId = formatAccessId(liveDevice || asset.agent?.deviceKey || asset.serialNumber || asset.internalId);
+
+  const healthBadge = onlineNow
+    ? <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"><Wifi size={11} /> Online Ao Vivo (.EXE)</span>
+    : health.state === 'online'
     ? <span className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-2 py-0.5 text-[10px] font-black uppercase text-green-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300"><Activity size={11} /> Comunicando</span>
     : <span className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-black uppercase text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300"><AlertTriangle size={11} /> Sem comunicação há {health.days} dias</span>;
 
   const sec = inventory?.security;
   const antivirus = sec?.antivirus?.length ? sec.antivirus.map((av) => `${av.name}${av.enabled ? '' : ' (desativado)'}${av.enabled && !av.upToDate ? ' (desatualizado)' : ''}`).join(', ') : inventory ? 'Nenhum' : '—';
 
+  const remoteDevicePayload = liveDevice || {
+    deviceKey: asset.agent?.deviceKey || asset.serialNumber || asset.internalId,
+    accessId,
+    hostname: asset.agent?.hostname || asset.internalId,
+    internalId: asset.internalId,
+    loggedUser: asset.agent?.loggedUser || asset.assignedTo,
+    ipAddress: asset.agent?.ip,
+    osCaption: asset.agent?.os,
+  };
+
   return (
     <section className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm space-y-6" aria-label="Inventário do Agente ITAM">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2"><Cpu size={20} /> Agente ITAM</h3>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2"><Cpu size={20} /> Agente ITAM & Acesso Remoto</h3>
+            <span className="px-2.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-mono text-xs font-bold">
+              ID: {accessId}
+            </span>
+          </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Última coleta {formatDate(asset.agent?.collectedAt)} · agente {asset.agent?.version || '1.x'} · {asset.agent?.source || 'Agente ITAM'}
+            Última coleta {formatDate(asset.agent?.collectedAt)} · agente {liveDevice?.agentVersion || asset.agent?.version || '1.x'} · {asset.agent?.source || 'Agente ITAM'}
           </p>
         </div>
-        {healthBadge}
+        <div className="flex flex-wrap items-center gap-2">
+          {healthBadge}
+          {canRemote && (
+            <>
+              <button
+                type="button"
+                onClick={() => setRemoteModal({ open: true, tab: 'screen' })}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-sm transition-colors"
+              >
+                <Monitor size={14} /> Acesso Remoto
+              </button>
+              <button
+                type="button"
+                onClick={() => setRemoteModal({ open: true, tab: 'terminal' })}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 font-bold text-xs transition-colors"
+              >
+                <Terminal size={13} /> Terminal
+              </button>
+            </>
+          )}
+        </div>
       </header>
 
       {alerts.length > 0 ? (
@@ -267,6 +326,16 @@ const AgentInventoryCard = ({ asset }) => {
       {alerts.some((a) => a.code === 'user_mismatch') && !canWrite && (
         <p className="flex items-center gap-2 text-xs text-gray-400"><UserCheck size={13} /> Peça a um operador para corrigir o responsável.</p>
       )}
+
+      <RemoteControlModal
+        isOpen={remoteModal.open}
+        onClose={() => setRemoteModal((prev) => ({ ...prev, open: false }))}
+        tenantId={currentUser?.tenantId}
+        initialDevice={remoteDevicePayload}
+        asset={asset}
+        currentUser={currentUser}
+        initialTab={remoteModal.tab}
+      />
     </section>
   );
 };

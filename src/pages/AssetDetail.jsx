@@ -1056,7 +1056,9 @@ const AssetDetail = () => {
               )}
             </div>
           </div>
-          {asset.agent && <AgentInventoryCard asset={{ ...asset, id }} />}
+          {(asset.agent || ["Computador", "Notebook", "Servidor", "Desktop", "All-in-One"].includes(asset.type)) && (
+            <AgentInventoryCard asset={{ ...asset, id }} />
+          )}
         </div>
 
         {/* Coluna secundária reservada exclusivamente para a linha do tempo e registro do que aconteceu no sistema */}

@@ -19,15 +19,20 @@ describe('scripts do agente', () => {
     expect(content).not.toMatch(/[^\r]\n/);
   });
 
-  it('Windows instalador embute o agente em base64 e restringe a pasta', () => {
+  it('Windows instalador embute o agente e o executavel C# em base64 e restringe a pasta', () => {
     const { content } = buildAgentScript({ ...base, os: 'windows', mode: 'service' });
     expect(content).toContain('#Requires -RunAsAdministrator');
     expect(content).toContain('Register-ScheduledTask');
+    expect(content).toContain('NexusAgent.exe');
     expect(content).toContain('/inheritance:r');
-    const b64 = content.match(/FromBase64String\('([^']+)'\)/)[1];
-    const agent = decodeBase64Utf8(b64);
+    expect(content).not.toMatch(PLACEHOLDER);
+    const matches = [...content.matchAll(/FromBase64String\('([^']+)'\)/g)];
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+    const agent = decodeBase64Utf8(matches[0][1]);
     expect(agent).toContain("$TenantId = 'tenant-abc'");
     expect(agent).not.toMatch(PLACEHOLDER);
+    const csCode = decodeBase64Utf8(matches[1][1]);
+    expect(csCode).toContain('namespace NexusITAM');
   });
 
   it('Linux e macOS: LF, sem marcadores e com "$$" preservado', () => {
