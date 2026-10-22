@@ -68,13 +68,38 @@ const Login = () => {
   // Sessao salva sendo validada (reabrir o app) ou login em andamento.
   if (authLoading || (signingIn && !error)) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4" aria-busy="true">
-        <div className="flex flex-col items-center gap-4 opacity-0 animate-[loginFadeUp_0.4s_ease-out_0.25s_both]" role="status">
-          <Logo size="lg" className="drop-shadow-[0_0_15px_rgba(79,70,229,0.5)]" />
-          <Orbit className="animate-spin text-brand" size={22} />
-          <p className="text-[11px] font-black uppercase tracking-[0.25em] text-gray-400">
-            {signingIn ? 'Entrando…' : 'Abrindo o sistema…'}
+      <main className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4 relative overflow-hidden font-sans" aria-busy="true">
+        {/* Glow de fundo */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[60vw] max-w-[500px] max-h-[500px] rounded-full bg-brand/15 blur-[120px]" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40vw] h-[40vw] max-w-[350px] max-h-[350px] rounded-full bg-cyan-500/10 blur-[90px]" />
+          <div className="absolute inset-0 bg-[url('/carbon-fibre.png')] opacity-5 mix-blend-overlay" />
+        </div>
+
+        <div className="relative z-10 flex flex-col items-center text-center max-w-sm px-6 animate-[loginFadeUp_0.4s_ease-out_both]" role="status">
+          {/* Logo icon com glow */}
+          <div className="relative mb-4 flex items-center justify-center">
+            <div className="absolute -inset-3 bg-gradient-to-r from-brand to-cyan-400 rounded-full blur-xl opacity-40 animate-pulse" />
+            <div className="relative w-16 h-16 rounded-3xl bg-white/[0.04] border border-white/15 backdrop-blur-xl flex items-center justify-center shadow-2xl p-2.5">
+              <Logo size="lg" showText={false} className="w-full h-full drop-shadow-[0_0_15px_rgba(79,70,229,0.5)]" />
+            </div>
+          </div>
+
+          {/* Nome da Marca com tipografia nitida em fundo escuro */}
+          <h1 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center justify-center gap-2">
+            Nexus <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-cyan-400">ITAM</span>
+          </h1>
+          <p className="text-[10px] font-bold text-gray-400 mt-1 tracking-[0.25em] uppercase">
+            Gestão Inteligente de Ativos
           </p>
+
+          {/* Loader e status */}
+          <div className="mt-7 flex flex-col items-center gap-2.5">
+            <Orbit className="animate-spin text-cyan-400" size={24} />
+            <p className="text-xs font-mono font-bold text-slate-300 tracking-wider">
+              {signingIn ? 'Entrando no sistema…' : 'Abrindo o sistema…'}
+            </p>
+          </div>
         </div>
       </main>
     );
@@ -124,7 +149,7 @@ const Login = () => {
 
           <div className="flex flex-col items-center mb-8 relative animate-[loginFadeUp_0.6s_ease-out_0.1s_both]">
             <div className="absolute -top-4 -z-10 w-24 h-24 bg-brand/20 blur-2xl rounded-full"></div>
-            <Logo size="lg" className="drop-shadow-[0_0_15px_rgba(79,70,229,0.5)]" />
+            <Logo size="lg" showText={false} className="drop-shadow-[0_0_15px_rgba(79,70,229,0.5)]" />
             <h2 className="text-3xl font-black text-white uppercase tracking-tighter mt-4 flex items-center gap-2">
               Nexus <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-cyan-400">ITAM</span>
             </h2>

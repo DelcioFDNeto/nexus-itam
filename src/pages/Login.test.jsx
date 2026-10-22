@@ -93,4 +93,22 @@ describe('Login Page', () => {
       expect(screen.getByText('Acesso negado. Verifique suas credenciais.')).toBeInTheDocument();
     });
   });
+  it('renders elegant splash screen when session is loading', () => {
+    useAuth.mockReturnValue({
+      login: vi.fn(),
+      currentUser: null,
+      loading: true
+    });
+
+    render(
+      <BrowserRouter>
+        <Login />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.getByText('Abrindo o sistema…')).toBeInTheDocument();
+    expect(screen.getByText('Gestão Inteligente de Ativos')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('acesso@nexusitam.com')).not.toBeInTheDocument();
+  });
 });

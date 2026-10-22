@@ -125,7 +125,7 @@ const Register = () => {
           <div className="text-center mb-8 relative animate-[loginFadeUp_0.6s_ease-out_0.08s_both]">
              <div className="absolute top-0 left-1/2 -translate-x-1/2 -z-10 w-32 h-32 bg-cyan-500/20 blur-3xl rounded-full"></div>
              <div className="flex justify-center mb-4">
-                 <Logo size="lg" className="drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]" />
+                 <Logo size="lg" textColor="text-white" className="drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]" />
              </div>
             <h2 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center justify-center gap-2">
               Deploy <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-brand">Corporativo</span>

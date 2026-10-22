@@ -136,7 +136,7 @@ export default function ResetPassword() {
           {/* Logo e Cabecalho */}
           <div className="flex flex-col items-center mb-6 relative">
             <div className="absolute -top-4 -z-10 w-24 h-24 bg-brand/20 blur-2xl rounded-full" />
-            <Logo size="lg" className="drop-shadow-[0_0_15px_rgba(79,70,229,0.5)]" />
+            <Logo size="lg" showText={false} className="drop-shadow-[0_0_15px_rgba(79,70,229,0.5)]" />
             <h1 className="text-2xl font-black text-white uppercase tracking-tight mt-4 flex items-center gap-2">
               Nexus <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-cyan-400">ITAM</span>
             </h1>

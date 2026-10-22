@@ -13,7 +13,7 @@ const FALLBACK_LOGO = '/logo.png';
  *    (antes aparecia "NexusITAM" mesmo com whitelabel contratado).
  *  - Demais casos: marca Nexus ITAM.
  */
-const Logo = ({ className = '', size = 'md', showText = true }) => {
+const Logo = ({ className = '', size = 'md', showText = true, textColor = '' }) => {
   // Safe default just in case Logo is used outside AuthProvider
   const auth = useAuth();
   const currentUser = auth?.currentUser;
@@ -65,7 +65,7 @@ const Logo = ({ className = '', size = 'md', showText = true }) => {
         )}
       </div>
       {showText && (
-        <span className={`${text} text-gray-900 dark:text-white leading-none truncate max-w-[200px]`}>
+        <span className={`${text} ${textColor || 'text-gray-900 dark:text-white'} leading-none ${size === 'lg' ? 'truncate max-w-sm' : 'truncate max-w-[240px]'}`}>
           {showCompany ? companyName : (
             <>Nexus<span className="text-brand">ITAM</span></>
           )}
