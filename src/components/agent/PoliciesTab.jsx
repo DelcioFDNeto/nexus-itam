@@ -35,7 +35,7 @@ const formatWhen = (value) => {
 
 const field = 'w-full rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-sm font-semibold text-gray-900 dark:text-white outline-none focus:border-brand';
 const label = 'block text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1';
-const card = 'bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-6 space-y-4';
+const card = 'bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-4 sm:p-6 space-y-4';
 
 const toLines = (list) => (Array.isArray(list) ? list.join('\n') : String(list || ''));
 const fromLines = (value) => String(value || '').split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
@@ -135,7 +135,7 @@ const PoliciesTab = ({ tenantId, currentUser, agentToken, onTokenChange }) => {
     const ok = await confirm({
       title: agentToken ? 'Gerar novo token' : 'Gerar token',
       message: agentToken
-        ? 'O token atual deixa de valer para novas instalações e para os scripts de coleta (PowerShell avulso, Linux e macOS), que param até receberem o script novo. Máquinas com o NexusAgent.exe 3.1 já matriculadas continuam funcionando; para tirar uma máquina específica, revogue-a no console remoto. Continuar?'
+        ? 'O token atual deixa de valer para novas instalações e para os scripts de coleta (PowerShell avulso, Linux e macOS), que param até receberem o script novo. Máquinas com o NexusAgent.exe 3.1+ já matriculadas continuam funcionando; para tirar uma máquina específica, revogue-a no console remoto. Continuar?'
         : 'O token autoriza a instalação do agente e os scripts de coleta a enviar inventário para a sua empresa.',
       danger: Boolean(agentToken),
       confirmLabel: 'Gerar token',

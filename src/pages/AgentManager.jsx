@@ -1,8 +1,8 @@
 // src/pages/AgentManager.jsx
 // -----------------------------------------------------------------------------
-// Agente ITAM & RMM: frota de maquinas inventariadas, acesso remoto ao vivo
-// (substituto do AnyDesk), terminal remoto, fila de recepcao, instalador do
-// executavel NexusAgent.exe, politicas e simulador.
+// Agente ITAM, RMM & NexusDesk: frota de maquinas inventariadas, acesso remoto
+// ao vivo (NexusDesk desktop e mobile), atualizacao OTA remota, terminal
+// PowerShell, fila de recepcao, instalador do NexusAgent.exe, politicas e simulador.
 // -----------------------------------------------------------------------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -43,9 +43,9 @@ import SimulatorTab from '../components/agent/SimulatorTab';
 import RemoteControlModal from '../components/agent/RemoteControlModal';
 
 const TABS = [
-  { id: 'frota', label: 'Frota & Acesso Remoto' },
+  { id: 'frota', label: 'Frota & NexusDesk' },
   { id: 'fila', label: 'Fila' },
-  { id: 'instalar', label: 'Instalar (.EXE / Scripts)' },
+  { id: 'instalar', label: 'Instalar & Atualizar (.EXE)' },
   { id: 'politicas', label: 'Políticas e segurança' },
   { id: 'simulador', label: 'Simulador' },
 ];
@@ -84,7 +84,7 @@ const AgentManager = () => {
   const [loadingInbox, setLoadingInbox] = useState(true);
   const [processing, setProcessing] = useState(false);
 
-  // Estado do Modal de Acesso Remoto / RMM
+  // Estado do Modal de Acesso Remoto NexusDesk / RMM
   const [remoteModal, setRemoteModal] = useState({
     open: false,
     device: null,
@@ -179,11 +179,11 @@ const AgentManager = () => {
             <Cpu size={26} />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">
-              Agente ITAM & Acesso Remoto
+            <h1 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white tracking-tight">
+              Agente ITAM & NexusDesk
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Controle remoto em tempo real (substituto AnyDesk), terminal PowerShell, monitoramento de recursos e inventário automático.
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+              Acesso remoto seguro NexusDesk (desktop e celular), atualização remota OTA, terminal PowerShell e inventário automático.
             </p>
           </div>
         </div>
@@ -227,7 +227,7 @@ const AgentManager = () => {
                       Solicitação de Suporte em Tempo Real • {dev.internalId || dev.hostname}
                     </span>
                     <span className="px-2 py-0.5 rounded bg-amber-200/80 dark:bg-amber-900 text-amber-900 dark:text-amber-200 font-mono text-xs font-bold">
-                      ID: {formatAccessId(dev)}
+                      NexusDesk: {formatAccessId(dev)}
                     </span>
                     <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
                       ({dev.supportRequest?.priority || 'Normal'})
@@ -245,7 +245,7 @@ const AgentManager = () => {
                   onClick={() => handleOpenRemote(dev, null, 'screen')}
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-sm"
                 >
-                  <Monitor size={14} /> Atender via Acesso Remoto
+                  <Monitor size={14} /> Atender via NexusDesk
                 </button>
                 <button
                   type="button"
@@ -312,7 +312,7 @@ const AgentManager = () => {
       </div>
 
       <div
-        className="flex gap-1 overflow-x-auto scrollbar-hide border-b border-gray-200 dark:border-slate-700"
+        className="flex gap-1 overflow-x-auto no-scrollbar border-b border-gray-200 dark:border-slate-700"
         role="tablist"
         aria-label="Seções do agente"
       >
@@ -341,6 +341,8 @@ const AgentManager = () => {
             assets={assets}
             liveDevices={liveDevices}
             staleDays={policy.staleDays}
+            tenantId={tenantId}
+            currentUser={currentUser}
             onOpenRemote={handleOpenRemote}
           />
         )}
@@ -353,7 +355,14 @@ const AgentManager = () => {
             onReload={loadInbox}
           />
         )}
-        {tab === 'instalar' && <InstallTab tenantId={tenantId} agentToken={agentToken} />}
+        {tab === 'instalar' && (
+          <InstallTab
+            tenantId={tenantId}
+            agentToken={agentToken}
+            liveDevices={liveDevices}
+            currentUser={currentUser}
+          />
+        )}
         {tab === 'politicas' && (
           <PoliciesTab
             tenantId={tenantId}

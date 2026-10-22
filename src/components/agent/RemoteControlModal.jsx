@@ -3,9 +3,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
+  ArrowUpCircle,
   Camera,
-  CheckCircle2,
   Cpu,
+  Hand,
   HardDrive,
   Keyboard,
   Lock,
@@ -22,13 +23,14 @@ import {
   Send,
   ShieldCheck,
   ShieldOff,
+  Smartphone,
   Square,
   Terminal,
   Trash2,
-  UserCheck,
-  Wifi,
   X,
   Zap,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirm } from '../ConfirmDialog';
@@ -37,6 +39,8 @@ import {
   MAX_COMMAND_LENGTH,
   QUICK_POWERSHELL_ACTIONS,
   REMOTE_COMMANDS,
+  clearRemoteInputEvents,
+  dispatchAgentUpdate,
   dispatchRemoteCommand,
   formatAccessId,
   isDeviceOnline,
@@ -51,15 +55,16 @@ import {
   updateRemoteQuality,
   wakeAgentDevice,
 } from '../../services/rmmService';
+import { AGENT_VERSION, isAgentOutdated } from '../../utils/agentInventory';
 import { can } from '../../utils/permissions';
 
 // Estados finais que o agente publica em remoteState.state.
 const SESSION_END_MESSAGES = {
-  rejected: 'O colaborador recusou o acesso (ou não respondeu em 30 s).',
+  rejected: 'O colaborador recusou o acesso NexusDesk (ou não respondeu em 30 s).',
   refused_policy: 'A política da empresa desligou o acesso remoto.',
   ended_by_user: 'O colaborador encerrou o acesso remoto.',
-  timeout: 'Sessão encerrada pelo agente: sem ninguém assistindo há 3 minutos.',
-  ended: 'Sessão encerrada.',
+  timeout: 'Sessão encerrada pelo agente por inatividade ou tempo limite.',
+  ended: 'Sessão NexusDesk encerrada.',
 };
 
 const WINGET_PRESETS = [
@@ -83,7 +88,7 @@ export default function RemoteControlModal({
   const [activeTab, setActiveTab] = useState(initialTab);
   const [liveDevice, setLiveDevice] = useState(initialDevice || null);
 
-  // Estado da Sessao Remota
+  // Estado da Sessao Remota NexusDesk
   const [sessionMode, setSessionMode] = useState('attended');
   const [quality, setQuality] = useState('balanced');
   const [sessionId, setSessionId] = useState('');
@@ -93,6 +98,15 @@ export default function RemoteControlModal({
   const [controlEnabled, setControlEnabled] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [textToType, setTextToType] = useState('');
+
+  // Controles Mobile & Touch (NexusDesk Mobile)
+  const [touchMode, setTouchMode] = useState('direct'); // 'direct' | 'trackpad'
+  const [rightClickArmed, setRightClickArmed] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [virtualCursor, setVirtualCursor] = useState({ x: 0.5, y: 0.5 });
+  const [mobileKbOpen, setMobileKbOpen] = useState(false);
+  const [updatingAgent, setUpdatingAgent] = useState(false);
 
   // Estado do Terminal PowerShell
   const [psInput, setPsInput] = useState('');
@@ -110,11 +124,23 @@ export default function RemoteControlModal({
 
   const viewportRef = useRef(null);
   const screenImgRef = useRef(null);
+  const mobileKeyboardInputRef = useRef(null);
   const inputSeqRef = useRef(1);
   const inputQueueRef = useRef([]);
+  const lastClearedAckRef = useRef(0);
   const flushTimerRef = useRef(null);
   const lastMouseMoveAtRef = useRef(0);
   const sessionIdRef = useRef('');
+  const touchStateRef = useRef({
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastY: 0,
+    moved: false,
+    pinchStartDist: 0,
+    pinchStartZoom: 1,
+    longPressTimer: null,
+  });
 
   const deviceKey =
     liveDevice?.deviceKey ||
@@ -147,11 +173,33 @@ export default function RemoteControlModal({
         toast.info(SESSION_END_MESSAGES[state]);
         sessionIdRef.current = '';
         setSessionId('');
+        inputQueueRef.current = [];
         stopRemoteSession({ tenantId, deviceKey }).catch(() => {});
       }
     });
     return () => unsub();
   }, [isOpen, tenantId, deviceKey]);
+
+  // Limpa da fila e do Firestore os eventos de input ja processados pelo agente
+  // para evitar retencao de teclas/cliques no documento agentControl.
+  useEffect(() => {
+    const ackSeq = Number(liveDevice?.remoteState?.lastInputSeq) || 0;
+    if (!sessionId || ackSeq <= 0) return;
+    if (inputQueueRef.current.length > 0) {
+      inputQueueRef.current = inputQueueRef.current.filter((ev) => ev.seq > ackSeq);
+    }
+    if (inputQueueRef.current.length === 0 && ackSeq > lastClearedAckRef.current) {
+      lastClearedAckRef.current = ackSeq;
+      clearRemoteInputEvents({
+        tenantId,
+        deviceKey,
+        sessionId,
+        mode: effectiveMode,
+        quality,
+        user: currentUser,
+      }).catch(() => {});
+    }
+  }, [liveDevice?.remoteState?.lastInputSeq, sessionId, tenantId, deviceKey, effectiveMode, quality, currentUser]);
 
   useEffect(() => {
     if (!isOpen || !tenantId) return undefined;
@@ -168,7 +216,7 @@ export default function RemoteControlModal({
     return () => clearInterval(timer);
   }, [isOpen, tenantId, deviceKey]);
 
-  // Sem este sinal o agente pausa a tela em 45 s e encerra a sessao em 3 min.
+  // Sem este sinal o agente pausa e limpa a tela em 35 s e encerra a sessao em 90 s.
   useEffect(() => {
     if (!sessionId || !tenantId || !deviceKey) return undefined;
     const timer = setInterval(() => pingRemoteViewer({ tenantId, deviceKey }).catch(() => {}), 15_000);
@@ -189,9 +237,18 @@ export default function RemoteControlModal({
     }
   }, [liveDevice?.lastCommandResult, runningCmdId]);
 
-  // Encerra sessao ao desmontar ou fechar modal
+  // Encerra sessao e limpa frame ao desmontar, fechar modal ou fechar aba do navegador
   useEffect(() => {
+    const handleUnload = () => {
+      if (sessionIdRef.current && tenantId && deviceKey) {
+        stopRemoteSession({ tenantId, deviceKey }).catch(() => {});
+      }
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    window.addEventListener('pagehide', handleUnload);
     return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      window.removeEventListener('pagehide', handleUnload);
       if (sessionId && tenantId && deviceKey) {
         stopRemoteSession({ tenantId, deviceKey }).catch(() => {});
       }
@@ -208,9 +265,14 @@ export default function RemoteControlModal({
   const loggedUser = liveDevice?.loggedUser || asset?.assignedTo || 'Não identificado';
   const ipAddress = liveDevice?.ipAddress || asset?.ipAddress || '—';
   const osCaption = liveDevice?.osCaption || asset?.operatingSystem || 'Windows';
+  const currentAgentVer = liveDevice?.agentVersion || asset?.agent?.version || '';
+  const agentOutdated = isAgentOutdated(currentAgentVer);
   const metrics = liveDevice?.metrics || {};
   const topProcesses = Array.isArray(liveDevice?.topProcesses) ? liveDevice.topProcesses : [];
-  const screenFrame = liveDevice?.screenFrame || null;
+  const rawFrame = liveDevice?.screenFrame || null;
+  // Exibe apenas quadros pertencentes a sessao ativa atual (protecao contra vazamento entre sessoes)
+  const screenFrame =
+    rawFrame && (!rawFrame.sessionId || rawFrame.sessionId === sessionId) ? rawFrame : null;
   const remoteState = liveDevice?.remoteState || {};
   const ownState = sessionId && remoteState.sessionId === sessionId ? remoteState.state : '';
   const isSessionActive = ownState === 'active';
@@ -239,7 +301,7 @@ export default function RemoteControlModal({
         user: currentUser,
         events: batch,
       }).catch(() => {});
-    }, 140);
+    }, 120);
   };
 
   const handleStartRemote = async () => {
@@ -255,6 +317,7 @@ export default function RemoteControlModal({
     try {
       inputSeqRef.current = 1;
       inputQueueRef.current = [];
+      lastClearedAckRef.current = 0;
       const newSessionId = await startRemoteSession({
         tenantId,
         deviceKey,
@@ -268,11 +331,11 @@ export default function RemoteControlModal({
       setLastSessionId(newSessionId);
       toast.success(
         effectiveMode === 'attended'
-          ? `Pedido enviado. A máquina responde em até ${responseSeconds} s e o colaborador precisa aceitar na tela.`
-          : `Pedido enviado. A transmissão começa quando a máquina responder (até ${responseSeconds} s).`
+          ? `Pedido NexusDesk enviado. A máquina responde em até ${responseSeconds} s e o colaborador precisa aceitar na tela.`
+          : `Pedido NexusDesk enviado. A transmissão começa quando a máquina responder (até ${responseSeconds} s).`
       );
     } catch (e) {
-      toast.error(e?.message || 'Falha ao iniciar sessão remota.');
+      toast.error(e?.message || 'Falha ao iniciar sessão NexusDesk.');
     } finally {
       setConnecting(false);
     }
@@ -283,10 +346,12 @@ export default function RemoteControlModal({
     sessionIdRef.current = '';
     setSessionId('');
     inputQueueRef.current = [];
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
     if (activeId && tenantId && deviceKey) {
       try {
         await stopRemoteSession({ tenantId, deviceKey, hostname: hostLabel, user: currentUser });
-        toast.info('Sessão remota encerrada.');
+        toast.info('Sessão NexusDesk encerrada e captura limpa.');
       } catch {
         // Ignora erro ao fechar
       }
@@ -308,41 +373,50 @@ export default function RemoteControlModal({
     }
   };
 
-  const getRelativeCoords = (e) => {
+  const getRelativeCoordsFromClient = (clientX, clientY) => {
     const img = screenImgRef.current;
     if (!img) return { x: 0.5, y: 0.5 };
     const rect = img.getBoundingClientRect();
     if (!rect.width || !rect.height) return { x: 0.5, y: 0.5 };
-    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
     return { x: Number(x.toFixed(4)), y: Number(y.toFixed(4)) };
   };
 
+  const getRelativeCoords = (e) => getRelativeCoordsFromClient(e.clientX, e.clientY);
+
   const handleScreenClick = (e) => {
     if (!sessionId || !controlEnabled) return;
-    const coords = getRelativeCoords(e);
+    const coords = touchMode === 'trackpad' ? virtualCursor : getRelativeCoords(e);
+    if (rightClickArmed) {
+      queueInputEvent({ type: 'rightclick', ...coords });
+      setRightClickArmed(false);
+      toast.info('Clique direito enviado.');
+      return;
+    }
     queueInputEvent({ type: 'click', ...coords });
   };
 
   const handleScreenDoubleClick = (e) => {
     if (!sessionId || !controlEnabled) return;
-    const coords = getRelativeCoords(e);
+    const coords = touchMode === 'trackpad' ? virtualCursor : getRelativeCoords(e);
     queueInputEvent({ type: 'dblclick', ...coords });
   };
 
   const handleScreenContextMenu = (e) => {
     e.preventDefault();
     if (!sessionId || !controlEnabled) return;
-    const coords = getRelativeCoords(e);
+    const coords = touchMode === 'trackpad' ? virtualCursor : getRelativeCoords(e);
     queueInputEvent({ type: 'rightclick', ...coords });
   };
 
   const handleScreenMouseMove = (e) => {
-    if (!sessionId || !controlEnabled) return;
+    if (!sessionId || !controlEnabled || touchMode === 'trackpad') return;
     const now = Date.now();
-    if (now - lastMouseMoveAtRef.current < 260) return;
+    if (now - lastMouseMoveAtRef.current < 240) return;
     lastMouseMoveAtRef.current = now;
     const coords = getRelativeCoords(e);
+    setVirtualCursor(coords);
     queueInputEvent({ type: 'mousemove', ...coords });
   };
 
@@ -356,9 +430,102 @@ export default function RemoteControlModal({
     });
   };
 
+  // Gestos Touch Mobile (Pinch-to-Zoom, Pan, Toque Direto e Trackpad Virtual)
+  const handleTouchStart = (e) => {
+    if (!sessionId) return;
+    const ts = touchStateRef.current;
+    if (ts.longPressTimer) {
+      clearTimeout(ts.longPressTimer);
+      ts.longPressTimer = null;
+    }
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      ts.pinchStartDist = Math.hypot(dx, dy);
+      ts.pinchStartZoom = zoom;
+      ts.moved = true;
+      return;
+    }
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      ts.startX = t.clientX;
+      ts.startY = t.clientY;
+      ts.lastX = t.clientX;
+      ts.lastY = t.clientY;
+      ts.moved = false;
+      if (controlEnabled && touchMode === 'direct') {
+        const coords = getRelativeCoordsFromClient(t.clientX, t.clientY);
+        ts.longPressTimer = setTimeout(() => {
+          ts.moved = true;
+          queueInputEvent({ type: 'rightclick', ...coords });
+          toast.info('Clique direito enviado (toque longo).');
+        }, 550);
+      }
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (!sessionId) return;
+    const ts = touchStateRef.current;
+    if (e.touches.length === 2 && ts.pinchStartDist > 0) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const nextZoom = Math.max(1, Math.min(3, Number((ts.pinchStartZoom * (dist / ts.pinchStartDist)).toFixed(2))));
+      setZoom(nextZoom);
+      if (nextZoom === 1) setPan({ x: 0, y: 0 });
+      return;
+    }
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      const dx = t.clientX - ts.lastX;
+      const dy = t.clientY - ts.lastY;
+      if (Math.hypot(t.clientX - ts.startX, t.clientY - ts.startY) > 8) {
+        ts.moved = true;
+        if (ts.longPressTimer) {
+          clearTimeout(ts.longPressTimer);
+          ts.longPressTimer = null;
+        }
+      }
+      ts.lastX = t.clientX;
+      ts.lastY = t.clientY;
+
+      if (touchMode === 'trackpad' && controlEnabled) {
+        e.preventDefault();
+        setVirtualCursor((prev) => {
+          const next = {
+            x: Number(Math.max(0, Math.min(1, prev.x + dx / 260)).toFixed(4)),
+            y: Number(Math.max(0, Math.min(1, prev.y + dy / 200)).toFixed(4)),
+          };
+          const now = Date.now();
+          if (now - lastMouseMoveAtRef.current >= 180) {
+            lastMouseMoveAtRef.current = now;
+            queueInputEvent({ type: 'mousemove', ...next });
+          }
+          return next;
+        });
+      } else if (zoom > 1) {
+        e.preventDefault();
+        setPan((prev) => ({
+          x: Math.max(-320, Math.min(320, prev.x + dx)),
+          y: Math.max(-240, Math.min(240, prev.y + dy)),
+        }));
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    const ts = touchStateRef.current;
+    if (ts.longPressTimer) {
+      clearTimeout(ts.longPressTimer);
+      ts.longPressTimer = null;
+    }
+    ts.pinchStartDist = 0;
+  };
+
   const handleScreenKeyDown = (e) => {
     if (!sessionId || !controlEnabled) return;
-    // Ignora se o foco estiver em um input normal fora do canvas
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) return;
     e.preventDefault();
     queueInputEvent({ type: 'key', key: e.key });
@@ -366,7 +533,7 @@ export default function RemoteControlModal({
 
   const handleSendSpecialKey = (keyCombo) => {
     if (!sessionId) {
-      toast.warning('Inicie a sessão remota primeiro para enviar atalhos de teclado.');
+      toast.warning('Inicie a sessão NexusDesk primeiro para enviar atalhos.');
       return;
     }
     queueInputEvent({ type: 'key', key: keyCombo });
@@ -378,14 +545,25 @@ export default function RemoteControlModal({
     if (!textToType.trim() || !sessionId) return;
     queueInputEvent({ type: 'text', text: textToType });
     setTextToType('');
-    toast.success('Texto digitado na máquina remota.');
+    toast.success('Texto enviado para a máquina remota.');
+  };
+
+  const toggleMobileKeyboard = () => {
+    if (!mobileKeyboardInputRef.current) return;
+    if (mobileKbOpen) {
+      mobileKeyboardInputRef.current.blur();
+      setMobileKbOpen(false);
+    } else {
+      mobileKeyboardInputRef.current.focus();
+      setMobileKbOpen(true);
+    }
   };
 
   const handleDownloadScreenshot = () => {
     if (!screenFrame?.data) return;
     const a = document.createElement('a');
     a.href = `data:image/jpeg;base64,${screenFrame.data}`;
-    a.download = `captura-${patrimony}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.jpg`;
+    a.download = `nexusdesk-${patrimony}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.jpg`;
     a.click();
   };
 
@@ -397,6 +575,13 @@ export default function RemoteControlModal({
     } else {
       document.exitFullscreen?.().then(() => setIsFullscreen(false)).catch(() => {});
     }
+  };
+
+  const handleCycleZoom = () => {
+    const steps = [1, 1.5, 2, 2.5];
+    const next = steps[(steps.indexOf(zoom) + 1) % steps.length] || 1;
+    setZoom(next);
+    if (next === 1) setPan({ x: 0, y: 0 });
   };
 
   const handleSendCommand = async (type, command, title = '') => {
@@ -422,6 +607,36 @@ export default function RemoteControlModal({
       toast.success(`Comando enviado. A máquina executa em até ${responseSeconds} s.`);
     } catch (e) {
       toast.error(e?.message || 'Erro ao enviar comando remoto.');
+    }
+  };
+
+  const handleUpdateAgentRemote = async () => {
+    if (!deviceKey) return;
+    if (!policy.commandsEnabled) {
+      toast.error('Ative os comandos remotos na aba Políticas para atualizar o agente remotamente.');
+      return;
+    }
+    const ok = await confirm({
+      title: `Atualizar Agente em ${patrimony} para v${AGENT_VERSION}?`,
+      message: `O computador baixará o pacote oficial NexusAgent v${AGENT_VERSION}, substituirá o serviço e o NexusDesk preservando a matrícula atual e voltará online automaticamente em poucos segundos.`,
+      confirmLabel: `Atualizar para v${AGENT_VERSION}`,
+    });
+    if (!ok) return;
+    setUpdatingAgent(true);
+    try {
+      const sent = await dispatchAgentUpdate({
+        tenantId,
+        deviceKey,
+        hostname: hostLabel,
+        targetVersion: AGENT_VERSION,
+        user: currentUser,
+      });
+      setRunningCmdId(sent.id);
+      toast.success(`Atualização v${AGENT_VERSION} enviada para ${patrimony}! O serviço reiniciará em instantes.`);
+    } catch (e) {
+      toast.error(e?.message || 'Não foi possível enviar a atualização do agente.');
+    } finally {
+      setUpdatingAgent(false);
     }
   };
 
@@ -488,42 +703,60 @@ export default function RemoteControlModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-2 md:p-5">
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden">
-        {/* Top Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 bg-slate-900 text-white border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm ${online ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'}`}>
-              <Monitor className="w-5 h-5" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm p-0 md:p-4">
+      <div className="bg-white dark:bg-slate-900 border-0 md:border border-gray-200 dark:border-slate-800 rounded-none md:rounded-2xl shadow-2xl w-full max-w-7xl h-[100dvh] md:h-[92vh] flex flex-col overflow-hidden">
+        {/* Top Bar Responsiva */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 md:px-5 py-2.5 md:py-3.5 bg-slate-900 text-white border-b border-slate-800 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={`w-9 h-9 md:w-10 md:h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${online ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'}`}>
+              <Monitor className="w-4 h-4 md:w-5 md:h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h2 className="font-black text-base tracking-tight">{patrimony}</h2>
-                <span className="px-2.5 py-0.5 rounded-md bg-blue-500/20 border border-blue-400/30 text-blue-300 font-mono text-xs font-bold">
-                  ID: {accessId}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 md:gap-2.5 flex-wrap">
+                <h2 className="font-black text-sm md:text-base tracking-tight truncate">{patrimony}</h2>
+                <span className="px-2 py-0.5 rounded-md bg-blue-500/20 border border-blue-400/30 text-blue-300 font-mono text-[11px] font-bold">
+                  NexusDesk: {accessId}
                 </span>
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${online ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>
-                  <span className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                  {online ? 'Online Ao Vivo' : 'Offline / Standby'}
+                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] md:text-[11px] font-bold ${online ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                  {online ? 'Online' : 'Standby'}
                 </span>
+                {currentAgentVer && (
+                  <span className={`px-2 py-0.5 rounded-md font-mono text-[10px] font-bold ${agentOutdated ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-slate-800 text-slate-400'}`}>
+                    v{currentAgentVer}
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-[11px] text-slate-400 mt-0.5 truncate">
                 Host: <span className="text-slate-200 font-semibold">{hostname}</span> • Usuário:{' '}
-                <span className="text-slate-200 font-semibold">{loggedUser}</span> • IP:{' '}
-                <span className="font-mono text-slate-200">{ipAddress}</span> • {osCaption}
+                <span className="text-slate-200 font-semibold">{loggedUser}</span>
+                <span className="hidden sm:inline">
+                  {' '}• IP: <span className="font-mono text-slate-200">{ipAddress}</span> • {osCaption}
+                </span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 md:gap-2 ml-auto">
+            {agentOutdated && (
+              <button
+                onClick={handleUpdateAgentRemote}
+                disabled={updatingAgent}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-[11px] transition-colors"
+                title={`Atualizar agente remotamente de v${currentAgentVer} para v${AGENT_VERSION}`}
+              >
+                <ArrowUpCircle className={`w-3.5 h-3.5 ${updatingAgent ? 'animate-bounce' : ''}`} />
+                <span className="hidden sm:inline">Atualizar p/</span> v{AGENT_VERSION}
+              </button>
+            )}
             {liveDevice?.supportRequest?.status === 'open' && (
               <button
                 onClick={handleResolveSupport}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs transition-colors"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[11px] transition-colors"
                 title={liveDevice.supportRequest.message}
               >
                 <AlertTriangle className="w-3.5 h-3.5" />
-                Concluir Chamado do Usuário
+                <span className="hidden sm:inline">Concluir Chamado</span>
               </button>
             )}
             <button
@@ -532,7 +765,7 @@ export default function RemoteControlModal({
                 onClose();
               }}
               className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-              title="Fechar Console Remoto"
+              title="Fechar NexusDesk"
             >
               <X className="w-5 h-5" />
             </button>
@@ -541,12 +774,12 @@ export default function RemoteControlModal({
 
         {/* Banner de chamado de suporte aberto pelo colaborador */}
         {liveDevice?.supportRequest?.status === 'open' && (
-          <div className="px-5 py-2.5 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/60 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-xs text-amber-900 dark:text-amber-200">
+          <div className="px-4 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/60 flex items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-2 text-xs text-amber-900 dark:text-amber-200 min-w-0">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>
-                <strong>Pedido de Suporte ({liveDevice.supportRequest.priority || 'Normal'}):</strong>{' '}
-                &ldquo;{liveDevice.supportRequest.message}&rdquo; — enviado por{' '}
+              <span className="truncate">
+                <strong>Suporte ({liveDevice.supportRequest.priority || 'Normal'}):</strong>{' '}
+                &ldquo;{liveDevice.supportRequest.message}&rdquo; —{' '}
                 <strong>{liveDevice.supportRequest.user || loggedUser}</strong>
               </span>
             </div>
@@ -554,18 +787,18 @@ export default function RemoteControlModal({
               onClick={handleResolveSupport}
               className="text-xs font-bold text-amber-800 dark:text-amber-300 underline shrink-0"
             >
-              Marcar como resolvido
+              Resolver
             </button>
           </div>
         )}
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-1 px-5 pt-2 bg-gray-50 dark:bg-slate-900/80 border-b border-gray-200 dark:border-slate-800 overflow-x-auto">
+        <div className="flex items-center gap-1 px-3 md:px-5 pt-1.5 bg-gray-50 dark:bg-slate-900/80 border-b border-gray-200 dark:border-slate-800 overflow-x-auto no-scrollbar shrink-0">
           {[
-            { id: 'screen', label: 'Tela Remota (AnyDesk Web)', icon: Monitor },
-            { id: 'terminal', label: 'Terminal PowerShell', icon: Terminal },
-            { id: 'processes', label: `Processos & Recursos (${topProcesses.length})`, icon: Activity },
-            { id: 'actions', label: 'Ações, Alertas & Winget', icon: Zap },
+            { id: 'screen', label: 'NexusDesk (Tela Remota)', shortLabel: 'NexusDesk', icon: Monitor },
+            { id: 'terminal', label: 'Terminal PowerShell', shortLabel: 'PowerShell', icon: Terminal },
+            { id: 'processes', label: `Processos (${topProcesses.length})`, shortLabel: `Proc. (${topProcesses.length})`, icon: Activity },
+            { id: 'actions', label: 'Ações, OTA & Winget', shortLabel: 'Ações & OTA', icon: Zap },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -573,68 +806,97 @@ export default function RemoteControlModal({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-colors whitespace-nowrap ${
+                className={`inline-flex items-center gap-1.5 px-3 md:px-4 py-2 text-xs font-bold border-b-2 transition-colors whitespace-nowrap ${
                   active
                     ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400 bg-white dark:bg-slate-800/70 rounded-t-lg'
                     : 'border-transparent text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
                 }`}
               >
-                <Icon className="w-4 h-4" />
-                {tab.label}
+                <Icon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="sm:hidden">{tab.shortLabel}</span>
               </button>
             );
           })}
         </div>
 
         {/* Main Tab Content */}
-        <div className="flex-1 overflow-y-auto flex flex-col">
-          {/* TAB 1: TELA REMOTA INTERATIVA */}
+        <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
+          {/* TAB 1: TELA REMOTA INTERATIVA NEXUSDESK */}
           {activeTab === 'screen' && (
-            <div className="flex-1 flex flex-col bg-slate-950 text-white overflow-hidden">
+            <div className="flex-1 flex flex-col bg-slate-950 text-white overflow-hidden min-h-0">
+              {/* Input oculto para acionar o teclado nativo do celular */}
+              <input
+                ref={mobileKeyboardInputRef}
+                type="text"
+                inputMode="text"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-label="Teclado virtual remoto"
+                className="sr-only"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val && sessionId) {
+                    queueInputEvent({ type: 'text', text: val });
+                  }
+                  e.target.value = '';
+                }}
+                onKeyDown={(e) => {
+                  if (!sessionId) return;
+                  if (e.key === 'Backspace' || e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape') {
+                    e.preventDefault();
+                    queueInputEvent({ type: 'key', key: e.key });
+                  }
+                }}
+                onBlur={() => setMobileKbOpen(false)}
+              />
+
               {/* Remote Toolbar */}
-              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-slate-900 border-b border-slate-800 text-xs">
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 md:px-4 py-2 bg-slate-900 border-b border-slate-800 text-xs shrink-0">
+                <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
                   {!sessionId ? (
                     <>
                       <select
                         value={effectiveMode}
                         onChange={(e) => setSessionMode(e.target.value)}
-                        className="px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs"
+                        className="px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs max-w-[200px] sm:max-w-none"
                         title="A política da empresa define se o acesso sem supervisão é permitido"
                       >
-                        <option value="attended">Pedir permissão ao colaborador (30 s)</option>
+                        <option value="attended">Com permissão (30 s)</option>
                         <option value="unattended" disabled={policy.remoteAccess !== 'unattended'}>
-                          Sem supervisão{policy.remoteAccess !== 'unattended' ? ' (bloqueado pela política)' : ''}
+                          Sem supervisão{policy.remoteAccess !== 'unattended' ? ' (bloqueado)' : ''}
                         </option>
                       </select>
                       <button
                         onClick={handleStartRemote}
                         disabled={connecting}
-                        className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold shadow-sm transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold shadow-sm transition-colors"
                       >
                         <Play className="w-3.5 h-3.5" />
-                        {connecting ? 'Conectando...' : 'Conectar à Tela Agora'}
+                        {connecting ? 'Conectando...' : 'Conectar NexusDesk'}
                       </button>
                     </>
                   ) : (
                     <button
                       onClick={handleStopRemote}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold transition-colors"
                     >
                       <Square className="w-3.5 h-3.5" />
-                      Desconectar
+                      Encerrar
                     </button>
                   )}
 
                   <select
                     value={quality}
                     onChange={(e) => handleQualityChange(e.target.value)}
-                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs"
+                    className="px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs"
                     title="Qualidade de Imagem"
                   >
-                    <option value="low">Rápida (860p - Baixa Banda)</option>
-                    <option value="balanced">Equilibrada (1152p - Padrão)</option>
-                    <option value="high">Alta Nitidez (1366p - HD)</option>
+                    <option value="low">Rápida (860p)</option>
+                    <option value="balanced">Padrão (1152p)</option>
+                    <option value="high">Alta HD (1366p)</option>
                   </select>
 
                   <button
@@ -644,54 +906,90 @@ export default function RemoteControlModal({
                         ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
                         : 'bg-slate-800 border-slate-700 text-slate-400'
                     }`}
-                    title="Ativar/Desativar clique de mouse e teclado"
+                    title="Ativar/Desativar controle de mouse e teclado"
                   >
                     <MousePointer className="w-3.5 h-3.5" />
-                    {controlEnabled ? 'Mouse & Teclado Ativos' : 'Somente Visualização'}
+                    <span className="hidden sm:inline">{controlEnabled ? 'Controle Ativo' : 'Só Visualizar'}</span>
+                  </button>
+
+                  {/* Controles exclusivos para facilitar uso no celular / tablet */}
+                  <button
+                    onClick={() => setTouchMode((m) => (m === 'direct' ? 'trackpad' : 'direct'))}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                      touchMode === 'trackpad'
+                        ? 'bg-purple-500/25 border-purple-400/50 text-purple-200'
+                        : 'bg-slate-800 border-slate-700 text-slate-300'
+                    }`}
+                    title="Alternar entre Toque Direto na tela ou Trackpad Virtual (arraste para mover o cursor)"
+                  >
+                    <Hand className="w-3.5 h-3.5" />
+                    {touchMode === 'trackpad' ? 'Trackpad' : 'Toque Direto'}
+                  </button>
+
+                  <button
+                    onClick={() => setRightClickArmed((v) => !v)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                      rightClickArmed
+                        ? 'bg-amber-500/25 border-amber-400/50 text-amber-200'
+                        : 'bg-slate-800 border-slate-700 text-slate-300'
+                    }`}
+                    title="Armar Clique Direito para o próximo toque"
+                  >
+                    Clique Dir.
+                  </button>
+
+                  <button
+                    onClick={handleCycleZoom}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-mono"
+                    title="Alternar Zoom na tela remota (ou faça pinça com 2 dedos no celular)"
+                  >
+                    {zoom > 1 ? <ZoomOut className="w-3.5 h-3.5 text-blue-400" /> : <ZoomIn className="w-3.5 h-3.5" />}
+                    {zoom}x
+                  </button>
+
+                  <button
+                    onClick={toggleMobileKeyboard}
+                    disabled={!sessionId}
+                    className={`sm:hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${
+                      mobileKbOpen
+                        ? 'bg-blue-600 border-blue-400 text-white'
+                        : 'bg-slate-800 border-slate-700 text-slate-200 disabled:opacity-40'
+                    }`}
+                    title="Abrir teclado nativo do celular"
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    Teclado
                   </button>
                 </div>
 
-                {/* Special Keys & Screenshot */}
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <button
-                    onClick={() => handleSendSpecialKey('Win')}
-                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px]"
-                    title="Abrir Menu Iniciar no computador remoto"
-                  >
-                    Win
-                  </button>
-                  <button
-                    onClick={() => handleSendSpecialKey('Alt+Tab')}
-                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px]"
-                    title="Alternar Janela (Alt+Tab)"
-                  >
-                    Alt+Tab
-                  </button>
-                  <button
-                    onClick={() => handleSendSpecialKey('Ctrl+Shift+Esc')}
-                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px]"
-                    title="Abrir Gerenciador de Tarefas"
-                  >
-                    TaskMgr
-                  </button>
-                  <button
-                    onClick={() => handleSendSpecialKey('Win+D')}
-                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px]"
-                    title="Mostrar Área de Trabalho (Win+D)"
-                  >
-                    Desktop
-                  </button>
-                  <button
-                    onClick={() => handleSendSpecialKey('Win+R')}
-                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px]"
-                    title="Abrir Executar (Win+R)"
-                  >
-                    Win+R
-                  </button>
+                {/* Special Keys & Screenshot (Rolavel horizontalmente no celular) */}
+                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar max-w-full py-0.5">
+                  {[
+                    { key: 'Win', label: 'Win' },
+                    { key: 'Alt+Tab', label: 'Alt+Tab' },
+                    { key: 'Ctrl+Shift+Esc', label: 'TaskMgr' },
+                    { key: 'Win+D', label: 'Desktop' },
+                    { key: 'Win+R', label: 'Win+R' },
+                    { key: 'Alt+F4', label: 'Alt+F4' },
+                    { key: 'Ctrl+C', label: 'Ctrl+C' },
+                    { key: 'Ctrl+V', label: 'Ctrl+V' },
+                    { key: 'Escape', label: 'Esc' },
+                    { key: 'Tab', label: 'Tab' },
+                    { key: 'Backspace', label: 'Bksp' },
+                    { key: 'Enter', label: 'Enter' },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => handleSendSpecialKey(item.key)}
+                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px] shrink-0"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
                   {screenFrame?.data && (
                     <button
                       onClick={handleDownloadScreenshot}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px]"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] shrink-0"
                       title="Salvar captura de tela em JPG"
                     >
                       <Camera className="w-3.5 h-3.5" />
@@ -700,7 +998,7 @@ export default function RemoteControlModal({
                   )}
                   <button
                     onClick={toggleFullscreen}
-                    className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200"
+                    className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 shrink-0"
                     title="Alternar Tela Cheia"
                   >
                     {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
@@ -713,34 +1011,54 @@ export default function RemoteControlModal({
                 ref={viewportRef}
                 tabIndex={0}
                 onKeyDown={handleScreenKeyDown}
-                className="flex-1 flex items-center justify-center relative bg-slate-950 overflow-auto select-none outline-none p-2"
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                className="flex-1 flex items-center justify-center relative bg-slate-950 overflow-hidden select-none outline-none p-1 md:p-2 touch-none"
               >
                 {isSessionActive && screenFrame?.data ? (
-                  <div className="relative inline-block max-w-full max-h-full shadow-2xl border border-slate-800 rounded-lg overflow-hidden">
+                  <div
+                    className="relative inline-block max-w-full max-h-full shadow-2xl border border-slate-800 rounded-lg overflow-hidden transition-transform duration-75"
+                    style={{
+                      transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                      transformOrigin: 'center center',
+                    }}
+                  >
                     <img
                       ref={screenImgRef}
                       src={`data:image/jpeg;base64,${screenFrame.data}`}
-                      alt="Tela Remota"
+                      alt="Tela Remota NexusDesk"
                       draggable={false}
                       onClick={handleScreenClick}
                       onDoubleClick={handleScreenDoubleClick}
                       onContextMenu={handleScreenContextMenu}
                       onMouseMove={handleScreenMouseMove}
                       onWheel={handleScreenWheel}
-                      className={`max-w-full max-h-[68vh] object-contain block ${
+                      className={`max-w-full max-h-[68dvh] md:max-h-[68vh] object-contain block ${
                         controlEnabled ? 'cursor-crosshair' : 'cursor-default'
                       }`}
                     />
-                    <div className="absolute top-2 right-2 px-2.5 py-1 rounded-md bg-slate-950/80 backdrop-blur text-[11px] font-mono text-slate-300 flex items-center gap-2 pointer-events-none">
+                    {/* Cursor virtual visivel no modo Trackpad Mobile */}
+                    {touchMode === 'trackpad' && controlEnabled && (
+                      <div
+                        className="absolute w-4 h-4 -ml-2 -mt-2 rounded-full border-2 border-white bg-purple-500/80 shadow-lg pointer-events-none"
+                        style={{
+                          left: `${virtualCursor.x * 100}%`,
+                          top: `${virtualCursor.y * 100}%`,
+                        }}
+                      />
+                    )}
+                    <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur text-[10px] font-mono text-slate-300 flex items-center gap-1.5 pointer-events-none">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                       <span>
                         {screenFrame.screenWidth || screenFrame.width}×{screenFrame.screenHeight || screenFrame.height}
                       </span>
-                      <span>• Frame #{screenFrame.seq || 1}</span>
+                      <span>• #{screenFrame.seq || 1}</span>
+                      <span className="text-emerald-300 font-sans font-bold">• Seguro</span>
                     </div>
                   </div>
                 ) : (
-                  <div className="max-w-md text-center p-6 rounded-2xl bg-slate-900/90 border border-slate-800">
+                  <div className="max-w-md text-center p-5 md:p-6 rounded-2xl bg-slate-900/90 border border-slate-800 mx-3">
                     <Monitor className="w-12 h-12 text-blue-400 mx-auto mb-3 opacity-80" />
                     {SESSION_END_MESSAGES[endedState] ? (
                       <>
@@ -752,7 +1070,7 @@ export default function RemoteControlModal({
                     ) : isWaitingAgent ? (
                       <>
                         <RefreshCw className="w-6 h-6 text-blue-400 animate-spin mx-auto mb-2" />
-                        <h3 className="font-bold text-base text-white mb-1">Chamando a máquina...</h3>
+                        <h3 className="font-bold text-base text-white mb-1">Chamando a máquina via NexusDesk...</h3>
                         <p className="text-xs text-slate-400">
                           O agente confere o canal no próximo sinal de vida (até {responseSeconds} s).
                           {effectiveMode === 'attended' ? ' Depois, o colaborador precisa aceitar na tela.' : ''}
@@ -764,7 +1082,7 @@ export default function RemoteControlModal({
                           Aguardando Permissão na Tela do Usuário...
                         </h3>
                         <p className="text-xs text-slate-400 mb-4">
-                          Uma janela de confirmação apareceu na tela de <strong>{loggedUser}</strong> com contagem regressiva de 30 segundos.
+                          Uma janela de confirmação do <strong>NexusDesk</strong> apareceu na tela de <strong>{loggedUser}</strong> com contagem regressiva de 30 segundos.
                         </p>
                       </>
                     ) : sessionId ? (
@@ -780,17 +1098,17 @@ export default function RemoteControlModal({
                     ) : (
                       <>
                         <h3 className="font-bold text-base text-white mb-1">
-                          Pronto para Acesso Remoto ({accessId})
+                          NexusDesk Pronto ({accessId})
                         </h3>
                         <p className="text-xs text-slate-400 mb-4">
-                          Visualize a área de trabalho em tempo real e controle o mouse e teclado diretamente pelo navegador, sem precisar de AnyDesk.
+                          Acesse a área de trabalho em tempo real pelo computador ou celular com sessão auditada, consentimento do colaborador e descarte automático de capturas ao encerrar.
                         </p>
                         <button
                           onClick={handleStartRemote}
                           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg transition-colors"
                         >
                           <Play className="w-4 h-4" />
-                          Iniciar Acesso Remoto Agora
+                          Iniciar NexusDesk Agora
                         </button>
                       </>
                     )}
@@ -801,23 +1119,23 @@ export default function RemoteControlModal({
               {/* Quick Text Input Bar for Remote Keyboard */}
               <form
                 onSubmit={handleSendTextToRemote}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-900 border-t border-slate-800"
+                className="flex items-center gap-2 px-3 md:px-4 py-2 bg-slate-900 border-t border-slate-800 shrink-0"
               >
                 <Keyboard className="w-4 h-4 text-slate-400 shrink-0" />
                 <input
                   type="text"
                   value={textToType}
                   onChange={(e) => setTextToType(e.target.value)}
-                  placeholder="Texto para digitar no computador remoto (evite senhas: o texto passa pela nuvem)"
+                  placeholder="Enviar texto para digitar na máquina remota (não envie senhas por aqui)"
                   className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
                 />
                 <button
                   type="submit"
                   disabled={!sessionId || !textToType.trim()}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold text-xs"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold text-xs shrink-0"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  Digitar Remotamente
+                  <span className="hidden sm:inline">Digitar</span>
                 </button>
               </form>
             </div>
@@ -850,7 +1168,7 @@ export default function RemoteControlModal({
               </div>
 
               {/* Console Output */}
-              <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-200 overflow-y-auto min-h-[260px] space-y-4">
+              <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-200 overflow-y-auto min-h-[240px] space-y-4">
                 {runningCmdId && (
                   <div className="flex items-center gap-2 text-amber-300 animate-pulse">
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -866,8 +1184,8 @@ export default function RemoteControlModal({
                   commandHistory.map((entry) => (
                     <div key={entry.commandId} className="border-b border-slate-800 pb-3 last:border-none">
                       <div className="flex items-center justify-between text-[11px] text-blue-400 mb-1">
-                        <span>PS {hostname}&gt; {entry.command}</span>
-                        <span className="text-slate-500">
+                        <span className="truncate max-w-[75%]">PS {hostname}&gt; {entry.command}</span>
+                        <span className="text-slate-500 shrink-0">
                           {entry.completedAt ? new Date(entry.completedAt).toLocaleTimeString('pt-BR') : ''}
                         </span>
                       </div>
@@ -895,7 +1213,7 @@ export default function RemoteControlModal({
                 <button
                   type="submit"
                   disabled={!psInput.trim()}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold text-xs"
+                  className="inline-flex items-center gap-2 px-4 md:px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold text-xs shrink-0"
                 >
                   <Play className="w-4 h-4" />
                   Executar
@@ -1038,9 +1356,43 @@ export default function RemoteControlModal({
             </div>
           )}
 
-          {/* TAB 4: ACOES, MENSAGENS NA TELA E WINGET */}
+          {/* TAB 4: ACOES, ATUALIZACAO OTA, MENSAGENS NA TELA E WINGET */}
           {activeTab === 'actions' && (
             <div className="flex-1 p-4 md:p-6 grid grid-cols-1 lg:grid-cols-2 gap-5 bg-gray-50 dark:bg-slate-950">
+              {/* Atualizacao Remota do Agente (OTA) */}
+              <div className="lg:col-span-2 p-5 rounded-2xl bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/40 dark:to-slate-900 border border-indigo-200 dark:border-indigo-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                    <ArrowUpCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-bold text-sm text-gray-900 dark:text-white">
+                        Atualização Remota do Agente & NexusDesk (OTA)
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-mono">
+                        Instalado: {currentAgentVer ? `v${currentAgentVer}` : '—'} • Última: v{AGENT_VERSION}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-slate-300 mt-1">
+                      Atualiza silenciosamente o executável <code>NexusAgent.exe</code> e o coletor desta máquina pela nuvem sem precisar ir até o computador ou redigitar o token.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleUpdateAgentRemote}
+                  disabled={updatingAgent}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs shadow-sm transition-colors shrink-0"
+                >
+                  <ArrowUpCircle className={`w-4 h-4 ${updatingAgent ? 'animate-bounce' : ''}`} />
+                  {updatingAgent
+                    ? 'Enviando atualização...'
+                    : agentOutdated
+                      ? `Atualizar para v${AGENT_VERSION}`
+                      : `Reinstalar / Forçar v${AGENT_VERSION}`}
+                </button>
+              </div>
+
               {/* Pop-up Message to User */}
               <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 space-y-3">
                 <div className="flex items-center gap-2">
@@ -1195,7 +1547,7 @@ export default function RemoteControlModal({
                       type="text"
                       value={uninstallName}
                       onChange={(e) => setUninstallName(e.target.value)}
-                      placeholder="Nome do software para remover (ex: AnyDesk)"
+                      placeholder="Nome do software para remover (ex: TeamViewer)"
                       className="flex-1 px-3 py-2 rounded-xl bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-xs text-gray-900 dark:text-white"
                     />
                     <button

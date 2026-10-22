@@ -1,5 +1,5 @@
 // =============================================================================
-// Nexus ITAM - Agente Windows (NexusAgent.exe) 3.1
+// Nexus ITAM - Agente Windows e NexusDesk (NexusAgent.exe) 3.2
 // -----------------------------------------------------------------------------
 // Um executavel, dois papeis:
 //  --service  Servico do Windows (SYSTEM): sinal de vida, telemetria, comandos
@@ -57,18 +57,18 @@ using System.Windows.Forms;
 using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Nexus ITAM Agent")]
-[assembly: AssemblyDescription("Agente de inventario, monitoramento e suporte remoto do Nexus ITAM")]
+[assembly: AssemblyDescription("Agente de inventario, monitoramento e acesso remoto NexusDesk do Nexus ITAM")]
 [assembly: AssemblyCompany("Nexus ITAM")]
-[assembly: AssemblyProduct("Nexus ITAM")]
+[assembly: AssemblyProduct("Nexus ITAM - NexusDesk")]
 [assembly: AssemblyCopyright("Nexus ITAM")]
-[assembly: AssemblyVersion("3.1.0.0")]
-[assembly: AssemblyFileVersion("3.1.0.0")]
+[assembly: AssemblyVersion("3.2.0.0")]
+[assembly: AssemblyFileVersion("3.2.0.0")]
 
 namespace NexusITAM
 {
     internal static class AgentInfo
     {
-        public const string Version = "3.1.0";
+        public const string Version = "3.2.0";
         public const string ServiceName = "NexusITAMAgent";
         public const string ServiceDisplayName = "Nexus ITAM Agent";
         public const string RunValueName = "NexusITAMAgent";
@@ -1225,7 +1225,7 @@ namespace NexusITAM
     {
         private static int _seq;
 
-        public static Dictionary<string, object> Capture(string quality, out string signature)
+        public static Dictionary<string, object> Capture(string quality, string sessionId, out string signature)
         {
             signature = "";
             try
@@ -1283,9 +1283,12 @@ namespace NexusITAM
                             }
                             byte[] bytes = ms.ToArray();
                             using (MD5 md5 = MD5.Create()) signature = Convert.ToBase64String(md5.ComputeHash(bytes));
+                            string encoded = Convert.ToBase64String(bytes);
+                            Array.Clear(bytes, 0, bytes.Length);
                             _seq++;
                             Dictionary<string, object> frame = new Dictionary<string, object>();
-                            frame["data"] = Convert.ToBase64String(bytes);
+                            frame["sessionId"] = sessionId ?? "";
+                            frame["data"] = encoded;
                             frame["width"] = width;
                             frame["height"] = height;
                             frame["screenWidth"] = bounds.Width;
@@ -1394,10 +1397,17 @@ namespace NexusITAM
                 case "End": Combo(0x23); return;
                 case "PageUp": Combo(0x21); return;
                 case "PageDown": Combo(0x22); return;
+                case "Space": Combo(0x20); return;
+                case "F5": Combo(0x74); return;
                 case "Win": Combo(VK_WIN); return;
                 case "Win+D": Combo(VK_WIN, 0x44); return;
                 case "Win+R": Combo(VK_WIN, 0x52); return;
                 case "Alt+Tab": Combo(VK_ALT, 0x09); return;
+                case "Alt+F4": Combo(VK_ALT, 0x73); return;
+                case "Ctrl+C": Combo(VK_CTRL, 0x43); return;
+                case "Ctrl+V": Combo(VK_CTRL, 0x56); return;
+                case "Ctrl+A": Combo(VK_CTRL, 0x41); return;
+                case "Ctrl+Z": Combo(VK_CTRL, 0x5A); return;
                 // Ctrl+Alt+Del e reservado ao Windows (SAS): abre o Gerenciador de Tarefas.
                 case "Ctrl+Alt+Del":
                 case "Ctrl+Shift+Esc": Combo(VK_CTRL, VK_SHIFT, 0x1B); return;
@@ -1568,6 +1578,43 @@ namespace NexusITAM
                 case "uninstall_software":
                     return PowerShell.Run(WingetResolver + "& $w uninstall --name " + PowerShell.Quote(command) +
                         " --silent --accept-source-agreements --disable-interactivity 2>&1", 600000, out exitCode);
+                case "update_agent":
+                    {
+                        string zipUrl = string.IsNullOrEmpty(command) ? "https://itam-nexus.web.app/downloads/NexusAgent.zip" : command.Trim();
+                        if (!zipUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && !zipUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+                        {
+                            exitCode = 2;
+                            return "URL de atualizacao invalida.";
+                        }
+                        string script =
+                            "$ErrorActionPreference = 'Stop'; " +
+                            "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " +
+                            "$stage = Join-Path $env:TEMP ('NexusUpdate_' + [guid]::NewGuid().ToString('N')); " +
+                            "New-Item -ItemType Directory -Path $stage -Force | Out-Null; " +
+                            "$zipPath = Join-Path $stage 'NexusAgent.zip'; " +
+                            "Invoke-WebRequest -Uri " + PowerShell.Quote(zipUrl) + " -OutFile $zipPath -UseBasicParsing -TimeoutSec 45; " +
+                            "if (-not (Test-Path $zipPath) -or (Get-Item $zipPath).Length -lt 30000) { throw 'Pacote invalido.' }; " +
+                            "Expand-Archive -Path $zipPath -DestinationPath $stage -Force; " +
+                            "$runner = Join-Path $stage 'apply-update.ps1'; " +
+                            "@'\r\n" +
+                            "Start-Sleep -Seconds 2\r\n" +
+                            "$dir = 'C:\\ProgramData\\NexusITAM'\r\n" +
+                            "$stageDir = $PSScriptRoot\r\n" +
+                            "Stop-Service -Name 'NexusITAMAgent' -Force -ErrorAction SilentlyContinue\r\n" +
+                            "Get-Process -Name 'NexusAgent' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue\r\n" +
+                            "Start-Sleep -Seconds 1\r\n" +
+                            "if (Test-Path \"$dir\\NexusAgent.exe\") { Move-Item -Path \"$dir\\NexusAgent.exe\" -Destination \"$dir\\NexusAgent.old.exe\" -Force -ErrorAction SilentlyContinue }\r\n" +
+                            "Copy-Item -Path \"$stageDir\\NexusAgent.exe\" -Destination \"$dir\\NexusAgent.exe\" -Force\r\n" +
+                            "if (Test-Path \"$stageDir\\NexusAgent.ps1\") { Copy-Item -Path \"$stageDir\\NexusAgent.ps1\" -Destination \"$dir\\NexusAgent.ps1\" -Force }\r\n" +
+                            "Remove-Item -Path \"$dir\\NexusAgent.old.exe\" -Force -ErrorAction SilentlyContinue\r\n" +
+                            "Start-Service -Name 'NexusITAMAgent' -ErrorAction SilentlyContinue\r\n" +
+                            "& \"$dir\\NexusAgent.exe\" --once | Out-Null\r\n" +
+                            "Remove-Item -Path $stageDir -Recurse -Force -ErrorAction SilentlyContinue\r\n" +
+                            "'@ | Set-Content -Path $runner -Encoding UTF8 -Force; " +
+                            "Start-Process -FilePath 'powershell.exe' -ArgumentList ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File \"' + $runner + '\"') -WindowStyle Hidden; " +
+                            "Write-Output 'Pacote validado. Reiniciando servico NexusITAMAgent...'";
+                        return PowerShell.Run(script, 90000, out exitCode);
+                    }
                 default:
                     exitCode = 1;
                     return "Tipo de comando desconhecido: " + type;
@@ -1593,6 +1640,7 @@ namespace NexusITAM
         public string Id = "";
         public string State = "idle";
         public string Operator = "";
+        public string OperatorUid = "";
         public string Mode = "attended";
         public string Quality = "balanced";
         public long LastSeq;
@@ -1719,7 +1767,7 @@ namespace NexusITAM
                 f["status"] = "offline";
                 f["updatedAt"] = _cloud.ServerNowUtc;
                 int status;
-                _cloud.Patch("agentDevices", DocId(), f, new string[] { "tenantId", "deviceKey", "status", "updatedAt" }, new string[] { "status" }, 4000, out status);
+                _cloud.Patch("agentDevices", DocId(), f, new string[] { "tenantId", "deviceKey", "status", "updatedAt", "screenFrame" }, new string[] { "status" }, 4000, out status);
             }
             if (_syncEvent != null) _syncEvent.Close();
         }
@@ -2270,6 +2318,7 @@ namespace NexusITAM
                 if (_session.Active) EndSession("ended", "Substituida por nova sessao.");
                 _session.Id = sessionId;
                 _session.Operator = Json.Str(rs, "requestedBy");
+                _session.OperatorUid = Json.Str(rs, "requestedByUid");
                 if (string.IsNullOrEmpty(_session.Operator)) _session.Operator = "Equipe de TI";
                 _session.Mode = Json.Str(rs, "mode") == "unattended" ? "unattended" : "attended";
                 _session.LastSeq = 0;
@@ -2303,6 +2352,12 @@ namespace NexusITAM
             }
 
             if (!_session.Active || sessionId != _session.Id) return;
+            string currentUid = Json.Str(rs, "requestedByUid");
+            if (!string.IsNullOrEmpty(_session.OperatorUid) && !string.IsNullOrEmpty(currentUid) && currentUid != _session.OperatorUid)
+            {
+                EndSession("ended", "Operador da sessao alterado sem nova autorizacao.");
+                return;
+            }
             string quality = Json.Str(rs, "quality");
             if (quality == "low" || quality == "balanced" || quality == "high") _session.Quality = quality;
 
@@ -2342,16 +2397,33 @@ namespace NexusITAM
                 DateTime seen = _cloud.ToLocalClock(_session.ViewerSeenUtc);
                 if (seen > viewer) viewer = seen;
             }
-            double idle = (now - viewer).TotalSeconds;
-            if (idle > 180)
+            if ((now - _session.StartedUtc).TotalMinutes > 120)
             {
-                EndSession("timeout", "Ninguem assistindo ha mais de 3 min.");
+                EndSession("timeout", "Tempo maximo de sessao remota atingido (2h).");
                 return;
             }
-            if (idle > 45 || (now - _session.LastFrameAt).TotalMilliseconds < SessionPollMs) return;
+            double idle = (now - viewer).TotalSeconds;
+            if (idle > 90)
+            {
+                EndSession("timeout", "Ninguem assistindo ha mais de 90 s.");
+                return;
+            }
+            if (idle > 35)
+            {
+                if (_session.FrameVisible)
+                {
+                    Dictionary<string, object> wipe = Identity();
+                    wipe["remoteState"] = SessionStateFields();
+                    int wipeStatus;
+                    _cloud.Patch("agentDevices", DocId(), wipe, new string[] { "tenantId", "deviceKey", "screenFrame", "remoteState" }, new string[] { "consoleWakeAt" }, 10000, out wipeStatus);
+                    _session.FrameVisible = false;
+                }
+                return;
+            }
+            if ((now - _session.LastFrameAt).TotalMilliseconds < SessionPollMs) return;
 
             string signature;
-            Dictionary<string, object> frame = RemoteDesktop.Capture(_session.Quality, out signature);
+            Dictionary<string, object> frame = RemoteDesktop.Capture(_session.Quality, _session.Id, out signature);
             if (frame == null) return;
             bool changed = signature != _session.LastFrameSig;
             if (!changed && (now - _session.LastFrameAt).TotalSeconds < 10 && _session.FrameVisible) return;
@@ -2592,7 +2664,13 @@ namespace NexusITAM
                 Thread.Sleep(1500);
                 try
                 {
+                    if (File.Exists(target))
+                    {
+                        try { File.Delete(target + ".old"); } catch { }
+                        try { File.Move(target, target + ".old"); } catch { }
+                    }
                     File.Copy(current, target, true);
+                    try { File.Delete(target + ".old"); } catch { }
                 }
                 catch (Exception ex)
                 {
@@ -2823,7 +2901,7 @@ namespace NexusITAM
 
         public ConsentDialog(string operatorName)
         {
-            Text = "Nexus ITAM - Pedido de acesso remoto";
+            Text = "NexusDesk - Pedido de acesso remoto (Nexus ITAM)";
             Size = new Size(480, 270);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;
@@ -2900,7 +2978,7 @@ namespace NexusITAM
 
         public void SetOperator(string name)
         {
-            _label.Text = "Sessao remota ativa: " + name;
+            _label.Text = "NexusDesk ativo: " + name;
         }
 
         protected override bool ShowWithoutActivation { get { return true; } }
@@ -3024,11 +3102,13 @@ namespace NexusITAM
         private SessionIndicator _indicator;
         private MenuItem _endSessionItem;
         private bool _started;
+        private readonly DateTime _binaryWriteUtc;
 
         public MainAgentForm(AgentConfig config, bool startHidden)
         {
             _config = config;
             _startHidden = startHidden;
+            try { _binaryWriteUtc = File.GetLastWriteTimeUtc(Application.ExecutablePath); } catch { _binaryWriteUtc = DateTime.MinValue; }
             _engine = new AgentEngine(false, config, this);
             BuildUi();
             BuildTray();
@@ -3074,7 +3154,7 @@ namespace NexusITAM
 
         private void BuildUi()
         {
-            Text = "Nexus ITAM - Agente e Suporte Remoto";
+            Text = "Nexus ITAM - Agente e NexusDesk";
             Size = new Size(720, 480);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
@@ -3084,7 +3164,7 @@ namespace NexusITAM
 
             Panel header = new Panel { Dock = DockStyle.Top, Height = 64, BackColor = Ui.Ink };
             header.Controls.Add(Ui.Text("NEXUS ITAM", 14f, true, Color.White, 22, 12));
-            header.Controls.Add(Ui.Text("Agente de inventario e suporte remoto  v" + AgentInfo.Version, 8.5f, false, Color.FromArgb(148, 163, 184), 24, 37));
+            header.Controls.Add(Ui.Text("Inventario, monitoramento e acesso remoto NexusDesk  v" + AgentInfo.Version, 8.5f, false, Color.FromArgb(148, 163, 184), 24, 37));
             _badge = new Label
             {
                 Text = "INICIANDO",
@@ -3098,7 +3178,7 @@ namespace NexusITAM
             header.Controls.Add(_badge);
 
             Panel left = new Panel { Location = new Point(20, 80), Size = new Size(340, 260), BackColor = Color.White };
-            left.Controls.Add(Ui.Text("SEU ID DE ACESSO REMOTO", 8.5f, true, Ui.Muted, 18, 16));
+            left.Controls.Add(Ui.Text("SEU ID NEXUSDESK (ACESSO REMOTO)", 8.5f, true, Ui.Muted, 18, 16));
             Label id = new Label { Text = _engine.AccessId, Font = new Font("Consolas", 23f, FontStyle.Bold), ForeColor = Ui.Brand, Location = new Point(14, 38), AutoSize = true };
             left.Controls.Add(id);
             Button copy = Ui.Flat("Copiar ID", Color.FromArgb(239, 246, 255), Ui.Brand, 242, 43, 80, 30, true);
@@ -3188,6 +3268,29 @@ namespace NexusITAM
             _disk.Text = string.Format(CultureInfo.CurrentCulture, "{0}% ({1} GB livres)", diskPct, diskFree);
             _diskBar.Width = Math.Max(4, 274 * diskPct / 100);
             _statusLine.Text = _engine.StatusText;
+            CheckBinaryUpdated();
+        }
+
+        private void CheckBinaryUpdated()
+        {
+            if (_binaryWriteUtc == DateTime.MinValue || _engine.SessionActive) return;
+            try
+            {
+                string current = Path.GetFullPath(Application.ExecutablePath);
+                string installed = Path.GetFullPath(AgentPaths.InstalledExe);
+                if (!string.Equals(current, installed, StringComparison.OrdinalIgnoreCase)) return;
+                DateTime latest = File.GetLastWriteTimeUtc(installed);
+                if (latest > _binaryWriteUtc.AddSeconds(2))
+                {
+                    AgentLog.Write("Binario atualizado em disco detectado; reiniciando bandeja para versao nova.");
+                    if (_tray != null) _tray.Visible = false;
+                    _engine.Stop();
+                    Program.ReleaseTrayLock();
+                    try { Process.Start(installed, "--tray"); } catch { }
+                    Application.Exit();
+                }
+            }
+            catch { }
         }
 
         private void BuildTray()

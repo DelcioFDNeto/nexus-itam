@@ -24,7 +24,7 @@ export const AGENT_TARGETS = {
 };
 
 export const AGENT_MODES = {
-  service: 'Instalar Agente + Acesso Remoto (.exe)',
+  service: 'Instalar Agente + NexusDesk (.exe)',
   portable: 'Coleta única (Inventário)',
   uninstall: 'Desinstalar',
 };

@@ -73,7 +73,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
           { path: '/employees', icon: Users, label: 'Equipe', cap: 'employees:write' },
           { path: '/licenses', icon: ShieldCheck, label: 'Licenças', cap: 'licenses:write', feature: 'licenses' },
           { path: '/services', icon: Globe, label: 'Contratos', cap: 'contracts:write', feature: 'contracts' },
-          { path: '/agent', icon: Activity, label: 'Agente ITAM', cap: 'agent:manage', feature: 'agent' },
+          { path: '/agent', icon: Activity, label: 'Agente & NexusDesk', cap: 'agent:manage', feature: 'agent' },
         ],
       },
       {

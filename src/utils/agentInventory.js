@@ -8,7 +8,33 @@
 // seguranca, e sugestoes de local (pela rede) e responsavel (pelo login).
 // -----------------------------------------------------------------------------
 
-export const AGENT_VERSION = '3.1.0';
+export const AGENT_VERSION = '3.2.0';
+
+/**
+ * Compara duas versoes semver (ex.: '3.1.0' vs '3.2.0').
+ * Retorna -1 se a < b, 0 se iguais, 1 se a > b.
+ */
+export const compareAgentVersion = (a, b = AGENT_VERSION) => {
+  const parse = (v) =>
+    String(v || '0.0.0')
+      .replace(/^v/i, '')
+      .trim()
+      .split('.')
+      .slice(0, 3)
+      .map((n) => parseInt(n, 10) || 0);
+  const [aMaj = 0, aMin = 0, aPat = 0] = parse(a);
+  const [bMaj = 0, bMin = 0, bPat = 0] = parse(b);
+  if (aMaj !== bMaj) return aMaj < bMaj ? -1 : 1;
+  if (aMin !== bMin) return aMin < bMin ? -1 : 1;
+  if (aPat !== bPat) return aPat < bPat ? -1 : 1;
+  return 0;
+};
+
+/** Verdadeiro quando a maquina roda uma versao anterior a atual do sistema. */
+export const isAgentOutdated = (version, targetVersion = AGENT_VERSION) => {
+  if (!version) return true;
+  return compareAgentVersion(version, targetVersion) < 0;
+};
 
 const text = (value) => String(value ?? '').trim();
 

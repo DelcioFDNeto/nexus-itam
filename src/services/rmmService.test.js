@@ -20,9 +20,15 @@ vi.mock('firebase/firestore', () => ({
 }));
 vi.mock('./firebase', () => ({ db: {} }));
 
-const { updateDoc } = await import('firebase/firestore');
+const { setDoc, updateDoc } = await import('firebase/firestore');
 const {
   MAX_COMMAND_LENGTH,
+  buildAgentSelfUpdateScript,
+  clearRemoteInputEvents,
+  dispatchAgentUpdate,
+  dispatchBatchAgentUpdate,
+  sanitizeAuditDetail,
+  stopRemoteSession,
   dispatchRemoteCommand,
   isDeviceOnline,
   resolveRuntimePolicy,
@@ -76,5 +82,62 @@ describe('rmmService', () => {
     expect(resolveRuntimePolicy({})).toEqual({ remoteAccess: 'consent', commandsEnabled: true, heartbeatSeconds: 120 });
     expect(resolveRuntimePolicy({ remoteAccess: 'sempre', heartbeatSeconds: 5 })).toMatchObject({ remoteAccess: 'consent', heartbeatSeconds: 30 });
     expect(resolveRuntimePolicy({ remoteAccess: 'disabled', commandsEnabled: false, heartbeatSeconds: 5000 })).toEqual({ remoteAccess: 'disabled', commandsEnabled: false, heartbeatSeconds: 900 });
+  });
+
+  it('mascara senhas, tokens e segredos no detalhe da auditoria para evitar vazamentos', () => {
+    const raw = 'powershell: Connect-Service -Password "SuperSecret123" --token=abcdef1234567890 apiKey: xyz987654';
+    const clean = sanitizeAuditDetail(raw);
+    expect(clean).not.toContain('SuperSecret123');
+    expect(clean).not.toContain('abcdef1234567890');
+    expect(clean).not.toContain('xyz987654');
+    expect(clean).toContain('[REDACTED]');
+  });
+
+  it('encerrar sessao remota apaga screenFrame residual e limpa fila de input', async () => {
+    await stopRemoteSession({ tenantId: 'acme', deviceKey: 'k1' });
+    expect(updateDoc).toHaveBeenCalledWith(
+      { path: 'agentDevices/acme_k1', id: 'acme_k1' },
+      { screenFrame: '__delete__' }
+    );
+    await clearRemoteInputEvents({ tenantId: 'acme', deviceKey: 'k1', sessionId: 'ses-1', user });
+    expect(setDoc).toHaveBeenCalledWith(
+      { path: 'agentControl/acme_k1', id: 'acme_k1' },
+      expect.objectContaining({
+        remoteSession: expect.objectContaining({ sessionId: 'ses-1', inputEvents: [] }),
+      }),
+      { merge: true }
+    );
+  });
+
+  it('dispara atualizacao OTA remota individual e em lote com acao auditada update_agent', async () => {
+    const script = buildAgentSelfUpdateScript('https://itam-nexus.web.app/downloads/NexusAgent.zip');
+    expect(script).toContain('https://itam-nexus.web.app/downloads/NexusAgent.zip');
+    expect(script).toContain('NexusITAMAgent');
+
+    const cmd = await dispatchAgentUpdate({
+      tenantId: 'acme',
+      deviceKey: 'k1',
+      hostname: 'PC-01',
+      user,
+      zipUrl: 'https://itam-nexus.web.app/downloads/NexusAgent.zip',
+    });
+    const all = writes();
+    expect(all[`agentAudit/${cmd.id}`]).toMatchObject({
+      tenantId: 'acme',
+      deviceKey: 'k1',
+      action: 'update_agent',
+      byUid: 'u-gestor',
+    });
+
+    const batchRes = await dispatchBatchAgentUpdate({
+      tenantId: 'acme',
+      devices: [
+        { deviceKey: 'k1', hostname: 'PC-01', agentVersion: '3.1.0' },
+        { deviceKey: 'k2', hostname: 'PC-02', agentVersion: '3.1.0' },
+      ],
+      user,
+      zipUrl: 'https://itam-nexus.web.app/downloads/NexusAgent.zip',
+    });
+    expect(batchRes).toEqual({ updated: 2, failed: 0, errors: [] });
   });
 });

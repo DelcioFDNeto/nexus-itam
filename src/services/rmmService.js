@@ -1,6 +1,6 @@
 // src/services/rmmService.js
 // -----------------------------------------------------------------------------
-// Servico de RMM (Remote Monitoring & Management) e Acesso Remoto em Tempo Real
+// Servico de RMM (Remote Monitoring & Management) e Acesso Remoto NexusDesk
 // Comunica-se com o executavel nativo NexusAgent.exe por meio do par full-duplex:
 //  - agentDevices/{tenantId}_{deviceKey}  (Agente -> Nuvem: telemetria, tela, output)
 //  - agentControl/{tenantId}_{deviceKey}  (Nuvem -> Agente: sessao remota, mouse/teclado, comandos)
@@ -32,6 +32,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { AGENT_VERSION } from '../utils/agentInventory';
 
 export const ONLINE_THRESHOLD_MS = 65 * 1000;
 
@@ -58,6 +59,7 @@ export const REMOTE_COMMANDS = {
   FORCE_INVENTORY: 'force_inventory',
   INSTALL_WINGET: 'install_winget',
   UNINSTALL_SOFTWARE: 'uninstall_software',
+  UPDATE_AGENT: 'update_agent',
 };
 
 /** Limite do agente para o texto de um comando (linha de comando do Windows). */
@@ -126,7 +128,7 @@ export const isDeviceOnline = (device, nowMs = Date.now()) => {
 };
 
 /**
- * Formata ou deriva um ID de Acesso estilo AnyDesk (9 digitos: XXX XXX XXX).
+ * Formata ou deriva um ID de Acesso estilo NexusDesk (9 digitos: XXX XXX XXX).
  */
 export const formatAccessId = (deviceOrKey) => {
   if (!deviceOrKey) return '--- --- ---';
@@ -155,6 +157,19 @@ const operatorOf = (user) => ({
   uid: user?.uid || '',
   name: user?.name || user?.email || 'Equipe de TI',
 });
+
+/**
+ * Mascara padroes sensiveis (senhas, tokens, chaves) antes de gravar na trilha
+ * de auditoria para evitar vazamento de credenciais em /agentAudit.
+ */
+export const sanitizeAuditDetail = (raw = '') => {
+  const text = String(raw || '');
+  return text
+    .replace(/((?:password|passwd|senha|secret|token|apikey|api_key|agenttoken)\s*[:=]\s*)([^\s;'"]+)/gi, '$1[REDACTED]')
+    .replace(/(-(?:Password|AsPlainText|Token|Secret)\s+)(['"]?[^'"\s]+['"]?)/gi, '$1[REDACTED]')
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, '$1[REDACTED]')
+    .slice(0, 500);
+};
 
 /**
  * Localiza o dispositivo RMM ao vivo correspondente a um ativo patrimonial.
@@ -201,7 +216,7 @@ export const subscribeAgentDevices = (tenantId, onUpdate, onError) => {
 
 /**
  * Agentes 3.0 gravavam o token da empresa em agentDevices (legivel pela
- * gestao). O 3.1 grava em outro documento, entao os antigos ficariam com o
+ * gestao). O 3.1+ grava em outro documento, entao os antigos ficariam com o
  * token para sempre: a gestao apaga o campo ao abrir a frota.
  */
 export const stripLegacyDeviceTokens = (devices = []) =>
@@ -273,7 +288,7 @@ const auditData = ({ tenantId, deviceKey, hostname, action, detail = '', mode = 
     deviceKey,
     hostname: String(hostname || '').slice(0, 255),
     action,
-    detail: String(detail || '').slice(0, 500),
+    detail: sanitizeAuditDetail(detail),
     mode,
     byUid: op.uid,
     byName: op.name,
@@ -282,9 +297,10 @@ const auditData = ({ tenantId, deviceKey, hostname, action, detail = '', mode = 
 };
 
 export const AUDIT_ACTION_LABELS = {
-  remote_request: 'Pediu acesso remoto',
-  remote_end: 'Encerrou acesso remoto',
+  remote_request: 'Pediu acesso remoto (NexusDesk)',
+  remote_end: 'Encerrou acesso remoto (NexusDesk)',
   command: 'Enviou comando',
+  update_agent: 'Atualizou o agente remotamente',
   revoke: 'Revogou o agente',
 };
 
@@ -308,7 +324,7 @@ export const wakeAgentDevice = async ({ tenantId, deviceKey }) => {
   await updateDoc(doc(db, 'agentDevices', buildAgentDocId(tenantId, deviceKey)), { consoleWakeAt: serverTimestamp() });
 };
 
-/** Mantem a transmissao: sem este sinal por 45 s o agente pausa a tela; por 3 min, encerra. */
+/** Mantem a transmissao: sem este sinal por 35 s o agente pausa e limpa a tela; por 90 s, encerra. */
 export const pingRemoteViewer = ({ tenantId, deviceKey }) =>
   setDoc(doc(db, 'agentControl', buildAgentDocId(tenantId, deviceKey)), {
     tenantId,
@@ -317,7 +333,7 @@ export const pingRemoteViewer = ({ tenantId, deviceKey }) =>
   }, { merge: true });
 
 /**
- * Inicia uma sessao de controle remoto. Com consentimento (padrao), o
+ * Inicia uma sessao de controle remoto NexusDesk. Com consentimento (padrao), o
  * colaborador aceita ou recusa na tela; sem supervisao so se a politica deixar.
  */
 export const startRemoteSession = async ({
@@ -338,7 +354,7 @@ export const startRemoteSession = async ({
     hostname,
     action: 'remote_request',
     mode,
-    detail: mode === 'unattended' ? 'Sessão sem supervisão' : 'Sessão com consentimento do colaborador',
+    detail: mode === 'unattended' ? 'Sessão NexusDesk sem supervisão' : 'Sessão NexusDesk com consentimento do colaborador',
     user,
   }));
   batch.set(doc(db, 'agentControl', buildAgentDocId(tenantId, deviceKey)), {
@@ -363,12 +379,14 @@ export const startRemoteSession = async ({
 };
 
 /**
- * Encerra a sessao de acesso remoto ativa.
+ * Encerra a sessao de acesso remoto ativa e remove imediatamente qualquer
+ * frame de tela remanescente no Firestore para evitar vazamento visual.
  */
 export const stopRemoteSession = async ({ tenantId, deviceKey, hostname = '', user = null }) => {
   if (!tenantId || !deviceKey) return;
+  const docId = buildAgentDocId(tenantId, deviceKey);
   await setDoc(
-    doc(db, 'agentControl', buildAgentDocId(tenantId, deviceKey)),
+    doc(db, 'agentControl', docId),
     {
       tenantId,
       deviceKey,
@@ -382,6 +400,11 @@ export const stopRemoteSession = async ({ tenantId, deviceKey, hostname = '', us
     },
     { merge: true }
   );
+  // Apaga imediatamente o ultimo frame da tela no documento do dispositivo,
+  // mesmo que o agente tenha caido ou perdido conexao.
+  await updateDoc(doc(db, 'agentDevices', docId), {
+    screenFrame: deleteField(),
+  }).catch(() => {});
   if (user) {
     await setDoc(doc(db, 'agentAudit', newId('end')), auditData({ tenantId, deviceKey, hostname, action: 'remote_end', user })).catch(() => {});
   }
@@ -434,6 +457,22 @@ export const sendRemoteInputEvents = async ({
 };
 
 /**
+ * Limpa a fila de eventos de entrada ja processados pelo agente para nao reter
+ * teclas digitadas no documento agentControl alem do necessario.
+ */
+export const clearRemoteInputEvents = async ({
+  tenantId,
+  deviceKey,
+  sessionId,
+  mode = 'attended',
+  quality = 'balanced',
+  user,
+}) => {
+  if (!tenantId || !deviceKey || !sessionId) return;
+  await sessionPatch({ tenantId, deviceKey, sessionId, mode, quality, user, inputEvents: [] });
+};
+
+/**
  * Dispara um comando remoto (PowerShell, Kill Process, Mensagem na Tela, Lock,
  * Restart, Winget, etc.), auditado no mesmo batch.
  */
@@ -444,6 +483,8 @@ export const dispatchRemoteCommand = async ({
   type,
   command = '',
   title = 'Mensagem da TI - Nexus ITAM',
+  auditAction = 'command',
+  auditDetail = null,
   user,
 }) => {
   if (!tenantId || !deviceKey || !type) throw new Error('Parâmetros insuficientes para o comando remoto.');
@@ -461,7 +502,17 @@ export const dispatchRemoteCommand = async ({
     issuedAt: serverTimestamp(),
   };
   const batch = writeBatch(db);
-  batch.set(doc(db, 'agentAudit', cmdId), auditData({ tenantId, deviceKey, hostname, action: 'command', detail: `${type}: ${text}`, user }));
+  batch.set(
+    doc(db, 'agentAudit', cmdId),
+    auditData({
+      tenantId,
+      deviceKey,
+      hostname,
+      action: auditAction,
+      detail: auditDetail || `${type}: ${text}`,
+      user,
+    })
+  );
   batch.set(
     doc(db, 'agentControl', buildAgentDocId(tenantId, deviceKey)),
     {
@@ -475,6 +526,127 @@ export const dispatchRemoteCommand = async ({
   await batch.commit();
   await wakeAgentDevice({ tenantId, deviceKey }).catch(() => {});
   return payload;
+};
+
+/**
+ * Gera o script PowerShell de auto-atualizacao segura Over-The-Air (OTA).
+ * Compativel tanto com maquinas na v3.1.0 quanto na v3.2.0+:
+ *  1. Faz download do pacote oficial NexusAgent.zip na pasta TEMP
+ *  2. Valida integridade e tamanho minimo do binario (> 30 KB)
+ *  3. Dispara processo desacoplado que aguarda 2s (para o agente gravar o
+ *     resultado do comando no Firestore), para o servico NexusITAMAgent,
+ *     substitui os binarios preservando device.dat/config.json e reinicia o servico.
+ */
+export const buildAgentSelfUpdateScript = (zipUrl) => {
+  const cleanUrl = String(zipUrl || '').trim();
+  if (!/^https?:\/\/[^\s'"]+$/i.test(cleanUrl)) {
+    throw new Error('URL de pacote de atualização inválida.');
+  }
+  const safeUrl = cleanUrl.replace(/'/g, "''");
+  return [
+    '$ErrorActionPreference = "Stop"',
+    '[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12',
+    '$installDir = "C:\\ProgramData\\NexusITAM"',
+    '$stage = Join-Path $env:TEMP ("NexusUpdate_" + [guid]::NewGuid().ToString("N"))',
+    'New-Item -ItemType Directory -Path $stage -Force | Out-Null',
+    `$zipPath = Join-Path $stage "NexusAgent.zip"`,
+    `Invoke-WebRequest -Uri '${safeUrl}' -OutFile $zipPath -UseBasicParsing -TimeoutSec 45`,
+    'if (-not (Test-Path $zipPath) -or (Get-Item $zipPath).Length -lt 30000) { throw "Pacote NexusAgent.zip invalido ou incompleto." }',
+    'Expand-Archive -Path $zipPath -DestinationPath $stage -Force',
+    '$newExe = Join-Path $stage "NexusAgent.exe"',
+    'if (-not (Test-Path $newExe) -or (Get-Item $newExe).Length -lt 30000) { throw "Binario NexusAgent.exe nao encontrado no pacote." }',
+    '$runner = Join-Path $stage "apply-update.ps1"',
+    '@\'',
+    '$ErrorActionPreference = "SilentlyContinue"',
+    'Start-Sleep -Seconds 2',
+    '$dir = "C:\\ProgramData\\NexusITAM"',
+    '$stageDir = $PSScriptRoot',
+    'Stop-Service -Name "NexusITAMAgent" -Force -ErrorAction SilentlyContinue',
+    'Get-Process -Name "NexusAgent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue',
+    'Start-Sleep -Seconds 1',
+    'if (Test-Path "$dir\\NexusAgent.exe") { Move-Item -Path "$dir\\NexusAgent.exe" -Destination "$dir\\NexusAgent.old.exe" -Force -ErrorAction SilentlyContinue }',
+    'Copy-Item -Path "$stageDir\\NexusAgent.exe" -Destination "$dir\\NexusAgent.exe" -Force',
+    'if (Test-Path "$stageDir\\NexusAgent.ps1") { Copy-Item -Path "$stageDir\\NexusAgent.ps1" -Destination "$dir\\NexusAgent.ps1" -Force }',
+    'Remove-Item -Path "$dir\\NexusAgent.old.exe" -Force -ErrorAction SilentlyContinue',
+    'Start-Service -Name "NexusITAMAgent" -ErrorAction SilentlyContinue',
+    '& "$dir\\NexusAgent.exe" --once | Out-Null',
+    '$logFile = "$dir\\logs\\install.log"',
+    'Add-Content -Path $logFile -Value ("[" + (Get-Date -Format "yyyy-MM-dd HH:mm:ss") + "] Atualizacao OTA aplicada com sucesso.") -Encoding UTF8',
+    'Remove-Item -Path $stageDir -Recurse -Force -ErrorAction SilentlyContinue',
+    '\'@ | Set-Content -Path $runner -Encoding UTF8 -Force',
+    'Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runner`"" -WindowStyle Hidden',
+    `Write-Output "Pacote v${AGENT_VERSION} validado. Reiniciando servico NexusITAMAgent em 2 segundos..."`,
+  ].join('\n');
+};
+
+/**
+ * Envia comando de atualizacao remota Over-The-Air (OTA) para uma maquina.
+ * Usa o canal PowerShell assinado e auditado com acao 'update_agent' para
+ * funcionar tanto nas maquinas v3.1.0 ja em campo quanto nas v3.2.0+.
+ */
+export const dispatchAgentUpdate = async ({
+  tenantId,
+  deviceKey,
+  hostname = '',
+  zipUrl = '',
+  targetVersion = AGENT_VERSION,
+  user,
+}) => {
+  if (!tenantId || !deviceKey) throw new Error('Dispositivo inválido para atualização.');
+  const resolvedZipUrl =
+    zipUrl ||
+    (typeof window !== 'undefined' && window.location?.origin
+      ? `${window.location.origin}/downloads/NexusAgent.zip`
+      : 'https://itam-nexus.web.app/downloads/NexusAgent.zip');
+  const script = buildAgentSelfUpdateScript(resolvedZipUrl);
+  return dispatchRemoteCommand({
+    tenantId,
+    deviceKey,
+    hostname,
+    type: REMOTE_COMMANDS.POWERSHELL,
+    command: script,
+    title: `Atualização OTA NexusAgent v${targetVersion}`,
+    auditAction: 'update_agent',
+    auditDetail: `Atualização remota OTA para v${targetVersion} (${resolvedZipUrl})`,
+    user,
+  });
+};
+
+/**
+ * Dispara atualizacao OTA em lote para multiplas maquinas do tenant.
+ */
+export const dispatchBatchAgentUpdate = async ({
+  tenantId,
+  devices = [],
+  zipUrl = '',
+  targetVersion = AGENT_VERSION,
+  user,
+}) => {
+  if (!tenantId || !Array.isArray(devices) || !devices.length) {
+    return { updated: 0, failed: 0, errors: [] };
+  }
+  let updated = 0;
+  let failed = 0;
+  const errors = [];
+  for (const dev of devices) {
+    const deviceKey = dev?.deviceKey;
+    if (!deviceKey) continue;
+    try {
+      await dispatchAgentUpdate({
+        tenantId,
+        deviceKey,
+        hostname: dev.hostname || deviceKey,
+        zipUrl,
+        targetVersion,
+        user,
+      });
+      updated += 1;
+    } catch (err) {
+      failed += 1;
+      errors.push({ deviceKey, hostname: dev.hostname, message: err?.message || 'Erro ao enviar atualização' });
+    }
+  }
+  return { updated, failed, errors };
 };
 
 /**

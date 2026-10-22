@@ -522,7 +522,7 @@ service cloud.firestore {
       allow create: if canManage(request.resource.data.tenantId) &&
         request.resource.data.keys().hasOnly(['tenantId', 'deviceKey', 'hostname', 'action', 'detail', 'mode', 'byUid', 'byName', 'at']) &&
         validDeviceKey(request.resource.data.deviceKey) &&
-        request.resource.data.action in ['remote_request', 'remote_end', 'command', 'revoke'] &&
+        request.resource.data.action in ['remote_request', 'remote_end', 'command', 'revoke', 'update_agent'] &&
         request.resource.data.byUid == request.auth.uid &&
         request.resource.data.at == request.time &&
         request.resource.data.get('detail', '') is string &&
@@ -659,7 +659,7 @@ service cloud.firestore {
               policyOf(d.tenantId).get('remoteAccess', 'consent') != 'disabled' &&
               s.get('requestedByUid', '') == request.auth.uid &&
               (s.get('mode', 'attended') == 'attended' || policyOf(d.tenantId).get('remoteAccess', 'consent') == 'unattended') &&
-              (s.get('sessionId', '') == before.get('sessionId', '') || auditedNow(s.get('sessionId', ''), d.deviceKey))
+              ((s.get('sessionId', '') == before.get('sessionId', '') && before.get('requestedByUid', '') == request.auth.uid) || auditedNow(s.get('sessionId', ''), d.deviceKey))
             )
           )
         );

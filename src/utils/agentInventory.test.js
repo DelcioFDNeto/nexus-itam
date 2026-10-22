@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
+  AGENT_VERSION,
   agentHealth,
+  compareAgentVersion,
+  isAgentOutdated,
   diffInventory,
   evaluateAgentAlerts,
   findAgentAsset,
@@ -252,5 +255,15 @@ describe('licencas e frota', () => {
     expect(summarizeFleet(assets, { now, isRetired })).toEqual({ managed: 2, online24h: 1, stale: 1, withAlerts: 1, critical: 1, uncovered: 1 });
     expect(agentHealth(assets[1], { now }).state).toBe('stale');
     expect(agentHealth(assets[2], { now }).state).toBe('never');
+  });
+
+  it('compara versoes do agente e detecta desatualizados para atualizacao OTA', () => {
+    expect(AGENT_VERSION).toBe('3.2.0');
+    expect(compareAgentVersion('3.1.0', '3.2.0')).toBe(-1);
+    expect(compareAgentVersion('3.2.0', '3.2.0')).toBe(0);
+    expect(compareAgentVersion('v3.3.0', '3.2.0')).toBe(1);
+    expect(isAgentOutdated('3.1.0')).toBe(true);
+    expect(isAgentOutdated('3.2.0')).toBe(false);
+    expect(isAgentOutdated('')).toBe(true);
   });
 });

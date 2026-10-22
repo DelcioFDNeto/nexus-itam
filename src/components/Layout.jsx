@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import {
-  Home, Box, QrCode, Search, Plus, Settings, Menu,
+  Home, Box, QrCode, Search, Plus, Settings, Menu, Monitor,
   Building2, Users, Layers, LayoutDashboard, MoreHorizontal,
 } from 'lucide-react';
 import Sidebar from './Sidebar';
@@ -109,13 +109,14 @@ const Layout = ({ children }) => {
       { to: '/dashboard', icon: Home, label: 'Inicio' },
       { to: '/assets', icon: Box, label: 'Ativos' },
       can(currentUser, 'assets:write') ? { to: '/assets/new', icon: Plus, label: 'Novo', primary: true } : null,
+      can(currentUser, 'agent:manage') && isModuleEnabled(currentUser, 'agent') ? { to: '/agent', icon: Monitor, label: 'NexusDesk' } : null,
       can(currentUser, 'audit:run') && isModuleEnabled(currentUser, 'audit') ? { to: '/audit', icon: QrCode, label: 'Auditoria' } : null,
       can(currentUser, 'settings:read')
         ? { to: '/settings', icon: Settings, label: 'Ajustes' }
         : can(currentUser, 'tasks:write') && isModuleEnabled(currentUser, 'projects')
           ? { to: '/tasks', icon: Layers, label: 'Tarefas' }
           : null,
-    ].filter(Boolean);
+    ].filter(Boolean).slice(0, 5);
   }, [master, currentUser]);
 
   const isActive = (path) =>

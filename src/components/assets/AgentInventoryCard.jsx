@@ -141,9 +141,9 @@ const AgentInventoryCard = ({ asset }) => {
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2"><Cpu size={20} /> Agente ITAM & Acesso Remoto</h3>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2"><Cpu size={20} /> Agente ITAM & NexusDesk</h3>
             <span className="px-2.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-mono text-xs font-bold">
-              ID: {accessId}
+              NexusDesk: {accessId}
             </span>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -159,7 +159,7 @@ const AgentInventoryCard = ({ asset }) => {
                 onClick={() => setRemoteModal({ open: true, tab: 'screen' })}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-sm transition-colors"
               >
-                <Monitor size={14} /> Acesso Remoto
+                <Monitor size={14} /> NexusDesk
               </button>
               <button
                 type="button"
