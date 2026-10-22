@@ -122,11 +122,11 @@ const InstallTab = ({ tenantId, agentToken }) => {
 
   const downloadExecutableAndConfig = () => {
     try {
-      // 1. Baixa o executavel nativo pre-compilado
-      const exeLink = document.createElement('a');
-      exeLink.href = '/downloads/NexusAgent.exe';
-      exeLink.download = 'NexusAgent.exe';
-      exeLink.click();
+      // 1. Baixa o pacote compactado contendo o executavel nativo
+      const zipLink = document.createElement('a');
+      zipLink.href = '/downloads/NexusAgent.zip';
+      zipLink.download = 'NexusAgent.zip';
+      zipLink.click();
 
       // 2. Se houver token, baixa tambem o config.json pronto para colocar na mesma pasta
       if (tenantId && agentToken) {
@@ -134,12 +134,12 @@ const InstallTab = ({ tenantId, agentToken }) => {
           const cfg = buildAgentConfigJson({ projectId, tenantId, agentToken });
           triggerBlobDownload(cfg.content, cfg.filename, cfg.mime);
         }, 400);
-        toast.success('NexusAgent.exe e config.json baixados! Coloque ambos na mesma pasta ou use o instalador .CMD.');
+        toast.success('NexusAgent.zip e config.json baixados! Extraia o executável e execute com o config.json na mesma pasta.');
       } else {
-        toast.success('NexusAgent.exe baixado!');
+        toast.success('NexusAgent.zip baixado com sucesso!');
       }
     } catch (error) {
-      toast.error(error.message || 'Erro ao baixar executável.');
+      toast.error(error.message || 'Erro ao baixar pacote.');
     }
   };
 
@@ -184,7 +184,7 @@ const InstallTab = ({ tenantId, agentToken }) => {
             className="inline-flex items-center gap-2 px-4 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs md:text-sm transition-all"
           >
             <Cpu size={17} className="text-cyan-300" />
-            Baixar NexusAgent.exe + config.json
+            Baixar NexusAgent (.ZIP) + config.json
           </button>
         </div>
       </div>
