@@ -29,6 +29,7 @@ import {
   formatAccessId,
   isDeviceOnline,
   resolveSupportRequest,
+  stripLegacyDeviceTokens,
   subscribeAgentDevices,
 } from '../services/rmmService';
 import { assertWithinLimit } from '../services/tenantService';
@@ -112,6 +113,7 @@ const AgentManager = () => {
     if (!tenantId) return undefined;
     const unsub = subscribeAgentDevices(tenantId, (devices) => {
       setLiveDevices(devices);
+      stripLegacyDeviceTokens(devices);
     });
     return () => unsub();
   }, [tenantId]);

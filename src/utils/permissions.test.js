@@ -63,6 +63,14 @@ describe('can', () => {
     expect(can(master, 'settings:write')).toBe(true);
   });
 
+  it('o master nao acessa nem comanda as maquinas dos clientes (LGPD)', () => {
+    const master = { role: 'superadmin', tenantId: 'nexus-master' };
+    expect(can(master, 'agent:read')).toBe(false);
+    expect(can(master, 'agent:remote')).toBe(false);
+    expect(can(master, 'agent:manage')).toBe(false);
+    expect(can({ role: 'manager', tenantId: 'acme' }, 'agent:remote')).toBe(true);
+  });
+
   it('capacidade inexistente e sempre negada', () => {
     expect(can(user('owner'), 'nao:existe')).toBe(false);
   });

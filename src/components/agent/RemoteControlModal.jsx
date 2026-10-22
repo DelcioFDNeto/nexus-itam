@@ -21,6 +21,7 @@ import {
   RotateCcw,
   Send,
   ShieldCheck,
+  ShieldOff,
   Square,
   Terminal,
   Trash2,
@@ -32,18 +33,34 @@ import {
 import { toast } from 'sonner';
 import { useConfirm } from '../ConfirmDialog';
 import {
+  DEFAULT_RUNTIME_POLICY,
+  MAX_COMMAND_LENGTH,
   QUICK_POWERSHELL_ACTIONS,
   REMOTE_COMMANDS,
   dispatchRemoteCommand,
   formatAccessId,
   isDeviceOnline,
+  pingRemoteViewer,
   resolveSupportRequest,
+  revokeAgentDevice,
   sendRemoteInputEvents,
   startRemoteSession,
   stopRemoteSession,
   subscribeAgentDevice,
+  subscribeRuntimePolicy,
   updateRemoteQuality,
+  wakeAgentDevice,
 } from '../../services/rmmService';
+import { can } from '../../utils/permissions';
+
+// Estados finais que o agente publica em remoteState.state.
+const SESSION_END_MESSAGES = {
+  rejected: 'O colaborador recusou o acesso (ou não respondeu em 30 s).',
+  refused_policy: 'A política da empresa desligou o acesso remoto.',
+  ended_by_user: 'O colaborador encerrou o acesso remoto.',
+  timeout: 'Sessão encerrada pelo agente: sem ninguém assistindo há 3 minutos.',
+  ended: 'Sessão encerrada.',
+};
 
 const WINGET_PRESETS = [
   { label: 'Google Chrome', pkg: 'Google.Chrome' },
@@ -67,9 +84,11 @@ export default function RemoteControlModal({
   const [liveDevice, setLiveDevice] = useState(initialDevice || null);
 
   // Estado da Sessao Remota
-  const [sessionMode, setSessionMode] = useState('unattended');
+  const [sessionMode, setSessionMode] = useState('attended');
   const [quality, setQuality] = useState('balanced');
   const [sessionId, setSessionId] = useState('');
+  const [lastSessionId, setLastSessionId] = useState('');
+  const [policy, setPolicy] = useState(DEFAULT_RUNTIME_POLICY);
   const [connecting, setConnecting] = useState(false);
   const [controlEnabled, setControlEnabled] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -95,6 +114,7 @@ export default function RemoteControlModal({
   const inputQueueRef = useRef([]);
   const flushTimerRef = useRef(null);
   const lastMouseMoveAtRef = useRef(0);
+  const sessionIdRef = useRef('');
 
   const deviceKey =
     liveDevice?.deviceKey ||
@@ -104,6 +124,9 @@ export default function RemoteControlModal({
 
   const operatorName =
     currentUser?.name || currentUser?.email || 'Técnico de TI';
+  const hostLabel = liveDevice?.hostname || asset?.internalId || '';
+  // "Sem supervisao" so existe se a empresa liberou na politica.
+  const effectiveMode = policy.remoteAccess === 'unattended' ? sessionMode : 'attended';
 
   useEffect(() => {
     setActiveTab(initialTab || 'screen');
@@ -116,10 +139,41 @@ export default function RemoteControlModal({
   useEffect(() => {
     if (!isOpen || !tenantId || !deviceKey) return undefined;
     const unsub = subscribeAgentDevice(tenantId, deviceKey, (data) => {
-      if (data) setLiveDevice(data);
+      if (!data) return;
+      setLiveDevice(data);
+      // O agente encerrou do lado de la (recusa, colaborador, ninguem assistindo).
+      const state = data.remoteState?.state;
+      if (sessionIdRef.current && data.remoteState?.sessionId === sessionIdRef.current && SESSION_END_MESSAGES[state]) {
+        toast.info(SESSION_END_MESSAGES[state]);
+        sessionIdRef.current = '';
+        setSessionId('');
+        stopRemoteSession({ tenantId, deviceKey }).catch(() => {});
+      }
     });
     return () => unsub();
   }, [isOpen, tenantId, deviceKey]);
+
+  useEffect(() => {
+    if (!isOpen || !tenantId) return undefined;
+    return subscribeRuntimePolicy(tenantId, setPolicy);
+  }, [isOpen, tenantId]);
+
+  // A maquina so consulta o canal quando acordada (janela de 3 min no agente):
+  // o console renova o pedido enquanto estiver aberto.
+  useEffect(() => {
+    if (!isOpen || !tenantId || !deviceKey) return undefined;
+    const wake = () => wakeAgentDevice({ tenantId, deviceKey }).catch(() => {});
+    wake();
+    const timer = setInterval(wake, 90_000);
+    return () => clearInterval(timer);
+  }, [isOpen, tenantId, deviceKey]);
+
+  // Sem este sinal o agente pausa a tela em 45 s e encerra a sessao em 3 min.
+  useEffect(() => {
+    if (!sessionId || !tenantId || !deviceKey) return undefined;
+    const timer = setInterval(() => pingRemoteViewer({ tenantId, deviceKey }).catch(() => {}), 15_000);
+    return () => clearInterval(timer);
+  }, [sessionId, tenantId, deviceKey]);
 
   // Registra chegada de resultado de comando no historico do terminal
   useEffect(() => {
@@ -158,8 +212,13 @@ export default function RemoteControlModal({
   const topProcesses = Array.isArray(liveDevice?.topProcesses) ? liveDevice.topProcesses : [];
   const screenFrame = liveDevice?.screenFrame || null;
   const remoteState = liveDevice?.remoteState || {};
-  const isSessionActive = Boolean(sessionId) && (remoteState.state === 'active' || Boolean(screenFrame?.data));
-  const isWaitingConsent = Boolean(sessionId) && sessionMode === 'attended' && remoteState.state !== 'active' && remoteState.state !== 'rejected';
+  const ownState = sessionId && remoteState.sessionId === sessionId ? remoteState.state : '';
+  const isSessionActive = ownState === 'active';
+  const isWaitingConsent = ownState === 'awaiting_consent';
+  const isWaitingAgent = Boolean(sessionId) && !ownState;
+  const endedState = !sessionId && lastSessionId && remoteState.sessionId === lastSessionId ? remoteState.state : '';
+  const responseSeconds = Number(liveDevice?.heartbeatSeconds) || policy.heartbeatSeconds;
+  const isAdmin = can(currentUser, 'agent:manage');
 
   const queueInputEvent = (ev) => {
     if (!sessionId || !controlEnabled) return;
@@ -175,9 +234,9 @@ export default function RemoteControlModal({
         tenantId,
         deviceKey,
         sessionId,
-        mode: sessionMode,
+        mode: effectiveMode,
         quality,
-        requestedBy: operatorName,
+        user: currentUser,
         events: batch,
       }).catch(() => {});
     }, 140);
@@ -188,6 +247,10 @@ export default function RemoteControlModal({
       toast.error('Este ativo ainda não possui o Agente Nativo (NexusAgent.exe) vinculado.');
       return;
     }
+    if (policy.remoteAccess === 'disabled') {
+      toast.error('Acesso remoto desligado pela política da empresa (Agente ITAM > Políticas e segurança).');
+      return;
+    }
     setConnecting(true);
     try {
       inputSeqRef.current = 1;
@@ -195,15 +258,18 @@ export default function RemoteControlModal({
       const newSessionId = await startRemoteSession({
         tenantId,
         deviceKey,
-        mode: sessionMode,
+        hostname: hostLabel,
+        mode: effectiveMode,
         quality,
-        requestedBy: operatorName,
+        user: currentUser,
       });
+      sessionIdRef.current = newSessionId;
       setSessionId(newSessionId);
+      setLastSessionId(newSessionId);
       toast.success(
-        sessionMode === 'attended'
-          ? 'Solicitação enviada! Aguardando o usuário aceitar na tela...'
-          : 'Iniciando transmissão da área de trabalho remota...'
+        effectiveMode === 'attended'
+          ? `Pedido enviado. A máquina responde em até ${responseSeconds} s e o colaborador precisa aceitar na tela.`
+          : `Pedido enviado. A transmissão começa quando a máquina responder (até ${responseSeconds} s).`
       );
     } catch (e) {
       toast.error(e?.message || 'Falha ao iniciar sessão remota.');
@@ -214,11 +280,12 @@ export default function RemoteControlModal({
 
   const handleStopRemote = async () => {
     const activeId = sessionId;
+    sessionIdRef.current = '';
     setSessionId('');
     inputQueueRef.current = [];
     if (activeId && tenantId && deviceKey) {
       try {
-        await stopRemoteSession({ tenantId, deviceKey });
+        await stopRemoteSession({ tenantId, deviceKey, hostname: hostLabel, user: currentUser });
         toast.info('Sessão remota encerrada.');
       } catch {
         // Ignora erro ao fechar
@@ -233,9 +300,9 @@ export default function RemoteControlModal({
         tenantId,
         deviceKey,
         sessionId,
-        mode: sessionMode,
+        mode: effectiveMode,
         quality: newQuality,
-        requestedBy: operatorName,
+        user: currentUser,
         inputEvents: inputQueueRef.current,
       }).catch(() => {});
     }
@@ -337,17 +404,22 @@ export default function RemoteControlModal({
       toast.error('Dispositivo sem chave de agente.');
       return;
     }
+    if (!policy.commandsEnabled) {
+      toast.error('Comandos remotos desligados pela política da empresa (Agente ITAM > Políticas e segurança).');
+      return;
+    }
     try {
       const sent = await dispatchRemoteCommand({
         tenantId,
         deviceKey,
+        hostname: hostLabel,
         type,
         command,
         title,
-        requestedBy: operatorName,
+        user: currentUser,
       });
       setRunningCmdId(sent.id);
-      toast.success('Comando enviado para o agente!');
+      toast.success(`Comando enviado. A máquina executa em até ${responseSeconds} s.`);
     } catch (e) {
       toast.error(e?.message || 'Erro ao enviar comando remoto.');
     }
@@ -381,6 +453,23 @@ export default function RemoteControlModal({
     });
     if (!ok) return;
     await handleSendCommand(actionType, label);
+  };
+
+  const handleRevoke = async () => {
+    const ok = await confirm({
+      title: `Revogar o agente de ${patrimony}?`,
+      message: 'A máquina perde o acesso à empresa na hora: para de enviar inventário e não recebe mais comandos nem acesso remoto. Para voltar, reinstale o agente com o token da empresa.',
+      danger: true,
+      confirmLabel: 'Revogar agente',
+    });
+    if (!ok) return;
+    try {
+      await handleStopRemote();
+      const removed = await revokeAgentDevice({ tenantId, deviceKey, hostname: hostLabel, user: currentUser });
+      toast.success(removed ? 'Agente revogado.' : 'Nenhuma matrícula ativa: a máquina já estava sem acesso.');
+    } catch (e) {
+      toast.error(e?.code === 'permission-denied' ? 'Só owner e administradores revogam agentes.' : (e?.message || 'Erro ao revogar.'));
+    }
   };
 
   const handleResolveSupport = async () => {
@@ -508,12 +597,15 @@ export default function RemoteControlModal({
                   {!sessionId ? (
                     <>
                       <select
-                        value={sessionMode}
+                        value={effectiveMode}
                         onChange={(e) => setSessionMode(e.target.value)}
                         className="px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs"
+                        title="A política da empresa define se o acesso sem supervisão é permitido"
                       >
-                        <option value="unattended">Acesso Direto (Não Supervisionado)</option>
-                        <option value="attended">Pedir Permissão ao Usuário (30s)</option>
+                        <option value="attended">Pedir permissão ao colaborador (30 s)</option>
+                        <option value="unattended" disabled={policy.remoteAccess !== 'unattended'}>
+                          Sem supervisão{policy.remoteAccess !== 'unattended' ? ' (bloqueado pela política)' : ''}
+                        </option>
                       </select>
                       <button
                         onClick={handleStartRemote}
@@ -650,13 +742,20 @@ export default function RemoteControlModal({
                 ) : (
                   <div className="max-w-md text-center p-6 rounded-2xl bg-slate-900/90 border border-slate-800">
                     <Monitor className="w-12 h-12 text-blue-400 mx-auto mb-3 opacity-80" />
-                    {remoteState.state === 'rejected' ? (
+                    {SESSION_END_MESSAGES[endedState] ? (
                       <>
-                        <h3 className="font-bold text-base text-red-400 mb-1">
-                          Acesso Recusado pelo Usuário
+                        <h3 className={`font-bold text-base mb-1 ${endedState === 'rejected' || endedState === 'refused_policy' ? 'text-red-400' : 'text-slate-200'}`}>
+                          {endedState === 'rejected' ? 'Acesso recusado' : 'Sessão encerrada'}
                         </h3>
-                        <p className="text-xs text-slate-400 mb-4">
-                          O colaborador recusou ou o tempo de 30 segundos expirou na estação de trabalho.
+                        <p className="text-xs text-slate-400 mb-4">{SESSION_END_MESSAGES[endedState]}</p>
+                      </>
+                    ) : isWaitingAgent ? (
+                      <>
+                        <RefreshCw className="w-6 h-6 text-blue-400 animate-spin mx-auto mb-2" />
+                        <h3 className="font-bold text-base text-white mb-1">Chamando a máquina...</h3>
+                        <p className="text-xs text-slate-400">
+                          O agente confere o canal no próximo sinal de vida (até {responseSeconds} s).
+                          {effectiveMode === 'attended' ? ' Depois, o colaborador precisa aceitar na tela.' : ''}
                         </p>
                       </>
                     ) : isWaitingConsent ? (
@@ -709,7 +808,7 @@ export default function RemoteControlModal({
                   type="text"
                   value={textToType}
                   onChange={(e) => setTextToType(e.target.value)}
-                  placeholder="Digite um texto, senha ou comando aqui para enviar direto ao teclado remoto..."
+                  placeholder="Texto para digitar no computador remoto (evite senhas: o texto passa pela nuvem)"
                   className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
                 />
                 <button
@@ -787,6 +886,7 @@ export default function RemoteControlModal({
                   <input
                     type="text"
                     value={psInput}
+                    maxLength={MAX_COMMAND_LENGTH}
                     onChange={(e) => setPsInput(e.target.value)}
                     placeholder="Ex: Get-Service | Where-Object {$_.Status -eq 'Running'} | Select -First 15"
                     className="flex-1 bg-transparent font-mono text-xs text-white placeholder-slate-500 focus:outline-none"
@@ -891,7 +991,7 @@ export default function RemoteControlModal({
                         <th className="px-4 py-2.5">PID</th>
                         <th className="px-4 py-2.5">Processo</th>
                         <th className="px-4 py-2.5">Memória RAM</th>
-                        <th className="px-4 py-2.5">Estado</th>
+                        <th className="px-4 py-2.5">Contexto</th>
                         <th className="px-4 py-2.5 text-right">Ação</th>
                       </tr>
                     </thead>
@@ -909,13 +1009,13 @@ export default function RemoteControlModal({
                             <td className="px-4 py-2.5 font-bold text-gray-900 dark:text-white">{proc.name}.exe</td>
                             <td className="px-4 py-2.5 font-mono text-gray-700 dark:text-slate-300">{proc.memoryMb} MB</td>
                             <td className="px-4 py-2.5">
-                              {proc.responding !== false ? (
-                                <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-semibold text-[11px]">
-                                  Respondendo
+                              {proc.session === 0 ? (
+                                <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold text-[11px]">
+                                  Sistema
                                 </span>
                               ) : (
-                                <span className="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 font-semibold text-[11px]">
-                                  Não responde
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-semibold text-[11px]">
+                                  Usuário
                                 </span>
                               )}
                             </td>
@@ -1011,17 +1111,38 @@ export default function RemoteControlModal({
                     className="flex items-center gap-2.5 p-3 rounded-xl bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 text-orange-700 dark:text-orange-300 font-bold text-xs transition-colors"
                   >
                     <RotateCcw className="w-4 h-4 shrink-0" />
-                    Reiniciar Máquina (15s)
+                    Reiniciar Máquina (30s)
                   </button>
                   <button
                     onClick={() => handlePowerAction(REMOTE_COMMANDS.SHUTDOWN, 'Desligar Computador')}
                     className="flex items-center gap-2.5 p-3 rounded-xl bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 font-bold text-xs transition-colors"
                   >
                     <Power className="w-4 h-4 shrink-0" />
-                    Desligar Máquina (15s)
+                    Desligar Máquina (30s)
                   </button>
                 </div>
               </div>
+
+              {isAdmin && (
+                <div className="lg:col-span-2 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2">
+                    <ShieldOff className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h3 className="font-bold text-sm text-gray-900 dark:text-white">Revogar o agente desta máquina</h3>
+                      <p className="text-xs text-gray-500 dark:text-slate-400">
+                        Para equipamento perdido, roubado ou devolvido: a máquina perde o acesso à empresa na hora.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleRevoke}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shrink-0"
+                  >
+                    <ShieldOff className="w-3.5 h-3.5" />
+                    Revogar agente
+                  </button>
+                </div>
+              )}
 
               {/* Silent Software Management (Winget) */}
               <div className="lg:col-span-2 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 space-y-4">

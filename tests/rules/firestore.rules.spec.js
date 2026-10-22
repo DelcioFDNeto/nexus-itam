@@ -5,6 +5,7 @@
 // (sobe o emulador via `firebase emulators:exec`; exige Java instalado)
 // -----------------------------------------------------------------------------
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import {
   assertFails,
@@ -21,6 +22,7 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
   writeBatch,
   serverTimestamp,
   Timestamp,
@@ -313,10 +315,11 @@ describe('empresa, configuracoes e segredos', () => {
     await assertSucceeds(setDoc(doc(as('admin1'), 'settings', 'acme'), { agentPolicy: { blockedSoftware: ['utorrent'], staleDays: 10 } }, { merge: true }));
   });
 
-  it('segredo do agente e restrito a owner/admin da propria empresa', async () => {
+  it('segredo do agente e restrito a owner/admin da propria empresa (nem o master le)', async () => {
     await assertSucceeds(getDoc(doc(as('admin1'), 'tenantSecrets', 'acme')));
     await assertFails(getDoc(doc(as('op1'), 'tenantSecrets', 'acme')));
     await assertFails(getDoc(doc(as('betaOwner'), 'tenantSecrets', 'acme')));
+    await assertFails(getDoc(doc(as('master'), 'tenantSecrets', 'acme')));
   });
 
   it('caixa do agente (que carrega o token) nao e legivel por operador', async () => {
@@ -326,12 +329,91 @@ describe('empresa, configuracoes e segredos', () => {
 });
 
 // -----------------------------------------------------------------------------
-describe('agente sem login (drop-box)', () => {
+// Agente: maquina autenticada (login anonimo) matriculada em uma empresa.
+const agentAs = (uid) =>
+  env.authenticatedContext(uid, { firebase: { sign_in_provider: 'anonymous', identities: {} } }).firestore();
+const proofFor = (token, uid) => createHash('sha256').update(`${token}:${uid}`).digest('hex');
+const enrollment = (uid, extra = {}) => ({
+  tenantId: 'acme',
+  deviceKey: 'dev01',
+  tokenProof: proofFor('tok-acme', uid),
+  hostname: 'SHL-BEL-NTB-001',
+  agentVersion: '3.1.0',
+  createdAt: Timestamp.now(),
+  ...extra,
+});
+
+/** Matricula pronta (sem passar pelas regras) para os testes de canal. */
+const seedEnrollment = (uid, extra = {}) =>
+  env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'agentEnrollments', uid), enrollment(uid, extra)));
+
+const seedPolicy = (data) =>
+  env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'agentPolicies', 'acme'), data));
+
+describe('agente: conta anonima nunca e pessoa', () => {
+  it('nao le planos, perfis nem cria empresa', async () => {
+    const db = agentAs('agentA');
+    await assertFails(getDocs(collection(db, 'plans')));
+    await assertFails(getDoc(doc(db, 'users', 'owner1')));
+    await assertFails(setDoc(doc(db, 'tenants', 'nova'), {
+      id: 'nova', companyName: 'Nova', ownerUid: 'agentA', plan: 'starter', status: 'active',
+    }));
+  });
+});
+
+describe('agente: matricula da maquina (NexusAgent.exe)', () => {
+  it('matricula com prova do token sem gravar o token', async () => {
+    await assertSucceeds(setDoc(doc(agentAs('agentA'), 'agentEnrollments', 'agentA'), enrollment('agentA')));
+    await assertSucceeds(getDoc(doc(agentAs('agentA'), 'agentEnrollments', 'agentA')));
+  });
+
+  it('BLOQUEIA prova errada, prova de outra conta ou token em texto', async () => {
+    await assertFails(setDoc(doc(agentAs('agentA'), 'agentEnrollments', 'agentA'), enrollment('agentA', { tokenProof: proofFor('chute', 'agentA') })));
+    await assertFails(setDoc(doc(agentAs('agentA'), 'agentEnrollments', 'agentA'), enrollment('agentA', { tokenProof: proofFor('tok-acme', 'agentB') })));
+    await assertFails(setDoc(doc(agentAs('agentA'), 'agentEnrollments', 'agentA'), { ...enrollment('agentA'), agentToken: 'tok-acme' }));
+  });
+
+  it('BLOQUEIA matricular outra conta, pessoa logada ou empresa suspensa', async () => {
+    await assertFails(setDoc(doc(agentAs('agentA'), 'agentEnrollments', 'agentB'), enrollment('agentB')));
+    await assertFails(setDoc(doc(as('admin1'), 'agentEnrollments', 'admin1'), enrollment('admin1')));
+    await assertFails(setDoc(doc(agentAs('agentS'), 'agentEnrollments', 'agentS'), enrollment('agentS', {
+      tenantId: 'susp', tokenProof: proofFor('tok-susp', 'agentS'),
+    })));
+  });
+
+  it('BLOQUEIA chave de maquina que invade o espaco de IDs de outra empresa', async () => {
+    await assertFails(setDoc(doc(agentAs('agentA'), 'agentEnrollments', 'agentA'), enrollment('agentA', { deviceKey: 'corp_dev01' })));
+  });
+
+  it('admin da empresa lista e revoga; gestor, outra empresa e master nao', async () => {
+    await seedEnrollment('agentA');
+    const list = (db) => getDocs(query(collection(db, 'agentEnrollments'), where('tenantId', '==', 'acme')));
+    await assertSucceeds(list(as('admin1')));
+    await assertFails(list(as('manager1')));
+    await assertFails(getDoc(doc(as('betaOwner'), 'agentEnrollments', 'agentA')));
+    await assertFails(getDoc(doc(as('master'), 'agentEnrollments', 'agentA')));
+    await assertFails(deleteDoc(doc(as('master'), 'agentEnrollments', 'agentA')));
+    await assertSucceeds(deleteDoc(doc(as('admin1'), 'agentEnrollments', 'agentA')));
+  });
+
+  it('o proprio agente se desmatricula ao desinstalar', async () => {
+    await seedEnrollment('agentA');
+    await assertFails(deleteDoc(doc(agentAs('agentB'), 'agentEnrollments', 'agentA')));
+    await assertSucceeds(deleteDoc(doc(agentAs('agentA'), 'agentEnrollments', 'agentA')));
+  });
+});
+
+// -----------------------------------------------------------------------------
+describe('agente: caixa de entrada (scripts com token e exe matriculado)', () => {
   const submission = (tenantId, agentToken) => ({
     tenantId, agentToken, status: 'pending', hostname: 'PC-01', createdAt: new Date().toISOString(), payload: { hostname: 'PC-01' },
   });
   const v2 = (extra = {}) => ({
     ...submission('acme', 'tok-acme'), deviceKey: 'abc123', agentVersion: '2.0.0', createdAt: Timestamp.now(), ...extra,
+  });
+  const enrolled = (extra = {}) => ({
+    tenantId: 'acme', deviceKey: 'dev01', status: 'pending', source: 'agent-windows-exe', agentVersion: '3.1.0',
+    hostname: 'PC-01', createdAt: Timestamp.now(), payload: { hostname: 'PC-01' }, ...extra,
   });
 
   it('aceita envio com o token correto', async () => {
@@ -356,22 +438,36 @@ describe('agente sem login (drop-box)', () => {
     await assertFails(setDoc(doc(anon(), 'agentInbox', 'beta_dev1'), v2({ deviceKey: 'dev1' })));
   });
 
+  it('BLOQUEIA "_" na chave: acme + corp_1 nao ocupa o ID da empresa acme_corp', async () => {
+    await assertFails(setDoc(doc(anon(), 'agentInbox', 'acme_corp_1'), v2({ deviceKey: 'corp_1' })));
+  });
+
   it('formato fechado: sem campos extras nem status ja processado', async () => {
     await assertFails(setDoc(doc(anon(), 'agentInbox', 'x1'), { ...submission('acme', 'tok-acme'), result: { action: 'created' } }));
     await assertFails(setDoc(doc(anon(), 'agentInbox', 'x2'), { ...submission('acme', 'tok-acme'), status: 'processed' }));
     await assertFails(setDoc(doc(anon(), 'agentInbox', 'x3'), { ...submission('acme', 'tok-acme'), payload: 'texto' }));
   });
 
-  it('agente sem token nao le a fila', async () => {
+  it('exe matriculado envia sem token, so para a propria maquina', async () => {
+    await seedEnrollment('agentA');
+    await assertSucceeds(setDoc(doc(agentAs('agentA'), 'agentInbox', 'acme_dev01'), enrolled()));
+    await assertFails(setDoc(doc(agentAs('agentA'), 'agentInbox', 'acme_dev02'), enrolled({ deviceKey: 'dev02' })));
+    await assertFails(setDoc(doc(agentAs('agentA'), 'agentInbox', 'beta_dev01'), enrolled({ tenantId: 'beta' })));
+    await assertFails(setDoc(doc(agentAs('naoMatriculado'), 'agentInbox', 'acme_dev01'), enrolled()));
+  });
+
+  it('ninguem sem gestao le a fila; master tambem nao', async () => {
     await assertFails(getDoc(doc(anon(), 'agentInbox', 'in1')));
+    await seedEnrollment('agentA');
+    await assertFails(getDoc(doc(agentAs('agentA'), 'agentInbox', 'in1')));
+    await assertFails(getDoc(doc(as('master'), 'agentInbox', 'in1')));
   });
 });
 
 // -----------------------------------------------------------------------------
-describe('agentDevices e agentControl (RMM e acesso remoto)', () => {
+describe('agente: telemetria (agentDevices)', () => {
   const devicePayload = (extra = {}) => ({
     tenantId: 'acme',
-    agentToken: 'tok-acme',
     deviceKey: 'dev01',
     accessId: '842 910 305',
     hostname: 'SHL-BEL-NTB-001',
@@ -381,41 +477,200 @@ describe('agentDevices e agentControl (RMM e acesso remoto)', () => {
     ...extra,
   });
 
-  it('agente grava telemetria e frame em agentDevices com token valido; bloqueia token invalido ou docId de outra empresa', async () => {
-    await assertSucceeds(setDoc(doc(anon(), 'agentDevices', 'acme_dev01'), devicePayload()));
-    await assertSucceeds(setDoc(doc(anon(), 'agentDevices', 'acme_dev01'), devicePayload({ screenFrame: { data: 'base64jpeg', seq: 1 } })));
-    await assertFails(setDoc(doc(anon(), 'agentDevices', 'acme_dev01'), devicePayload({ agentToken: 'errado' })));
-    await assertFails(setDoc(doc(anon(), 'agentDevices', 'beta_dev01'), devicePayload()));
-    await assertFails(setDoc(doc(anon(), 'agentDevices', 'acme_outro'), devicePayload()));
+  it('maquina matriculada grava a propria telemetria e o frame da sessao', async () => {
+    await seedEnrollment('agentA');
+    await assertSucceeds(setDoc(doc(agentAs('agentA'), 'agentDevices', 'acme_dev01'), devicePayload()));
+    await assertSucceeds(setDoc(doc(agentAs('agentA'), 'agentDevices', 'acme_dev01'), devicePayload({ screenFrame: { data: 'base64jpeg', seq: 1 } })));
   });
 
-  it('agentDevices: apenas gestao da empresa le; anonimo e outra empresa nao leem', async () => {
-    await setDoc(doc(anon(), 'agentDevices', 'acme_dev01'), devicePayload());
+  it('BLOQUEIA outra maquina, outra empresa, token no documento e quem nao e agente', async () => {
+    await seedEnrollment('agentA');
+    await assertFails(setDoc(doc(agentAs('agentA'), 'agentDevices', 'acme_dev02'), devicePayload({ deviceKey: 'dev02' })));
+    await assertFails(setDoc(doc(agentAs('agentA'), 'agentDevices', 'beta_dev01'), devicePayload({ tenantId: 'beta' })));
+    await assertFails(setDoc(doc(agentAs('agentA'), 'agentDevices', 'acme_dev01'), devicePayload({ agentToken: 'tok-acme' })));
+    await assertFails(setDoc(doc(anon(), 'agentDevices', 'acme_dev01'), devicePayload()));
+    await assertFails(setDoc(doc(agentAs('naoMatriculado'), 'agentDevices', 'acme_dev01'), devicePayload()));
+  });
+
+  it('maquina revogada ou de empresa suspensa para de gravar', async () => {
+    await seedEnrollment('agentA');
+    await env.withSecurityRulesDisabled((ctx) => deleteDoc(doc(ctx.firestore(), 'agentEnrollments', 'agentA')));
+    await assertFails(setDoc(doc(agentAs('agentA'), 'agentDevices', 'acme_dev01'), devicePayload()));
+    await seedEnrollment('agentS', { tenantId: 'susp', tokenProof: proofFor('tok-susp', 'agentS') });
+    await assertFails(setDoc(doc(agentAs('agentS'), 'agentDevices', 'susp_dev01'), devicePayload({ tenantId: 'susp' })));
+  });
+
+  it('so a gestao da empresa le; operador, outra empresa e master nao', async () => {
+    await seedEnrollment('agentA');
+    await setDoc(doc(agentAs('agentA'), 'agentDevices', 'acme_dev01'), devicePayload());
     await assertSucceeds(getDoc(doc(as('manager1'), 'agentDevices', 'acme_dev01')));
     await assertFails(getDoc(doc(anon(), 'agentDevices', 'acme_dev01')));
     await assertFails(getDoc(doc(as('op1'), 'agentDevices', 'acme_dev01')));
     await assertFails(getDoc(doc(as('betaOwner'), 'agentDevices', 'acme_dev01')));
+    await assertFails(getDoc(doc(as('master'), 'agentDevices', 'acme_dev01')));
   });
 
-  it('agentControl: gestor envia comando/sessao remota e agente (anon) consegue ler via getDoc, mas nao alterar', async () => {
+  it('gestor apaga o token deixado por agentes 3.0; operador nao', async () => {
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), 'agentDevices', 'acme_old30'), { tenantId: 'acme', deviceKey: 'old30', agentToken: 'tok-acme', status: 'online' }));
+    await assertFails(updateDoc(doc(as('op1'), 'agentDevices', 'acme_old30'), { agentToken: deleteField() }));
+    await assertSucceeds(updateDoc(doc(as('manager1'), 'agentDevices', 'acme_old30'), { agentToken: deleteField() }));
+  });
+
+  it('gestor "acorda" a maquina; o agente segue gravando com o campo do console', async () => {
+    await seedEnrollment('agentA');
+    await setDoc(doc(agentAs('agentA'), 'agentDevices', 'acme_dev01'), devicePayload());
+    await assertSucceeds(updateDoc(doc(as('manager1'), 'agentDevices', 'acme_dev01'), { consoleWakeAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(as('manager1'), 'agentDevices', 'acme_dev01'), { deviceKey: 'dev02' }));
+    await assertSucceeds(updateDoc(doc(agentAs('agentA'), 'agentDevices', 'acme_dev01'), { status: 'online', lastSeenAt: serverTimestamp() }));
+  });
+});
+
+// -----------------------------------------------------------------------------
+describe('agente: comandos e acesso remoto (agentControl)', () => {
+  const auditEntry = (id, action, by = 'manager1', extra = {}) => [
+    doc(as(by), 'agentAudit', id),
+    { tenantId: 'acme', deviceKey: 'dev01', hostname: 'PC-01', action, detail: 'detalhe', mode: '', byUid: by, byName: 'Gestor', at: serverTimestamp(), ...extra },
+  ];
+
+  /** Comando + auditoria no mesmo batch, como o console faz. */
+  const sendCommand = (by = 'manager1', { cmd = {}, audit = true, auditBy = by } = {}) => {
+    const db = as(by);
+    const batch = writeBatch(db);
+    const id = cmd.id || 'cmd-1';
+    if (audit) {
+      const [, data] = auditEntry(id, 'command', auditBy);
+      batch.set(doc(db, 'agentAudit', id), data);
+    }
+    batch.set(doc(db, 'agentControl', 'acme_dev01'), {
+      tenantId: 'acme',
+      deviceKey: 'dev01',
+      updatedAt: serverTimestamp(),
+      pendingCommand: { id, type: 'powershell', command: 'ipconfig', requestedByUid: by, issuedAt: serverTimestamp(), ...cmd },
+    }, { merge: true });
+    return batch.commit();
+  };
+
+  const openSession = (by = 'manager1', { mode = 'attended', sessionId = 'rem-1', audit = true } = {}) => {
+    const db = as(by);
+    const batch = writeBatch(db);
+    if (audit) {
+      const [, data] = auditEntry(sessionId, 'remote_request', by, { mode });
+      batch.set(doc(db, 'agentAudit', sessionId), data);
+    }
+    batch.set(doc(db, 'agentControl', 'acme_dev01'), {
+      tenantId: 'acme',
+      deviceKey: 'dev01',
+      remoteSession: { sessionId, status: 'requesting', mode, requestedByUid: by, requestedBy: 'Gestor', inputEvents: [] },
+    }, { merge: true });
+    return batch.commit();
+  };
+
+  it('gestor envia comando auditado; sem auditoria, auditoria de outro ou hora do cliente nao', async () => {
+    await assertSucceeds(sendCommand());
+    await assertFails(sendCommand('manager1', { cmd: { id: 'cmd-2' }, audit: false }));
+    await assertFails(sendCommand('manager1', { cmd: { id: 'cmd-3', requestedByUid: 'admin1' } }));
+    await assertFails(sendCommand('manager1', { cmd: { id: 'cmd-4', issuedAt: Timestamp.fromDate(new Date('2024-01-01')) } }));
+  });
+
+  it('comando reaproveitando auditoria antiga nao passa', async () => {
+    await assertSucceeds(sendCommand('manager1', { cmd: { id: 'cmd-1' } }));
+    await assertSucceeds(updateDoc(doc(as('manager1'), 'agentControl', 'acme_dev01'), { updatedAt: serverTimestamp() }));
+    await assertFails(sendCommand('manager1', { cmd: { id: 'cmd-1', command: 'outra coisa' }, audit: false }));
+  });
+
+  it('empresa que desliga comandos remotos bloqueia o envio', async () => {
+    await seedPolicy({ remoteAccess: 'consent', commandsEnabled: false, heartbeatSeconds: 120 });
+    await assertFails(sendCommand());
+  });
+
+  it('operador, outra empresa e master nao comandam maquinas', async () => {
+    await assertFails(sendCommand('op1'));
+    await assertFails(sendCommand('betaOwner'));
+    await assertFails(sendCommand('master'));
+  });
+
+  it('sessao com consentimento e o padrao; sem supervisao so se a empresa liberar', async () => {
+    await assertSucceeds(openSession('manager1', { mode: 'attended', sessionId: 'rem-1' }));
+    await assertFails(openSession('manager1', { mode: 'unattended', sessionId: 'rem-2' }));
+    await seedPolicy({ remoteAccess: 'unattended', commandsEnabled: true, heartbeatSeconds: 120 });
+    await assertSucceeds(openSession('manager1', { mode: 'unattended', sessionId: 'rem-3' }));
+  });
+
+  it('acesso remoto desligado bloqueia qualquer sessao, mas encerrar sempre pode', async () => {
+    await assertSucceeds(openSession('manager1', { sessionId: 'rem-1' }));
+    await seedPolicy({ remoteAccess: 'disabled', commandsEnabled: true, heartbeatSeconds: 120 });
+    await assertFails(openSession('manager1', { sessionId: 'rem-2' }));
     await assertSucceeds(setDoc(doc(as('manager1'), 'agentControl', 'acme_dev01'), {
-      tenantId: 'acme',
-      deviceKey: 'dev01',
-      remoteSession: { status: 'requesting', mode: 'unattended', sessionId: 's1' },
-    }));
-    await assertSucceeds(getDoc(doc(anon(), 'agentControl', 'acme_dev01')));
-    await assertFails(updateDoc(doc(anon(), 'agentControl', 'acme_dev01'), {
-      remoteSession: { status: 'closed' },
-    }));
-    await assertFails(setDoc(doc(as('op1'), 'agentControl', 'acme_dev01'), {
-      tenantId: 'acme',
-      deviceKey: 'dev01',
-    }));
+      tenantId: 'acme', deviceKey: 'dev01', remoteSession: { sessionId: '', status: 'closed', inputEvents: [] },
+    }, { merge: true }));
+  });
+
+  it('sessao nova exige auditoria; eventos da mesma sessao nao', async () => {
+    await assertFails(openSession('manager1', { sessionId: 'rem-9', audit: false }));
+    await assertSucceeds(openSession('manager1', { sessionId: 'rem-1' }));
+    await assertSucceeds(setDoc(doc(as('manager1'), 'agentControl', 'acme_dev01'), {
+      remoteSession: { sessionId: 'rem-1', status: 'active', mode: 'attended', requestedByUid: 'manager1', inputEvents: [{ seq: 1, type: 'click', x: 0.5, y: 0.5 }] },
+    }, { merge: true }));
+  });
+
+  it('so a propria maquina le o canal; outra maquina, anonimo e master nao', async () => {
+    await assertSucceeds(sendCommand());
+    await seedEnrollment('agentA');
+    await seedEnrollment('agentB', { deviceKey: 'dev02' });
+    await assertSucceeds(getDoc(doc(agentAs('agentA'), 'agentControl', 'acme_dev01')));
+    await assertFails(getDoc(doc(agentAs('agentB'), 'agentControl', 'acme_dev01')));
+    await assertFails(getDoc(doc(anon(), 'agentControl', 'acme_dev01')));
+    await assertFails(getDoc(doc(as('master'), 'agentControl', 'acme_dev01')));
+    await assertFails(updateDoc(doc(agentAs('agentA'), 'agentControl', 'acme_dev01'), { remoteSession: { status: 'closed' } }));
+  });
+
+  it('canal inexistente: o agente recebe "nao existe" em vez de erro', async () => {
+    await seedEnrollment('agentA');
+    await assertSucceeds(getDoc(doc(agentAs('agentA'), 'agentControl', 'acme_semcanal')));
+  });
+
+  it('formato fechado: token nao entra no canal', async () => {
     await assertFails(setDoc(doc(as('manager1'), 'agentControl', 'acme_dev01'), {
-      tenantId: 'acme',
-      deviceKey: 'dev01',
-      agentToken: 'tok-acme',
+      tenantId: 'acme', deviceKey: 'dev01', agentToken: 'tok-acme',
     }));
+  });
+});
+
+// -----------------------------------------------------------------------------
+describe('agente: politica e trilha de acessos', () => {
+  const policy = (extra = {}) => ({
+    remoteAccess: 'consent', commandsEnabled: true, heartbeatSeconds: 120, updatedAt: serverTimestamp(), updatedBy: 'Admin', ...extra,
+  });
+
+  it('admin grava a politica; gestor e master nao; valores fora da faixa nao', async () => {
+    await assertSucceeds(setDoc(doc(as('admin1'), 'agentPolicies', 'acme'), policy({ updatedByUid: 'admin1' })));
+    await assertFails(setDoc(doc(as('manager1'), 'agentPolicies', 'acme'), policy({ updatedByUid: 'manager1' })));
+    await assertFails(setDoc(doc(as('master'), 'agentPolicies', 'acme'), policy({ updatedByUid: 'master' })));
+    await assertFails(setDoc(doc(as('admin1'), 'agentPolicies', 'acme'), policy({ updatedByUid: 'admin1', remoteAccess: 'sempre' })));
+    await assertFails(setDoc(doc(as('admin1'), 'agentPolicies', 'acme'), policy({ updatedByUid: 'admin1', heartbeatSeconds: 5 })));
+  });
+
+  it('maquinas da empresa leem a politica; de outra empresa nao', async () => {
+    await seedPolicy(policy({ updatedByUid: 'admin1' }));
+    await seedEnrollment('agentA');
+    await seedEnrollment('agentX', { tenantId: 'beta', tokenProof: 'x' });
+    await assertSucceeds(getDoc(doc(agentAs('agentA'), 'agentPolicies', 'acme')));
+    await assertFails(getDoc(doc(agentAs('agentX'), 'agentPolicies', 'acme')));
+  });
+
+  it('trilha: autor e hora do servidor obrigatorios, imutavel, so owner/admin le', async () => {
+    const entry = (extra = {}) => ({
+      tenantId: 'acme', deviceKey: 'dev01', hostname: 'PC-01', action: 'remote_end', detail: '', mode: '', byUid: 'manager1', byName: 'Gestor', at: serverTimestamp(), ...extra,
+    });
+    await assertSucceeds(setDoc(doc(as('manager1'), 'agentAudit', 'e1'), entry()));
+    await assertFails(setDoc(doc(as('manager1'), 'agentAudit', 'e2'), entry({ byUid: 'admin1' })));
+    await assertFails(setDoc(doc(as('manager1'), 'agentAudit', 'e3'), entry({ at: Timestamp.fromDate(new Date('2024-01-01')) })));
+    await assertFails(updateDoc(doc(as('admin1'), 'agentAudit', 'e1'), { detail: 'apagado' }));
+    await assertFails(deleteDoc(doc(as('owner1'), 'agentAudit', 'e1')));
+    await assertSucceeds(getDoc(doc(as('admin1'), 'agentAudit', 'e1')));
+    await assertFails(getDoc(doc(as('manager1'), 'agentAudit', 'e1')));
+    await assertFails(getDoc(doc(as('master'), 'agentAudit', 'e1')));
   });
 });
 
@@ -426,6 +681,7 @@ describe('inventario das maquinas e trilha de auditoria', () => {
     await assertSucceeds(setDoc(doc(as('op1'), 'assetInventory', 'a2'), { tenantId: 'acme', assetId: 'a2', inventory: {} }));
     await assertFails(setDoc(doc(as('op1'), 'assetInventory', 'a3'), { tenantId: 'acme', assetId: 'outro', inventory: {} }));
     await assertFails(getDoc(doc(as('betaOwner'), 'assetInventory', 'a1')));
+    await assertFails(getDoc(doc(as('master'), 'assetInventory', 'a1')));
     await assertFails(setDoc(doc(as('viewer1'), 'assetInventory', 'a4'), { tenantId: 'acme', assetId: 'a4', inventory: {} }));
   });
 

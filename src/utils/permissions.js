@@ -84,8 +84,16 @@ export const CAPABILITIES = {
   'plans:manage': 'superadmin',
 };
 
+/**
+ * Capacidades que so existem DENTRO da empresa cliente. O que o Agente ITAM
+ * coleta (usuario logado, processos, tela, saida de comandos) e dado da
+ * empresa, que e a controladora (LGPD); o Nexus e operador e nao le nem
+ * comanda maquinas de clientes. Espelha a secao AGENTE ITAM de firestore.rules.
+ */
+export const TENANT_ONLY_CAPABILITIES = new Set(['agent:read', 'agent:remote', 'agent:manage']);
+
 export const can = (user, capability) => {
-  if (isSuperadmin(user)) return true;
+  if (isSuperadmin(user)) return !TENANT_ONLY_CAPABILITIES.has(capability);
   const required = CAPABILITIES[capability];
   if (!required) return false;
   if (required === 'superadmin') return false;

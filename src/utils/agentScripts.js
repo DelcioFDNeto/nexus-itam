@@ -2,6 +2,11 @@
 // -----------------------------------------------------------------------------
 // Monta os scripts e pacotes instaladores do Agente ITAM (incluindo o executavel
 // nativo NexusAgent.exe com Acesso Remoto e RMM no Windows) a partir de src/agent/.
+//
+// Windows instalado (3.1): o token da empresa vai so para o config.json, que o
+// NexusAgent.exe usa UMA vez para matricular a maquina e depois apaga. O coletor
+// PowerShell instalado nao carrega token. Scripts de coleta unica (Windows,
+// Linux, macOS) seguem com o token embutido: eles enviam sozinhos.
 // -----------------------------------------------------------------------------
 import windowsAgent from '../agent/windows/nexus-agent.ps1?raw';
 import windowsInstaller from '../agent/windows/install.ps1?raw';
@@ -52,13 +57,22 @@ const toBase64Utf8 = (value) => {
 
 const UNINSTALL = {
   windows: `#Requires -RunAsAdministrator
-# Nexus ITAM - remove o agente e o executavel nativo deste computador
+# Nexus ITAM - remove o agente deste computador. O NexusAgent.exe 3.1 tambem
+# cancela a matricula da maquina: ela deixa de ter acesso a empresa na hora.
+$dir = Join-Path $env:ProgramData 'NexusITAM'
+$exe = Join-Path $dir 'NexusAgent.exe'
+if (Test-Path $exe) { Start-Process -FilePath $exe -ArgumentList '--uninstall' -Wait -WindowStyle Hidden }
+Stop-Service -Name 'NexusITAMAgent' -Force -ErrorAction SilentlyContinue
+& sc.exe delete NexusITAMAgent | Out-Null
 Get-Process -Name 'NexusAgent' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName 'NexusITAM_AgentSync' -Confirm:$false -ErrorAction SilentlyContinue
 Remove-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'NexusITAMAgent' -ErrorAction SilentlyContinue
 $pubDesk = [Environment]::GetFolderPath('CommonDesktopDirectory')
-if ($pubDesk) { Remove-Item -Path (Join-Path $pubDesk 'Nexus ITAM - Suporte e Agente.lnk') -Force -ErrorAction SilentlyContinue }
-Remove-Item -Path (Join-Path $env:ProgramData 'NexusITAM') -Recurse -Force -ErrorAction SilentlyContinue
+if ($pubDesk) {
+  foreach ($name in @('Nexus ITAM - Suporte.lnk', 'Nexus ITAM - Suporte e Agente.lnk')) { Remove-Item -Path (Join-Path $pubDesk $name) -Force -ErrorAction SilentlyContinue }
+}
+Start-Sleep -Seconds 4
+Remove-Item -Path $dir -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host 'Agente Nexus ITAM removido.'
 `,
   linux: `#!/usr/bin/env bash
@@ -107,13 +121,16 @@ export const buildAgentScript = ({ os = 'windows', mode = 'portable', projectId,
   if (mode === 'portable') return finish(agent);
 
   if (os === 'windows') {
+    // Coletor instalado: so coleta (-OutFile) para o NexusAgent.exe enviar.
+    const collector = fill(windowsAgent, { ...values, TENANT_ID: '', AGENT_TOKEN: '' });
     return finish(fill(windowsInstaller, {
       AGENT_VERSION,
       PROJECT_ID: projectId,
+      API_KEY: apiKey,
       TENANT_ID: tenantId,
       AGENT_TOKEN: agentToken,
-      AGENT_CODE_BASE64: toBase64Utf8(crlf(agent)),
-      AGENT_CS_BASE64: toBase64Utf8(crlf(windowsAgentCs)),
+      AGENT_CODE_BASE64: toBase64Utf8(crlf(collector)),
+      AGENT_CS_BASE64: toBase64Utf8(crlf(buildAgentSource({ projectId, apiKey }))),
     }));
   }
   const installer = os === 'linux' ? linuxInstaller : macInstaller;
@@ -145,20 +162,28 @@ timeout /t 4
   };
 };
 
-/**
- * Gera o arquivo config.json pré-configurado para uso junto ao NexusAgent.exe.
- */
-export const buildAgentConfigJson = ({ projectId = 'itam-nexus', tenantId, agentToken, patrimony = '' }) => {
+/** Codigo-fonte C# do NexusAgent.exe com o projeto e a chave de API do Firebase. */
+export const buildAgentSource = ({ projectId, apiKey }) => {
   assertSafe('projectId', projectId);
+  assertSafe('apiKey', apiKey);
+  return fill(windowsAgentCs, { PROJECT_ID: projectId, API_KEY: apiKey });
+};
+
+/**
+ * config.json para colocar ao lado do NexusAgent.exe avulso (.zip). O token so
+ * vale ate a matricula: o executavel o apaga do arquivo ao instalar.
+ */
+export const buildAgentConfigJson = ({ projectId = 'itam-nexus', apiKey, tenantId, agentToken, patrimony = '' }) => {
+  assertSafe('projectId', projectId);
+  assertSafe('apiKey', apiKey);
   assertSafe('tenantId', tenantId);
   assertSafe('token', agentToken);
   const payload = {
     projectId,
+    apiKey,
     tenantId,
     agentToken,
     patrimony,
-    serverUrl: 'https://itam-nexus.web.app',
-    unattendedEnabled: true,
   };
   return {
     content: JSON.stringify(payload, null, 2),

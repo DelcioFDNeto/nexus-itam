@@ -17,7 +17,15 @@ rules_version = '2';
 //  5. Empresa suspensa/encerrada e usuario suspenso perdem acesso aos dados
 //     operacionais. Antes o status era so visual: o acesso continuava.
 //  6. Segredos (agentToken) vivem em /tenantSecrets/{tenantId}, legivel apenas
-//     por owner/admin do proprio tenant - nunca pelo tenant vizinho.
+//     por owner/admin do proprio tenant - nunca pelo tenant vizinho nem pelo master.
+//  7. LGPD: o Nexus e OPERADOR dos dados que o Agente ITAM coleta nas maquinas
+//     do cliente (usuario logado, processos, tela, saida de comandos). Esses
+//     dados sao da empresa cliente (controladora): o master NAO le nem comanda
+//     maquinas de clientes. Suporte do Nexus entra como membro convidado pela
+//     propria empresa, com papel e prazo que ela decide (ver /agent* abaixo).
+//  8. Maquinas (NexusAgent.exe) usam login anonimo do Firebase vinculado a UMA
+//     maquina de UMA empresa por /agentEnrollments/{uid}. Conta anonima nunca
+//     conta como usuario: signedIn() a exclui.
 //
 // Espelhos no cliente: src/utils/permissions.js (papeis e capacidades) e
 // src/utils/entitlements.js (status que bloqueiam acesso).
@@ -30,8 +38,15 @@ service cloud.firestore {
     // HELPERS
     // ---------------------------------------------------------------------
 
+    // Login anonimo e exclusivo do agente instalado nas maquinas.
+    function isAgent() {
+      return request.auth != null &&
+        request.auth.token.get('firebase', {}).get('sign_in_provider', '') == 'anonymous';
+    }
+
+    // Pessoa autenticada (nunca o agente).
     function signedIn() {
-      return request.auth != null;
+      return request.auth != null && !isAgent();
     }
 
     function claims() {
@@ -345,11 +360,11 @@ service cloud.firestore {
 
     // ---------------------------------------------------------------------
     // SEGREDOS DO TENANT (agentToken, webhooks, integracoes)
-    // Nunca legivel por outro tenant. As regras do agentInbox leem este
-    // documento server-side via get(), sem expor o valor ao cliente.
+    // Nunca legivel por outro tenant nem pelo master. As regras do agente leem
+    // este documento server-side via get(), sem expor o valor ao cliente.
     // ---------------------------------------------------------------------
     match /tenantSecrets/{tenantId} {
-      allow read, write: if isMaster() || isTenantAdmin(tenantId);
+      allow read, write: if isTenantAdmin(tenantId);
     }
 
     // ---------------------------------------------------------------------
@@ -392,108 +407,283 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------------
-    // AGENTE ITAM - caixa de entrada (drop-box)
-    // O agente (sem login) se autentica pelo token da empresa. Agentes 2.x
-    // mantem UM documento por maquina ({tenantId}_{deviceKey}) e o regravam a
-    // cada coleta; os 1.x criam documentos novos. Em ambos o formato e fechado.
-    // O token fica no documento ate o processamento (que o apaga): leitura so
-    // para gestao.
+    // AGENTE ITAM
+    // Tudo que o agente coleta pertence a empresa cliente (controladora, LGPD):
+    // so a gestao dela le e comanda. O master nao tem acesso (ver principio 7).
+    //
+    // Identidade da maquina:
+    //  - NexusAgent.exe (3.1+): login anonimo + matricula em /agentEnrollments
+    //    feita UMA vez com prova do token da empresa (sha256(token:uid)). Depois
+    //    disso o token nao viaja mais nem fica em documento ou disco.
+    //  - Scripts de coleta (PowerShell/Linux/macOS, sem login): token da empresa
+    //    no documento da caixa de entrada, apagado no processamento.
+    // A chave da maquina nao tem "_": {tenantId}_{deviceKey} nunca cai no
+    // espaco de IDs de outra empresa (ex.: "acme" + "corp_1" = "acme_corp_1").
     // ---------------------------------------------------------------------
+
+    function validDeviceKey(k) {
+      return k is string && k.matches('^[A-Za-z0-9-]{3,64}$');
+    }
+
+    function secretPath(t) {
+      return /databases/$(database)/documents/tenantSecrets/$(t);
+    }
+
+    function tokenValid(t, token) {
+      return t is string && token is string && token.size() > 0 &&
+        exists(secretPath(t)) && get(secretPath(t)).data.get('agentToken', '') == token;
+    }
+
+    function enrollmentPath() {
+      return /databases/$(database)/documents/agentEnrollments/$(request.auth.uid);
+    }
+
+    // Maquina matriculada na empresa t (e ativa).
+    function agentInTenant(t) {
+      return isAgent() && exists(enrollmentPath()) &&
+        get(enrollmentPath()).data.tenantId == t && !tenantBlocked(t);
+    }
+
+    // Exatamente a maquina k da empresa t.
+    function agentOwns(t, k) {
+      return agentInTenant(t) && get(enrollmentPath()).data.deviceKey == k;
+    }
+
+    function policyPath(t) {
+      return /databases/$(database)/documents/agentPolicies/$(t);
+    }
+
+    // Sem politica gravada: acesso remoto so com consentimento do colaborador.
+    function policyOf(t) {
+      return exists(policyPath(t))
+        ? get(policyPath(t)).data
+        : { 'remoteAccess': 'consent', 'commandsEnabled': true };
+    }
+
+    function auditPath(id) {
+      return /databases/$(database)/documents/agentAudit/$(id);
+    }
+
+    // A acao remota so vale se, no MESMO batch, nasceu o registro de auditoria
+    // com este ID, desta maquina, por quem envia (at == request.time so na criacao).
+    function auditedNow(id, k) {
+      return id is string && id.size() > 0 && existsAfter(auditPath(id)) &&
+        getAfter(auditPath(id)).data.at == request.time &&
+        getAfter(auditPath(id)).data.byUid == request.auth.uid &&
+        getAfter(auditPath(id)).data.deviceKey == k;
+    }
+
+    // Matricula da maquina. Revogar = apagar (admin da empresa ou o proprio
+    // agente ao desinstalar): a maquina perde o acesso na hora.
+    match /agentEnrollments/{uid} {
+      function proofValid(t) {
+        return exists(secretPath(t)) &&
+          get(secretPath(t)).data.get('agentToken', '') is string &&
+          get(secretPath(t)).data.get('agentToken', '').size() > 0 &&
+          hashing.sha256(get(secretPath(t)).data.agentToken + ':' + uid).toHexString().lower() == request.resource.data.tokenProof;
+      }
+
+      allow create: if isAgent() && request.auth.uid == uid &&
+        request.resource.data.keys().hasOnly(['tenantId', 'deviceKey', 'tokenProof', 'hostname', 'agentVersion', 'createdAt']) &&
+        request.resource.data.tenantId is string &&
+        validDeviceKey(request.resource.data.deviceKey) &&
+        request.resource.data.tokenProof is string &&
+        request.resource.data.get('hostname', '') is string &&
+        request.resource.data.get('hostname', '').size() <= 255 &&
+        request.resource.data.createdAt is timestamp &&
+        !tenantBlocked(request.resource.data.tenantId) &&
+        proofValid(request.resource.data.tenantId);
+      allow get: if (isAgent() && request.auth.uid == uid) ||
+        (resource != null && isTenantAdmin(resource.data.tenantId));
+      allow list: if isTenantAdmin(resource.data.tenantId);
+      allow update: if false;
+      allow delete: if (isAgent() && request.auth.uid == uid) || isTenantAdmin(resource.data.tenantId);
+    }
+
+    // Politica de execucao lida pelas maquinas: acesso remoto (desligado,
+    // com consentimento, sem supervisao), comandos remotos e intervalo do sinal.
+    match /agentPolicies/{tenantId} {
+      allow get: if canManage(tenantId) || agentInTenant(tenantId);
+      allow create, update: if isTenantAdmin(tenantId) &&
+        request.resource.data.keys().hasOnly(['remoteAccess', 'commandsEnabled', 'heartbeatSeconds', 'updatedAt', 'updatedBy', 'updatedByUid']) &&
+        request.resource.data.remoteAccess in ['disabled', 'consent', 'unattended'] &&
+        request.resource.data.commandsEnabled is bool &&
+        request.resource.data.heartbeatSeconds is int &&
+        request.resource.data.heartbeatSeconds >= 30 &&
+        request.resource.data.heartbeatSeconds <= 900 &&
+        request.resource.data.updatedByUid == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Trilha de quem acessou ou comandou cada maquina. Imutavel, data do
+    // servidor, autor = quem esta logado. Leitura: owner/admin da empresa.
+    match /agentAudit/{entryId} {
+      allow read: if isTenantAdmin(resource.data.tenantId);
+      allow create: if canManage(request.resource.data.tenantId) &&
+        request.resource.data.keys().hasOnly(['tenantId', 'deviceKey', 'hostname', 'action', 'detail', 'mode', 'byUid', 'byName', 'at']) &&
+        validDeviceKey(request.resource.data.deviceKey) &&
+        request.resource.data.action in ['remote_request', 'remote_end', 'command', 'revoke'] &&
+        request.resource.data.byUid == request.auth.uid &&
+        request.resource.data.at == request.time &&
+        request.resource.data.get('detail', '') is string &&
+        request.resource.data.get('detail', '').size() <= 500;
+      allow update, delete: if false;
+    }
+
+    // Caixa de entrada do inventario. Um documento por maquina
+    // ({tenantId}_{deviceKey}), regravado a cada coleta; os scripts 1.x criam
+    // documentos novos. Formato fechado.
     match /agentInbox/{docId} {
       function agentFields() {
         return ['tenantId', 'agentToken', 'deviceKey', 'status', 'source', 'agentVersion', 'hostname',
           'serialNumber', 'deviceId', 'internalId', 'ip_address', 'createdAt', 'payload'];
       }
 
-      function agentSubmission() {
-        let d = request.resource.data;
+      function inboxFormat(d) {
         return d.keys().hasOnly(agentFields()) &&
           d.tenantId is string &&
-          d.agentToken is string &&
           d.status == 'pending' &&
           d.payload is map &&
-          d.get('hostname', '') is string && d.get('hostname', '').size() <= 255 &&
-          exists(/databases/$(database)/documents/tenantSecrets/$(d.tenantId)) &&
-          get(/databases/$(database)/documents/tenantSecrets/$(d.tenantId)).data.agentToken == d.agentToken &&
-          !tenantBlocked(d.tenantId) &&
-          // 2.x: o ID do documento e a maquina; ninguem regrava a de outra empresa.
-          (!('deviceKey' in d) || (
-            d.deviceKey is string && d.deviceKey.size() > 0 && d.deviceKey.size() <= 80 &&
-            docId == d.tenantId + '_' + d.deviceKey &&
-            d.createdAt is timestamp
-          ));
+          d.get('hostname', '') is string && d.get('hostname', '').size() <= 255;
       }
 
-      allow read: if isMaster() || canManage(resource.data.tenantId);
-      allow create: if tenantCreate() || agentSubmission();
-      allow update: if isMaster()
-        || (isTenantAdmin(resource.data.tenantId) && request.resource.data.tenantId == resource.data.tenantId)
-        || (agentSubmission() && 'deviceKey' in request.resource.data && resource.data.tenantId == request.resource.data.tenantId);
-      allow delete: if isMaster() || isTenantAdmin(resource.data.tenantId);
+      function machineDoc(d) {
+        return validDeviceKey(d.deviceKey) && docId == d.tenantId + '_' + d.deviceKey && d.createdAt is timestamp;
+      }
+
+      // Scripts sem login: token da empresa no documento.
+      function scriptSubmission() {
+        let d = request.resource.data;
+        return inboxFormat(d) &&
+          tokenValid(d.tenantId, d.agentToken) &&
+          !tenantBlocked(d.tenantId) &&
+          (!('deviceKey' in d) || machineDoc(d));
+      }
+
+      // NexusAgent.exe matriculado: sem token no documento.
+      function enrolledSubmission() {
+        let d = request.resource.data;
+        return inboxFormat(d) &&
+          !('agentToken' in d) &&
+          'deviceKey' in d && machineDoc(d) &&
+          agentOwns(d.tenantId, d.deviceKey);
+      }
+
+      allow read: if canManage(resource.data.tenantId);
+      allow create: if canOperate(request.resource.data.tenantId) || scriptSubmission() || enrolledSubmission();
+      allow update: if (isTenantAdmin(resource.data.tenantId) && request.resource.data.tenantId == resource.data.tenantId)
+        || ((scriptSubmission() || enrolledSubmission()) &&
+            'deviceKey' in request.resource.data &&
+            resource.data.tenantId == request.resource.data.tenantId);
+      allow delete: if isTenantAdmin(resource.data.tenantId);
     }
 
     // Inventario completo de cada maquina (programas, discos, rede, seguranca),
     // separado do ativo para a lista de ativos continuar leve.
     match /assetInventory/{assetId} {
-      allow read: if tenantRead();
-      allow create: if tenantCreate() && request.resource.data.assetId == assetId;
-      allow update: if tenantUpdate() && request.resource.data.assetId == assetId;
-      allow delete: if managerDelete();
+      allow read: if sameTenant(resource.data.tenantId);
+      allow create: if canOperate(request.resource.data.tenantId) && request.resource.data.assetId == assetId;
+      allow update: if canOperate(resource.data.tenantId) &&
+        request.resource.data.tenantId == resource.data.tenantId &&
+        request.resource.data.assetId == assetId;
+      allow delete: if canManage(resource.data.tenantId);
     }
 
     // ---------------------------------------------------------------------
-    // AGENTE ITAM RMM & ACESSO REMOTO (NexusAgent.exe)
-    // Canal full-duplex sem colisao de escrita:
-    //  - /agentDevices/{tenantId}_{deviceKey}: telemetria ao vivo, frames de tela,
-    //    resultado de comandos e chamados enviados pelo agente (autenticado via
-    //    agentToken da empresa). Leitura restrita a gestao da empresa.
-    //  - /agentControl/{tenantId}_{deviceKey}: comandos remotos e eventos de
-    //    mouse/teclado enviados pelo console web (gestor/admin/owner). Nao contem
-    //    agentToken; o agente le o proprio documento via get.
+    // RMM e ACESSO REMOTO (NexusAgent.exe) - canal sem colisao de escrita:
+    //  - /agentDevices/{tenantId}_{deviceKey}: o agente grava telemetria, frame
+    //    de tela (so durante a sessao), resultado de comando e chamado. O
+    //    console grava apenas consoleWakeAt ("acorda" a maquina, que le o campo
+    //    na resposta do proprio sinal de vida) e o status do chamado.
+    //  - /agentControl/{tenantId}_{deviceKey}: o console grava comandos e a
+    //    sessao remota; so a propria maquina le. Cada comando e cada sessao
+    //    nova exigem o registro em /agentAudit no mesmo batch.
     // ---------------------------------------------------------------------
     match /agentDevices/{docId} {
       function agentDeviceFields() {
         return [
-          'tenantId', 'agentToken', 'deviceKey', 'accessId', 'hostname',
-          'serialNumber', 'deviceId', 'internalId', 'assetId', 'ipAddress',
-          'macAddress', 'osCaption', 'loggedUser', 'agentVersion', 'status',
-          'lastSeenAt', 'updatedAt', 'metrics', 'topProcesses',
-          'remoteState', 'screenFrame', 'lastCommandResult', 'supportRequest'
+          'tenantId', 'deviceKey', 'accessId', 'hostname', 'serialNumber', 'deviceId', 'internalId',
+          'assetId', 'ipAddress', 'macAddress', 'osCaption', 'loggedUser', 'agentVersion', 'status',
+          'lastSeenAt', 'updatedAt', 'heartbeatSeconds', 'capabilities', 'metrics', 'topProcesses',
+          'remoteState', 'screenFrame', 'lastCommandResult', 'supportRequest', 'consoleWakeAt'
         ];
       }
 
-      function validAgentDeviceWrite() {
+      function agentDeviceWrite() {
         let d = request.resource.data;
         return d.keys().hasOnly(agentDeviceFields()) &&
-          d.tenantId is string &&
-          d.agentToken is string &&
-          d.deviceKey is string && d.deviceKey.size() > 0 && d.deviceKey.size() <= 80 &&
+          validDeviceKey(d.deviceKey) &&
           docId == d.tenantId + '_' + d.deviceKey &&
-          exists(/databases/$(database)/documents/tenantSecrets/$(d.tenantId)) &&
-          get(/databases/$(database)/documents/tenantSecrets/$(d.tenantId)).data.agentToken == d.agentToken &&
-          !tenantBlocked(d.tenantId);
+          agentOwns(d.tenantId, d.deviceKey);
       }
 
-      allow read: if isMaster() || canManage(resource.data.tenantId);
-      allow create: if managerCreate() || validAgentDeviceWrite();
-      allow update: if managerUpdate()
-        || (validAgentDeviceWrite() && resource.data.tenantId == request.resource.data.tenantId);
-      allow delete: if managerDelete();
+      allow read: if canManage(resource.data.tenantId);
+      allow create: if agentDeviceWrite();
+      allow update: if (
+          canManage(resource.data.tenantId) &&
+          request.resource.data.tenantId == resource.data.tenantId &&
+          request.resource.data.deviceKey == resource.data.deviceKey
+        ) || (agentDeviceWrite() && resource.data.tenantId == request.resource.data.tenantId);
+      allow delete: if canManage(resource.data.tenantId);
     }
 
     match /agentControl/{docId} {
-      allow get: if true;
-      allow list: if isMaster() || canManage(resource.data.tenantId);
-      allow create: if managerCreate() &&
-        request.resource.data.deviceKey is string &&
-        request.resource.data.deviceKey.size() > 0 &&
-        request.resource.data.deviceKey.size() <= 80 &&
-        docId == request.resource.data.tenantId + '_' + request.resource.data.deviceKey &&
-        !('agentToken' in request.resource.data);
-      allow update: if managerUpdate() &&
+      function controlFields() {
+        return ['tenantId', 'deviceKey', 'updatedAt', 'remoteSession', 'pendingCommand', 'viewerSeenAt'];
+      }
+
+      function previous() {
+        return resource == null ? {} : resource.data;
+      }
+
+      // Comando novo: assinado por quem envia, hora do servidor, auditado e
+      // permitido pela politica da empresa.
+      function commandOk(d) {
+        return d.get('pendingCommand', null) == previous().get('pendingCommand', null) || (
+          d.pendingCommand is map &&
+          d.pendingCommand.get('requestedByUid', '') == request.auth.uid &&
+          d.pendingCommand.get('issuedAt', null) == request.time &&
+          policyOf(d.tenantId).get('commandsEnabled', true) == true &&
+          auditedNow(d.pendingCommand.get('id', ''), d.deviceKey)
+        );
+      }
+
+      // Encerrar sempre pode. Abrir/usar: politica permite, autor = quem esta
+      // logado, "sem consentimento" so se a empresa liberou, e sessao nova auditada.
+      function sessionOk(d) {
+        let s = d.get('remoteSession', null);
+        let before = previous().get('remoteSession', {});
+        return s == previous().get('remoteSession', null) || (
+          s is map && (
+            s.get('status', 'closed') in ['closed', 'ended'] || (
+              policyOf(d.tenantId).get('remoteAccess', 'consent') != 'disabled' &&
+              s.get('requestedByUid', '') == request.auth.uid &&
+              (s.get('mode', 'attended') == 'attended' || policyOf(d.tenantId).get('remoteAccess', 'consent') == 'unattended') &&
+              (s.get('sessionId', '') == before.get('sessionId', '') || auditedNow(s.get('sessionId', ''), d.deviceKey))
+            )
+          )
+        );
+      }
+
+      function controlWrite() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(controlFields()) &&
+          validDeviceKey(d.deviceKey) &&
+          docId == d.tenantId + '_' + d.deviceKey &&
+          commandOk(d) &&
+          sessionOk(d);
+      }
+
+      allow get: if resource == null
+        ? isAgent()
+        : (canManage(resource.data.tenantId) || agentOwns(resource.data.tenantId, resource.data.deviceKey));
+      allow list: if canManage(resource.data.tenantId);
+      allow create: if canManage(request.resource.data.tenantId) && controlWrite();
+      allow update: if canManage(resource.data.tenantId) &&
+        request.resource.data.tenantId == resource.data.tenantId &&
         request.resource.data.deviceKey == resource.data.deviceKey &&
-        !('agentToken' in request.resource.data);
-      allow delete: if managerDelete();
+        controlWrite();
+      allow delete: if canManage(resource.data.tenantId);
     }
 
     // ---------------------------------------------------------------------

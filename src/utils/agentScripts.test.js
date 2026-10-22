@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildAgentScript, buildWindowsScript } from './agentScripts';
+import { buildAgentConfigJson, buildAgentScript, buildWindowsScript } from './agentScripts';
 
 const base = { projectId: 'proj-123', apiKey: 'AIzaKey_x-1', tenantId: 'tenant-abc', agentToken: 'tok456' };
 const PLACEHOLDER = /__[A-Z_]+__/;
@@ -19,20 +19,30 @@ describe('scripts do agente', () => {
     expect(content).not.toMatch(/[^\r]\n/);
   });
 
-  it('Windows instalador embute o agente e o executavel C# em base64 e restringe a pasta', () => {
+  it('Windows instalador: compila o exe, matricula via --install e o coletor instalado nao leva token', () => {
     const { content } = buildAgentScript({ ...base, os: 'windows', mode: 'service' });
     expect(content).toContain('#Requires -RunAsAdministrator');
-    expect(content).toContain('Register-ScheduledTask');
-    expect(content).toContain('NexusAgent.exe');
-    expect(content).toContain('/inheritance:r');
+    expect(content).toContain("'--install', '--quiet'");
+    expect(content).toContain("apiKey     = 'AIzaKey_x-1'");
+    expect(content).toContain("tenantId   = 'tenant-abc'");
     expect(content).not.toMatch(PLACEHOLDER);
     const matches = [...content.matchAll(/FromBase64String\('([^']+)'\)/g)];
-    expect(matches.length).toBeGreaterThanOrEqual(2);
-    const agent = decodeBase64Utf8(matches[0][1]);
-    expect(agent).toContain("$TenantId = 'tenant-abc'");
-    expect(agent).not.toMatch(PLACEHOLDER);
-    const csCode = decodeBase64Utf8(matches[1][1]);
+    expect(matches.length).toBe(2);
+    const csCode = decodeBase64Utf8(matches[0][1]);
     expect(csCode).toContain('namespace NexusITAM');
+    expect(csCode).toContain('BuildProjectId = "proj-123"');
+    expect(csCode).toContain('BuildApiKey = "AIzaKey_x-1"');
+    expect(csCode).not.toMatch(PLACEHOLDER);
+    const collector = decodeBase64Utf8(matches[1][1]);
+    expect(collector).toContain('[string]$OutFile');
+    expect(collector).toContain("$AgentToken = ''");
+    expect(collector).not.toContain('tok456');
+    expect(collector).not.toMatch(PLACEHOLDER);
+  });
+
+  it('config.json do executavel avulso leva a chave de API e nada de acesso sem supervisao', () => {
+    const cfg = JSON.parse(buildAgentConfigJson({ ...base }).content);
+    expect(cfg).toEqual({ projectId: 'proj-123', apiKey: 'AIzaKey_x-1', tenantId: 'tenant-abc', agentToken: 'tok456', patrimony: '' });
   });
 
   it('Linux e macOS: LF, sem marcadores e com "$$" preservado', () => {

@@ -24,10 +24,11 @@ import { AGENT_VERSION } from '../../utils/agentInventory';
 const GUIDES = {
   windows: {
     service: [
-      'Mais fácil (1 máquina): Baixe o "Instalador .CMD (Duplo Clique)" abaixo e dê dois cliques. Ele solicita permissão de Administrador e instala o NexusAgent.exe na bandeja do Windows.',
-      'Executável Direto: Baixe o "NexusAgent.exe" + "config.json" na mesma pasta, ou abra o NexusAgent.exe e cole o Tenant ID e o Token.',
-      'Em massa (Active Directory / GPO): Baixe o script .PS1 → Configuração do Computador → Scripts → Inicialização.',
-      'Intune / RMM: Publique o script .PS1 em contexto de sistema (64 bits). Ele compila e instala C:\\ProgramData\\NexusITAM\\NexusAgent.exe + atalho na Área de Trabalho.',
+      'Uma máquina: baixe o "Instalador 1-Clique (.CMD)" e dê dois cliques. Ele pede permissão de administrador, instala o serviço "Nexus ITAM Agent" e o ícone ao lado do relógio.',
+      'Executável avulso: extraia o NexusAgent.zip, ponha o config.json na mesma pasta, abra o NexusAgent.exe e clique em "Conectar este computador" (pede administrador).',
+      'Em massa (Active Directory / GPO): script .PS1 em Configuração do Computador → Scripts → Inicialização. Pode rodar a cada boot: a máquina já matriculada só é atualizada.',
+      'Intune / RMM: publique o .PS1 em contexto de sistema (64 bits).',
+      'O token só é usado na matrícula de cada máquina e depois sai do disco. Para tirar uma máquina da empresa, revogue o agente no console remoto.',
     ],
     portable: [
       'Copie o arquivo .ps1 para a máquina (pendrive ou pasta de rede).',
@@ -57,9 +58,9 @@ const GUIDES = {
 };
 
 const COLLECTS = [
-  'Acesso Remoto Interativo (AnyDesk Web): visualização da tela ao vivo + controle de mouse e teclado direto pelo navegador',
-  'Aplicativo de Bandeja (NexusAgent.exe): exibe ID de 9 dígitos, patrimônio, uso de CPU/RAM/Disco e botão "Pedir Suporte à TI"',
-  'Terminal PowerShell Remoto, Gerenciador de Processos ao vivo (Kill) e Instalação silenciosa via Winget',
+  'Acesso remoto pelo navegador: tela ao vivo e controle de mouse e teclado, com aceite do colaborador e aviso fixo na tela durante a sessão',
+  'Ícone na bandeja: ID de 9 dígitos, uso de CPU/RAM/disco, "Pedir suporte à TI" e o que o agente coleta (Privacidade)',
+  'Serviço do Windows: terminal PowerShell, processos, reiniciar e instalar via winget mesmo sem ninguém logado — tudo registrado',
   'Hardware completo: fabricante, modelo, processador, memória, discos (serial e SSD/HDD), placa de vídeo e bateria',
   'Monitores conectados com número de série e rede (IP, MAC e gateway para identificar a filial automaticamente)',
   'Segurança: antivírus, firewall, BitLocker/FileVault, administradores locais e programas instalados com versão',
@@ -131,10 +132,10 @@ const InstallTab = ({ tenantId, agentToken }) => {
       // 2. Se houver token, baixa tambem o config.json pronto para colocar na mesma pasta
       if (tenantId && agentToken) {
         setTimeout(() => {
-          const cfg = buildAgentConfigJson({ projectId, tenantId, agentToken });
+          const cfg = buildAgentConfigJson({ projectId, apiKey, tenantId, agentToken });
           triggerBlobDownload(cfg.content, cfg.filename, cfg.mime);
         }, 400);
-        toast.success('NexusAgent.zip e config.json baixados! Extraia o executável e execute com o config.json na mesma pasta.');
+        toast.success('NexusAgent.zip e config.json baixados. Extraia, ponha o config.json na mesma pasta e abra o NexusAgent.exe.');
       } else {
         toast.success('NexusAgent.zip baixado com sucesso!');
       }
@@ -161,10 +162,10 @@ const InstallTab = ({ tenantId, agentToken }) => {
             <Monitor size={14} /> Novo • Substituto Nativo do AnyDesk & RMM
           </div>
           <h2 className="text-xl md:text-2xl font-black tracking-tight">
-            Executável Windows <span className="text-cyan-400 font-mono">NexusAgent.exe</span> (v3.0)
+            Executável Windows <span className="text-cyan-400 font-mono">NexusAgent.exe</span> (v{AGENT_VERSION})
           </h2>
           <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
-            Instala o ícone na bandeja do relógio com <strong>ID de Acesso de 9 dígitos</strong>, visualização e controle remoto de tela pelo navegador, terminal PowerShell ao vivo, gerenciador de processos, alertas na tela e botão para o colaborador pedir suporte à TI.
+            Serviço do Windows com inventário, monitoramento e comandos remotos, mais o ícone na bandeja com <strong>ID de acesso de 9 dígitos</strong>, pedido de suporte e acesso remoto à tela pelo navegador, com aceite do colaborador.
           </p>
         </div>
 
@@ -196,7 +197,7 @@ const InstallTab = ({ tenantId, agentToken }) => {
               <Terminal size={20} className="text-cyan-400" /> Scripts de Implantação (GPO, Intune, Linux e macOS)
             </h2>
             <p className="text-sm text-slate-300 mt-1">
-              Scripts assinados com o Token da sua empresa para distribuição em massa. Versão {AGENT_VERSION}.
+              Scripts com o token da sua empresa para distribuição em massa. Versão {AGENT_VERSION}.
             </p>
           </div>
 
@@ -284,10 +285,13 @@ const InstallTab = ({ tenantId, agentToken }) => {
           </ul>
           <div className="text-xs text-gray-500 dark:text-gray-400 rounded-xl bg-gray-50 dark:bg-slate-900 p-3 space-y-1.5">
             <p className="font-bold text-gray-700 dark:text-slate-200 flex items-center gap-1.5">
-              <ShieldCheck size={14} className="text-emerald-500" /> Segurança Zero-Trust Multi-Tenant
+              <ShieldCheck size={14} className="text-emerald-500" /> Segurança e privacidade
             </p>
             <p>
-              Toda comunicação usa o Token exclusivo da sua empresa validado no servidor. Você pode conectar tanto em modo não supervisionado quanto pedindo autorização na tela do colaborador.
+              Cada máquina tem identidade própria, matriculada só na sua empresa: ela não envia nada para outra empresa nem recebe comandos de fora da sua gestão. Os dados coletados são da sua empresa; o Nexus, como fornecedor, não tem acesso a eles.
+            </p>
+            <p>
+              Acesso sem supervisão, comandos remotos e o tempo de resposta são definidos em &ldquo;Políticas e segurança&rdquo;, onde fica também o registro de cada acesso.
             </p>
           </div>
         </aside>

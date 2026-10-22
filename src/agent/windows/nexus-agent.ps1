@@ -3,9 +3,14 @@
 # fila do Nexus ITAM da empresa. Somente leitura: nao altera nada no computador.
 # Compativel com Windows PowerShell 5.1. Rodando como SYSTEM/Administrador
 # tambem le BitLocker; como usuario comum, o restante funciona normalmente.
+#
+# -OutFile <arquivo>: so coleta e grava o JSON (usado pelo NexusAgent.exe, que
+# envia com a credencial da propria maquina). Nesse modo o script instalado
+# nao carrega o token da empresa.
 param(
   [switch]$Scheduled,
-  [switch]$NoPause
+  [switch]$NoPause,
+  [string]$OutFile
 )
 
 $ErrorActionPreference = 'Stop'
@@ -315,6 +320,14 @@ try {
   # Windows antigos negociam TLS 1.0 por padrao; o Google exige 1.2.
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
   try { [Net.WebRequest]::DefaultWebProxy.Credentials = [Net.CredentialCache]::DefaultNetworkCredentials } catch { }
+
+  if ($OutFile) {
+    $inventory = Get-Inventory
+    $json = ConvertTo-Json -InputObject $inventory -Depth 20 -Compress
+    [System.IO.File]::WriteAllText($OutFile, $json, (New-Object System.Text.UTF8Encoding($false)))
+    Write-AgentLog ('Coleta gravada para o NexusAgent.exe ({0} programas)' -f @($inventory.software).Count)
+    exit 0
+  }
 
   if ($Scheduled) { Start-Sleep -Seconds (Get-Random -Minimum 0 -Maximum 240) }
 

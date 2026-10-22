@@ -52,6 +52,8 @@ const AgentInventoryCard = ({ asset }) => {
   const policy = resolveAgentPolicy(settings);
   const canWrite = can(currentUser, 'assets:write');
   const canRemote = can(currentUser, 'agent:remote');
+  // Inventario detalhado e dado da empresa (LGPD): fora dela (ex.: master), nem consulta.
+  const ownTenant = Boolean(currentUser?.tenantId) && currentUser.tenantId === asset.tenantId;
   const [state, setState] = useState({ assetId: null, inventory: null, error: false });
   const [search, setSearch] = useState('');
   const [showAllSoftware, setShowAllSoftware] = useState(false);
@@ -69,6 +71,7 @@ const AgentInventoryCard = ({ asset }) => {
   }, [currentUser?.tenantId, canRemote]);
 
   useEffect(() => {
+    if (!ownTenant) return undefined;
     let active = true;
     getAssetInventory(asset.id)
       .then((doc) => active && setState({ assetId: asset.id, inventory: doc?.inventory || null, error: false }))
@@ -79,7 +82,7 @@ const AgentInventoryCard = ({ asset }) => {
     return () => {
       active = false;
     };
-  }, [asset.id, lastSeenKey]);
+  }, [asset.id, lastSeenKey, ownTenant]);
 
   const inventory = state.assetId === asset.id ? state.inventory : null;
   const health = agentHealth(asset, { staleDays: policy.staleDays });
@@ -212,6 +215,11 @@ const AgentInventoryCard = ({ asset }) => {
         <Fact label="Última mudança" value={asset.agent?.lastChange ? `${formatDate(asset.agent.lastChange.at)}: ${asset.agent.lastChange.summary}` : 'Nenhuma'} />
       </div>
 
+      {!ownTenant && (
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          O inventário detalhado coletado pelo agente é visível apenas para a gestão da empresa dona do ativo.
+        </p>
+      )}
       {state.error && <p className="text-xs text-rose-600">Não foi possível carregar o inventário completo.</p>}
 
       {inventory && (
