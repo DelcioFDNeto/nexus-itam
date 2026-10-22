@@ -56,6 +56,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AgentManager = lazy(() => import('./pages/AgentManager'));
 const Register = lazy(() => import('./pages/Register'));
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const UserManager = lazy(() => import('./pages/UserManager'));
 const TenantManager = lazy(() => import('./pages/TenantManager'));
 const NexusUserManager = lazy(() => import('./pages/NexusUserManager'));
@@ -99,6 +100,9 @@ function App() {
               <Route path="/register" element={<PublicRoute element={<Register />} />} />
               {/* Link enviado pelo administrador: cria a conta e entra na empresa */}
               <Route path="/convite/:inviteId" element={<PublicRoute element={<AcceptInvite />} />} />
+              <Route path="/reset-password" element={<PublicRoute element={<ResetPassword />} />} />
+              <Route path="/auth/action" element={<PublicRoute element={<ResetPassword />} />} />
+              <Route path="/__/auth/action" element={<PublicRoute element={<ResetPassword />} />} />
 
               {/* --- Operacao de ativos --- */}
               <Route path="/dashboard" element={<AppRoute element={<Dashboard />} capability="assets:read" />} />

@@ -198,7 +198,14 @@ export const AuthProvider = ({ children }) => {
 
   const login = useCallback((email, password) => signInWithEmailAndPassword(auth, email.trim(), password), []);
   const logout = useCallback(() => signOut(auth), []);
-  const resetPassword = useCallback((email) => sendPasswordResetEmail(auth, email.trim()), []);
+  const resetPassword = useCallback((email) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://itam-nexus.web.app';
+    const actionCodeSettings = {
+      url: `${origin}/reset-password`,
+      handleCodeInApp: true,
+    };
+    return sendPasswordResetEmail(auth, email.trim(), actionCodeSettings);
+  }, []);
 
   // Cadastro de novo inquilino (SaaS B2B).
   // Empresa e perfil vao no MESMO batch: as regras so aceitam o perfil de owner
