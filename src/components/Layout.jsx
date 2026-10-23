@@ -161,20 +161,20 @@ const Layout = ({ children }) => {
           isCollapsed ? 'lg:pl-[76px]' : 'lg:pl-[256px]'
         }`}
       >
-        {/* Topo compacto mobile */}
-        <header className="lg:hidden sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 dark:border-slate-800 dark:bg-slate-900/95 safe-area-pt">
+        {/* Topo compacto mobile estilo console */}
+        <header className="lg:hidden sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 dark:border-slate-800/80 dark:bg-[#0B0F17]/95 safe-area-pt">
           <div className="flex items-center justify-between gap-3 px-4 py-2.5">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 onClick={() => setIsMobileMenuOpen(true)}
                 aria-label="Abrir menu"
-                className="-ml-1 rounded-lg p-2 text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                className="-ml-1 rounded-lg p-2 text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors"
               >
                 <Menu size={20} />
               </button>
               <div className="min-w-0">
                 <Logo size="sm" />
-                <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                <p className="truncate text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-400">
                   {currentUser?.companyName || 'Nexus ITAM'}
                 </p>
               </div>
@@ -184,13 +184,13 @@ const Layout = ({ children }) => {
               <button
                 onClick={() => setIsSearchOpen(true)}
                 aria-label="Buscar"
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 transition-colors"
               >
-                <Search size={16} />
+                <Search size={15} />
               </button>
               <div
                 title={`${currentUser?.name || ''} — ${ROLE_LABELS[currentUser?.role] || ''}`}
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800 text-[11px] font-bold text-white dark:bg-slate-700"
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 font-mono text-[11px] font-bold text-white dark:bg-slate-800 border border-slate-700/60"
               >
                 {initials}
               </div>
