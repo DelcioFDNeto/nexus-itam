@@ -134,11 +134,11 @@ const Layout = ({ children }) => {
       <Toaster richColors position="top-right" theme={resolvedTheme} />
 
       {/* ------------------------------------------------------------------ */}
-      {/* NAVEGACAO LATERAL — visivel a partir de lg (>=1024px).              */}
+      {/* NAVEGACAO LATERAL FLUTUANTE — visivel a partir de lg (>=1024px).    */}
       {/* ------------------------------------------------------------------ */}
       <div
-        className={`hidden lg:block fixed inset-y-0 left-0 z-40 transition-[width] duration-200 ease-out ${
-          isCollapsed ? 'w-[76px]' : 'w-[256px]'
+        className={`hidden lg:block fixed top-3.5 bottom-3.5 left-3.5 z-40 transition-[width] duration-200 ease-out ${
+          isCollapsed ? 'w-[78px]' : 'w-[264px]'
         }`}
       >
         <Sidebar
@@ -150,7 +150,11 @@ const Layout = ({ children }) => {
 
       {/* Drawer para mobile e tablet */}
       <div className="lg:hidden">
-        <Sidebar isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
+        <Sidebar
+          isOpen={isMobileMenuOpen}
+          onClose={() => setIsMobileMenuOpen(false)}
+          onSearchClick={() => setIsSearchOpen(true)}
+        />
       </div>
 
       {/* ------------------------------------------------------------------ */}
@@ -158,7 +162,7 @@ const Layout = ({ children }) => {
       {/* ------------------------------------------------------------------ */}
       <div
         className={`flex min-h-screen flex-col transition-[padding] duration-200 ease-out ${
-          isCollapsed ? 'lg:pl-[76px]' : 'lg:pl-[256px]'
+          isCollapsed ? 'lg:pl-[96px]' : 'lg:pl-[282px]'
         }`}
       >
         {/* Topo compacto mobile estilo console */}

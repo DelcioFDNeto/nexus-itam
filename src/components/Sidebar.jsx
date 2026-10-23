@@ -14,8 +14,8 @@ import { can, isSuperadmin, ROLE_LABELS } from '../utils/permissions';
 import { isModuleEnabled } from '../utils/entitlements';
 
 /**
- * Sidebar autêntica Nexus — console de instrumentação física e telemetria de frotas.
- * Arquitetura de baías (rack bays), barramento de status operacional e acoplamento de trilho.
+ * Sidebar Flutuante Nexus — Monólito de 3 Câmaras (Command Pod, Circuit Rail Matrix, Telemetry & Operator Dock).
+ * Descolada das bordas da viewport com visual autêntico de instrumentação de hardware.
  */
 const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearchClick }) => {
   const location = useLocation();
@@ -105,7 +105,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
       {/* Overlay do drawer mobile */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-950/75 backdrop-blur-sm lg:hidden transition-opacity"
+          className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm lg:hidden transition-opacity"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -113,275 +113,328 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
 
       <aside
         className={`
-          fixed inset-y-0 left-0 z-50 flex h-full flex-col
-          border-r border-slate-200/90 bg-[#F8FAFC]
-          dark:border-slate-800/80 dark:bg-[#0B0F17]
-          transition-transform duration-200 ease-out select-none
-          lg:static lg:z-auto lg:translate-x-0
-          ${isOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}
-          ${isCollapsed ? 'w-[76px]' : 'w-[256px]'}
+          fixed top-3 bottom-3 left-3 z-50 flex flex-col
+          rounded-2xl p-1.5
+          bg-slate-200/75 dark:bg-[#080C14]
+          border border-slate-300/80 dark:border-slate-800/90
+          shadow-[0_16px_40px_-12px_rgba(15,23,42,0.16)] dark:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.75)]
+          transition-all duration-200 ease-out select-none
+          lg:static lg:z-auto lg:h-full lg:w-full lg:translate-x-0
+          ${isOpen ? 'translate-x-0' : '-translate-x-[115%] lg:translate-x-0'}
+          ${isCollapsed ? 'w-[78px]' : 'w-[264px]'}
         `}
         aria-label="Navegacao principal"
       >
-        {/* Cabecalho / Chassis Head */}
-        <div
-          className={`relative flex h-16 shrink-0 items-center border-b border-slate-200/80 dark:border-slate-800/80 ${
-            isCollapsed ? 'justify-center' : 'justify-between px-3.5'
-          }`}
-        >
-          <button
-            onClick={() => (isCollapsed ? toggleCollapse?.() : navigate('/dashboard'))}
-            className="flex items-center gap-2 group text-left min-w-0"
-            title="Ir para o painel principal"
-          >
-            <Logo size="sm" showText={!isCollapsed} />
-            {!isCollapsed && !master && (
-              <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 shrink-0">
-                ITAM
-              </span>
-            )}
-          </button>
-
-          {/* Toggle de recolher/expandir com visual de switch embutido */}
-          {toggleCollapse && (
+        {/* ================================================================= */}
+        {/* CÂMARA 1: COMMAND & IDENTITY POD                                  */}
+        {/* ================================================================= */}
+        <div className="shrink-0 rounded-xl bg-white dark:bg-[#101624] border border-slate-200/90 dark:border-slate-800/90 p-2.5 shadow-2xs">
+          <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between gap-2'}`}>
             <button
-              onClick={toggleCollapse}
-              aria-label={isCollapsed ? 'Expandir menu' : 'Recolher menu'}
-              title={isCollapsed ? 'Expandir console' : 'Recolher console'}
-              className="absolute -right-3 top-5 z-20 hidden h-6 w-6 items-center justify-center rounded-md border border-slate-200/90 bg-white text-slate-500 shadow-xs transition-colors hover:border-brand hover:text-brand dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 lg:flex"
+              onClick={() => (isCollapsed ? toggleCollapse?.() : navigate('/dashboard'))}
+              className="flex items-center gap-2 group text-left min-w-0"
+              title={isCollapsed ? 'Expandir console' : 'Ir para o painel principal'}
             >
-              {isCollapsed ? <ChevronRight size={13} strokeWidth={2.5} /> : <ChevronLeft size={13} strokeWidth={2.5} />}
+              <Logo size="sm" showText={!isCollapsed} />
+              {!isCollapsed && !master && (
+                <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 shrink-0">
+                  ITAM
+                </span>
+              )}
             </button>
-          )}
 
-          {onClose && (
-            <button
-              onClick={onClose}
-              aria-label="Fechar menu"
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 lg:hidden"
-            >
-              <X size={18} />
-            </button>
-          )}
-        </div>
-
-        {/* Baía de Ações Rápidas & Comando */}
-        {(onSearchClick || (!master && canCreate)) && (
-          <div className={`shrink-0 space-y-2 pt-3.5 ${isCollapsed ? 'px-3' : 'px-3'}`}>
-            {!master && canCreate && (
-              <Link
-                to="/assets/new"
-                onClick={onClose}
-                title="Novo Ativo (Atalho rápido)"
-                className={`group flex items-center justify-center gap-2 rounded-lg bg-slate-900 text-white transition-colors hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 shadow-sm ${
-                  isCollapsed ? 'mx-auto h-9 w-9' : 'px-3 py-2'
-                }`}
-              >
-                <PlusSquare size={15} className="shrink-0" />
-                {!isCollapsed && (
-                  <span className="flex-1 whitespace-nowrap text-xs font-semibold tracking-tight text-left">Novo Ativo</span>
-                )}
-                {!isCollapsed && (
-                  <kbd className="hidden sm:inline font-mono text-[9px] opacity-60 bg-white/10 dark:bg-black/10 px-1 py-0.5 rounded">
-                    +A
-                  </kbd>
-                )}
-              </Link>
-            )}
-
-            {onSearchClick && (
+            {!isCollapsed && toggleCollapse && (
               <button
-                onClick={() => {
-                  onSearchClick();
-                  onClose?.();
-                }}
-                title="Busca global de hardware, seriais e módulos (Ctrl+K)"
-                className={`group flex items-center justify-center gap-2 rounded-lg border border-slate-200/90 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-900 ${
-                  isCollapsed ? 'mx-auto h-9 w-9' : 'w-full px-2.5 py-1.5'
-                }`}
+                onClick={toggleCollapse}
+                aria-label="Recolher menu"
+                title="Recolher console"
+                className="hidden lg:flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-slate-200/80 bg-slate-50 text-slate-400 transition-colors hover:border-brand/40 hover:text-brand dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500 dark:hover:text-slate-200"
               >
-                <Search size={14} className="shrink-0 text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200" />
-                {!isCollapsed && (
-                  <span className="flex flex-1 items-center justify-between">
-                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Buscar no cluster...</span>
-                    <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[9px] text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
-                      Ctrl K
-                    </kbd>
-                  </span>
-                )}
+                <ChevronLeft size={13} strokeWidth={2.5} />
+              </button>
+            )}
+
+            {onClose && (
+              <button
+                onClick={onClose}
+                aria-label="Fechar menu"
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 lg:hidden"
+              >
+                <X size={16} />
               </button>
             )}
           </div>
-        )}
 
-        {/* Trilho de Navegação Principal (Console Bays) */}
-        <nav className="custom-scrollbar mt-3 flex-1 space-y-4 overflow-y-auto px-2 pb-3">
+          {isCollapsed && toggleCollapse && (
+            <button
+              onClick={toggleCollapse}
+              aria-label="Expandir menu"
+              title="Expandir console"
+              className="mt-2 hidden lg:flex mx-auto h-6 w-full items-center justify-center rounded-md bg-slate-100/80 text-slate-400 hover:text-brand dark:bg-slate-900 dark:text-slate-500 dark:hover:text-slate-200 transition-colors"
+            >
+              <ChevronRight size={13} strokeWidth={2.5} />
+            </button>
+          )}
+
+          {(onSearchClick || (!master && canCreate)) && (
+            <div className="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 space-y-1.5">
+              {!master && canCreate && (
+                <Link
+                  to="/assets/new"
+                  onClick={onClose}
+                  title="Novo Ativo"
+                  className={`group flex items-center justify-center gap-2 rounded-lg bg-slate-900 text-white transition-all hover:bg-brand dark:bg-brand dark:text-white dark:hover:bg-brand-dark shadow-xs ${
+                    isCollapsed ? 'mx-auto h-9 w-9' : 'px-2.5 py-1.5'
+                  }`}
+                >
+                  <PlusSquare size={14} className="shrink-0" />
+                  {!isCollapsed && (
+                    <>
+                      <span className="flex-1 whitespace-nowrap text-xs font-semibold tracking-tight text-left">
+                        Novo Ativo
+                      </span>
+                      <kbd className="font-mono text-[9px] px-1 py-0.5 rounded bg-white/15 text-white/90">
+                        +N
+                      </kbd>
+                    </>
+                  )}
+                </Link>
+              )}
+
+              {onSearchClick && (
+                <button
+                  onClick={() => {
+                    onSearchClick();
+                    onClose?.();
+                  }}
+                  title="Busca rápida e comandos (Ctrl+K)"
+                  className={`group flex items-center justify-center gap-2 rounded-lg border border-slate-200/80 bg-slate-50/90 text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100/80 dark:border-slate-800 dark:bg-[#0B0F19] dark:text-slate-300 dark:hover:border-slate-700 ${
+                    isCollapsed ? 'mx-auto h-9 w-9' : 'w-full px-2.5 py-1.5'
+                  }`}
+                >
+                  <Search size={13} className="shrink-0 text-slate-400 group-hover:text-brand" />
+                  {!isCollapsed && (
+                    <span className="flex flex-1 items-center justify-between">
+                      <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                        Comando / Busca
+                      </span>
+                      <kbd className="rounded border border-slate-200/90 bg-white px-1.5 py-0.5 font-mono text-[9px] font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                        Ctrl K
+                      </kbd>
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ================================================================= */}
+        {/* CÂMARA 2: MATRIZ DE NAVEGAÇÃO EM TRILHO DE CIRCUITO               */}
+        {/* ================================================================= */}
+        <nav className="custom-scrollbar my-1.5 flex-1 overflow-y-auto px-1 py-1.5 space-y-3.5">
           {menuGroups.map((group) => (
-            <div key={group.code} className="space-y-0.5">
-              {/* Divisor de Baía Operacional */}
+            <div key={group.code}>
               {isCollapsed ? (
-                <div className="flex flex-col items-center my-2" title={`Baía ${group.code}: ${group.title}`}>
-                  <div className="w-5 h-px bg-slate-200/80 dark:bg-slate-800/80 mb-1" />
-                  <span className="font-mono text-[8px] font-bold text-slate-400 dark:text-slate-600 select-none">
+                <div className="flex flex-col items-center mb-1.5" title={`Baía ${group.code}: ${group.title}`}>
+                  <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-300/60 text-slate-600 dark:bg-slate-800/80 dark:text-slate-400 select-none">
                     {group.code}
                   </span>
                 </div>
               ) : (
-                <div className="flex items-center justify-between px-2.5 py-1 text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  <span>{group.title}</span>
-                  <span className="text-[9px] opacity-60">BAY {group.code}</span>
+                <div className="flex items-center gap-2 px-2 mb-1.5">
+                  <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-300/70 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    {group.code}
+                  </span>
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 truncate">
+                    {group.title}
+                  </span>
+                  <div className="flex-1 h-px bg-slate-300/60 dark:bg-slate-800/80" />
                 </div>
               )}
 
-              {/* Itens do Trilho */}
-              {group.items.map(({ path, icon: Icon, label, badge }) => {
-                const active = isActive(path);
-                return (
-                  <Link
-                    key={path}
-                    to={path}
-                    onClick={onClose}
-                    title={isCollapsed ? `${label} [BAY ${group.code}]` : undefined}
-                    aria-current={active ? 'page' : undefined}
-                    className={`
-                      group relative flex items-center transition-all duration-150
-                      ${isCollapsed ? 'mx-auto h-9 w-9 justify-center rounded-lg' : 'gap-2.5 rounded-lg px-2.5 py-1.5 text-xs'}
-                      ${
-                        active
-                          ? 'bg-white dark:bg-slate-800/80 text-slate-900 dark:text-white font-semibold border border-slate-200/90 dark:border-slate-700/70 shadow-xs'
-                          : 'font-medium text-slate-600 dark:text-slate-400 hover:bg-white/80 dark:hover:bg-slate-850 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
-                      }
-                    `}
-                  >
-                    {/* Indicador de Acoplamento do Trilho Ativo */}
-                    {active && !isCollapsed && (
-                      <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r bg-brand shadow-[0_0_8px_rgba(79,70,229,0.5)]" />
-                    )}
-
-                    {/* Micro-container do ícone com lente de hardware */}
-                    <span
-                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors ${
-                        active
-                          ? 'bg-brand/10 text-brand dark:bg-brand/20 dark:text-brand-light ring-1 ring-brand/30'
-                          : 'text-slate-400 group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-300'
-                      }`}
+              <div
+                className={
+                  isCollapsed
+                    ? 'space-y-1'
+                    : 'relative ml-3.5 pl-2.5 border-l border-slate-300/80 dark:border-slate-800 space-y-1'
+                }
+              >
+                {group.items.map(({ path, icon: Icon, label, badge }) => {
+                  const active = isActive(path);
+                  return (
+                    <Link
+                      key={path}
+                      to={path}
+                      onClick={onClose}
+                      title={isCollapsed ? `${label} [BAY ${group.code}]` : undefined}
+                      aria-current={active ? 'page' : undefined}
+                      className={`
+                        group relative flex items-center transition-all duration-150
+                        ${isCollapsed ? 'mx-auto h-10 w-10 justify-center rounded-xl' : 'gap-2.5 rounded-xl px-2.5 py-1.5 text-xs'}
+                        ${
+                          active
+                            ? 'bg-white dark:bg-[#141C2E] text-slate-900 dark:text-white font-semibold border border-slate-200/90 dark:border-slate-700/80 shadow-sm'
+                            : 'font-medium text-slate-600 dark:text-slate-400 hover:bg-white/60 dark:hover:bg-[#101624]/80 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
+                        }
+                      `}
                     >
-                      <Icon size={14} strokeWidth={active ? 2.4 : 2} />
-                    </span>
+                      {/* Pino conector no trilho de circuito */}
+                      {!isCollapsed && (
+                        <span
+                          className={`absolute -left-[13.5px] top-1/2 -translate-y-1/2 transition-all ${
+                            active
+                              ? 'h-4 w-1.5 rounded-full bg-brand ring-4 ring-brand/20'
+                              : 'h-1.5 w-1.5 rounded-full bg-slate-300 dark:bg-slate-700 opacity-0 group-hover:opacity-100'
+                          }`}
+                        />
+                      )}
 
-                    {!isCollapsed && (
-                      <span className="flex-1 truncate tracking-tight">{label}</span>
-                    )}
+                      {isCollapsed && active && (
+                        <span className="absolute left-0.5 top-2.5 bottom-2.5 w-1 rounded-full bg-brand" />
+                      )}
 
-                    {!isCollapsed && badge && (
-                      <span className="font-mono text-[9px] px-1.5 py-0.2 rounded border font-semibold border-brand/30 bg-brand/10 text-brand dark:text-brand-light">
-                        {badge}
+                      <span
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                          active
+                            ? 'bg-brand text-white shadow-2xs'
+                            : 'text-slate-500 group-hover:text-slate-800 dark:text-slate-400 dark:group-hover:text-slate-200'
+                        }`}
+                      >
+                        <Icon size={14} strokeWidth={active ? 2.4 : 2} />
                       </span>
-                    )}
 
-                    {/* Tooltip técnico flutuante quando recolhido */}
-                    {isCollapsed && (
-                      <span className="pointer-events-none absolute left-full ml-3 whitespace-nowrap rounded-md bg-slate-900 dark:bg-slate-800 border border-slate-700/80 px-2.5 py-1 text-[11px] font-medium text-white shadow-xl opacity-0 transition-opacity group-hover:opacity-100 z-50 flex items-center gap-1.5">
-                        <span className="font-mono text-[9px] text-slate-400">BAY {group.code}</span>
-                        <span>{label}</span>
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
+                      {!isCollapsed && (
+                        <span className="flex-1 truncate tracking-tight">{label}</span>
+                      )}
+
+                      {!isCollapsed && badge && (
+                        <span
+                          className={`font-mono text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                            active
+                              ? 'bg-brand/15 text-brand dark:bg-brand/25 dark:text-brand-light'
+                              : 'bg-slate-200/70 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                          }`}
+                        >
+                          {badge}
+                        </span>
+                      )}
+
+                      {isCollapsed && (
+                        <span className="pointer-events-none absolute left-full ml-3 whitespace-nowrap rounded-lg bg-slate-900 dark:bg-slate-800 border border-slate-700 px-2.5 py-1.5 text-[11px] font-medium text-white shadow-xl opacity-0 transition-opacity group-hover:opacity-100 z-50 flex items-center gap-2">
+                          <span className="font-mono text-[9px] px-1 py-0.2 rounded bg-white/10 text-slate-300">
+                            {group.code}
+                          </span>
+                          <span>{label}</span>
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
           ))}
         </nav>
 
-        {/* Deck de Telemetria Operacional (Assinatura de Hardware do Nexus) */}
-        {!isCollapsed ? (
-          <div className="mx-2.5 my-2 p-2.5 rounded-lg border border-slate-200/90 dark:border-slate-800/90 bg-white/90 dark:bg-slate-900/80 shadow-xs">
-            <div className="flex items-center justify-between gap-1 mb-1.5">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="relative flex h-2 w-2 shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span className="font-mono text-[10px] font-bold tracking-wider uppercase text-slate-700 dark:text-slate-300 truncate">
-                  {master ? 'Cluster Master' : 'Telemetria Ativa'}
-                </span>
-              </div>
-              <span className="font-mono text-[9px] text-slate-400 dark:text-slate-500 uppercase font-semibold">
-                {master ? 'ROOT' : 'v3.1'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 dark:text-slate-400">
-              <span className="truncate max-w-[140px]" title={currentUser?.companyName || 'Nexus ITAM'}>
-                {currentUser?.companyName || 'Nexus ITAM'}
-              </span>
-              <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-0.5 shrink-0">
-                <Shield size={10} /> TLS
-              </span>
-            </div>
-          </div>
-        ) : (
-          <div className="my-2 flex justify-center" title="Telemetria Ativa • TLS 1.3">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-            </span>
-          </div>
-        )}
-
-        {/* Estação do Operador (Footer Deck) */}
-        <div className={`shrink-0 border-t border-slate-200/80 dark:border-slate-800/90 p-3 ${isCollapsed ? 'space-y-2' : ''}`}>
+        {/* ================================================================= */}
+        {/* CÂMARA 3: DOCK DE TELEMETRIA E ESTAÇÃO DO OPERADOR                */}
+        {/* ================================================================= */}
+        <div className="shrink-0 rounded-xl bg-white dark:bg-[#101624] border border-slate-200/90 dark:border-slate-800/90 p-2.5 shadow-2xs space-y-2">
           {needRefresh && !isCollapsed && (
             <button
               type="button"
               onClick={applyUpdate}
-              className="mb-2.5 w-full flex items-center justify-center gap-2 rounded-lg bg-brand text-white px-3 py-2 text-xs font-semibold shadow-sm hover:bg-brand-dark transition-colors"
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-brand text-white px-2.5 py-1.5 text-[11px] font-semibold shadow-xs hover:bg-brand-dark transition-colors"
             >
-              <RefreshCw size={13} className="animate-spin" />
-              <span>Nova versão disponível</span>
+              <RefreshCw size={12} className="animate-spin" />
+              <span>Atualizar versão</span>
             </button>
           )}
 
-          {!isCollapsed && (
-            <div className="mb-2.5 flex items-center gap-2.5 rounded-lg border border-slate-200/80 bg-white p-2 dark:border-slate-800 dark:bg-slate-900/80 shadow-xs">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-900 text-white dark:bg-slate-800 font-mono text-xs font-bold border border-slate-700/60">
-                {(currentUser?.name || currentUser?.email || 'U').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()}
+          {!isCollapsed ? (
+            <div className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 dark:bg-[#0B0F19] border border-slate-200/70 dark:border-slate-800/80 px-2.5 py-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+                <span className="font-mono text-[10px] font-semibold text-slate-700 dark:text-slate-300 truncate" title={currentUser?.companyName || 'Nexus ITAM'}>
+                  {currentUser?.companyName || (master ? 'Cluster Master' : 'Nexus ITAM')}
+                </span>
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100">
-                  {currentUser?.name || 'Operador'}
-                </p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="inline-block px-1 py-0.2 rounded text-[9px] font-mono font-bold uppercase tracking-wider bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                    {ROLE_LABELS[currentUser?.role] || 'Operador'}
-                  </span>
-                </div>
-              </div>
+              <span className="font-mono text-[9px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 shrink-0">
+                <Shield size={10} /> TLS
+              </span>
+            </div>
+          ) : (
+            <div className="flex justify-center py-1" title={`Telemetria Ativa • ${currentUser?.companyName || 'Nexus ITAM'}`}>
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+              </span>
             </div>
           )}
 
-          <div className={isCollapsed ? 'space-y-2' : 'grid grid-cols-2 gap-2'}>
-            <button
-              onClick={() => setTheme(isDark ? 'light' : 'dark')}
-              title="Calibração de interface: Claro / Escuro"
-              className={`flex items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 py-1.5 text-xs text-slate-600 transition-colors hover:bg-white dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-900 ${
-                isCollapsed ? 'mx-auto h-9 w-9 border-0 py-0' : ''
-              }`}
-            >
-              {isDark ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-slate-600" />}
-              {!isCollapsed && <span className="font-medium text-[11px]">{isDark ? 'Luz' : 'Escuro'}</span>}
-            </button>
+          {!isCollapsed ? (
+            <div className="flex items-center justify-between gap-2 pt-0.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-slate-800 font-mono text-xs font-bold border border-slate-700/60">
+                  {(currentUser?.name || currentUser?.email || 'U')
+                    .split(' ')
+                    .map((p) => p[0])
+                    .slice(0, 2)
+                    .join('')
+                    .toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100 leading-tight">
+                    {currentUser?.name || 'Operador'}
+                  </p>
+                  <p className="truncate font-mono text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mt-0.5">
+                    {ROLE_LABELS[currentUser?.role] || 'Operador'}
+                  </p>
+                </div>
+              </div>
 
-            <button
-              onClick={handleLogout}
-              title="Encerrar sessão de forma segura"
-              className={`flex items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 py-1.5 text-xs text-slate-600 transition-colors hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-300 dark:hover:border-rose-900/50 ${
-                isCollapsed ? 'mx-auto h-9 w-9 border-0 py-0' : ''
-              }`}
-            >
-              <LogOut size={14} />
-              {!isCollapsed && <span className="font-medium text-[11px]">Sair</span>}
-            </button>
-          </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => setTheme(isDark ? 'light' : 'dark')}
+                  title={isDark ? 'Modo Claro' : 'Modo Escuro'}
+                  aria-label="Alternar tema"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200/80 bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
+                >
+                  {isDark ? <Sun size={13} className="text-amber-400" /> : <Moon size={13} />}
+                </button>
+                <button
+                  onClick={handleLogout}
+                  title="Encerrar sessão"
+                  aria-label="Encerrar sessão"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200/80 bg-slate-50 text-slate-600 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-rose-900/50 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
+                >
+                  <LogOut size={13} />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+              <button
+                onClick={() => setTheme(isDark ? 'light' : 'dark')}
+                title={isDark ? 'Modo Claro' : 'Modo Escuro'}
+                aria-label="Alternar tema"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/80 transition-colors"
+              >
+                {isDark ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} />}
+              </button>
+              <button
+                onClick={handleLogout}
+                title="Encerrar sessão"
+                aria-label="Encerrar sessão"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-300 transition-colors"
+              >
+                <LogOut size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </aside>
     </>
