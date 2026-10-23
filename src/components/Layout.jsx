@@ -16,15 +16,28 @@ import { hasFeature, isModuleEnabled } from '../utils/entitlements';
 import { useAgentAutoSync } from '../hooks/useAgentAutoSync';
 
 const SIDEBAR_KEY = 'sidebar_collapsed';
+const SIDEBAR_WIDTH_KEY = 'nexus_sidebar_width_v1';
+const MIN_SIDEBAR_WIDTH = 250;
+const MAX_SIDEBAR_WIDTH = 340;
 
 /**
- * Casca da aplicacao.
+ * Calcula a largura ideal (em px) para acomodar o nome da empresa
+ * com limite modesto de caracteres exibíveis (evita esticar demais).
+ */
+const computeOptimalSidebarWidth = (companyName) => {
+  if (!companyName || companyName === 'Nexus ITAM') return 264;
+  const chars = Math.min(companyName.length, 22);
+  // Base confortável de 258px + 3.5px por caractere além de 10
+  const target = Math.round(258 + Math.max(0, chars - 10) * 3.5);
+  return Math.min(Math.max(target, 264), 305);
+};
+
+/**
+ * Casca da aplicação.
  *
- * Ponto critico corrigido: a versao anterior renderizava `{children}` duas vezes
- * — uma arvore para desktop e outra para mobile — escondendo uma delas por CSS.
- * Toda pagina montava em dobro, cada `useEffect` de carregamento disparava duas
- * vezes e o custo de leitura no Firestore dobrava em cada navegacao.
- * Agora existe UMA arvore de conteudo; so a navegacao muda por breakpoint.
+ * Ponto crítico: renderiza `{children}` uma única vez.
+ * Navegação lateral flutuante com suporte a largura ajustável,
+ * auto-calibração pelo nome da empresa e modo recolhido tático.
  */
 const Layout = ({ children }) => {
   const { currentUser } = useAuth();
@@ -33,7 +46,7 @@ const Layout = ({ children }) => {
   const navigate = useNavigate();
 
   const master = isSuperadmin(currentUser);
-  // Aceite automatico do Agente ITAM em segundo plano (so admin, se ligado).
+  // Aceite automático do Agente ITAM em segundo plano (só admin, se ligado).
   useAgentAutoSync();
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -45,6 +58,45 @@ const Layout = ({ children }) => {
       return false;
     }
   });
+
+  const optimalWidth = useMemo(
+    () => computeOptimalSidebarWidth(currentUser?.companyName),
+    [currentUser?.companyName],
+  );
+
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+      if (saved) {
+        const parsed = Number(saved);
+        if (!isNaN(parsed) && parsed >= MIN_SIDEBAR_WIDTH && parsed <= MAX_SIDEBAR_WIDTH) {
+          return parsed;
+        }
+      }
+    } catch {
+      /* modo privado */
+    }
+    return computeOptimalSidebarWidth(currentUser?.companyName);
+  });
+
+  const handleWidthChange = useCallback((newWidth) => {
+    const clamped = Math.min(Math.max(newWidth, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH);
+    setSidebarWidth(clamped);
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, JSON.stringify(clamped));
+    } catch {
+      /* noop */
+    }
+  }, []);
+
+  const handleResetWidth = useCallback(() => {
+    setSidebarWidth(optimalWidth);
+    try {
+      localStorage.removeItem(SIDEBAR_WIDTH_KEY);
+    } catch {
+      /* noop */
+    }
+  }, [optimalWidth]);
 
   const toggleSidebar = useCallback(() => {
     setIsCollapsed((prev) => {
@@ -62,7 +114,7 @@ const Layout = ({ children }) => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
-  // Identidade da empresa tambem na aba do navegador (e no icone, com whitelabel).
+  // Identidade da empresa também na aba do navegador (e no ícone, com whitelabel).
   const whitelabel = !master && hasFeature(currentUser, 'whitelabel');
   const companyName = currentUser?.companyName;
   const logoUrl = currentUser?.logoUrl;
@@ -94,8 +146,7 @@ const Layout = ({ children }) => {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [navigate, currentUser]);
 
-  // Barra inferior mobile: montada a partir das permissoes reais do usuario,
-  // nao de um `if` fixo de superadmin.
+  // Barra inferior mobile: montada a partir das permissões reais do usuário
   const bottomNav = useMemo(() => {
     if (master) {
       return [
@@ -134,17 +185,19 @@ const Layout = ({ children }) => {
       <Toaster richColors position="top-right" theme={resolvedTheme} />
 
       {/* ------------------------------------------------------------------ */}
-      {/* NAVEGACAO LATERAL FLUTUANTE — visivel a partir de lg (>=1024px).    */}
+      {/* NAVEGAÇÃO LATERAL FLUTUANTE — visível a partir de lg (>=1024px).    */}
       {/* ------------------------------------------------------------------ */}
       <div
-        className={`hidden lg:block fixed top-3.5 bottom-3.5 left-3.5 z-40 transition-[width] duration-200 ease-out ${
-          isCollapsed ? 'w-[78px]' : 'w-[264px]'
-        }`}
+        style={{ width: isCollapsed ? 78 : sidebarWidth }}
+        className="hidden lg:block fixed top-3.5 bottom-3.5 left-3.5 z-40 transition-[width] duration-150 ease-out"
       >
         <Sidebar
           isCollapsed={isCollapsed}
           toggleCollapse={toggleSidebar}
           onSearchClick={() => setIsSearchOpen(true)}
+          width={sidebarWidth}
+          onWidthChange={handleWidthChange}
+          onResetWidth={handleResetWidth}
         />
       </div>
 
@@ -158,12 +211,13 @@ const Layout = ({ children }) => {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* COLUNA PRINCIPAL — uma unica arvore para todos os breakpoints        */}
+      {/* COLUNA PRINCIPAL — uma única árvore para todos os breakpoints        */}
       {/* ------------------------------------------------------------------ */}
       <div
-        className={`flex min-h-screen flex-col transition-[padding] duration-200 ease-out ${
-          isCollapsed ? 'lg:pl-[96px]' : 'lg:pl-[282px]'
-        }`}
+        style={{
+          '--sidebar-offset': `${isCollapsed ? 96 : sidebarWidth + 18}px`,
+        }}
+        className="flex min-h-screen flex-col lg:[padding-left:var(--sidebar-offset)] transition-[padding] duration-150 ease-out"
       >
         {/* Topo compacto mobile estilo console */}
         <header className="lg:hidden sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 dark:border-slate-800/80 dark:bg-[#0B0F17]/95 safe-area-pt">
@@ -202,7 +256,7 @@ const Layout = ({ children }) => {
           </div>
         </header>
 
-        {/* Conteudo */}
+        {/* Conteúdo */}
         <main className="flex-1 px-4 pt-4 pb-28 sm:px-6 lg:px-8 lg:py-6 lg:pb-8 safe-area-pb">
           <div className="mx-auto w-full max-w-[1600px]">{children}</div>
         </main>

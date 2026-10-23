@@ -1,5 +1,5 @@
 // src/components/Sidebar.jsx
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Plus, FileInput,
@@ -13,16 +13,26 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { usePWA } from '../contexts/PWAContext';
 import { can, isSuperadmin, ROLE_LABELS } from '../utils/permissions';
-import { isModuleEnabled } from '../utils/entitlements';
+import { hasFeature, isModuleEnabled } from '../utils/entitlements';
 
-const CASCADE_STORAGE_KEY = 'nexus_sidebar_collapsed_groups_v1';
+const CASCADE_STORAGE_KEY = 'nexus_sidebar_cascade_v2';
 
 /**
  * Sidebar Flutuante Corporativa Nexus — Navegação em Modelo Cascata.
- * Design executivo moderno com agrupamento hierárquico expansível,
- * guias de árvore verticais, telemetria de workspace e controle tático.
+ * - Tudo recolhido por padrão (expansão sob demanda pelo operador).
+ * - Largura auto-ajustável e redimensionável com limite modesto de caracteres.
+ * - Design executivo corporativo de alta legibilidade.
  */
-const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearchClick }) => {
+const Sidebar = ({
+  isOpen,
+  onClose,
+  isCollapsed = false,
+  toggleCollapse,
+  onSearchClick,
+  width,
+  onWidthChange,
+  onResetWidth,
+}) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
@@ -43,6 +53,36 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
   const isActive = useCallback(
     (path) => (path === '/dashboard' ? location.pathname === path : location.pathname.startsWith(path)),
     [location.pathname],
+  );
+
+  // Redimensionamento interativo por arraste no desktop
+  const isResizingRef = useRef(false);
+  const handleMouseDown = useCallback(
+    (e) => {
+      e.preventDefault();
+      isResizingRef.current = true;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+
+      const handleMouseMove = (moveEvent) => {
+        if (!isResizingRef.current) return;
+        // O container desktop começa em left-3.5 (14px). Largura = clientX - 14.
+        const newWidth = Math.round(moveEvent.clientX - 14);
+        onWidthChange?.(newWidth);
+      };
+
+      const handleMouseUp = () => {
+        isResizingRef.current = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    },
+    [onWidthChange],
   );
 
   // Estrutura modular corporativa em cascata
@@ -131,8 +171,9 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
       .filter((group) => group.items.length > 0);
   }, [master, currentUser]);
 
-  // Seções recolhidas pelo operador (por padrão todas abertas)
-  const [collapsedGroups, setCollapsedGroups] = useState(() => {
+  // Seções abertas na cascata.
+  // REGRA: Tudo recolhido por padrão (objeto vazio {}) a menos que o operador expanda.
+  const [openGroups, setOpenGroups] = useState(() => {
     try {
       const saved = localStorage.getItem(CASCADE_STORAGE_KEY);
       if (saved) return JSON.parse(saved);
@@ -144,7 +185,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
 
   // Alterna expansão da seção na cascata
   const toggleGroup = (groupId) => {
-    setCollapsedGroups((prev) => {
+    setOpenGroups((prev) => {
       const next = { ...prev, [groupId]: !prev[groupId] };
       try {
         localStorage.setItem(CASCADE_STORAGE_KEY, JSON.stringify(next));
@@ -156,6 +197,12 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
   };
 
   const canCreate = can(currentUser, 'assets:write');
+
+  // Identidade da empresa
+  const companyName = currentUser?.companyName || 'Nexus ITAM';
+  const customLogo = currentUser?.logoUrl || '';
+  const whitelabel = Boolean(currentUser) && !isSuperadmin(currentUser) && hasFeature(currentUser, 'whitelabel') && Boolean(currentUser?.tenantId);
+  const showCompany = Boolean(customLogo) || (whitelabel && companyName !== 'Nexus ITAM');
 
   return (
     <>
@@ -169,20 +216,38 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
       )}
 
       <aside
+        style={{
+          width: isCollapsed ? 78 : (width || undefined),
+        }}
         className={`
-          fixed top-3.5 bottom-3.5 left-3.5 z-50 flex flex-col
+          relative fixed top-3.5 bottom-3.5 left-3.5 z-50 flex flex-col
           rounded-2xl
           bg-white/95 dark:bg-[#0D121F]/95 backdrop-blur-xl
           border border-slate-200/90 dark:border-slate-800/80
           shadow-[0_12px_36px_-6px_rgba(15,23,42,0.08),0_4px_12px_-2px_rgba(15,23,42,0.03)]
           dark:shadow-[0_20px_50px_-10px_rgba(0,0,0,0.65)]
-          transition-all duration-200 ease-out select-none
+          transition-all duration-150 ease-out select-none
           lg:static lg:z-auto lg:h-full lg:w-full lg:translate-x-0
-          ${isOpen ? 'translate-x-0' : '-translate-x-[115%] lg:translate-x-0'}
-          ${isCollapsed ? 'w-[78px]' : 'w-[264px]'}
+          ${isOpen ? 'translate-x-0 w-[calc(100vw-28px)] max-w-[320px]' : '-translate-x-[115%] lg:translate-x-0'}
+          ${isCollapsed ? 'w-[78px]' : ''}
         `}
         aria-label="Navegação corporativa"
       >
+        {/* ================================================================= */}
+        {/* ALÇA INTERATIVA DE AJUSTE DE LARGURA (DESKTOP)                    */}
+        {/* ================================================================= */}
+        {!isCollapsed && onWidthChange && (
+          <div
+            onMouseDown={handleMouseDown}
+            onDoubleClick={onResetWidth}
+            title="Arraste para ajustar largura (duplo-clique para redefinir)"
+            aria-label="Ajustar largura da barra lateral"
+            className="hidden lg:block absolute -right-1.5 top-6 bottom-6 w-3 cursor-col-resize group/resizer z-50 select-none"
+          >
+            <div className="mx-auto h-full w-1 rounded-full bg-transparent group-hover/resizer:bg-brand/40 group-active/resizer:bg-brand transition-colors" />
+          </div>
+        )}
+
         {/* ================================================================= */}
         {/* CABEÇALHO: IDENTIDADE CORPORATIVA & GATILHOS EXECUTIVOS           */}
         {/* ================================================================= */}
@@ -190,11 +255,11 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
           <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between gap-2'}`}>
             <button
               onClick={() => (isCollapsed ? toggleCollapse?.() : navigate('/dashboard'))}
-              className="flex items-center gap-2 group text-left min-w-0"
-              title={isCollapsed ? 'Expandir barra lateral' : 'Ir para o painel principal'}
+              className="flex items-center gap-2 group text-left min-w-0 flex-1"
+              title={isCollapsed ? 'Expandir barra lateral' : (showCompany ? companyName : 'Ir para o painel principal')}
             >
-              <Logo size="sm" showText={!isCollapsed} />
-              {!isCollapsed && !master && (
+              <Logo size="sm" showText={!isCollapsed} maxChars={22} />
+              {!isCollapsed && !master && !showCompany && (
                 <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded border border-slate-200/90 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 shrink-0">
                   ITAM
                 </span>
@@ -290,15 +355,13 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
         </div>
 
         {/* ================================================================= */}
-        {/* NAVEGAÇÃO EM MODELO CASCATA (TREE / ACCORDION HIERÁRQUICO)          */}
+        {/* NAVEGAÇÃO EM MODELO CASCATA (RECOLHIDO POR PADRÃO)                */}
         {/* ================================================================= */}
-        <nav className="custom-scrollbar my-1 flex-1 overflow-y-auto px-2 py-1.5 space-y-2">
+        <nav className="custom-scrollbar my-1 flex-1 overflow-y-auto px-2 py-1.5 space-y-1.5">
           {menuGroups.map((group) => {
             const GroupIcon = group.icon;
             const hasActiveChild = group.items.some((item) => isActive(item.path));
-            // Aberto por padrão a menos que explicitamente recolhido pelo usuário.
-            // Se possuir a rota ativa, permanece aberto para manter visibilidade de navegação.
-            const isGroupOpen = !collapsedGroups[group.id] || hasActiveChild;
+            const isGroupOpen = Boolean(openGroups[group.id]);
 
             if (isCollapsed) {
               // Modo compacto (rail de 78px): ícones e tooltips flutuantes
@@ -346,7 +409,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
               );
             }
 
-            // Modo expandido: Modelo Cascata completo com cabeçalho expansível e trilho de ramificação
+            // Modo expandido: Modelo Cascata (recolhido por padrão)
             return (
               <div key={group.id} className="rounded-xl transition-colors">
                 {/* Cabeçalho da seção da cascata */}
@@ -363,7 +426,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
                     <span className="truncate text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200 transition-colors">
                       {group.title}
                     </span>
-                    {/* Indicador de módulo ativo quando a cascata está recolhida */}
+                    {/* Indicador luminoso de módulo ativo quando a cascata está recolhida */}
                     {!isGroupOpen && hasActiveChild && (
                       <span
                         className="h-1.5 w-1.5 rounded-full bg-brand ring-2 ring-brand/30 shrink-0"
@@ -387,7 +450,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
 
                 {/* Submódulos em cascata com linha de árvore conectora */}
                 {isGroupOpen && (
-                  <div className="relative ml-4 pl-2.5 my-1 border-l border-slate-200/90 dark:border-slate-800/80 space-y-0.5">
+                  <div className="relative ml-4 pl-2.5 my-1 border-l border-slate-200/90 dark:border-slate-800/80 space-y-0.5 animate-in fade-in duration-150">
                     {group.items.map((item) => {
                       const active = isActive(item.path);
                       const ItemIcon = item.icon;
