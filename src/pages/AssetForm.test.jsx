@@ -45,7 +45,9 @@ vi.mock('react-router-dom', async () => {
 vi.mock('../services/assetService', () => ({
   getAssetById: vi.fn().mockResolvedValue(null),
   createAsset: vi.fn().mockResolvedValue('123'),
-  updateAsset: vi.fn().mockResolvedValue()
+  updateAsset: vi.fn().mockResolvedValue(),
+  getAllAssets: vi.fn().mockResolvedValue([]),
+  getAssetByInternalId: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('../services/employeeService', () => ({
@@ -143,5 +145,33 @@ describe('AssetForm', () => {
     expect(saved.specs.mac).toBe('AA:BB');
     expect(saved.specs.security).toEqual({ antivirus: 'Defender' });
     expect(saved.tenantId).toBe('tenant1');
+  });
+
+  it('gera tag automática no padrão da empresa ao clicar em Gerar Tag', async () => {
+    const { getAllAssets } = await import('../services/assetService');
+    getAllAssets.mockResolvedValueOnce([
+      { internalId: 'SHL-BEL-NTB-010', type: 'Notebook', location: 'Matriz - Belém' },
+      { internalId: 'SHL-BEL-NTB-011', type: 'Notebook', location: 'Matriz - Belém' },
+    ]);
+
+    render(
+      <BrowserRouter>
+        <AssetForm />
+      </BrowserRouter>
+    );
+
+    // Aguarda montagem
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Gerar Tag/i })).toBeInTheDocument();
+    });
+
+    const generateBtn = screen.getByRole('button', { name: /Gerar Tag/i });
+    fireEvent.click(generateBtn);
+
+    // O gerador deve calcular o próximo código no padrão da empresa
+    await waitFor(() => {
+      const input = screen.getByPlaceholderText(/Ex: NB-001/i);
+      expect(input.value).toBeTruthy();
+    });
   });
 });

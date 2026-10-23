@@ -7,6 +7,7 @@ import {
   updateAsset,
   getAssetById,
   getAssetByInternalId,
+  getAllAssets,
 } from '../services/assetService';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -21,6 +22,7 @@ import {
 import QRScanner from '../components/QRScanner';
 import AssetIcon from '../components/AssetIcon';
 import { buildAssetCatalog, SPEC_FIELDS, isRootSpec } from '../utils/assetTypes';
+import { generateNextAssetTag } from '../utils/assetTagGenerator';
 import LocationSelect from '../components/LocationSelect';
 import StatusBadge from '../components/StatusBadge';
 import {
@@ -60,6 +62,11 @@ const AssetForm = () => {
   // Verificação de patrimônio duplicado
   const [tagChecking, setTagChecking] = useState(false);
   const [tagExists, setTagExists] = useState(false);
+  const [tagGenerating, setTagGenerating] = useState(false);
+
+  // Cache de ativos e configurações da empresa para geração de patrimônio sequencial
+  const [tenantAssets, setTenantAssets] = useState([]);
+  const [tenantSettings, setTenantSettings] = useState(null);
 
   const [formData, setFormData] = useState({
     model: '',
@@ -102,9 +109,17 @@ const AssetForm = () => {
           const settingsSnap = await getDoc(doc(db, 'settings', currentUser.tenantId));
           if (settingsSnap.exists()) {
             const cfg = settingsSnap.data();
+            setTenantSettings(cfg);
             if (cfg.customFields) setCustomFieldsDef(cfg.customFields);
             if (cfg.assetTypes) setCustomTypes(cfg.assetTypes);
           }
+
+          // Carrega ativos da empresa em segundo plano para o sequenciador de tags
+          getAllAssets(currentUser.tenantId)
+            .then((list) => {
+              if (Array.isArray(list)) setTenantAssets(list);
+            })
+            .catch(() => {});
         }
 
         if (id) {
@@ -226,30 +241,43 @@ const AssetForm = () => {
     }
   };
 
-  // Gerador de Patrimônio / Tag Automático
-  const handleGenerateTag = useCallback(() => {
-    const year = new Date().getFullYear().toString().slice(-2);
-    const rand = Math.floor(1000 + Math.random() * 9000);
-    const prefixMap = {
-      Computador: 'PC',
-      Notebook: 'NB',
-      Servidor: 'SRV',
-      Celular: 'CEL',
-      Tablet: 'TAB',
-      Impressora: 'PRT',
-      Monitor: 'MON',
-      Switch: 'SW',
-      Rede: 'NET',
-      Storage: 'NAS',
-      Nobreak: 'NOB',
-      Projetor: 'PRJ',
-      Camera: 'CAM',
-    };
-    const prefix = prefixMap[formData.type] || 'AST';
-    const generated = `${prefix}-${year}${rand}`;
-    setFormData((prev) => ({ ...prev, internalId: generated }));
-    toast.info(`Patrimônio sugerido: ${generated}`);
-  }, [formData.type]);
+  // Gerador Inteligente de Patrimônio / Tag Automático baseado no padrão da empresa
+  const handleGenerateTag = useCallback(async () => {
+    try {
+      setTagGenerating(true);
+      let currentAssets = tenantAssets;
+      if (!currentAssets || currentAssets.length === 0) {
+        if (currentUser?.tenantId) {
+          try {
+            currentAssets = await getAllAssets(currentUser.tenantId);
+            setTenantAssets(currentAssets);
+          } catch {
+            currentAssets = [];
+          }
+        } else {
+          currentAssets = [];
+        }
+      }
+
+      const result = generateNextAssetTag({
+        existingAssets: currentAssets,
+        targetType: formData.type || 'Computador',
+        targetLocation: formData.location || '',
+        tenantSettings,
+        companyName: tenantSettings?.companyName || currentUser?.companyName || '',
+      });
+
+      setFormData((prev) => ({ ...prev, internalId: result.tag }));
+      toast.success(`Patrimônio gerado: ${result.tag}`, {
+        description: result.description,
+      });
+    } catch (err) {
+      console.error('Falha ao gerar tag sequencial:', err);
+      toast.error('Erro ao calcular sequência de patrimônio.');
+    } finally {
+      setTagGenerating(false);
+    }
+  }, [formData.type, formData.location, tenantAssets, tenantSettings, currentUser?.tenantId, currentUser?.companyName]);
 
   // Atalhos Rápidos para Cálculo de Garantia (+1A, +2A, +3A, +5A)
   const handleAddWarrantyYears = (years) => {
@@ -456,10 +484,12 @@ const AssetForm = () => {
                   <button
                     type="button"
                     onClick={handleGenerateTag}
-                    className="text-[11px] font-semibold text-brand hover:underline flex items-center gap-1 cursor-pointer"
-                    title="Gerar código sequencial de patrimônio"
+                    disabled={tagGenerating}
+                    className="text-[11px] font-semibold text-brand hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    title="Gerar código sequencial de patrimônio no padrão da empresa"
                   >
-                    <Sparkles size={11} /> Gerar Tag
+                    <Sparkles size={11} className={tagGenerating ? 'animate-spin' : ''} />
+                    {tagGenerating ? 'Calculando...' : 'Gerar Tag'}
                   </button>
                 </div>
                 <div className="relative">
