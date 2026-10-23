@@ -205,36 +205,31 @@ const AcceptInvite = () => {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4 relative overflow-hidden">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-[30%] -right-[10%] w-[70vw] h-[70vw] rounded-full bg-brand/10 blur-[120px]" />
-        <div className="absolute -bottom-[30%] -left-[10%] w-[60vw] h-[60vw] rounded-full bg-cyan-600/10 blur-[100px]" />
-      </div>
-
-      <div className="relative z-10 w-full max-w-md">
-        <div className="backdrop-blur-2xl bg-white/[0.03] border border-white/10 p-8 rounded-[2rem] shadow-2xl">
+    <main className="min-h-screen flex items-center justify-center bg-slate-950 p-4 font-sans text-slate-100">
+      <div className="w-full max-w-md">
+        <div className="bg-slate-900 border border-slate-800 p-8 rounded-xl shadow-xl">
           <div className="text-center mb-6">
-            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-brand/20 border border-brand/30 text-brand flex items-center justify-center">
-              <Building2 size={26} />
+            <div className="w-12 h-12 mx-auto mb-3 rounded-lg bg-brand/10 border border-brand/20 text-brand flex items-center justify-center">
+              <Building2 size={24} />
             </div>
-            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">Convite Nexus ITAM</p>
-            <h1 className="text-2xl font-black text-white tracking-tight mt-2">
+            <p className="text-xs font-semibold text-slate-400">Convite Nexus ITAM</p>
+            <h1 className="text-xl font-bold text-white tracking-tight mt-1">
               {companyHint ? <>Entrar na equipe <span className="text-brand">{companyHint}</span></> : 'Você foi convidado'}
             </h1>
-            <p className="text-xs text-gray-400 mt-2">Use o mesmo e-mail que recebeu o convite.</p>
+            <p className="text-xs text-slate-400 mt-1">Use o mesmo e-mail que recebeu o convite.</p>
           </div>
 
           {error && (
-            <div role="alert" className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl mb-5 text-xs font-bold flex items-start gap-2">
-              <AlertCircle size={16} className="shrink-0 mt-0.5" /> <span>{error}</span>
+            <div role="alert" className="bg-rose-500/10 border border-rose-500/30 text-rose-300 p-3 rounded-lg mb-5 text-xs font-semibold flex items-start gap-2">
+              <AlertCircle size={16} className="shrink-0 mt-0.5 text-rose-400" /> <span>{error}</span>
             </div>
           )}
 
           {body}
         </div>
 
-        <p className="mt-6 text-center text-[11px] text-gray-500">
-          Não esperava este convite? <Link to="/" className="text-gray-300 hover:text-white font-bold">Voltar ao login</Link>
+        <p className="mt-6 text-center text-xs text-slate-500">
+          Não esperava este convite? <Link to="/" className="text-slate-300 hover:text-white font-semibold">Voltar ao login</Link>
         </p>
       </div>
     </main>

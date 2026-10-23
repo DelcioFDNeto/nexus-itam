@@ -375,7 +375,7 @@ const AssetList = () => {
 
       {/* Controles de Busca, Visualização, Botão de Filtro Expandido e Ações Inicias */}
       <div className="px-4 md:px-8 pb-6 bg-slate-50 dark:bg-slate-950 sticky top-0 md:static z-20">
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col md:flex-row gap-4 items-center">
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col md:flex-row gap-4 items-center">
           {/* Campo de pesquisa global que abrange IDs e Nomes */}
           <div className="flex w-full md:flex-1 gap-2 items-center">
             <div className="relative flex-1">
@@ -462,23 +462,23 @@ const AssetList = () => {
 
           {/* Controles maiores ou que tomam muito espaço sendo mostrados apenas nos computadores */}
           <div className="hidden md:flex gap-2 items-center">
-            <div className="flex gap-1 bg-gray-50 dark:bg-slate-900 p-1.5 rounded-2xl border border-gray-100 dark:border-slate-700">
+            <div className="flex gap-1 bg-slate-50 dark:bg-slate-900 p-1 rounded-lg border border-slate-200/80 dark:border-slate-800">
               {statusOptions.slice(0, 3).map((st) => (
                 <button
                   key={st}
                   onClick={() =>
                     setFilterStatus(filterStatus === st ? "Todos" : st)
                   }
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${filterStatus === st ? "bg-black text-white shadow-md dark:bg-white dark:text-slate-900" : "text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700"}`}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${filterStatus === st ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-900" : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800"}`}
                 >
                   {st}
                 </button>
               ))}
-              <div className="w-[1px] h-6 bg-gray-200 mx-1 self-center"></div>
+              <div className="w-[1px] h-5 bg-slate-200 dark:bg-slate-800 mx-1 self-center"></div>
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="bg-transparent text-xs font-bold text-gray-500 dark:text-gray-400 outline-none cursor-pointer hover:text-black dark:hover:text-white"
+                className="bg-transparent text-xs font-semibold text-slate-600 dark:text-slate-400 outline-none cursor-pointer hover:text-black dark:hover:text-white"
               >
                 <option value="Todos">Mais Filtros</option>
                 {statusOptions.slice(3).map((st) => (
@@ -493,13 +493,13 @@ const AssetList = () => {
             <button
               onClick={() => setShowRetired((v) => !v)}
               title={showRetired ? "Ocultar ativos baixados" : "Incluir ativos baixados"}
-              className={`flex items-center gap-1.5 rounded-2xl border px-3 py-3 text-xs font-bold transition-colors ${
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
                 showRetired
                   ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
-                  : "border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 text-gray-500 dark:text-gray-400 hover:bg-gray-100"
+                  : "border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100"
               }`}
             >
-              <Archive size={16} />
+              <Archive size={15} />
               <span className="hidden xl:inline">Baixados</span>
             </button>
 
@@ -508,12 +508,12 @@ const AssetList = () => {
                 setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))
               }
               title={sortBy === "createdAt" ? "Alternar recentes/antigos" : "Alternar ordem alfabética"}
-              className="p-3 bg-gray-50 dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-2xl border border-gray-100 dark:border-slate-700 text-gray-600 dark:text-gray-300 transition-colors"
+              className="p-2 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg border border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
             >
               {sortOrder === "asc" ? (
-                <ArrowDownAZ size={20} />
+                <ArrowDownAZ size={18} />
               ) : (
-                <ArrowUpAZ size={20} />
+                <ArrowUpAZ size={18} />
               )}
             </button>
             <button
@@ -522,59 +522,59 @@ const AssetList = () => {
                 setSortBy(nextSort);
                 setSortOrder(nextSort === "createdAt" ? "desc" : "asc");
               }}
-              className={`flex items-center gap-2 px-3 py-3 rounded-2xl border text-xs font-black transition-colors ${sortBy === "createdAt" ? "bg-black text-white border-black shadow-md" : "bg-gray-50 dark:bg-slate-900 hover:bg-gray-100 border-gray-100 dark:border-slate-700 text-gray-600"}`}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold transition-colors ${sortBy === "createdAt" ? "bg-slate-900 text-white border-slate-900 shadow-sm dark:bg-white dark:text-slate-900 dark:border-white" : "bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-300"}`}
               title="Ordenar por data e hora de registro"
             >
-              <Clock size={18} />
+              <Clock size={16} />
               <span>Recentes</span>
             </button>
           </div>
 
           {/* Atalhos do painel direito para tarefas mais gerenciais (importar/exportar para Excel) */}
-          <div className="hidden md:flex gap-2 border-l border-gray-100 dark:border-slate-700 pl-4">
+          <div className="hidden md:flex gap-2 border-l border-slate-200/80 dark:border-slate-800 pl-3">
             <button
               onClick={handleExportExcel}
-              className="p-3 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-950/40 dark:text-green-400 dark:hover:bg-green-900/40 rounded-2xl transition-colors"
+              className="p-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:hover:bg-emerald-900/40 rounded-lg transition-colors border border-emerald-200/60 dark:border-emerald-900/40"
               title="Exportar Excel"
               aria-label="Exportar Excel"
             >
-              <Download size={20} />
+              <Download size={18} />
             </button>
             {canImport && (
               <Link
                 to="/import"
-                className="p-3 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-900/40 rounded-2xl transition-colors"
+                className="p-2 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-900/40 rounded-lg transition-colors border border-blue-200/60 dark:border-blue-900/40"
                 title="Importar"
                 aria-label="Importar"
               >
-                <FileText size={20} />
+                <FileText size={18} />
               </Link>
             )}
           </div>
         </div>
 
-        {/* Rolagem horizontal de abas arredondadas e rápidas organizando por Tipo de Ativo */}
-        <div className="flex gap-3 overflow-x-auto py-4 scrollbar-hide">
+        {/* Rolagem horizontal de abas organizando por Tipo de Ativo */}
+        <div className="flex gap-2 overflow-x-auto py-3 scrollbar-hide">
           <button
             onClick={() => {
               const nextSort = sortBy === "createdAt" ? "internalId" : "createdAt";
               setSortBy(nextSort);
               setSortOrder(nextSort === "createdAt" ? "desc" : "asc");
             }}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${sortBy === "createdAt" ? "bg-black text-white border-black shadow-lg scale-105 dark:bg-white dark:text-slate-900 dark:border-white" : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-slate-600 hover:border-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700"}`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors border ${sortBy === "createdAt" ? "bg-slate-900 text-white border-slate-900 shadow-sm dark:bg-white dark:text-slate-900 dark:border-white" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
           >
-            <Clock size={16} /> Recentes
+            <Clock size={14} /> Recentes
           </button>
           {filters.map((f) => (
             <button
               key={f.value}
               onClick={() => setFilterType(f.value)}
               aria-pressed={filterType === f.value}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all border ${filterType === f.value ? "bg-black text-white border-black shadow-lg scale-105 dark:bg-white dark:text-slate-900 dark:border-white" : "bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-slate-600 hover:border-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700"}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors border ${filterType === f.value ? "bg-slate-900 text-white border-slate-900 shadow-sm dark:bg-white dark:text-slate-900 dark:border-white" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
             >
               {f.icon} {f.label}
               {f.count !== undefined && (
-                <span className="rounded-full bg-black/10 px-1.5 text-[10px] tabular-nums dark:bg-white/10">{f.count}</span>
+                <span className="rounded bg-slate-100 px-1 text-[10px] font-mono tabular-nums dark:bg-slate-800 text-slate-600 dark:text-slate-300">{f.count}</span>
               )}
             </button>
           ))}
@@ -584,7 +584,7 @@ const AssetList = () => {
       {/* Lista real contendo dados extraídos de acordo com o cruzamento de pesquisa, ordenameto e status */}
       <div className="px-4 md:px-8">
         {processedAssets.length === 0 ? (
-          <div className="p-20 text-center text-gray-400 dark:text-gray-500 flex flex-col items-center bg-white dark:bg-slate-800 rounded-3xl border border-gray-200 dark:border-slate-600 border-dashed animate-fade-in">
+          <div className="p-20 text-center text-gray-400 dark:text-gray-500 flex flex-col items-center bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-600 border-dashed animate-fade-in">
             <AlertCircle size={48} className="mb-4 opacity-20" />
             <p className="font-medium">
               Nenhum ativo encontrado com esses filtros.
@@ -598,7 +598,7 @@ const AssetList = () => {
                 <div
                   key={asset.id}
                   onClick={() => navigate(`/assets/${asset.id}`)}
-                  className={`p-5 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-[0_4px_20px_-12px_rgba(0,0,0,0.1)] active:scale-[0.98] transition-all relative overflow-hidden group ${selectedIds.includes(asset.id) ? "ring-2 ring-black bg-gray-50 dark:bg-slate-900" : "bg-white dark:bg-slate-800"}`}
+                  className={`p-5 rounded-xl border border-gray-100 dark:border-slate-700 shadow-[0_4px_20px_-12px_rgba(0,0,0,0.1)] active:scale-[0.98] transition-all relative overflow-hidden group ${selectedIds.includes(asset.id) ? "ring-2 ring-black bg-gray-50 dark:bg-slate-900" : "bg-white dark:bg-slate-800"}`}
                 >
                   {/* Forma orgânica desenhada apenas para visual agradável das extremidades do Card */}
                   <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 dark:bg-slate-900 rounded-full -mr-10 -mt-10 opacity-50 pointer-events-none"></div>
@@ -659,66 +659,66 @@ const AssetList = () => {
             </div>
 
             {/* Quando no formato para computadores, usa tabelas extensas super rápidas de varrer a visão */}
-            <div className="hidden md:block bg-white dark:bg-slate-800 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+            <div className="hidden md:block bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200/90 dark:border-slate-800 overflow-hidden">
               <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-left border-collapse">
-                  <thead className="bg-gray-50 dark:bg-slate-900 border-b border-gray-100 dark:border-slate-700 sticky top-0 z-10 backdrop-blur-sm">
-                    <tr className="text-[10px] xl:text-xs uppercase text-gray-400 dark:text-gray-500 font-black tracking-widest">
-                      <th className="py-4 px-3 w-12 text-center">
+                  <thead className="bg-slate-50/90 dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 sticky top-0 z-10">
+                    <tr className="text-[11px] uppercase text-slate-500 dark:text-slate-400 font-semibold tracking-wider">
+                      <th className="py-3 px-3 w-12 text-center">
                         <button
                           onClick={toggleSelectAll}
                           className="hover:text-black dark:hover:text-white transition-colors"
                         >
                           {selectedIds.length > 0 &&
                           selectedIds.length === processedAssets.length ? (
-                            <CheckSquare size={18} className="text-black dark:text-white" />
+                            <CheckSquare size={16} className="text-black dark:text-white" />
                           ) : (
-                            <Square size={18} />
+                            <Square size={16} />
                           )}
                         </button>
                       </th>
-                      <th className="py-4 px-3">Ativo</th>
-                      <th className="py-4 px-3">Patrimônio</th>
-                      <th className="py-4 px-3">Responsável</th>
-                      <th className="py-4 px-3">Local</th>
-                      <th className="py-4 px-3 text-center">Status</th>
-                      <th className="py-4 px-3 text-center">Ações</th>
+                      <th className="py-3 px-3">Ativo</th>
+                      <th className="py-3 px-3">Patrimônio</th>
+                      <th className="py-3 px-3">Responsável</th>
+                      <th className="py-3 px-3">Local</th>
+                      <th className="py-3 px-3 text-center">Status</th>
+                      <th className="py-3 px-3 text-center">Ações</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50 dark:divide-slate-700/60">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                     {processedAssets.map((asset) => {
                       const responsibleName =
                         asset.assignedTo || asset.clientName || "---";
                       return (
                         <tr
                           key={asset.id}
-                          className={`hover:bg-gray-50/80 dark:hover:bg-slate-700/40 transition-all group cursor-pointer ${selectedIds.includes(asset.id) ? "bg-gray-50 dark:bg-slate-900" : ""}`}
+                          className={`hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer ${selectedIds.includes(asset.id) ? "bg-slate-50 dark:bg-slate-800/50" : ""}`}
                           onClick={() => navigate(`/assets/${asset.id}`)}
                         >
                           <td
-                            className="py-3 px-3 text-center"
+                            className="py-2.5 px-3 text-center"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <button
                               onClick={() => toggleSelectOne(asset.id)}
-                              className="text-gray-300 dark:text-gray-500 hover:text-black dark:hover:text-white transition-colors"
+                              className="text-slate-300 dark:text-slate-600 hover:text-black dark:hover:text-white transition-colors"
                             >
                               {selectedIds.includes(asset.id) ? (
-                                <CheckSquare size={18} className="text-black dark:text-white" />
+                                <CheckSquare size={16} className="text-black dark:text-white" />
                               ) : (
-                                <Square size={18} />
+                                <Square size={16} />
                               )}
                             </button>
                           </td>
-                          <td className="py-3 px-3">
+                          <td className="py-2.5 px-3">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl flex items-center justify-center shadow-sm text-gray-600 group-hover:scale-110 transition-transform shrink-0">
+                              <div className="w-8 h-8 bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0">
                                 <AssetIcon
                                   type={asset.type}
                                   category={asset.category}
                                   model={asset.model}
                                   internalId={asset.internalId}
-                                  size={18}
+                                  size={16}
                                 />
                               </div>
                               <div className="min-w-0">
@@ -873,7 +873,7 @@ const AssetList = () => {
 
       {isStatusModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white dark:bg-slate-800 rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 p-2">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 p-2">
             <div className="bg-gray-50 dark:bg-slate-900 p-5 rounded-[1.5rem] mb-2 flex justify-between items-center">
               <h3 className="font-black text-lg flex items-center gap-2">
                 <RefreshCcw size={20} className="text-black dark:text-white" /> Novo Status

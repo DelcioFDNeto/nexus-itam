@@ -269,7 +269,7 @@ const AuditSession = ({ location, locationInfo, assets, draft, onDraftChange, on
 
       {finishing && (
         <div className="fixed inset-0 z-[70] bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Finalizar auditoria">
-          <div className="w-full max-w-md bg-gray-900 border border-gray-700 rounded-3xl p-6 space-y-4">
+          <div className="w-full max-w-md bg-gray-900 border border-gray-700 rounded-xl p-6 space-y-4">
             <h3 className="text-lg font-black">Finalizar auditoria de {location}</h3>
             <dl className="grid grid-cols-3 gap-2 text-center">
               <div className="bg-gray-800 rounded-xl p-3"><dt className="text-[10px] uppercase text-gray-400 font-black">Conferidos</dt><dd className="text-xl font-black text-green-400">{summary.found}</dd></div>

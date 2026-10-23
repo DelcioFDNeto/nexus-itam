@@ -54,17 +54,17 @@ const Kpi = ({ icon: Icon, label, value, tone, onClick }) => (
   <button
     type="button"
     onClick={onClick}
-    className="text-left bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-4 shadow-sm flex items-center gap-3"
+    className="text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-800 p-3.5 shadow-sm flex items-center gap-3 transition-colors hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50/50 dark:hover:bg-slate-800/40"
   >
-    <span className={`p-2.5 rounded-xl ${tone}`}>
-      <Icon size={18} />
+    <span className={`p-2 rounded-lg ${tone}`}>
+      <Icon size={17} />
     </span>
-    <span>
-      <span className="block text-2xl font-black text-gray-900 dark:text-white tabular-nums">{value}</span>
-      <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+    <div>
+      <span className="block text-xl md:text-2xl font-bold text-slate-900 dark:text-white tabular-nums">{value}</span>
+      <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
         {label}
       </span>
-    </span>
+    </div>
   </button>
 );
 
@@ -173,38 +173,39 @@ const AgentManager = () => {
 
   return (
     <div className="max-w-7xl mx-auto pb-24 space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-5 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-gradient-to-br from-indigo-500 to-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-500/20">
-            <Cpu size={26} />
+          <div className="w-10 h-10 rounded-lg bg-brand/10 border border-brand/20 text-brand flex items-center justify-center shrink-0">
+            <Cpu size={22} />
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white tracking-tight">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
               Agente ITAM & NexusDesk
             </h1>
-            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-              Acesso remoto seguro NexusDesk (desktop e celular), atualização remota OTA, terminal PowerShell e inventário automático.
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Acesso remoto seguro NexusDesk (desktop e mobile), atualização remota OTA e inventário automático de hardware.
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span
-            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[11px] font-black uppercase tracking-wider ${
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold ${
               settings.autoAcceptEnabled
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300'
-                : 'border-gray-200 bg-white text-gray-500 dark:border-slate-700 dark:bg-slate-800'
+                : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
             }`}
           >
-            <Zap size={13} /> Aceite automático {settings.autoAcceptEnabled ? 'ligado' : 'desligado'}
+            <span className={`w-1.5 h-1.5 rounded-full ${settings.autoAcceptEnabled ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+            <span>Aceite automático {settings.autoAcceptEnabled ? 'ligado' : 'desligado'}</span>
           </span>
           <button
             type="button"
             onClick={processNow}
             disabled={processing || !pending}
-            className="px-4 py-2.5 rounded-xl bg-brand text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-md shadow-brand/30 disabled:opacity-40 disabled:shadow-none"
+            className="px-3.5 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-40"
           >
-            {processing ? <Loader2 size={15} className="animate-spin" /> : <Inbox size={15} />} Processar fila (
-            {pending})
+            {processing ? <Loader2 size={14} className="animate-spin" /> : <Inbox size={14} />}
+            <span>Processar fila ({pending})</span>
           </button>
         </div>
       </div>

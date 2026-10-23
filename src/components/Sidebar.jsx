@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Server, PlusSquare, FileInput,
   Users, LogOut, ClipboardCheck, X, ShieldCheck, Layers, Globe,
-  FolderGit2, Settings, ChevronLeft, ChevronRight, Search, Activity, UserCog, Building2, Moon, Sun, FileSignature, Sparkles,
+  FolderGit2, Settings, ChevronLeft, ChevronRight, Search, Activity, UserCog, Building2, Moon, Sun, FileSignature, RefreshCw,
 } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,15 +14,7 @@ import { can, isSuperadmin, ROLE_LABELS } from '../utils/permissions';
 import { isModuleEnabled } from '../utils/entitlements';
 
 /**
- * Navegacao lateral.
- *
- * Dois modos, um componente:
- *  - `isCollapsed` / `toggleCollapse` → coluna fixa do desktop (>= lg)
- *  - `isOpen` / `onClose`             → drawer deslizante de mobile e tablet
- *
- * Os itens sao derivados de `can()`: um usuario nunca ve um atalho para uma tela
- * que a rota vai recusar. Antes o menu escondia por `role` em dois lugares
- * diferentes e as rotas nao verificavam nada.
+ * Navegacao lateral estilo console de engenharia.
  */
 const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearchClick }) => {
   const location = useLocation();
@@ -68,7 +60,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
         ],
       },
       {
-        title: 'Gestão',
+        title: 'Operações',
         items: [
           { path: '/audit', icon: ClipboardCheck, label: 'Auditoria', cap: 'audit:run', feature: 'audit' },
           { path: '/termos', icon: FileSignature, label: 'Termos', cap: 'terms:read' },
@@ -79,17 +71,16 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
         ],
       },
       {
-        title: 'Sistema',
+        title: 'Configurações',
         items: [
           { path: '/import', icon: FileInput, label: 'Importação', cap: 'assets:import', feature: 'import' },
           { path: '/users', icon: UserCog, label: 'Acessos', cap: 'users:manage' },
-          { path: '/settings', icon: Settings, label: 'Configurações', cap: 'settings:read' },
+          { path: '/settings', icon: Settings, label: 'Ajustes', cap: 'settings:read' },
         ],
       },
     ];
 
     return groups
-      // Permissao do papel + modulo liberado no plano e nao ocultado pela empresa.
       .map((group) => ({
         ...group,
         items: group.items.filter(
@@ -106,10 +97,10 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
 
   return (
     <>
-      {/* Overlay do drawer */}
+      {/* Overlay do drawer mobile */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm lg:hidden"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -118,24 +109,24 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
       <aside
         className={`
           fixed inset-y-0 left-0 z-50 flex h-full flex-col
-          border-r border-slate-200 bg-white shadow-2xl
-          dark:border-slate-800 dark:bg-slate-900
-          transition-transform duration-300 ease-out
-          lg:static lg:z-auto lg:shadow-none lg:translate-x-0
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-          ${isCollapsed ? 'w-[88px]' : 'w-[272px]'}
+          border-r border-slate-200/90 bg-white
+          dark:border-slate-800 dark:bg-slate-900/95
+          transition-transform duration-200 ease-out
+          lg:static lg:z-auto lg:translate-x-0
+          ${isOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}
+          ${isCollapsed ? 'w-[76px]' : 'w-[256px]'}
         `}
         aria-label="Navegacao principal"
       >
-        {/* --- Cabecalho --- */}
+        {/* Cabecalho */}
         <div
-          className={`relative flex h-20 shrink-0 items-center border-b border-slate-100 dark:border-slate-800 ${
-            isCollapsed ? 'justify-center' : 'justify-between px-5'
+          className={`relative flex h-16 shrink-0 items-center border-b border-slate-200/80 dark:border-slate-800 ${
+            isCollapsed ? 'justify-center' : 'justify-between px-4'
           }`}
         >
           <button
             onClick={() => (isCollapsed ? toggleCollapse?.() : navigate('/dashboard'))}
-            className="flex items-center gap-2 transition-transform hover:scale-[1.02]"
+            className="flex items-center gap-2"
           >
             <Logo size="sm" showText={!isCollapsed} />
           </button>
@@ -144,9 +135,9 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
             <button
               onClick={toggleCollapse}
               aria-label={isCollapsed ? 'Expandir menu' : 'Recolher menu'}
-              className="absolute -right-3.5 top-7 z-10 hidden h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-md transition-colors hover:text-brand dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 lg:flex"
+              className="absolute -right-3 top-5 z-10 hidden h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:text-brand dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 lg:flex"
             >
-              {isCollapsed ? <ChevronRight size={14} strokeWidth={3} /> : <ChevronLeft size={14} strokeWidth={3} />}
+              {isCollapsed ? <ChevronRight size={13} strokeWidth={2.5} /> : <ChevronLeft size={13} strokeWidth={2.5} />}
             </button>
           )}
 
@@ -154,28 +145,28 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
             <button
               onClick={onClose}
               aria-label="Fechar menu"
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 lg:hidden"
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 lg:hidden"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
           )}
         </div>
 
-        {/* --- Acoes rapidas --- */}
+        {/* Acoes rapidas */}
         {(onSearchClick || (!master && canCreate)) && (
-          <div className={`shrink-0 space-y-2 pt-5 ${isCollapsed ? 'px-4' : 'px-5'}`}>
+          <div className={`shrink-0 space-y-2 pt-4 ${isCollapsed ? 'px-3' : 'px-3.5'}`}>
             {!master && canCreate && (
               <Link
                 to="/assets/new"
                 onClick={onClose}
-                title="Novo cadastro"
-                className={`flex items-center justify-center gap-2 bg-slate-900 text-white shadow-lg shadow-slate-900/20 transition-all hover:bg-slate-800 active:scale-95 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 ${
-                  isCollapsed ? 'mx-auto h-11 w-11 rounded-2xl' : 'rounded-xl px-4 py-3'
+                title="Novo item"
+                className={`flex items-center justify-center gap-2 bg-slate-900 text-white transition-colors hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 ${
+                  isCollapsed ? 'mx-auto h-10 w-10 rounded-lg' : 'rounded-lg px-3 py-2'
                 }`}
               >
-                <PlusSquare size={18} className="shrink-0" />
+                <PlusSquare size={16} className="shrink-0" />
                 {!isCollapsed && (
-                  <span className="whitespace-nowrap text-xs font-black uppercase tracking-wider">Novo item</span>
+                  <span className="whitespace-nowrap text-xs font-semibold">Novo Item</span>
                 )}
               </Link>
             )}
@@ -187,15 +178,15 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
                   onClose?.();
                 }}
                 title="Busca global (Ctrl+K)"
-                className={`group flex items-center justify-center gap-2 border border-slate-200 bg-white text-slate-700 shadow-sm transition-all hover:border-brand/40 hover:text-brand dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 ${
-                  isCollapsed ? 'mx-auto h-11 w-11 rounded-2xl' : 'w-full rounded-xl px-4 py-2.5'
+                className={`group flex items-center justify-center gap-2 border border-slate-200/90 bg-slate-50 text-slate-600 transition-colors hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800 ${
+                  isCollapsed ? 'mx-auto h-10 w-10 rounded-lg' : 'w-full rounded-lg px-3 py-1.5'
                 }`}
               >
-                <Search size={17} className="shrink-0 text-slate-400 group-hover:text-brand" />
+                <Search size={15} className="shrink-0 text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200" />
                 {!isCollapsed && (
                   <span className="flex flex-1 items-center justify-between">
-                    <span className="text-xs font-bold">Busca global</span>
-                    <kbd className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] tracking-widest text-slate-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Buscar...</span>
+                    <kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
                       Ctrl K
                     </kbd>
                   </span>
@@ -205,14 +196,14 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
           </div>
         )}
 
-        {/* --- Navegacao --- */}
-        <nav className="custom-scrollbar mt-6 flex-1 space-y-6 overflow-y-auto pb-4">
+        {/* Navegacao Principal */}
+        <nav className="custom-scrollbar mt-4 flex-1 space-y-4 overflow-y-auto px-2 pb-4">
           {menuGroups.map((group) => (
-            <div key={group.title} className="space-y-1">
+            <div key={group.title} className="space-y-0.5">
               {isCollapsed ? (
-                <div className="mx-5 my-3 h-px bg-slate-100 dark:bg-slate-800" />
+                <div className="mx-2 my-2 h-px bg-slate-200/60 dark:bg-slate-800" />
               ) : (
-                <p className="mb-2 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <p className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                   {group.title}
                 </p>
               )}
@@ -227,20 +218,20 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
                     title={isCollapsed ? label : undefined}
                     aria-current={active ? 'page' : undefined}
                     className={`
-                      group relative mx-3 flex items-center gap-3 rounded-xl transition-all duration-200
-                      ${isCollapsed ? 'mx-auto h-11 w-11 justify-center' : 'px-4 py-2.5'}
+                      group relative flex items-center gap-2.5 rounded-lg transition-colors
+                      ${isCollapsed ? 'mx-auto h-10 w-10 justify-center' : 'px-2.5 py-2 text-xs'}
                       ${
                         active
-                          ? 'bg-brand font-bold text-white shadow-md shadow-brand/30'
-                          : 'text-slate-500 hover:bg-slate-100 hover:text-brand dark:text-slate-400 dark:hover:bg-slate-800'
+                          ? 'bg-brand font-semibold text-white shadow-sm'
+                          : 'font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100'
                       }
                     `}
                   >
-                    <Icon size={isCollapsed ? 21 : 19} className="shrink-0" />
-                    {!isCollapsed && <span className="text-sm font-semibold tracking-wide">{label}</span>}
+                    <Icon size={17} className="shrink-0" />
+                    {!isCollapsed && <span className="truncate">{label}</span>}
 
                     {isCollapsed && (
-                      <span className="pointer-events-none absolute left-full ml-3 whitespace-nowrap rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:bg-white dark:text-slate-900">
+                      <span className="pointer-events-none absolute left-full ml-2.5 whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:bg-white dark:text-slate-900 z-50">
                         {label}
                       </span>
                     )}
@@ -251,28 +242,29 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
           ))}
         </nav>
 
-        {/* --- Rodape: identidade + acoes --- */}
-        <div className={`shrink-0 border-t border-slate-100 p-4 dark:border-slate-800 ${isCollapsed ? 'space-y-2' : ''}`}>
+        {/* Rodape */}
+        <div className={`shrink-0 border-t border-slate-200/80 p-3 dark:border-slate-800 ${isCollapsed ? 'space-y-2' : ''}`}>
           {needRefresh && !isCollapsed && (
             <button
               type="button"
               onClick={applyUpdate}
-              className="mb-3 w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 px-3 py-2 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-indigo-500/20 transition-transform active:scale-95"
+              className="mb-2.5 w-full flex items-center justify-center gap-2 rounded-lg bg-brand text-white px-3 py-2 text-xs font-semibold shadow-sm hover:bg-brand-dark transition-colors"
             >
-              <Sparkles size={14} />
-              <span>Atualizar Sistema</span>
+              <RefreshCw size={13} className="animate-spin" />
+              <span>Nova versão disponível</span>
             </button>
           )}
+
           {!isCollapsed && (
-            <div className="mb-3 flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/60">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-black text-white dark:bg-white dark:text-slate-900">
+            <div className="mb-2.5 flex items-center gap-2.5 rounded-lg bg-slate-50 border border-slate-200/70 p-2 dark:bg-slate-800/40 dark:border-slate-800">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-800 text-[11px] font-bold text-white dark:bg-slate-700">
                 {(currentUser?.name || currentUser?.email || 'U').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">
-                  {currentUser?.name || 'Usuario'}
+                <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  {currentUser?.name || 'Usuário'}
                 </p>
-                <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400" title={currentUser?.companyName}>
+                <p className="truncate text-[10px] text-slate-400 dark:text-slate-500 font-medium" title={currentUser?.companyName}>
                   {ROLE_LABELS[currentUser?.role] || 'Sem perfil'}
                   {!master && currentUser?.companyName ? ` · ${currentUser.companyName}` : ''}
                 </p>
@@ -284,23 +276,23 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
             <button
               onClick={() => setTheme(isDark ? 'light' : 'dark')}
               title="Alternar tema"
-              className={`flex items-center justify-center gap-2 rounded-xl border border-slate-200 py-2.5 text-slate-500 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 ${
-                isCollapsed ? 'mx-auto h-11 w-11 border-0 py-0' : ''
+              className={`flex items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/60 ${
+                isCollapsed ? 'mx-auto h-10 w-10 border-0 py-0' : ''
               }`}
             >
-              {isDark ? <Sun size={17} className="text-amber-500" /> : <Moon size={17} className="text-indigo-500" />}
-              {!isCollapsed && <span className="text-[10px] font-black uppercase tracking-wider">Tema</span>}
+              {isDark ? <Sun size={15} className="text-amber-500" /> : <Moon size={15} className="text-slate-600 dark:text-slate-400" />}
+              {!isCollapsed && <span className="font-medium text-[11px]">Tema</span>}
             </button>
 
             <button
               onClick={handleLogout}
-              title="Encerrar sessao"
-              className={`flex items-center justify-center gap-2 rounded-xl border border-slate-200 py-2.5 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-red-950/40 dark:hover:text-red-400 ${
-                isCollapsed ? 'mx-auto h-11 w-11 border-0 py-0' : ''
+              title="Encerrar sessão"
+              className={`flex items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 py-1.5 text-xs text-slate-600 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-rose-950/30 dark:hover:text-rose-400 ${
+                isCollapsed ? 'mx-auto h-10 w-10 border-0 py-0' : ''
               }`}
             >
-              <LogOut size={17} />
-              {!isCollapsed && <span className="text-[10px] font-black uppercase tracking-wider">Sair</span>}
+              <LogOut size={15} />
+              {!isCollapsed && <span className="font-medium text-[11px]">Sair</span>}
             </button>
           </div>
         </div>

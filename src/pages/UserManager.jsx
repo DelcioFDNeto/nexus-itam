@@ -266,26 +266,29 @@ const UserManager = () => {
   if (loading) return <ManagerSkeleton />;
 
   return (
-    <div className="max-w-6xl mx-auto pb-24 animate-fade-in">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2">
-            <Shield className="text-brand" /> Gestão de Acessos
-          </h1>
-          <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
-            Quem acessa o Nexus ITAM de {companyName || 'sua empresa'}
-          </p>
+    <div className="max-w-6xl mx-auto pb-24 animate-fade-in space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 rounded-xl p-5 border border-slate-200/90 dark:border-slate-800 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-brand/10 border border-brand/20 text-brand flex items-center justify-center shrink-0">
+            <Shield size={20} />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Gestão de Acessos</h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Quem acessa o Nexus ITAM de {companyName || 'sua empresa'}
+            </p>
+          </div>
         </div>
 
-        <div className="min-w-[220px] rounded-2xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">
-          <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-gray-400">
-            <span className="flex items-center gap-1.5"><Users size={12} /> Usuários do plano</span>
-            <span className="text-gray-600 dark:text-gray-300 tabular-nums">{formatUsage(seatsUsed, maxUsers)}</span>
+        <div className="min-w-[220px] rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 px-3.5 py-2.5">
+          <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+            <span className="flex items-center gap-1.5"><Users size={13} /> Usuários do plano</span>
+            <span className="text-slate-900 dark:text-white font-mono tabular-nums">{formatUsage(seatsUsed, maxUsers)}</span>
           </div>
           {maxUsers !== null && (
-            <div className="mt-2 h-1.5 rounded-full bg-gray-100 dark:bg-slate-700 overflow-hidden">
+            <div className="mt-2 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
               <div
-                className={`h-full rounded-full ${seatTone === 'critical' ? 'bg-rose-500' : seatTone === 'warning' ? 'bg-amber-500' : 'bg-brand'}`}
+                className={`h-full rounded-full transition-all ${seatTone === 'critical' ? 'bg-rose-500' : seatTone === 'warning' ? 'bg-amber-500' : 'bg-brand'}`}
                 style={{ width: `${Math.min(100, usageRatio(seatsUsed, maxUsers) * 100)}%` }}
               />
             </div>
@@ -296,7 +299,7 @@ const UserManager = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           {/* Membros */}
-          <section className="bg-white dark:bg-slate-800 rounded-3xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm">
+          <section className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm">
             <h2 className="text-sm font-black text-gray-900 dark:text-white mb-5 uppercase tracking-wider flex items-center gap-2">
               Membros
               <span className="bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-300 px-2 py-0.5 rounded-full text-[10px]">{users.length}</span>
@@ -382,7 +385,7 @@ const UserManager = () => {
 
           {/* Convites pendentes */}
           {invites.length > 0 && (
-            <section className="bg-white dark:bg-slate-800 rounded-3xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm">
+            <section className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm">
               <h2 className="text-sm font-black mb-5 uppercase tracking-wider text-gray-500 dark:text-gray-400">Convites pendentes</h2>
               <ul className="space-y-3">
                 {invites.map((invite) => {
@@ -420,19 +423,20 @@ const UserManager = () => {
 
         {/* Convite */}
         <div className="space-y-6">
-          <section className="bg-brand text-white rounded-3xl p-6 shadow-lg relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none -mt-10 -mr-10" />
-            <h2 className="text-sm font-black mb-2 uppercase tracking-wider flex items-center gap-2"><UserPlus size={18} /> Convidar membro</h2>
-            <p className="text-xs text-white/75 mb-5 font-medium">
+          <section className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-5 shadow-sm">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5 flex items-center gap-2">
+              <UserPlus size={16} className="text-brand" /> Convidar membro
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
               Gere um link de acesso válido por {INVITE_TTL_DAYS} dias. A pessoa cria a senha e entra direto na empresa.
             </p>
 
             {roles.length === 0 ? (
-              <p className="text-xs font-bold bg-white/10 rounded-xl p-3">Seu perfil não pode convidar membros.</p>
+              <p className="text-xs font-medium text-slate-500 bg-slate-100 dark:bg-slate-800 rounded-lg p-3">Seu perfil não pode convidar membros.</p>
             ) : (
-              <form onSubmit={handleInvite} className="space-y-4 relative z-10">
+              <form onSubmit={handleInvite} className="space-y-3.5">
                 <div>
-                  <label htmlFor="invite-email" className="text-[10px] font-black uppercase tracking-widest text-white/80 block mb-1">E-mail corporativo</label>
+                  <label htmlFor="invite-email" className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">E-mail corporativo</label>
                   <input
                     id="invite-email"
                     type="email"
@@ -440,52 +444,52 @@ const UserManager = () => {
                     onChange={(e) => setInviteEmail(e.target.value)}
                     required
                     placeholder="email@empresa.com"
-                    className="w-full p-3 rounded-xl bg-white/10 border border-white/25 focus:bg-white focus:text-slate-900 focus:outline-none transition-all placeholder:text-white/50 text-sm font-bold text-white"
+                    className="w-full px-3 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-brand font-medium text-slate-900 dark:text-white placeholder:text-slate-400"
                   />
                 </div>
                 <div>
-                  <label htmlFor="invite-role" className="text-[10px] font-black uppercase tracking-widest text-white/80 block mb-1">Nível de acesso</label>
+                  <label htmlFor="invite-role" className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Nível de acesso</label>
                   <select
                     id="invite-role"
                     value={inviteRole}
                     onChange={(e) => setInviteRole(e.target.value)}
-                    className="w-full p-3 rounded-xl bg-white/10 border border-white/25 focus:outline-none text-sm font-bold text-white [&>option]:text-black"
+                    className="w-full px-3 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-brand font-medium text-slate-900 dark:text-white"
                   >
                     {roles.map((role) => (
                       <option key={role} value={role}>{ROLE_LABELS[role]}</option>
                     ))}
                   </select>
-                  <p className="text-[10px] text-white/70 mt-1.5">{ROLE_DESCRIPTIONS[inviteRole]}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{ROLE_DESCRIPTIONS[inviteRole]}</p>
                 </div>
                 <button
                   type="submit"
                   disabled={isInviting}
-                  className="w-full py-3 bg-white text-slate-900 font-black rounded-xl hover:bg-gray-100 transition-colors shadow-md text-xs uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-60"
+                  className="w-full py-2.5 bg-brand hover:bg-brand-dark text-white font-semibold rounded-lg transition-colors text-xs flex items-center justify-center gap-1.5 disabled:opacity-60 shadow-sm"
                 >
-                  {isInviting ? 'Gerando...' : <><Link2 size={16} /> Gerar convite</>}
+                  {isInviting ? 'Gerando...' : <><Link2 size={15} /> Gerar convite</>}
                 </button>
               </form>
             )}
 
             {lastInvite && (
-              <div className="mt-5 rounded-2xl bg-black/20 p-4 space-y-3 relative z-10">
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/80 flex items-center gap-1.5">
-                  <CheckCircle2 size={12} /> Link para {lastInvite.email}
+              <div className="mt-4 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 p-3.5 space-y-2.5">
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <CheckCircle2 size={13} className="text-emerald-500" /> Link para {lastInvite.email}
                 </p>
                 <input
                   readOnly
                   value={inviteLink(lastInvite, companyName)}
                   onFocus={(e) => e.target.select()}
-                  className="w-full rounded-lg bg-black/30 border border-white/15 px-2 py-1.5 text-[11px] font-mono text-white/90"
+                  className="w-full rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-[11px] font-mono text-slate-700 dark:text-slate-300"
                   aria-label="Link do convite"
                 />
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => copy(inviteLink(lastInvite, companyName))} className="py-2 rounded-lg bg-white text-slate-900 text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1">
+                  <button onClick={() => copy(inviteLink(lastInvite, companyName))} className="py-1.5 rounded-md bg-brand hover:bg-brand-dark text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors">
                     <Copy size={12} /> Copiar
                   </button>
                   <a
                     href={`mailto:${lastInvite.email}?subject=${encodeURIComponent(`Convite para o Nexus ITAM${companyName ? ` - ${companyName}` : ''}`)}&body=${encodeURIComponent(`Olá! Você foi convidado(a) para acessar o inventário de TI${companyName ? ` da ${companyName}` : ''} no Nexus ITAM.\n\nCrie sua senha pelo link (válido por ${INVITE_TTL_DAYS} dias):\n${inviteLink(lastInvite, companyName)}`)}`}
-                    className="py-2 rounded-lg border border-white/30 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 hover:bg-white/10"
+                    className="py-1.5 rounded-md border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   >
                     <Mail size={12} /> E-mail
                   </a>
@@ -494,8 +498,8 @@ const UserManager = () => {
             )}
           </section>
 
-          <section className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl p-5 shadow-sm">
-            <h2 className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-widest mb-3 flex items-center gap-2">
+          <section className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-5 shadow-sm">
+            <h2 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-3 flex items-center gap-2">
               <ShieldCheck size={14} className="text-brand" /> Entendendo os papéis
             </h2>
             <ul className="space-y-3">

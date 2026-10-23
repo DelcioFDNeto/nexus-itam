@@ -34,7 +34,7 @@ const AssetTermsCard = ({ tenantId, assetId, refreshKey }) => {
   const loading = state.key !== requestKey;
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm">
+    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm">
       <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
         <FileSignature size={20} /> Termos e documentos
       </h3>

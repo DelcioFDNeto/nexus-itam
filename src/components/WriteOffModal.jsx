@@ -31,7 +31,7 @@ const WriteOffModal = ({ isOpen, onClose, asset, onConfirm, saving = false }) =>
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="max-h-[92vh] w-full overflow-y-auto custom-scrollbar rounded-t-3xl bg-white shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-3xl">
+      <div className="max-h-[92vh] w-full overflow-y-auto custom-scrollbar rounded-t-3xl bg-white shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-xl">
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-5 dark:border-slate-800">
           <div className="flex items-center gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white dark:bg-white dark:text-slate-900">

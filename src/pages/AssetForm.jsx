@@ -268,7 +268,7 @@ const AssetForm = () => {
             <div className="lg:col-span-2 space-y-8">
                 
                 {/* Agrupamento de campos para identificação primária (Nome, Tag, Serial) */}
-                <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700">
+                <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
                     <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 dark:border-slate-700 pb-2"><Tag size={16}/> Identificação & Classificação</h3>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -329,7 +329,7 @@ const AssetForm = () => {
                 </div>
 
                 {/* Seção de dados técnicos que muda dinamicamente baseada no tipo escolhido acima */}
-                <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700">
+                <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
                      <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 dark:border-slate-700 pb-2"><Server size={16}/> Especificações Técnicas</h3>
                      
                      {activeSpecs.length > 0 ? (
@@ -367,7 +367,7 @@ const AssetForm = () => {
 
                 {/* Campos Customizados Dinâmicos */}
                 {customFieldsDef.length > 0 && (
-                    <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-[2rem] shadow-sm border border-brand/20">
+                    <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-xl shadow-sm border border-brand/20">
                          <h3 className="text-xs font-bold text-brand uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-gray-100 dark:border-slate-700 pb-2"><Database size={16}/> Informações Adicionais</h3>
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {customFieldsDef.map(cf => (
@@ -394,7 +394,7 @@ const AssetForm = () => {
                 )}
 
                 {/* Campo de notas em formato livre para registrar informações adicionais e histórico manual */}
-                <div className="bg-yellow-50 dark:bg-yellow-950/20 p-6 md:p-8 rounded-[2rem] border border-yellow-100 dark:border-yellow-900/40">
+                <div className="bg-yellow-50 dark:bg-yellow-950/20 p-6 md:p-8 rounded-xl border border-yellow-100 dark:border-yellow-900/40">
                     <h3 className="text-xs font-bold text-yellow-700 dark:text-yellow-400 uppercase tracking-widest mb-4 flex items-center gap-2"><FileText size={16}/> Notas & Observações</h3>
                     <textarea name="notes" value={formData.notes} onChange={handleChange} rows="4" className="w-full p-4 bg-white dark:bg-slate-900 border border-yellow-200 dark:border-yellow-900/60 rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 text-gray-700 dark:text-gray-200 leading-relaxed resize-none" placeholder="Detalhes adicionais, histórico breve, avarias conhecidas..." />
                 </div>
@@ -404,7 +404,7 @@ const AssetForm = () => {
             <div className="space-y-6">
                 
                 {/* Definição do estado de uso e a classificação contábil */}
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700">
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
                      <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">Status & Categoria</h3>
                      
                      <div className="mb-4">
@@ -456,7 +456,7 @@ const AssetForm = () => {
                 </div>
 
                 {/* Associação do equipamento a um colaborador, setor e local específico */}
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700">
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
                      <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2"><User size={16}/> Responsabilidade</h3>
                      
                      <div className="mb-4">
@@ -521,7 +521,7 @@ const AssetForm = () => {
                 </div>
 
                 {/* Registro do valor de custo e data da compra */}
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-700">
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
                      <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2"><DollarSign size={16}/> Aquisição & Garantia</h3>
 
                      <div className="grid grid-cols-2 gap-3">

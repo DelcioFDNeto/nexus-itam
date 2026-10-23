@@ -5,57 +5,63 @@ import { useNavigate } from 'react-router-dom';
 const AssetMetrics = ({ assets = [] }) => {
   const navigate = useNavigate();
 
-  // --- CALCULOS DO MINI-DASHBOARD ---
   const totalAssets = assets.length;
   
   const totalValue = assets.reduce((acc, curr) => {
-      if (curr.category === 'Promocional' || curr.internalId?.includes('PRM')) return acc;
-      return acc + (parseFloat(curr.valor) || 0);
+    if (curr.category === 'Promocional' || curr.internalId?.includes('PRM')) return acc;
+    return acc + (parseFloat(curr.valor) || 0);
   }, 0);
   
   const maintenanceCount = assets.filter(a => a.status === 'Manutenção').length;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 md:p-8">
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col justify-between h-32 md:h-40 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-gray-50 dark:bg-slate-900 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform"></div>
-            <div className="relative z-10 p-2 bg-black text-white w-fit rounded-xl"><Package size={20}/></div>
-            <div className="relative z-10">
-                <span className="text-3xl font-black text-gray-900 dark:text-white">{totalAssets}</span>
-                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mt-1">Total de Ativos</p>
-            </div>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 p-4 md:px-8 md:py-4">
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200/90 dark:border-slate-800 flex flex-col justify-between transition-colors">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Total de Ativos</span>
+          <div className="p-1.5 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded-lg"><Package size={16}/></div>
         </div>
-        
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col justify-between h-32 md:h-40 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-green-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform"></div>
-            <div className="relative z-10 p-2 bg-green-100 text-green-700 w-fit rounded-xl"><CreditCard size={20}/></div>
-            <div className="relative z-10">
-                <span className="text-2xl font-black text-gray-900 dark:text-white">{(totalValue/1000).toFixed(0)}k</span>
-                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mt-1">Valor Estimado (R$)</p>
-            </div>
+        <div>
+          <span className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">{totalAssets}</span>
+          <p className="text-[11px] font-medium text-slate-400 mt-0.5">Equipamentos no parque</p>
         </div>
+      </div>
+      
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200/90 dark:border-slate-800 flex flex-col justify-between transition-colors">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Valor Estimado</span>
+          <div className="p-1.5 bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 rounded-lg"><CreditCard size={16}/></div>
+        </div>
+        <div>
+          <span className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">R$ {(totalValue/1000).toFixed(0)}k</span>
+          <p className="text-[11px] font-medium text-slate-400 mt-0.5">Patrimônio ativo</p>
+        </div>
+      </div>
 
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col justify-between h-32 md:h-40 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform"></div>
-            <div className="relative z-10 p-2 bg-orange-100 text-orange-700 w-fit rounded-xl"><AlertCircle size={20}/></div>
-            <div className="relative z-10">
-                <span className="text-3xl font-black text-gray-900 dark:text-white">{maintenanceCount}</span>
-                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mt-1">Em Manutenção</p>
-            </div>
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200/90 dark:border-slate-800 flex flex-col justify-between transition-colors">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Em Manutenção</span>
+          <div className="p-1.5 bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 rounded-lg"><AlertCircle size={16}/></div>
         </div>
+        <div>
+          <span className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">{maintenanceCount}</span>
+          <p className="text-[11px] font-medium text-slate-400 mt-0.5">Aguardando reparo</p>
+        </div>
+      </div>
 
-        {/* QUICK ACTIONS CARD */}
-        <div className="bg-black text-white p-6 rounded-3xl shadow-lg flex flex-col justify-between h-32 md:h-40 relative overflow-hidden md:col-span-1 col-span-2 cursor-pointer group hover:shadow-2xl transition-all" onClick={() => navigate('/assets/new')}>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-xl group-hover:bg-white/20 transition-all"></div>
-            <div className="flex justify-between items-start">
-                <div className="p-2 bg-white/20 w-fit rounded-xl backdrop-blur-sm"><Plus size={20}/></div>
-                <ChevronRight className="opacity-50 group-hover:opacity-100 transition-opacity"/>
-            </div>
-            <div className="relative z-10">
-                <span className="text-lg font-bold">Novo Ativo</span>
-                <p className="text-xs font-medium text-gray-400 dark:text-gray-500 mt-1">Registrar equipamento</p>
-            </div>
+      <button
+        onClick={() => navigate('/assets/new')}
+        className="bg-brand hover:bg-brand-dark text-white p-4 rounded-xl shadow-sm flex flex-col justify-between md:col-span-1 col-span-2 cursor-pointer transition-colors text-left"
+      >
+        <div className="flex justify-between items-start mb-2">
+          <div className="p-1.5 bg-white/20 rounded-lg"><Plus size={16}/></div>
+          <ChevronRight size={16} className="opacity-70"/>
         </div>
+        <div>
+          <span className="text-sm font-bold block">Cadastrar Novo Ativo</span>
+          <p className="text-[11px] text-white/80 mt-0.5">Adicionar equipamento ao inventário</p>
+        </div>
+      </button>
     </div>
   );
 };

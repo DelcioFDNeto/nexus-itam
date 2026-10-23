@@ -34,7 +34,7 @@ export const TermKindTag = ({ kind }) => {
 /** Moldura dos modais de termo: cabecalho, rolagem e rodape fixo de acoes. */
 export const TermModalFrame = ({ icon: Icon, title, subtitle, onClose, children, footer, wide = false }) => (
   <div className="fixed inset-0 z-[60] !mt-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
-    <div className={`bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-3xl shadow-2xl w-full ${wide ? 'max-w-4xl' : 'max-w-2xl'} max-h-[94vh] flex flex-col overflow-hidden`}>
+    <div className={`bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl shadow-2xl w-full ${wide ? 'max-w-4xl' : 'max-w-2xl'} max-h-[94vh] flex flex-col overflow-hidden`}>
       <header className="flex items-start justify-between gap-4 px-6 py-5 border-b border-gray-100 dark:border-slate-800">
         <div className="flex items-start gap-3 min-w-0">
           <div className="p-2.5 rounded-xl bg-brand/10 text-brand shrink-0"><Icon size={20} /></div>

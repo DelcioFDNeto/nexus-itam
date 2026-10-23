@@ -11,9 +11,7 @@ import {
   AlertCircle, 
   CheckCircle,
   ShieldCheck,
-  Zap,
-  Sparkles,
-  Orbit
+  Loader2,
 } from 'lucide-react';
 import Logo from '../components/Logo';
 
@@ -47,13 +45,11 @@ const Register = () => {
 
     try {
       setLoading(true);
-      // registerTenant so resolve depois que o perfil ja esta ativo na sessao:
-      // o painel abre direto, sem a tela de "sem empresa vinculada".
       await registerTenant(companyName, adminName, email, password);
       setSuccess(true);
       setTimeout(() => {
         navigate('/dashboard', { replace: true });
-      }, 1800);
+      }, 1500);
     } catch (err) {
       console.error(err);
       const messages = {
@@ -79,78 +75,65 @@ const Register = () => {
   };
 
   const pwdStrength = calculatePasswordStrength(password);
-  
-  let pwdColor = 'bg-red-500';
-  if (pwdStrength > 25) pwdColor = 'bg-orange-500';
-  if (pwdStrength > 50) pwdColor = 'bg-yellow-500';
-  if (pwdStrength > 75) pwdColor = 'bg-green-500';
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('/carbon-fibre.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
-        <div className="bg-black/40 backdrop-blur-2xl border border-brand/30 p-10 rounded-3xl max-w-md w-full text-center shadow-[0_0_50px_rgba(79,70,229,0.2)] relative z-10 animate-[loginScaleIn_0.6s_ease-out_both]">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-green-400 to-transparent opacity-80"></div>
-          
-          <div className="w-20 h-20 bg-green-500/20 border border-green-500/50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(34,197,94,0.4)] animate-[loginScaleIn_0.5s_ease-out_0.2s_both]">
-            <ShieldCheck size={40} className="text-green-400" />
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4 font-sans text-slate-100">
+        <div className="bg-slate-900 border border-slate-800 p-8 rounded-xl max-w-md w-full text-center shadow-xl animate-fade-in">
+          <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <ShieldCheck size={28} />
           </div>
           
-          <h2 className="text-2xl font-black text-white uppercase tracking-tighter mb-2">Instância Criada!</h2>
-          <p className="text-sm text-gray-400 font-medium">A conta da <span className="text-brand font-bold">{companyName}</span> está pronta. Você é o proprietário e pode convidar a equipe em Acessos.</p>
-          <div className="mt-8 flex justify-center">
-            <Orbit className="animate-spin text-brand" size={24} />
+          <h2 className="text-xl font-bold text-white mb-2">Conta Criada com Sucesso</h2>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            A organização <strong className="text-white">{companyName}</strong> foi inicializada. Você já pode acessar o painel e gerenciar seu inventário.
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-400 font-mono">
+            <Loader2 className="animate-spin text-brand" size={16} />
+            <span>Redirecionando para o painel...</span>
           </div>
-          <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-4 animate-pulse">Abrindo o painel...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4 relative overflow-hidden font-sans py-12">
-      
-      {/* Background Cyber/Neon — CSS puro */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[10%] -left-[20%] w-[70vw] h-[70vw] rounded-full bg-indigo-600/10 blur-[130px]" />
-        <div className="absolute -bottom-[20%] -right-[10%] w-[60vw] h-[60vw] rounded-full bg-cyan-600/10 blur-[120px]" />
-        <div className="absolute inset-0 bg-[url('/carbon-fibre.png')] opacity-5 mix-blend-overlay"></div>
-      </div>
-
-      <div className="relative z-10 w-full max-w-xl">
-        <div className="backdrop-blur-2xl bg-white/[0.03] border border-white/10 p-8 md:p-10 rounded-[2rem] shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] relative overflow-hidden">
-          
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-50"></div>
-
-          <div className="text-center mb-8 relative animate-[loginFadeUp_0.6s_ease-out_0.08s_both]">
-             <div className="absolute top-0 left-1/2 -translate-x-1/2 -z-10 w-32 h-32 bg-cyan-500/20 blur-3xl rounded-full"></div>
-             <div className="flex justify-center mb-4">
-                 <Logo size="lg" textColor="text-white" className="drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]" />
-             </div>
-            <h2 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center justify-center gap-2">
-              Deploy <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-brand">Corporativo</span>
+    <main className="min-h-screen flex items-center justify-center bg-slate-950 p-4 font-sans text-slate-100 py-12">
+      <div className="w-full max-w-lg">
+        <div className="bg-slate-900 border border-slate-800 p-8 md:p-10 rounded-xl shadow-xl">
+          {/* Cabeçalho */}
+          <div className="text-center mb-6">
+            <div className="w-12 h-12 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center p-2 mx-auto mb-3 shadow-inner">
+              <Logo size="md" showText={false} />
+            </div>
+            <h2 className="text-xl font-bold text-white tracking-tight">
+              Criar Conta Corporativa
             </h2>
-            <p className="text-xs font-medium text-gray-400 mt-2 tracking-widest uppercase">Crie a conta da sua empresa · Plano Starter</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Cadastre sua organização para iniciar a gestão de ativos
+            </p>
           </div>
 
           {error && (
-            <div role="alert" className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl mb-6 text-xs font-bold flex items-center gap-2 animate-[loginFadeUp_0.3s_ease-out_both]">
-              <AlertCircle size={16} /> {error}
+            <div role="alert" className="bg-rose-500/10 border border-rose-500/30 text-rose-300 p-3 rounded-lg mb-5 text-xs font-semibold flex items-center gap-2">
+              <AlertCircle size={16} className="shrink-0 text-rose-400" />
+              <span>{error}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* Empresa */}
-              <div className="animate-[loginFadeUp_0.6s_ease-out_0.16s_both]">
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Razão Social / Fantasia</label>
-                <div className="relative group">
-                  <Building2 className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Nome da Empresa / Razão Social
+                </label>
+                <div className="relative">
+                  <Building2 className="absolute left-3 top-3 text-slate-500" size={16} />
                   <input 
                     type="text" 
                     required 
                     autoComplete="organization"
-                    className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner"
+                    className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 rounded-lg focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand text-white text-sm placeholder-slate-600 transition-colors"
                     placeholder="Ex: Nexus Corp"
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
@@ -158,17 +141,18 @@ const Register = () => {
                 </div>
               </div>
 
-              {/* Admin */}
-              <div className="animate-[loginFadeUp_0.6s_ease-out_0.24s_both]">
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Administrador Master</label>
-                <div className="relative group">
-                  <User className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Administrador Responsável
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3 top-3 text-slate-500" size={16} />
                   <input 
                     type="text" 
                     required 
                     autoComplete="name"
-                    className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner"
-                    placeholder="Nome Completo"
+                    className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 rounded-lg focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand text-white text-sm placeholder-slate-600 transition-colors"
+                    placeholder="Nome completo"
                     value={adminName}
                     onChange={(e) => setAdminName(e.target.value)}
                   />
@@ -176,16 +160,17 @@ const Register = () => {
               </div>
             </div>
 
-            {/* Email */}
-            <div className="animate-[loginFadeUp_0.6s_ease-out_0.32s_both]">
-              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">E-mail de Acesso</label>
-              <div className="relative group">
-                <Mail className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                E-mail Corporativo
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3 text-slate-500" size={16} />
                 <input 
                   type="email" 
                   required 
                   autoComplete="username"
-                  className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner"
+                  className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 rounded-lg focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand text-white text-sm placeholder-slate-600 transition-colors"
                   placeholder="admin@empresa.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -193,49 +178,43 @@ const Register = () => {
               </div>
             </div>
 
-            {/* Senhas */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="animate-[loginFadeUp_0.6s_ease-out_0.4s_both]">
-                <label className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">
-                  <span>Chave de Segurança</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Senha
+                  </label>
                   {password.length > 0 && (
-                      <span className={`text-[9px] ${pwdStrength > 50 ? 'text-green-400' : 'text-orange-400'}`}>
-                          {pwdStrength > 50 ? 'Forte' : 'Fraca'}
-                      </span>
+                    <span className={`text-[10px] font-semibold ${pwdStrength > 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {pwdStrength > 50 ? 'Forte' : 'Mín. 8 caracteres'}
+                    </span>
                   )}
-                </label>
-                <div className="relative group">
-                  <Lock className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+                </div>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 text-slate-500" size={16} />
                   <input 
                     type="password" 
                     required 
                     autoComplete="new-password"
-                    className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 tracking-widest shadow-inner"
+                    className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 rounded-lg focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand text-white text-sm placeholder-slate-600 transition-colors"
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
-                  {/* Barra de Força da Senha */}
-                  {password.length > 0 && (
-                      <div className="absolute bottom-0 left-0 h-0.5 bg-gray-800 w-full rounded-b-xl overflow-hidden">
-                          <div 
-                              className={`h-full ${pwdColor} transition-all duration-300`}
-                              style={{ width: `${pwdStrength}%` }}
-                          />
-                      </div>
-                  )}
                 </div>
               </div>
 
-              <div className="animate-[loginFadeUp_0.6s_ease-out_0.48s_both]">
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Confirmar Chave</label>
-                <div className="relative group">
-                  <ShieldCheck className="absolute left-4 top-3.5 text-gray-500 group-focus-within:text-cyan-400 transition-colors" size={18} />
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Confirmar Senha
+                </label>
+                <div className="relative">
+                  <ShieldCheck className="absolute left-3 top-3 text-slate-500" size={16} />
                   <input 
                     type="password" 
                     required 
                     autoComplete="new-password"
-                    className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium text-white text-sm placeholder-gray-600 tracking-widest shadow-inner"
+                    className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 rounded-lg focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand text-white text-sm placeholder-slate-600 transition-colors"
                     placeholder="••••••••"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
@@ -244,40 +223,39 @@ const Register = () => {
               </div>
             </div>
 
-            <div className="pt-4 animate-[loginFadeUp_0.6s_ease-out_0.56s_both]">
+            <div className="pt-2">
               <button 
                 type="submit" 
                 disabled={loading}
-                className="w-full relative group overflow-hidden bg-white text-black font-black py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_25px_rgba(34,211,238,0.3)] hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70"
+                className="w-full bg-brand hover:bg-brand-dark text-white font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm shadow-sm disabled:opacity-60"
               >
-                <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-cyan-100 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
                 {loading ? (
-                  <Sparkles className="animate-spin text-cyan-600" size={18} />
+                  <Loader2 className="animate-spin text-white" size={16} />
                 ) : (
-                  <>Inicializar Sistema <Zap size={18} className="text-cyan-600 group-hover:scale-110 transition-transform" /></>
+                  <>
+                    <span>Criar Conta Corporativa</span>
+                    <ArrowRight size={16} />
+                  </>
                 )}
               </button>
             </div>
           </form>
 
-          <div className="mt-6 flex justify-center items-center px-1 animate-[loginFadeUp_0.6s_ease-out_0.64s_both]">
-              <span className="text-[11px] text-gray-400 mr-2">Já possui uma conta?</span>
-              <Link 
-                  to="/"
-                  className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold transition-colors underline decoration-cyan-400/30 hover:decoration-cyan-400 underline-offset-4"
-              >
-                  Fazer Login Seguro
-              </Link>
+          <div className="mt-6 pt-5 border-t border-slate-800 flex items-center justify-center text-xs text-slate-400">
+            <span>Já possui uma conta?</span>
+            <Link 
+              to="/"
+              className="ml-1 text-brand hover:text-white font-semibold transition-colors"
+            >
+              Fazer Login
+            </Link>
           </div>
         </div>
-        
-        <div className="mt-8 text-center animate-[loginFadeUp_0.6s_ease-out_0.72s_both]">
-          <p className="text-[10px] text-gray-500 font-medium tracking-widest uppercase">
-            SaaS Infrastructure Protocol © {new Date().getFullYear()}
-          </p>
+
+        <div className="mt-6 text-center text-xs text-slate-500">
+          Nexus ITAM · {new Date().getFullYear()}
         </div>
       </div>
-
     </main>
   );
 };

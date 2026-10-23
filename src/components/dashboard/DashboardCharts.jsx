@@ -108,10 +108,10 @@ const DashboardCharts = ({ typeCounts, statusCounts, totalAssets }) => {
 
   if (!totalAssets) {
     return (
-      <div className="rounded-3xl border border-dashed border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-10 text-center">
-        <BarChart3 size={32} className="mx-auto mb-3 text-gray-300 dark:text-slate-600" />
-        <p className="font-bold text-gray-700 dark:text-gray-200">Os gráficos aparecem com o primeiro ativo cadastrado.</p>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Cadastre manualmente, importe uma planilha ou use o Agente ITAM.</p>
+      <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center">
+        <BarChart3 size={28} className="mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+        <p className="font-semibold text-xs text-slate-700 dark:text-slate-200">Os gráficos aparecem com o primeiro ativo cadastrado.</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Cadastre manualmente, importe uma planilha ou use o Agente ITAM.</p>
       </div>
     );
   }
@@ -119,13 +119,13 @@ const DashboardCharts = ({ typeCounts, statusCounts, totalAssets }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Gráfico de Distribuição por Tipo (Bar) */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col min-h-[300px]">
-          <div className="flex justify-between items-center mb-6">
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col min-h-[300px]">
+          <div className="flex justify-between items-center mb-4">
             <div>
-              <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 text-lg tracking-tight">
-                <BarChart3 size={20} className="text-brand"/> Categorias de Ativos
+              <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2 text-sm tracking-tight">
+                <BarChart3 size={17} className="text-brand"/> Categorias de Equipamentos
               </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">Volume por tipo de equipamento</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">Distribuição do parque por categoria</p>
             </div>
           </div>
           <div className="flex-1 w-full relative">
@@ -134,30 +134,30 @@ const DashboardCharts = ({ typeCounts, statusCounts, totalAssets }) => {
         </div>
 
         {/* Gráfico de Status (Doughnut) */}
-        <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col min-h-[300px]">
-          <div className="mb-4">
-            <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 text-lg tracking-tight">
-              <PieChart size={20} className="text-emerald-500"/> Status Operacional
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col min-h-[300px]">
+          <div className="mb-3">
+            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2 text-sm tracking-tight">
+              <PieChart size={17} className="text-emerald-500"/> Status do Inventário
             </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">Disponibilidade do parque</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">Disponibilidade e ciclo de vida</p>
           </div>
 
           <div className="flex-1 relative flex items-center justify-center min-h-[160px]">
             <Doughnut data={doughnutData} options={doughnutOptions} />
             {/* Texto centralizado no gráfico */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-3xl font-black text-gray-900 dark:text-white">{totalAssets}</span>
-              <span className="text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 tracking-widest">Total</span>
+              <span className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">{totalAssets}</span>
+              <span className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Total</span>
             </div>
           </div>
 
           {/* Legenda Customizada */}
           <div className="mt-4 grid grid-cols-2 gap-2">
             {Object.entries(statusCounts).map(([status, count]) => (
-              <div key={status} className="flex items-center gap-2 text-xs font-bold text-gray-600 dark:text-gray-300">
-                <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${TONE_DOT[toneOf(status)] || 'bg-slate-400'}`}></div>
+              <div key={status} className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                <div className={`w-2 h-2 rounded-full shrink-0 ${TONE_DOT[toneOf(status)] || 'bg-slate-400'}`}></div>
                 <span className="truncate">{status}</span>
-                <span className="ml-auto text-gray-400 dark:text-gray-500">{count}</span>
+                <span className="ml-auto font-mono text-[11px] text-slate-400 tabular-nums">{count}</span>
               </div>
             ))}
           </div>

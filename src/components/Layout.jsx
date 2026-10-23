@@ -135,12 +135,10 @@ const Layout = ({ children }) => {
 
       {/* ------------------------------------------------------------------ */}
       {/* NAVEGACAO LATERAL — visivel a partir de lg (>=1024px).              */}
-      {/* Entre 768px e 1024px (tablet) a sidebar fixa de 280px espremia o    */}
-      {/* conteudo; nessa faixa usamos o drawer, como no mobile.              */}
       {/* ------------------------------------------------------------------ */}
       <div
-        className={`hidden lg:block fixed inset-y-0 left-0 z-40 transition-[width] duration-300 ease-out ${
-          isCollapsed ? 'w-[88px]' : 'w-[272px]'
+        className={`hidden lg:block fixed inset-y-0 left-0 z-40 transition-[width] duration-200 ease-out ${
+          isCollapsed ? 'w-[76px]' : 'w-[256px]'
         }`}
       >
         <Sidebar
@@ -159,24 +157,24 @@ const Layout = ({ children }) => {
       {/* COLUNA PRINCIPAL — uma unica arvore para todos os breakpoints        */}
       {/* ------------------------------------------------------------------ */}
       <div
-        className={`flex min-h-screen flex-col transition-[padding] duration-300 ease-out ${
-          isCollapsed ? 'lg:pl-[88px]' : 'lg:pl-[272px]'
+        className={`flex min-h-screen flex-col transition-[padding] duration-200 ease-out ${
+          isCollapsed ? 'lg:pl-[76px]' : 'lg:pl-[256px]'
         }`}
       >
-        {/* Topo compacto: some no desktop, onde a sidebar ja cumpre o papel */}
-        <header className="lg:hidden sticky top-0 z-30 border-b border-slate-200/70 bg-white/85 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/85 safe-area-pt">
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
+        {/* Topo compacto mobile */}
+        <header className="lg:hidden sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 dark:border-slate-800 dark:bg-slate-900/95 safe-area-pt">
+          <div className="flex items-center justify-between gap-3 px-4 py-2.5">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 onClick={() => setIsMobileMenuOpen(true)}
                 aria-label="Abrir menu"
                 className="-ml-1 rounded-lg p-2 text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                <Menu size={22} />
+                <Menu size={20} />
               </button>
               <div className="min-w-0">
                 <Logo size="sm" />
-                <p className="truncate text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                   {currentUser?.companyName || 'Nexus ITAM'}
                 </p>
               </div>
@@ -186,13 +184,13 @@ const Layout = ({ children }) => {
               <button
                 onClick={() => setIsSearchOpen(true)}
                 aria-label="Buscar"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600 active:scale-95 dark:bg-slate-800 dark:text-slate-300"
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
               >
-                <Search size={18} />
+                <Search size={16} />
               </button>
               <div
                 title={`${currentUser?.name || ''} — ${ROLE_LABELS[currentUser?.role] || ''}`}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-[11px] font-black text-white dark:bg-white dark:text-slate-900"
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800 text-[11px] font-bold text-white dark:bg-slate-700"
               >
                 {initials}
               </div>
@@ -200,8 +198,8 @@ const Layout = ({ children }) => {
           </div>
         </header>
 
-        {/* Conteudo: largura fluida, com teto legivel em telas muito largas */}
-        <main className="flex-1 px-4 pt-4 pb-28 sm:px-6 lg:px-8 lg:py-8 lg:pb-8 safe-area-pb">
+        {/* Conteudo */}
+        <main className="flex-1 px-4 pt-4 pb-28 sm:px-6 lg:px-8 lg:py-6 lg:pb-8 safe-area-pb">
           <div className="mx-auto w-full max-w-[1600px]">{children}</div>
         </main>
       </div>
@@ -210,7 +208,7 @@ const Layout = ({ children }) => {
       {/* BARRA INFERIOR — apenas em telas pequenas                           */}
       {/* ------------------------------------------------------------------ */}
       <nav aria-label="Navegacao rapida" className="lg:hidden fixed inset-x-3 bottom-3 z-40 sm:inset-x-auto sm:left-1/2 sm:w-[420px] sm:-translate-x-1/2">
-        <div className="flex items-center justify-around rounded-2xl border border-white/10 bg-slate-900/95 px-2 py-1.5 text-white shadow-2xl backdrop-blur-xl safe-area-pb">
+        <div className="flex items-center justify-around rounded-xl border border-slate-800 bg-slate-900/95 px-2 py-1 text-white shadow-xl safe-area-pb">
           {bottomNav.map(({ to, icon: Icon, label, primary }) =>
             primary ? (
               <Link key={to} to={to} aria-label={label} className="-mt-6">

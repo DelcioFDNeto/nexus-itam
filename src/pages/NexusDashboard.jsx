@@ -40,13 +40,13 @@ const EXTRA_COLORS = ['rgba(16, 185, 129, 0.85)', 'rgba(59, 130, 246, 0.85)', 'r
 const LEVEL_ORDER = { critical: 0, warning: 1, info: 2 };
 
 const Section = ({ title, subtitle, icon: Icon, action, children, className = '' }) => (
-  <section className={`bg-white dark:bg-slate-800 p-6 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col ${className}`}>
-    <div className="flex items-start justify-between gap-3 mb-5">
+  <section className={`bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col ${className}`}>
+    <div className="flex items-start justify-between gap-3 mb-4">
       <div>
-        <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2 text-lg tracking-tight">
-          <Icon size={20} className="text-brand" /> {title}
+        <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2 text-sm tracking-tight">
+          <Icon size={18} className="text-brand" /> {title}
         </h3>
-        {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">{subtitle}</p>}
+        {subtitle && <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">{subtitle}</p>}
       </div>
       {action}
     </div>
@@ -174,31 +174,28 @@ const NexusDashboard = () => {
   const tooltip = { backgroundColor: 'rgba(15, 23, 42, 0.92)', padding: 12, cornerRadius: 8 };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 animate-fade-in pb-24">
-      {/* HERO */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-indigo-950 via-slate-900 to-black rounded-3xl p-8 md:p-10 border border-indigo-500/10 shadow-2xl">
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none" />
-        <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-indigo-300 text-xs font-black uppercase tracking-widest mb-4">
-              <ShieldAlert size={14} /> Nexus Master Console
-            </div>
-            <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight mb-2">Visão do dono</h1>
-            <p className="text-slate-400 font-medium text-sm max-w-xl leading-relaxed">
-              Receita, saúde das contas, uso de limites e o que precisa da sua atenção — em tempo real, direto do banco.
-            </p>
-            <p className="mt-3 text-[11px] font-bold text-slate-500">
-              Atualizado {snapshot?.loadedAt ? snapshot.loadedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—'}
-            </p>
+    <div className="max-w-7xl mx-auto space-y-6 animate-fade-in pb-16">
+      {/* COMANDO MASTER */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-5 md:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-mono text-[11px] font-semibold mb-2">
+            <ShieldAlert size={14} /> Nexus Master Console
           </div>
-          <div className="flex flex-wrap gap-3">
-            <button onClick={() => navigate('/admin/tenants?novo=1')} className="bg-white hover:bg-gray-100 text-black px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all active:scale-95 shadow-lg">
-              <PlusSquare size={16} /> Nova empresa
-            </button>
-            <button onClick={() => load(true)} disabled={refreshing} className="bg-slate-800/80 hover:bg-slate-800 border border-white/10 text-white px-4 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60">
-              <RefreshCcw size={16} className={refreshing ? 'animate-spin' : ''} /> Atualizar
-            </button>
-          </div>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Console de Gestão Global</h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xl">
+            Receita recorrente, saúde das contas e alocação de licenças de todas as empresas contratantes.
+          </p>
+          <p className="mt-2 text-[11px] font-mono text-slate-400 dark:text-slate-500">
+            Sincronizado {snapshot?.loadedAt ? snapshot.loadedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—'}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button onClick={() => navigate('/admin/tenants?novo=1')} className="bg-brand hover:bg-brand-dark text-white px-4 py-2 rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-sm">
+            <PlusSquare size={16} /> Nova empresa
+          </button>
+          <button onClick={() => load(true)} disabled={refreshing} className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-300 px-3.5 py-2 rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-60">
+            <RefreshCcw size={15} className={refreshing ? 'animate-spin' : ''} /> Atualizar
+          </button>
         </div>
       </div>
 
@@ -237,9 +234,9 @@ const NexusDashboard = () => {
             <ul className="space-y-2">
               {attention.map(({ level, text, tenant }, i) => (
                 <li key={`${tenant.id}-${i}`}>
-                  <button onClick={() => openTenant(tenant.id)} className={`w-full text-left flex items-center gap-3 rounded-2xl border px-4 py-3 transition-transform hover:translate-x-0.5 ${ALERT_STYLE[level]}`}>
-                    <span className="font-black text-sm truncate max-w-[40%]">{tenant.companyName || tenant.id}</span>
-                    <span className="text-xs font-semibold flex-1 min-w-0 truncate">{text}</span>
+                  <button onClick={() => openTenant(tenant.id)} className={`w-full text-left flex items-center gap-3 rounded-lg border px-3.5 py-2.5 transition-colors ${ALERT_STYLE[level]}`}>
+                    <span className="font-bold text-xs truncate max-w-[40%]">{tenant.companyName || tenant.id}</span>
+                    <span className="text-xs font-medium flex-1 min-w-0 truncate">{text}</span>
                     <ArrowRight size={14} className="shrink-0 opacity-60" />
                   </button>
                 </li>
@@ -310,10 +307,10 @@ const NexusDashboard = () => {
             {Object.values(plans).map((plan) => {
               const count = tenants.filter((t) => !t.legacy && t.entitlements?.planId === plan.id).length;
               return (
-                <li key={plan.id} className="p-3.5 rounded-2xl border border-gray-100 dark:border-slate-700 bg-gray-50/60 dark:bg-slate-900/50">
+                <li key={plan.id} className="p-3 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40">
                   <div className="flex justify-between items-center">
-                    <p className="font-extrabold text-sm text-gray-900 dark:text-white">{plan.name}</p>
-                    <p className="text-xs font-black text-gray-700 dark:text-gray-200">{brl.format(Number(plan.monthlyPrice) || 0)}<span className="text-gray-400 font-bold">/mês</span></p>
+                    <p className="font-bold text-xs text-slate-900 dark:text-white">{plan.name}</p>
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 tabular-nums">{brl.format(Number(plan.monthlyPrice) || 0)}<span className="text-slate-400 font-normal">/mês</span></p>
                   </div>
                   <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
                     {isUnlimited(plan.maxAssets) ? 'Ativos ilimitados' : `${Number(plan.maxAssets).toLocaleString('pt-BR')} ativos`} ·{' '}

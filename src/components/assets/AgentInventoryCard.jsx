@@ -137,7 +137,7 @@ const AgentInventoryCard = ({ asset }) => {
   };
 
   return (
-    <section className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm space-y-6" aria-label="Inventário do Agente ITAM">
+    <section className="bg-white dark:bg-slate-800 rounded-xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm space-y-6" aria-label="Inventário do Agente ITAM">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">

@@ -233,7 +233,7 @@ const ProjectDetails = () => {
       </div>
       
       {/* Quadro dinamico de apresentacao */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-200 dark:border-slate-700 shadow-sm mb-8 overflow-hidden relative">
+      <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm mb-8 overflow-hidden relative">
         {project.coverImage ? (
           <div className="h-32 w-full bg-cover bg-center absolute top-0 left-0 opacity-10" style={{ backgroundImage: `url(${project.coverImage})` }}></div>
         ) : (

@@ -2,9 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { Lock, Mail, ArrowRight, AlertCircle, KeyRound, X, CheckCircle, Loader2 } from 'lucide-react';
+import Logo from '../components/Logo';
 
-// Mensagens por codigo do Firebase Auth. Antes toda falha virava "Acesso
-// negado", inclusive queda de rede e bloqueio por excesso de tentativas.
+// Mensagens por codigo do Firebase Auth.
 const loginErrorMessage = (err) => {
   switch (err?.code) {
     case 'auth/too-many-requests':
@@ -19,16 +20,11 @@ const loginErrorMessage = (err) => {
       return 'Acesso negado. Verifique suas credenciais.';
   }
 };
-import { Lock, Mail, ArrowRight, AlertCircle, KeyRound, X, CheckCircle, Orbit } from 'lucide-react';
-import Logo from '../components/Logo';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  // Do clique ate o painel abrir: o signIn termina antes de o perfil carregar,
-  // e nesse intervalo o formulario reaparecia parado — parecia que a pagina
-  // tinha recarregado e voltado para o login.
   const [signingIn, setSigningIn] = useState(false);
 
   const [isResetOpen, setIsResetOpen] = useState(false);
@@ -36,15 +32,12 @@ const Login = () => {
   const [resetMessage, setResetMessage] = useState('');
   const [resetError, setResetError] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
-  
+
   const { login, resetPassword, currentUser, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  // Volta para a tela que o usuario tentou abrir antes do login.
   const destination = location.state?.from && location.state.from !== '/' ? location.state.from : '/dashboard';
 
-  // A navegacao acontece quando o perfil termina de resolver. Navegar logo apos
-  // o signIn chegava na rota protegida antes do perfil e voltava para o login.
   useEffect(() => {
     if (currentUser && !authLoading) navigate(destination, { replace: true });
   }, [currentUser, authLoading, navigate, destination]);
@@ -53,11 +46,9 @@ const Login = () => {
     e.preventDefault();
     setError('');
     setSigningIn(true);
-    // Baixa a tela inicial enquanto o perfil e validado.
     if (destination === '/dashboard') import('./Dashboard').catch(() => {});
     try {
       await login(email, password);
-      // Sucesso: continua em "Entrando…" ate o efeito acima navegar.
     } catch (err) {
       console.error(err);
       setError(loginErrorMessage(err));
@@ -65,40 +56,25 @@ const Login = () => {
     }
   };
 
-  // Sessao salva sendo validada (reabrir o app) ou login em andamento.
+  // Splashscreen de inicialização / validação de sessão
   if (authLoading || (signingIn && !error)) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4 relative overflow-hidden font-sans" aria-busy="true">
-        {/* Glow de fundo */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[60vw] h-[60vw] max-w-[500px] max-h-[500px] rounded-full bg-brand/15 blur-[120px]" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40vw] h-[40vw] max-w-[350px] max-h-[350px] rounded-full bg-cyan-500/10 blur-[90px]" />
-          <div className="absolute inset-0 bg-[url('/carbon-fibre.png')] opacity-5 mix-blend-overlay" />
-        </div>
-
-        <div className="relative z-10 flex flex-col items-center text-center max-w-sm px-6 animate-[loginFadeUp_0.4s_ease-out_both]" role="status">
-          {/* Logo icon com glow */}
-          <div className="relative mb-4 flex items-center justify-center">
-            <div className="absolute -inset-3 bg-gradient-to-r from-brand to-cyan-400 rounded-full blur-xl opacity-40 animate-pulse" />
-            <div className="relative w-16 h-16 rounded-3xl bg-white/[0.04] border border-white/15 backdrop-blur-xl flex items-center justify-center shadow-2xl p-2.5">
-              <Logo size="lg" showText={false} className="w-full h-full drop-shadow-[0_0_15px_rgba(79,70,229,0.5)]" />
-            </div>
+      <main className="min-h-screen flex items-center justify-center bg-slate-950 p-4 font-sans text-slate-100" aria-busy="true">
+        <div className="flex flex-col items-center text-center max-w-sm px-6 animate-fade-in" role="status">
+          <div className="w-14 h-14 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center shadow-lg p-2 mb-4">
+            <Logo size="md" showText={false} />
           </div>
 
-          {/* Nome da Marca com tipografia nitida em fundo escuro */}
-          <h1 className="text-3xl font-black text-white uppercase tracking-tighter flex items-center justify-center gap-2">
-            Nexus <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-cyan-400">ITAM</span>
+          <h1 className="text-xl font-bold text-white tracking-tight flex items-center justify-center gap-1.5">
+            Nexus <span className="text-brand">ITAM</span>
           </h1>
-          <p className="text-[10px] font-bold text-gray-400 mt-1 tracking-[0.25em] uppercase">
+          <p className="text-xs text-slate-400 mt-1 font-medium">
             Gestão Inteligente de Ativos
           </p>
 
-          {/* Loader e status */}
-          <div className="mt-7 flex flex-col items-center gap-2.5">
-            <Orbit className="animate-spin text-cyan-400" size={24} />
-            <p className="text-xs font-mono font-bold text-slate-300 tracking-wider">
-              {signingIn ? 'Entrando no sistema…' : 'Abrindo o sistema…'}
-            </p>
+          <div className="mt-6 flex items-center gap-2 text-xs font-mono text-slate-400">
+            <Loader2 className="animate-spin text-brand" size={16} />
+            <span>{signingIn ? 'Entrando no sistema…' : 'Abrindo o sistema…'}</span>
           </div>
         </div>
       </main>
@@ -108,7 +84,7 @@ const Login = () => {
   const handleResetPassword = async (e) => {
     e.preventDefault();
     if (!resetEmail) return setResetError('Digite seu e-mail para recuperar.');
-    
+
     try {
       setResetMessage('');
       setResetError('');
@@ -116,12 +92,11 @@ const Login = () => {
       await resetPassword(resetEmail);
       setResetMessage('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
       setTimeout(() => {
-         setIsResetOpen(false);
-         setResetMessage('');
+        setIsResetOpen(false);
+        setResetMessage('');
       }, 5000);
     } catch (err) {
       console.error(err);
-      // O erro aparece DENTRO do modal: antes ia para a tela de fundo, escondida.
       setResetError(err?.code === 'auth/too-many-requests'
         ? 'Muitas solicitações. Tente novamente em alguns minutos.'
         : 'Falha ao enviar e-mail. Verifique se o endereço está correto.');
@@ -131,169 +106,171 @@ const Login = () => {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#0a0a0c] p-4 relative overflow-hidden font-sans">
-      
-      {/* Background Animado - CSS Puro */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-[30%] -right-[10%] w-[70vw] h-[70vw] rounded-full bg-brand/10 blur-[120px]" />
-        <div className="absolute -bottom-[30%] -left-[10%] w-[60vw] h-[60vw] rounded-full bg-cyan-600/10 blur-[100px]" />
-        <div className="absolute inset-0 bg-[url('/carbon-fibre.png')] opacity-5 mix-blend-overlay"></div>
-      </div>
-
-      <div className="relative z-10 w-full max-w-md">
-        {/* Painel Glassmorphism */}
-        <div className="backdrop-blur-2xl bg-white/[0.03] border border-white/10 p-8 rounded-[2rem] shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] relative overflow-hidden">
-          
-          {/* Brilho Superior do Card */}
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-brand to-transparent opacity-50"></div>
-
-          <div className="flex flex-col items-center mb-8 relative animate-[loginFadeUp_0.6s_ease-out_0.1s_both]">
-            <div className="absolute -top-4 -z-10 w-24 h-24 bg-brand/20 blur-2xl rounded-full"></div>
-            <Logo size="lg" showText={false} className="drop-shadow-[0_0_15px_rgba(79,70,229,0.5)]" />
-            <h2 className="text-3xl font-black text-white uppercase tracking-tighter mt-4 flex items-center gap-2">
-              Nexus <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-cyan-400">ITAM</span>
+    <main className="min-h-screen flex items-center justify-center bg-slate-950 p-4 font-sans text-slate-100">
+      <div className="w-full max-w-sm">
+        {/* Card Operacional Principal */}
+        <div className="bg-slate-900 border border-slate-800/90 p-8 rounded-xl shadow-xl">
+          {/* Cabeçalho */}
+          <div className="flex flex-col items-center text-center mb-6">
+            <div className="w-12 h-12 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center p-2 mb-3 shadow-inner">
+              <Logo size="md" showText={false} />
+            </div>
+            <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-1.5">
+              Nexus <span className="text-brand">ITAM</span>
             </h2>
-            <p className="text-xs font-medium text-gray-400 mt-2 tracking-widest uppercase">Portal de Acesso Seguro</p>
+            <p className="text-xs text-slate-400 mt-1">Acesso à plataforma operacional</p>
           </div>
 
           {error && (
-            <div role="alert" className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl mb-6 text-xs font-bold flex items-center gap-2 animate-[loginFadeUp_0.3s_ease-out_both]">
-              <AlertCircle size={16} /> {error}
+            <div role="alert" className="bg-rose-500/10 border border-rose-500/30 text-rose-300 p-3 rounded-lg mb-5 text-xs font-semibold flex items-center gap-2">
+              <AlertCircle size={16} className="shrink-0 text-rose-400" />
+              <span>{error}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="animate-[loginFadeUp_0.6s_ease-out_0.2s_both]">
-              <label htmlFor="login-email" className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">ID Corporativo (E-mail)</label>
-              <div className="relative group">
-                <Mail className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-brand transition-colors" size={18} />
-                  <input 
-                    id="login-email"
-                    type="email" 
-                    required 
-                    autoComplete="username"
-                    className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner"
-                    placeholder="acesso@nexusitam.com"
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="login-email" className="block text-xs font-semibold text-slate-300 mb-1.5">
+                E-mail corporativo
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3 text-slate-500" size={16} />
+                <input
+                  id="login-email"
+                  type="email"
+                  required
+                  autoComplete="username"
+                  className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 rounded-lg focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand text-white text-sm placeholder-slate-600 transition-colors"
+                  placeholder="acesso@nexusitam.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
             </div>
 
-            <div className="animate-[loginFadeUp_0.6s_ease-out_0.3s_both]">
-              <label htmlFor="login-password" className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Chave de Segurança</label>
-              <div className="relative group">
-                <Lock className="absolute left-4 top-3.5 text-gray-500 dark:text-gray-400 group-focus-within:text-brand transition-colors" size={18} />
-                  <input 
-                    id="login-password"
-                    type="password" 
-                    required 
-                    autoComplete="current-password"
-                    className="w-full pl-12 pr-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all font-medium text-white text-sm placeholder-gray-600 shadow-inner tracking-widest"
-                    placeholder="••••••••"
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label htmlFor="login-password" className="text-xs font-semibold text-slate-300">
+                  Senha
+                </label>
+                <button
+                  type="button"
+                  onClick={() => { setResetEmail(email); setResetError(''); setIsResetOpen(true); }}
+                  className="text-xs text-slate-400 hover:text-brand font-medium transition-colors"
+                >
+                  Esqueceu a senha?
+                </button>
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3 text-slate-500" size={16} />
+                <input
+                  id="login-password"
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 rounded-lg focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand text-white text-sm placeholder-slate-600 transition-colors"
+                  placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
             </div>
 
-            <div className="pt-2 animate-[loginFadeUp_0.6s_ease-out_0.4s_both]">
-              <button 
-                type="submit" 
+            <div className="pt-2">
+              <button
+                type="submit"
                 disabled={signingIn}
-                className="w-full relative group overflow-hidden bg-white text-black font-black py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_25px_rgba(255,255,255,0.2)] hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70"
+                className="w-full bg-brand hover:bg-brand-dark text-white font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm shadow-sm disabled:opacity-60"
               >
-                <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-gray-200 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
                 {signingIn ? (
-                  <Orbit className="animate-spin text-brand" size={18} />
+                  <Loader2 className="animate-spin text-white" size={16} />
                 ) : (
-                  <>Autenticar <ArrowRight size={18} className="text-brand group-hover:translate-x-1 transition-transform" /></>
+                  <>
+                    <span>Autenticar</span>
+                    <ArrowRight size={16} />
+                  </>
                 )}
               </button>
             </div>
           </form>
 
-          <div className="mt-6 flex flex-col sm:flex-row justify-between items-center px-1 gap-4 sm:gap-0 animate-[loginFadeUp_0.6s_ease-out_0.5s_both]">
-              <button 
-                  type="button"
-                  onClick={() => { setResetEmail(email); setResetError(''); setIsResetOpen(true); }}
-                  className="text-[11px] text-gray-400 hover:text-white font-medium transition-colors border-b border-transparent hover:border-white pb-0.5"
-              >
-                  Recuperar credenciais
-              </button>
-              <Link 
-                  to="/register"
-                  className="text-[11px] px-4 py-2 rounded-full bg-white/5 border border-white/10 text-white hover:bg-white/10 font-bold transition-colors flex items-center gap-1"
-              >
-                  Nova Empresa
-              </Link>
+          <div className="mt-6 pt-5 border-t border-slate-800 flex items-center justify-between text-xs">
+            <span className="text-slate-400">Nova empresa?</span>
+            <Link
+              to="/register"
+              className="text-brand hover:text-white font-semibold transition-colors"
+            >
+              Criar conta
+            </Link>
           </div>
         </div>
-        
-        <div className="mt-8 text-center animate-[loginFadeUp_0.6s_ease-out_0.6s_both]">
-          <p className="text-[10px] text-gray-500 font-medium tracking-widest uppercase">
-            Nexus ITAM Security Protocol © {new Date().getFullYear()}
-          </p>
+
+        <div className="mt-6 text-center text-xs text-slate-500">
+          Nexus ITAM · {new Date().getFullYear()}
         </div>
       </div>
 
-      {/* Janela de Recuperação Glassmorphism */}
+      {/* Modal de Redefinição de Senha */}
       {isResetOpen && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-out_both]"
+        <div
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
           onClick={(e) => { if (e.target === e.currentTarget) setIsResetOpen(false); }}
         >
-            <div className="bg-[#121214] border border-white/10 w-full max-w-sm rounded-3xl shadow-2xl p-8 relative overflow-hidden animate-[loginScaleIn_0.3s_ease-out_both]">
-                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-brand to-transparent opacity-50"></div>
-                
-                <button type="button" aria-label="Fechar" onClick={() => setIsResetOpen(false)} className="absolute top-5 right-5 text-gray-400 hover:text-white transition-colors bg-white/5 p-1 rounded-full"><X size={18}/></button>
-                
-                <div className="mb-8 text-center relative z-10">
-                    <div className="w-14 h-14 bg-brand/20 border border-brand/30 text-brand rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-[0_0_15px_rgba(79,70,229,0.3)]">
-                        <KeyRound size={24} />
-                    </div>
-                    <h3 className="font-black text-white text-xl tracking-tight">Recuperação Segura</h3>
-                    <p className="text-xs text-gray-400 mt-2 px-2 leading-relaxed">Informe o e-mail da sua conta. Enviaremos um link para você criar uma nova senha.</p>
-                </div>
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-xl shadow-2xl p-6 relative">
+            <button
+              type="button"
+              aria-label="Fechar"
+              onClick={() => setIsResetOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors p-1 rounded-md"
+            >
+              <X size={18} />
+            </button>
 
-                {resetError && (
-                    <div role="alert" className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl mb-4 text-xs font-bold flex items-center gap-2">
-                        <AlertCircle size={16} /> {resetError}
-                    </div>
-                )}
-
-                {resetMessage ? (
-                    <div className="bg-green-500/10 text-green-400 p-5 rounded-2xl text-center mb-4 border border-green-500/20 flex flex-col items-center gap-3 animate-[loginScaleIn_0.3s_ease-out_both]">
-                        <CheckCircle size={28} />
-                        <p className="text-sm font-bold tracking-wide">Protocolo Enviado!</p>
-                        <p className="text-xs opacity-80">Verifique a caixa de entrada (e spam).</p>
-                    </div>
-                ) : (
-                    <form onSubmit={handleResetPassword} className="space-y-5 relative z-10">
-                        <div>
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">E-mail Vinculado</label>
-                            <input 
-                                type="email" 
-                                required 
-                                className="w-full p-3 bg-black/50 border border-white/10 rounded-xl focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all text-sm font-medium text-white placeholder-gray-600"
-                                placeholder="usuario@nexusitam.com"
-                                value={resetEmail}
-                                onChange={(e) => setResetEmail(e.target.value)}
-                            />
-                        </div>
-                        <button 
-                            type="submit" 
-                            disabled={resetLoading}
-                            className="w-full bg-brand text-white font-bold py-3.5 rounded-xl hover:bg-brand-dark transition-colors shadow-[0_0_15px_rgba(79,70,229,0.4)] text-sm tracking-wide hover:scale-[1.02] active:scale-[0.98]"
-                        >
-                            {resetLoading ? 'Enviando...' : 'Enviar link de redefinição'}
-                        </button>
-                    </form>
-                )}
+            <div className="mb-5 text-center">
+              <div className="w-10 h-10 bg-brand/10 text-brand rounded-lg flex items-center justify-center mx-auto mb-3">
+                <KeyRound size={20} />
+              </div>
+              <h3 className="font-bold text-white text-base">Redefinir Senha</h3>
+              <p className="text-xs text-slate-400 mt-1">Informe seu e-mail para receber o link de recuperação.</p>
             </div>
+
+            {resetError && (
+              <div role="alert" className="bg-rose-500/10 border border-rose-500/30 text-rose-300 p-3 rounded-lg mb-4 text-xs font-semibold flex items-center gap-2">
+                <AlertCircle size={15} className="shrink-0 text-rose-400" />
+                <span>{resetError}</span>
+              </div>
+            )}
+
+            {resetMessage ? (
+              <div className="bg-emerald-500/10 text-emerald-300 p-4 rounded-lg text-center mb-4 border border-emerald-500/30 flex flex-col items-center gap-2">
+                <CheckCircle size={22} className="text-emerald-400" />
+                <p className="text-xs font-semibold">{resetMessage}</p>
+              </div>
+            ) : (
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">E-mail cadastrado</label>
+                  <input
+                    type="email"
+                    required
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand text-sm text-white placeholder-slate-600"
+                    placeholder="usuario@nexusitam.com"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={resetLoading}
+                  className="w-full bg-brand hover:bg-brand-dark text-white font-semibold py-2.5 rounded-lg transition-colors text-xs disabled:opacity-60"
+                >
+                  {resetLoading ? 'Enviando...' : 'Enviar link de recuperação'}
+                </button>
+              </form>
+            )}
+          </div>
         </div>
       )}
-
     </main>
   );
 };

@@ -282,7 +282,7 @@ const ProjectsPage = () => {
                 />
               ))}
               {projects.length === 0 && (
-                <div className="col-span-full text-center py-20 text-gray-400 dark:text-gray-500 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-3xl">
+                <div className="col-span-full text-center py-20 text-gray-400 dark:text-gray-500 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-xl">
                   <FolderGit2 size={48} className="mx-auto mb-4 opacity-20"/>
                   <p className="font-bold">Nenhum projeto encontrado.</p>
                   <p className="text-sm mt-1">{canWrite ? 'Inicie um novo projeto para organizar os trabalhos.' : 'Nenhum projeto cadastrado nesta empresa.'}</p>

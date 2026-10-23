@@ -638,14 +638,14 @@ const AssetDetail = () => {
       )}
 
       {/* Quadro de destaque no topo, exibindo a visão geral principal do equipamento */}
-      <div className="bg-white dark:bg-slate-800 rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100 dark:border-slate-700 relative overflow-hidden mb-8 group">
+      <div className="bg-white dark:bg-slate-800 rounded-xl p-6 md:p-10 shadow-sm border border-gray-100 dark:border-slate-700 relative overflow-hidden mb-8 group">
         <div
           className={`absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-700/30 dark:to-slate-700/10 rounded-bl-full -mr-16 -mt-16 opacity-50 pointer-events-none transition-all duration-700 group-hover:scale-110`}
         ></div>
 
         <div className="flex flex-col md:flex-row gap-8 relative z-10">
           <div className="flex-shrink-0">
-            <div className="w-24 h-24 md:w-32 md:h-32 bg-gray-50 dark:bg-slate-900 rounded-3xl flex items-center justify-center text-gray-900 dark:text-white shadow-inner border border-gray-100 dark:border-slate-700">
+            <div className="w-24 h-24 md:w-32 md:h-32 bg-gray-50 dark:bg-slate-900 rounded-xl flex items-center justify-center text-gray-900 dark:text-white shadow-inner border border-gray-100 dark:border-slate-700">
               <AssetIcon
                 type={asset.type}
                 category={asset.category}
@@ -729,7 +729,7 @@ const AssetDetail = () => {
           className={`lg:col-span-2 space-y-8 ${activeTab === "history" ? "hidden lg:block" : ""}`}
         >
           {/* Card com os dados do usuário atual em posse da máquina e sua localização física */}
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm relative overflow-hidden">
+          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm relative overflow-hidden">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
               <User size={20} /> Responsabilidade e Localização
             </h3>
@@ -799,7 +799,7 @@ const AssetDetail = () => {
           </div>
 
           {/* Card listando todas as chaves técnicas do hardware como identificadores e valores de componentes */}
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <Monitor size={20} /> Especificações
@@ -884,7 +884,7 @@ const AssetDetail = () => {
           </div>
 
           {/* Lista gerenciável de pequenos acessórios extras fornecidos em conjunto com o equipamento */}
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
               <Plug size={20} /> Periféricos & Acessórios
             </h3>
@@ -947,7 +947,7 @@ const AssetDetail = () => {
 
           {/* Agrupamento final para notas detalhadas e armazenamento de links e arquivos digitais */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col">
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                   <StickyNote size={20} /> Notas
@@ -977,7 +977,7 @@ const AssetDetail = () => {
               ></textarea>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col">
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm flex flex-col">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                 <LinkIcon size={20} /> Anexos & Links
               </h3>
@@ -1066,7 +1066,7 @@ const AssetDetail = () => {
           className={`lg:col-span-1 space-y-6 ${activeTab === "details" ? "hidden lg:block" : ""}`}
         >
           <AssetTermsCard tenantId={asset.tenantId || tenantId} assetId={id} refreshKey={termsVersion} />
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm h-full flex flex-col">
+          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm h-full flex flex-col">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
               <History size={20} /> Linha do Tempo
             </h3>

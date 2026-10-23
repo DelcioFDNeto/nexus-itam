@@ -126,17 +126,23 @@ const NexusPlansManager = () => {
 
   return (
     <div className="max-w-7xl mx-auto pb-24 space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden border border-white/5">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="p-4 bg-white/5 text-indigo-300 rounded-2xl border border-white/10"><Layers size={32} /></div>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 rounded-xl p-5 border border-slate-200/90 dark:border-slate-800 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+            <Layers size={20} />
+          </div>
           <div>
-            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">Planos e limites</h1>
-            <p className="text-slate-400 font-medium text-sm mt-1">Padrões comerciais. Ajustes de uma empresa específica ficam em Empresas → Detalhes.</p>
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Planos e limites</h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Padrões comerciais. Ajustes de uma empresa específica ficam em Empresas → Detalhes.</p>
           </div>
         </div>
-        <button onClick={load} aria-label="Recarregar" title="Recarregar" className="relative z-10 flex items-center justify-center w-12 h-12 bg-white/5 hover:bg-white/10 text-white rounded-xl transition-all border border-white/10">
-          <RefreshCcw size={16} className={loading ? 'animate-spin' : ''} />
+        <button
+          onClick={load}
+          aria-label="Recarregar"
+          title="Recarregar"
+          className="flex items-center justify-center w-9 h-9 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg transition-colors border border-slate-200 dark:border-slate-700 shrink-0"
+        >
+          <RefreshCcw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
@@ -147,7 +153,7 @@ const NexusPlansManager = () => {
           return (
             <div
               key={plan.id}
-              className={`bg-white dark:bg-slate-800 rounded-3xl border p-6 flex flex-col justify-between gap-6 ${isEnterprise ? 'border-amber-500/40 shadow-xl shadow-amber-900/5' : 'border-gray-100 dark:border-slate-700 shadow-sm'}`}
+              className={`bg-white dark:bg-slate-800 rounded-xl border p-6 flex flex-col justify-between gap-6 ${isEnterprise ? 'border-amber-500/40 shadow-xl shadow-amber-900/5' : 'border-gray-100 dark:border-slate-700 shadow-sm'}`}
             >
               <div>
                 <div className="flex justify-between items-start">
@@ -192,7 +198,7 @@ const NexusPlansManager = () => {
 
       {editingPlan && form && (
         <div className="fixed inset-0 !mt-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4" role="dialog" aria-modal="true" aria-label={`Editar ${editingPlan.name}`}>
-          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-3xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-black text-gray-900 dark:text-white">Editar plano</h2>
               <button onClick={() => setEditingPlan(null)} aria-label="Fechar" className="p-1 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-white"><X size={18} /></button>

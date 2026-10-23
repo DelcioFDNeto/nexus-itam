@@ -150,23 +150,22 @@ const TenantManager = () => {
   return (
     <div className="max-w-7xl mx-auto pb-24 space-y-6">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden border border-white/5">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="p-4 bg-white/5 text-indigo-300 rounded-2xl border border-white/10">
-            <Building2 size={32} />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 rounded-xl p-5 border border-slate-200/90 dark:border-slate-800 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-brand/10 border border-brand/20 text-brand flex items-center justify-center shrink-0">
+            <Building2 size={20} />
           </div>
           <div>
-            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">Empresas</h1>
-            <p className="text-slate-400 font-medium text-sm mt-1">Planos, limites sob medida, identidade e saúde de cada cliente.</p>
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Empresas</h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Planos, limites sob medida, identidade e saúde de cada cliente.</p>
           </div>
         </div>
-        <div className="relative z-10 flex items-center gap-2">
-          <button onClick={() => setParam('novo', '1')} className="flex items-center gap-2 px-5 py-3 bg-white hover:bg-gray-100 text-black rounded-xl font-black text-xs uppercase tracking-wider transition-all active:scale-95 shadow-lg">
-            <PlusSquare size={16} /> Nova empresa
+        <div className="flex items-center gap-2">
+          <button onClick={() => setParam('novo', '1')} className="flex items-center gap-1.5 px-3.5 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg font-semibold text-xs transition-colors shadow-sm">
+            <PlusSquare size={15} /> <span>Nova empresa</span>
           </button>
-          <button onClick={load} aria-label="Recarregar" title="Recarregar" className="flex items-center justify-center w-12 h-12 bg-white/5 hover:bg-white/10 text-white rounded-xl transition-all border border-white/10">
-            <RefreshCcw size={16} className={loading ? 'animate-spin' : ''} />
+          <button onClick={load} aria-label="Recarregar" title="Recarregar" className="flex items-center justify-center p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg transition-colors border border-slate-200/80 dark:border-slate-700">
+            <RefreshCcw size={15} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
@@ -184,7 +183,7 @@ const TenantManager = () => {
             key={stat.label}
             onClick={stat.onClick}
             disabled={!stat.onClick}
-            className="text-left bg-white dark:bg-slate-800 rounded-3xl p-5 border border-gray-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow disabled:cursor-default"
+            className="text-left bg-white dark:bg-slate-800 rounded-xl p-5 border border-gray-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow disabled:cursor-default"
           >
             <p className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">{stat.label}</p>
             <p className="text-2xl font-black text-gray-900 dark:text-white mt-1 tabular-nums">{stat.value}</p>
@@ -193,7 +192,7 @@ const TenantManager = () => {
       </div>
 
       {/* FILTROS */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 p-4 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center">
+      <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center">
         <div className="relative w-full md:flex-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -223,7 +222,7 @@ const TenantManager = () => {
       </div>
 
       {/* TABELA */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -336,7 +335,7 @@ const TenantManager = () => {
       {/* PROVISIONAMENTO */}
       {showProvision && (
         <div className="fixed inset-0 !mt-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4" role="dialog" aria-modal="true" aria-label="Nova empresa">
-          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-3xl p-6 w-full max-w-md shadow-2xl">
+          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-black text-gray-900 dark:text-white">Nova empresa</h2>
               <button onClick={closeProvision} aria-label="Fechar" className="p-1 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-white"><X size={18} /></button>
