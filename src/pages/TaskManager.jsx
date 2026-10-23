@@ -280,7 +280,8 @@ const TaskManager = () => {
             className="absolute right-3 top-3 bg-black text-white dark:bg-brand dark:hover:opacity-90 px-4 py-2 rounded-xl font-bold text-xs hover:bg-gray-800 uppercase tracking-wide transition-all disabled:opacity-50 flex items-center gap-1.5"
           >
             {savingQuick ? <RefreshCcw size={14} className="animate-spin" /> : null}
-            {savingQuick ? 'Salvando…' : 'Adicionar'}
+            {savingQuick ? 'Salvando…' : <span className="hidden sm:inline">Adicionar</span>}
+            {!savingQuick && <Plus size={14} className="sm:hidden" />}
           </button>
         </form>
       )}

@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { useNavigate } from 'react-router-dom';
-import { X, Camera, AlertTriangle, RefreshCcw } from 'lucide-react';
+import { X, Camera, AlertTriangle, RefreshCcw, Zap, ZapOff } from 'lucide-react';
 
 // Som de Bip simples (placeholder, reservado para uso futuro)
 // const beepSound = ...;
@@ -11,12 +11,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { db } from '../services/firebase';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 
-const QRScanner = ({ onClose, onScan }) => {
+const QRScanner = ({ onClose, onScan, title }) => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const tenantId = currentUser?.tenantId;
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [hasTorch, setHasTorch] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
   const lastScanRef = useRef(null);
   const scannerRef = useRef(null);
 
@@ -88,7 +90,14 @@ const QRScanner = ({ onClose, onScan }) => {
 
   useEffect(() => {
     const elementId = "reader";
-    const formats = [ Html5QrcodeSupportedFormats.QR_CODE ];
+    const formats = [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.DATA_MATRIX,
+    ];
     
     if (!scannerRef.current) {
         scannerRef.current = new Html5Qrcode(elementId, { formats });
@@ -117,21 +126,47 @@ const QRScanner = ({ onClose, onScan }) => {
           () => {}
         );
         setLoading(false);
+        try {
+          const track = scanner.getRunningTrackCapabilities?.();
+          if (track && 'torch' in track) setHasTorch(true);
+        } catch {
+          /* sem suporte a lanterna */
+        }
       } catch (err) {
         console.error("Erro scanner:", err);
         setLoading(false);
+        try {
+          const track = scanner.getRunningTrackCapabilities?.();
+          if (track && 'torch' in track) setHasTorch(true);
+        } catch {
+          /* sem suporte a lanterna */
+        }
         setError("Erro ao acessar câmera. Verifique permissões e HTTPS.");
       }
     };
 
     setTimeout(() => startScanner(), 100);
 
-    return () => {
+
+
+  return () => {
         if (scanner && scanner.isScanning) {
             scanner.stop().then(() => scanner.clear()).catch(() => {});
         }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleTorch = async () => {
+    try {
+      const next = !torchOn;
+      await scannerRef.current?.applyVideoConstraints({
+        advanced: [{ torch: next }],
+      });
+      setTorchOn(next);
+    } catch (e) {
+      console.warn('Erro ao alternar lanterna:', e);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/95 z-[9999] flex flex-col items-center justify-center p-4">
@@ -140,11 +175,23 @@ const QRScanner = ({ onClose, onScan }) => {
       </button>
 
       <div className="w-full max-w-md bg-gray-900 rounded-2xl overflow-hidden shadow-2xl relative border border-gray-800">
-        <div className="bg-gray-800 p-4 text-center text-white">
-            <h3 className="font-bold text-lg flex items-center justify-center gap-2">
+        <div className="bg-gray-800 p-4 text-white flex items-center justify-between">
+            <h3 className="font-bold text-sm sm:text-base flex items-center gap-2">
                 <Camera size={20} className="text-brand" /> 
-                {onScan ? "Modo Auditoria (Bipando...)" : "Scanner Nexus"}
+                <span className="truncate">{title || (onScan ? "Modo Auditoria (Bipando...)" : "Scanner Nexus")}</span>
             </h3>
+            {hasTorch && (
+              <button
+                type="button"
+                onClick={toggleTorch}
+                title="Alternar lanterna"
+                className={`p-2 rounded-xl border text-xs font-bold flex items-center gap-1 ${
+                  torchOn ? 'bg-amber-500 text-slate-900 border-amber-400' : 'bg-gray-700 text-gray-200 border-gray-600'
+                }`}
+              >
+                {torchOn ? <ZapOff size={14} /> : <Zap size={14} />}
+              </button>
+            )}
         </div>
         
         <div className="relative bg-black min-h-[300px] flex items-center justify-center">

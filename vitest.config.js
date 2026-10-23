@@ -2,7 +2,22 @@ import { configDefaults, defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'virtual-pwa-register-mock',
+      resolveId(id) {
+        if (id === 'virtual:pwa-register/react') {
+          return '\0virtual:pwa-register/react';
+        }
+      },
+      load(id) {
+        if (id === '\0virtual:pwa-register/react') {
+          return 'export const useRegisterSW = () => ({ needRefresh: [false, () => {}], offlineReady: [false, () => {}], updateServiceWorker: async () => {} });';
+        }
+      },
+    },
+  ],
   test: {
     environment: 'happy-dom',
     globals: true,

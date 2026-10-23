@@ -16,6 +16,8 @@ export default defineConfig({
       injectRegister: false,
       includeAssets: ['logo.webp', 'logo.png', 'pwa-192x192.png', 'pwa-512x512.png', 'carbon-fibre.png', 'vite.svg'],
       workbox: {
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
         // Bibliotecas pesadas usadas sob demanda (leitura de PDF, Excel,
         // exportacao em PDF) ficam fora do precache obrigatorio: so quem usa
         // baixa, e o cache de runtime guarda depois.

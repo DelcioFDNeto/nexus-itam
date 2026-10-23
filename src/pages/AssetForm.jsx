@@ -8,7 +8,8 @@ import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { assertWithinLimit, describeFirebaseError } from '../services/tenantService';
 import { toast } from 'sonner';
-import { Save, ArrowLeft, Search, Server, Box, User, MapPin, Building2, Tag, DollarSign, FileText, Database, ShieldCheck, Archive } from 'lucide-react';
+import { Save, ArrowLeft, Search, Server, Box, User, MapPin, Building2, Tag, DollarSign, FileText, Database, ShieldCheck, Archive, Camera } from 'lucide-react';
+import QRScanner from '../components/QRScanner';
 import AssetIcon from '../components/AssetIcon';
 import { buildAssetCatalog, SPEC_FIELDS, isRootSpec } from '../utils/assetTypes';
 import LocationSelect from '../components/LocationSelect';
@@ -34,6 +35,7 @@ const AssetForm = () => {
   // Inquilino dono do registro: a edição nunca move o ativo de empresa.
   const [originalTenantId, setOriginalTenantId] = useState(null);
   const [customFieldsDef, setCustomFieldsDef] = useState([]);
+  const [scanTarget, setScanTarget] = useState(null);
   // Tipos proprios da empresa, somados ao catalogo base.
   const [customTypes, setCustomTypes] = useState([]);
 
@@ -279,13 +281,33 @@ const AssetForm = () => {
                              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Patrimônio (Tag)</label>
                              <div className="relative">
                                  <Tag size={18} className="absolute left-4 top-4 text-gray-400 dark:text-gray-500"/>
-                                 <input name="internalId" value={formData.internalId} onChange={handleChange} className="w-full pl-11 pr-4 py-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:focus:bg-slate-800 focus:border-black rounded-xl outline-none font-mono font-bold text-gray-900 dark:text-white transition-all uppercase" required placeholder="Ex: NB-001" />
+                                 <input name="internalId" value={formData.internalId} onChange={handleChange} className="w-full pl-11 pr-11 py-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:focus:bg-slate-800 focus:border-black rounded-xl outline-none font-mono font-bold text-gray-900 dark:text-white transition-all uppercase" required placeholder="Ex: NB-001" />
+                                 <button
+                                     type="button"
+                                     onClick={() => setScanTarget('internalId')}
+                                     title="Escanear código com a câmera"
+                                     aria-label="Escanear Patrimônio com a câmera"
+                                     className="absolute right-2 top-2 p-2 rounded-lg text-gray-400 hover:text-brand hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                                 >
+                                     <Camera size={18} />
+                                 </button>
                              </div>
                         </div>
 
                         <div>
                              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 block">Serial Number</label>
-                             <input name="serialNumber" value={formData.serialNumber} onChange={handleChange} className="w-full p-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:focus:bg-slate-800 focus:border-black rounded-xl outline-none font-mono text-sm font-bold text-gray-900 dark:text-white transition-all" placeholder="N/A" />
+                             <div className="relative">
+                                 <input name="serialNumber" value={formData.serialNumber} onChange={handleChange} className="w-full pl-4 pr-11 py-3.5 bg-gray-50 dark:bg-slate-900 border-2 border-transparent focus:bg-white dark:focus:bg-slate-800 focus:border-black rounded-xl outline-none font-mono text-sm font-bold text-gray-900 dark:text-white transition-all" placeholder="N/A" />
+                                 <button
+                                     type="button"
+                                     onClick={() => setScanTarget('serialNumber')}
+                                     title="Escanear número de série com a câmera"
+                                     aria-label="Escanear número de série com a câmera"
+                                     className="absolute right-2 top-2 p-2 rounded-lg text-gray-400 hover:text-brand hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                                 >
+                                     <Camera size={18} />
+                                 </button>
+                             </div>
                         </div>
                     </div>
 
@@ -554,6 +576,22 @@ const AssetForm = () => {
             </div>
 
         </form>
+
+        {scanTarget && (
+          <QRScanner
+            title={scanTarget === 'internalId' ? 'Escanear Etiqueta de Patrimônio' : 'Escanear Número de Série (Serial)'}
+            onScan={(code) => {
+              const clean = String(code || '').trim();
+              setFormData((prev) => ({
+                ...prev,
+                [scanTarget]: scanTarget === 'internalId' ? clean.toUpperCase() : clean,
+              }));
+              setScanTarget(null);
+              toast.success(`Código escaneado: ${clean}`);
+            }}
+            onClose={() => setScanTarget(null)}
+          />
+        )}
     </div>
   );
 };

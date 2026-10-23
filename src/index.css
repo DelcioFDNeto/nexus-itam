@@ -45,11 +45,18 @@
     button,
     a[role='button'],
     [role='tab'] {
-      min-height: 40px;
+      min-height: 44px;
     }
   }
 
   /* Safe Area for Mobile Notch */
+  @media screen and (max-width: 768px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']),
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
   .safe-area-pt {
     padding-top: env(safe-area-inset-top);
   }

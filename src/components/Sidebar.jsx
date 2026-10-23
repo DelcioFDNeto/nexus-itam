@@ -4,11 +4,12 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Server, PlusSquare, FileInput,
   Users, LogOut, ClipboardCheck, X, ShieldCheck, Layers, Globe,
-  FolderGit2, Settings, ChevronLeft, ChevronRight, Search, Activity, UserCog, Building2, Moon, Sun, FileSignature,
+  FolderGit2, Settings, ChevronLeft, ChevronRight, Search, Activity, UserCog, Building2, Moon, Sun, FileSignature, Sparkles,
 } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { usePWA } from '../contexts/PWAContext';
 import { can, isSuperadmin, ROLE_LABELS } from '../utils/permissions';
 import { isModuleEnabled } from '../utils/entitlements';
 
@@ -28,6 +29,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
   const { isDark, setTheme } = useTheme();
+  const { needRefresh, applyUpdate } = usePWA();
 
   const master = isSuperadmin(currentUser);
 
@@ -251,6 +253,16 @@ const Sidebar = ({ isOpen, onClose, isCollapsed = false, toggleCollapse, onSearc
 
         {/* --- Rodape: identidade + acoes --- */}
         <div className={`shrink-0 border-t border-slate-100 p-4 dark:border-slate-800 ${isCollapsed ? 'space-y-2' : ''}`}>
+          {needRefresh && !isCollapsed && (
+            <button
+              type="button"
+              onClick={applyUpdate}
+              className="mb-3 w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 px-3 py-2 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-indigo-500/20 transition-transform active:scale-95"
+            >
+              <Sparkles size={14} />
+              <span>Atualizar Sistema</span>
+            </button>
+          )}
           {!isCollapsed && (
             <div className="mb-3 flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/60">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-black text-white dark:bg-white dark:text-slate-900">

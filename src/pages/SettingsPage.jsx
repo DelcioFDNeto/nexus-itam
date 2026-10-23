@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import {
-  Building2, ChevronRight, Cpu, Database, Download, FileText, Layers, Lock, MapPin, Palette, RefreshCcw, Save, Settings, Tag, UserCog, Users,
+  Building2, ChevronRight, Cpu, Database, Download, FileText, Layers, Lock, MapPin, Palette, RefreshCcw, Save, Settings, Smartphone, Tag, UserCog, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '../services/firebase';
@@ -28,6 +28,7 @@ import DocumentsSection from '../components/settings/DocumentsSection';
 import LabelsSection from '../components/settings/LabelsSection';
 import AppearanceSection from '../components/settings/AppearanceSection';
 import BackupSection from '../components/settings/BackupSection';
+import AppSettingsSection from '../components/settings/AppSettingsSection';
 import { Card, SectionHeader } from '../components/settings/settingsUi';
 
 // Campos da empresa gravados em /settings/{tenantId}. Sem valores de outra
@@ -88,7 +89,7 @@ const NAV = [
       { id: 'usuarios', label: 'Usuários e convites', icon: Users, to: '/users', show: (u) => can(u, 'users:manage') },
     ],
   },
-  { group: 'Pessoal', items: [{ id: 'aparencia', label: 'Minha aparência', icon: UserCog }] },
+  { group: 'Pessoal e Dispositivo', items: [{ id: 'aparencia', label: 'Minha aparência', icon: UserCog }, { id: 'app', label: 'Aplicativo & PWA', icon: Smartphone }] },
   {
     group: 'Dados',
     items: [{ id: 'backup', label: 'Backup e restauração', icon: Download, show: (u) => can(u, 'backup:create') || can(u, 'backup:restore') }],
@@ -218,6 +219,7 @@ const SettingsPage = () => {
       case 'documentos': return <DocumentsSection {...sectionProps} />;
       case 'etiquetas': return <LabelsSection {...sectionProps} />;
       case 'aparencia': return <AppearanceSection />;
+      case 'app': return <AppSettingsSection />;
       case 'backup': return <BackupSection currentUser={currentUser} />;
       case 'locais':
         return (

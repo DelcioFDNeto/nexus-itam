@@ -11,7 +11,8 @@ import Login from './pages/Login';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
-import PWAToast from './components/PWAToast';
+import PWAUpdatePrompt from './components/PWAUpdatePrompt';
+import { PWAProvider } from './contexts/PWAContext';
 import { ConfirmProvider } from './components/ConfirmDialog';
 
 const PageLoader = () => (
@@ -92,8 +93,9 @@ function App() {
       <AuthProvider>
         <ThemeProvider>
           <ConfirmProvider>
+            <PWAProvider>
           <Router>
-            <PWAToast />
+            <PWAUpdatePrompt />
             <Routes>
               {/* --- Rotas publicas --- */}
               <Route path="/" element={<Login />} />
@@ -139,6 +141,7 @@ function App() {
               <Route path="*" element={<AppRoute element={<NotFound />} />} />
             </Routes>
           </Router>
+          </PWAProvider>
           </ConfirmProvider>
         </ThemeProvider>
       </AuthProvider>
