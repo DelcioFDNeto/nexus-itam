@@ -64,6 +64,20 @@ export const getAssetById = async (id, tenantId) => {
   throw new Error("Ativo não encontrado");
 };
 
+/** Busca um ativo pelo código de patrimônio (Tag) no mesmo inquilino. */
+export const getAssetByInternalId = async (internalId, tenantId) => {
+  if (!internalId || !tenantId) return null;
+  const q = query(
+    assetsCollection,
+    where('tenantId', '==', tenantId),
+    where('internalId', '==', String(internalId).trim().toUpperCase()),
+    limit(1)
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+};
+
 // Busca histórico na coleção global filtrando pelo ID do ativo
 export const getAssetHistory = async (assetId, tenantId, limitCount = 20) => {
   if (!tenantId) return [];
