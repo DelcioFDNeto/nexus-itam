@@ -562,12 +562,16 @@ const AssetForm = () => {
                 </div>
 
                 {/* Botão final que efetiva o salvamento das informações digitadas */}
-                <button type="submit" disabled={loading} className="w-full py-4 bg-black dark:bg-brand text-white rounded-2xl font-black text-lg hover:bg-gray-800 dark:hover:opacity-90 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed">
+                <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3 bg-brand hover:bg-brand-dark text-white rounded-lg font-semibold text-sm transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                     {loading ? (
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                     ) : (
                         <>
-                            <Save size={24} />
+                            <Save size={18} />
                             {id ? 'Salvar Alterações' : 'Cadastrar Ativo'}
                         </>
                     )}

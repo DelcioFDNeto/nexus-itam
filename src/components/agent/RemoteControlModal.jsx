@@ -704,7 +704,7 @@ export default function RemoteControlModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm p-0 md:p-4">
-      <div className="bg-white dark:bg-slate-900 border-0 md:border border-gray-200 dark:border-slate-800 rounded-none md:rounded-2xl shadow-2xl w-full max-w-7xl h-[100dvh] md:h-[92vh] flex flex-col overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 border-0 md:border border-gray-200 dark:border-slate-800 rounded-none md:rounded-xl shadow-2xl w-full max-w-7xl h-[100dvh] md:h-[92vh] flex flex-col overflow-hidden">
         {/* Top Bar Responsiva */}
         <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 md:px-5 py-2.5 md:py-3.5 bg-slate-900 text-white border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -1058,7 +1058,7 @@ export default function RemoteControlModal({
                     </div>
                   </div>
                 ) : (
-                  <div className="max-w-md text-center p-5 md:p-6 rounded-2xl bg-slate-900/90 border border-slate-800 mx-3">
+                  <div className="max-w-md text-center p-5 md:p-6 rounded-xl bg-slate-900/90 border border-slate-800 mx-3">
                     <Monitor className="w-12 h-12 text-blue-400 mx-auto mb-3 opacity-80" />
                     {SESSION_END_MESSAGES[endedState] ? (
                       <>
@@ -1360,7 +1360,7 @@ export default function RemoteControlModal({
           {activeTab === 'actions' && (
             <div className="flex-1 p-4 md:p-6 grid grid-cols-1 lg:grid-cols-2 gap-5 bg-gray-50 dark:bg-slate-950">
               {/* Atualizacao Remota do Agente (OTA) */}
-              <div className="lg:col-span-2 p-5 rounded-2xl bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/40 dark:to-slate-900 border border-indigo-200 dark:border-indigo-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="lg:col-span-2 p-5 rounded-xl bg-slate-900 border border-slate-800 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
                     <ArrowUpCircle className="w-5 h-5" />
@@ -1394,7 +1394,7 @@ export default function RemoteControlModal({
               </div>
 
               {/* Pop-up Message to User */}
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 space-y-3">
+              <div className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 space-y-3">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="w-5 h-5 text-blue-600" />
                   <h3 className="font-bold text-sm text-gray-900 dark:text-white">
@@ -1433,7 +1433,7 @@ export default function RemoteControlModal({
               </div>
 
               {/* Power & Security Controls */}
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 space-y-3">
+              <div className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 space-y-3">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-emerald-600" />
                   <h3 className="font-bold text-sm text-gray-900 dark:text-white">
@@ -1476,7 +1476,7 @@ export default function RemoteControlModal({
               </div>
 
               {isAdmin && (
-                <div className="lg:col-span-2 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="lg:col-span-2 p-5 rounded-xl bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
                   <div className="flex items-start gap-2">
                     <ShieldOff className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
                     <div>
@@ -1497,7 +1497,7 @@ export default function RemoteControlModal({
               )}
 
               {/* Silent Software Management (Winget) */}
-              <div className="lg:col-span-2 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 space-y-4">
+              <div className="lg:col-span-2 p-5 rounded-xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 space-y-4">
                 <div className="flex items-center gap-2">
                   <Package className="w-5 h-5 text-purple-600" />
                   <h3 className="font-bold text-sm text-gray-900 dark:text-white">

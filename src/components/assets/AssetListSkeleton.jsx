@@ -47,7 +47,7 @@ const AssetListSkeleton = () => {
       </div>
 
       {/* DESKTOP TABLE SKELETON */}
-      <div className="hidden md:block bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden">
+      <div className="hidden md:block bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden">
           <div className="p-5 border-b border-gray-100 dark:border-slate-700 flex gap-4">
               <div className="h-6 w-6 bg-gray-200 dark:bg-slate-700 rounded"></div>
               <div className="h-6 w-1/4 bg-gray-200 dark:bg-slate-700 rounded"></div>

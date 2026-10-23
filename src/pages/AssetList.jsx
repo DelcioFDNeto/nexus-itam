@@ -394,11 +394,11 @@ const AssetList = () => {
             <button
               type="button"
               onClick={() => setShowMobileFilters((prev) => !prev)}
-              className={`md:hidden p-3 rounded-2xl border transition-colors ${showMobileFilters ? "bg-black text-white dark:bg-white dark:text-slate-900 border-black" : "bg-gray-50 dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200"}`}
+              className={`md:hidden p-2.5 rounded-lg border transition-colors ${showMobileFilters ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-slate-900" : "bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-400"}`}
               title="Filtros avançados"
               aria-label="Filtros avançados"
             >
-              <Filter size={20} />
+              <Filter size={18} />
             </button>
           </div>
 
@@ -592,66 +592,63 @@ const AssetList = () => {
           </div>
         ) : (
           <>
-            {/* Exibe listagem agrupada em cards com menos detalhes quando no celular por falta de tela */}
-            <div className="grid grid-cols-1 gap-4 md:hidden pb-20">
+            {/* Exibe listagem agrupada em cards com menos detalhes quando no celular */}
+            <div className="grid grid-cols-1 gap-3 md:hidden pb-20">
               {processedAssets.map((asset) => (
                 <div
                   key={asset.id}
                   onClick={() => navigate(`/assets/${asset.id}`)}
-                  className={`p-5 rounded-xl border border-gray-100 dark:border-slate-700 shadow-[0_4px_20px_-12px_rgba(0,0,0,0.1)] active:scale-[0.98] transition-all relative overflow-hidden group ${selectedIds.includes(asset.id) ? "ring-2 ring-black bg-gray-50 dark:bg-slate-900" : "bg-white dark:bg-slate-800"}`}
+                  className={`p-4 rounded-xl border transition-colors group cursor-pointer ${selectedIds.includes(asset.id) ? "border-brand bg-brand/5 dark:bg-brand/10 dark:border-brand/50" : "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm"}`}
                 >
-                  {/* Forma orgânica desenhada apenas para visual agradável das extremidades do Card */}
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 dark:bg-slate-900 rounded-full -mr-10 -mt-10 opacity-50 pointer-events-none"></div>
-
-                  <div className="flex justify-between items-start mb-4 relative z-10">
+                  <div className="flex justify-between items-center mb-3">
                     <StatusBadge status={asset.status} size="sm" />
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleSelectOne(asset.id);
                       }}
-                      className="text-gray-300 active:scale-125 transition-transform p-1"
+                      className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors p-1"
                     >
                       {selectedIds.includes(asset.id) ? (
-                        <CheckSquare size={24} className="text-black dark:text-white" />
+                        <CheckSquare size={20} className="text-brand" />
                       ) : (
-                        <Square size={24} />
+                        <Square size={20} />
                       )}
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-5 relative z-10">
-                    <div className="w-16 h-16 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl flex items-center justify-center shadow-sm text-gray-700 dark:text-gray-200 shrink-0">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0">
                       <AssetIcon
                         type={asset.type}
                         category={asset.category}
                         model={asset.model}
                         internalId={asset.internalId}
-                        size={32}
+                        size={20}
                       />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-black text-gray-900 dark:text-white leading-tight truncate text-lg">
+                      <h3 className="font-bold text-slate-900 dark:text-white leading-tight truncate text-sm">
                         {asset.model}
                       </h3>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 font-mono font-bold mt-1 tracking-wider">
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
                         {asset.internalId}
                       </p>
                     </div>
                   </div>
 
-                  <div className="mt-5 pt-4 border-t border-gray-100 dark:border-slate-700 flex items-center justify-between text-xs font-medium text-gray-500 dark:text-gray-400 relative z-10">
-                    <div className="flex items-center gap-2 truncate max-w-[60%]">
-                      <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center">
-                        <User size={12} />
+                  <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                    <div className="flex items-center gap-1.5 truncate max-w-[60%]">
+                      <div className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0">
+                        <User size={11} />
                       </div>
                       <span className="truncate">
-                        {asset.assignedTo || asset.clientName || "N/A"}
+                        {asset.assignedTo || asset.clientName || "—"}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1 opacity-75">
-                      <MapPin size={12} />{" "}
-                      {asset.location?.substring(0, 10) || "N/A"}
+                    <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                      <MapPin size={11} />
+                      <span className="truncate max-w-[100px]">{asset.location || "—"}</span>
                     </div>
                   </div>
                 </div>
@@ -792,64 +789,65 @@ const AssetList = () => {
       {/* Janela de controle extra que sobe da tela do usuário ao fazer checagem nos itens individualmente */}
       {selectedIds.length > 0 && (
         <div
-          className={`fixed bottom-[90px] lg:bottom-8 left-1/2 -translate-x-1/2 bg-[#18181B] text-white p-2 pl-6 pr-2 rounded-full shadow-2xl z-50 flex items-center gap-6 animate-in slide-in-from-bottom-10 border border-white/10 w-[90%] md:w-auto max-w-2xl`}
+          className={`fixed bottom-[84px] lg:bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white p-2 pl-4 pr-2 rounded-xl shadow-2xl z-50 flex items-center gap-3 border border-slate-800 w-[calc(100%-1.5rem)] md:w-auto max-w-2xl animate-in fade-in slide-in-from-bottom-4`}
         >
-          <div className="flex items-center gap-3">
-            <div className="bg-white text-black w-6 h-6 rounded-full flex items-center justify-center font-black text-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="bg-brand text-white w-6 h-6 rounded-md flex items-center justify-center font-bold text-xs tabular-nums">
               {selectedIds.length}
             </div>
-            <span className="text-sm font-bold whitespace-nowrap hidden sm:inline">
+            <span className="text-xs font-semibold whitespace-nowrap hidden sm:inline text-slate-200">
               Selecionados
             </span>
           </div>
-          <div className="h-6 w-[1px] bg-white/20"></div>
+          <div className="h-5 w-[1px] bg-slate-800"></div>
           <div className="flex gap-1 overflow-x-auto scrollbar-hide">
             {canWrite && (
               <button
                 onClick={() => setIsStatusModalOpen(true)}
-                className="flex items-center gap-2 hover:bg-white/20 px-4 py-2 rounded-full text-xs font-bold uppercase transition-colors whitespace-nowrap"
+                className="flex items-center gap-1.5 hover:bg-slate-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap text-slate-200 hover:text-white"
               >
-                <RefreshCcw size={14} /> Status
+                <RefreshCcw size={13} /> Status
               </button>
             )}
             <button
               onClick={handleBulkPrint}
-              className="flex items-center gap-2 hover:bg-white/20 px-4 py-2 rounded-full text-xs font-bold uppercase transition-colors whitespace-nowrap"
+              className="flex items-center gap-1.5 hover:bg-slate-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap text-slate-200 hover:text-white"
             >
-              <PrinterIcon size={14} /> Etiquetas
+              <PrinterIcon size={13} /> Etiquetas
             </button>
             {canIssueTerms && (
               <>
                 <button
                   onClick={() => setTermModal("responsabilidade")}
                   title="Um termo de responsabilidade com todos os itens selecionados"
-                  className="flex items-center gap-2 hover:bg-white/20 px-4 py-2 rounded-full text-xs font-bold uppercase transition-colors whitespace-nowrap"
+                  className="flex items-center gap-1.5 hover:bg-slate-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap text-slate-200 hover:text-white"
                 >
-                  <FileSignature size={14} /> Termo
+                  <FileSignature size={13} /> Termo
                 </button>
                 <button
                   onClick={() => setTermModal("transferencia")}
                   title="Enviar os itens selecionados para uma loja"
-                  className="flex items-center gap-2 hover:bg-white/20 px-4 py-2 rounded-full text-xs font-bold uppercase transition-colors whitespace-nowrap"
+                  className="flex items-center gap-1.5 hover:bg-slate-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap text-slate-200 hover:text-white"
                 >
-                  <Truck size={14} /> Transferir
+                  <Truck size={13} /> Transferir
                 </button>
               </>
             )}
             {selectedPeripheralsData.length > 0 && (
               <button
                 onClick={handleBulkPeripheralPrint}
-                className="flex items-center gap-2 hover:bg-white/20 px-4 py-2 rounded-full text-xs font-bold uppercase transition-colors whitespace-nowrap"
+                className="flex items-center gap-1.5 hover:bg-slate-800 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap text-slate-200 hover:text-white"
               >
-                <Plug size={14} /> Acessórios
+                <Plug size={13} /> Acessórios
               </button>
             )}
           </div>
           <button
             onClick={() => setSelectedIds([])}
-            className="p-2 hover:bg-red-600 rounded-full transition-colors ml-auto"
+            className="p-1.5 hover:bg-slate-800 rounded-lg transition-colors ml-auto text-slate-400 hover:text-white"
+            title="Limpar seleção"
           >
-            <X size={18} />
+            <X size={15} />
           </button>
         </div>
       )}
@@ -896,11 +894,11 @@ const AssetList = () => {
                     key={status}
                     onClick={() => handleBulkStatusChange(status)}
                     disabled={bulkProcessing}
-                    className="w-full py-3 px-5 rounded-2xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-black hover:text-white hover:border-black transition-all font-bold text-sm text-left flex items-center justify-between group active:scale-95 shadow-sm"
+                    className="w-full py-2.5 px-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition-colors font-semibold text-xs text-left flex items-center justify-between group shadow-sm disabled:opacity-50"
                   >
                     {status}{" "}
-                    <span className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Check size={16} />
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity text-brand">
+                      <Check size={14} />
                     </span>
                   </button>
                 ))}

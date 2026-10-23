@@ -508,18 +508,18 @@ const AssetDetail = () => {
             <>
               <button
                 onClick={() => navigate(`/assets/edit/${id}`)}
-                className="flex items-center gap-2 px-4 py-2 bg-black text-white dark:bg-white dark:text-slate-900 rounded-xl font-bold text-sm shadow-lg hover:bg-gray-800 dark:hover:bg-slate-200 transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
+                className="flex items-center gap-2 px-3.5 py-2 bg-slate-900 text-white dark:bg-white dark:text-slate-900 rounded-lg font-semibold text-xs shadow-sm hover:bg-slate-800 dark:hover:bg-slate-100 transition-colors whitespace-nowrap"
               >
-                <Edit3 size={16} />{" "}
+                <Edit3 size={15} />{" "}
                 <span className="hidden sm:inline">Editar Ativo</span>
               </button>
               <button
                 onClick={() => setIsMoveModalOpen(true)}
                 disabled={Boolean(lifecycleBlocker(asset, "movimentar"))}
                 title={lifecycleBlocker(asset, "movimentar") || "Movimentar"}
-                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-all hover:scale-105 active:scale-95 whitespace-nowrap disabled:opacity-40 disabled:hover:scale-100"
+                className="flex items-center gap-2 px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 rounded-lg font-semibold text-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap disabled:opacity-40"
               >
-                <ArrowRightLeft size={16} />{" "}
+                <ArrowRightLeft size={15} />{" "}
                 <span className="hidden sm:inline">Movimentar</span>
               </button>
               <button
@@ -601,9 +601,9 @@ const AssetDetail = () => {
               disabled={isDeleting}
               title="Excluir ativo"
               aria-label="Excluir ativo"
-              className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400 rounded-xl font-bold text-sm hover:bg-red-100 dark:hover:bg-red-900/40 transition-all ml-auto hover:scale-105 disabled:opacity-50"
+              className="flex items-center gap-2 px-3.5 py-2 bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400 rounded-lg font-semibold text-xs hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors ml-auto disabled:opacity-50"
             >
-              <Trash2 size={16} />
+              <Trash2 size={15} />
             </button>
           )}
         </div>
@@ -611,7 +611,7 @@ const AssetDetail = () => {
 
       {/* Ativo em transito: so muda de local quando o termo assinado pela loja for anexado */}
       {asset.transit && (
-        <div className={`mb-6 flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border px-5 py-4 ${asset.transit.missing ? "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300" : "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300"}`}>
+        <div className={`mb-6 flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border px-4 py-3 text-xs ${asset.transit.missing ? "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300" : "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300"}`}>
           <Truck size={20} className="shrink-0" />
           <p className="text-sm font-bold flex-1">
             {asset.transit.missing
@@ -734,7 +734,7 @@ const AssetDetail = () => {
               <User size={20} /> Responsabilidade e Localização
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-gray-50 dark:bg-slate-900 p-5 rounded-2xl border border-gray-100 dark:border-slate-700">
+              <div className="bg-gray-50 dark:bg-slate-900 p-5 rounded-xl border border-gray-100 dark:border-slate-700">
                 <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">
                   Responsável Atual
                 </p>
@@ -750,7 +750,7 @@ const AssetDetail = () => {
                   </div>
                 )}
               </div>
-              <div className="bg-gray-50 dark:bg-slate-900 p-5 rounded-2xl border border-gray-100 dark:border-slate-700">
+              <div className="bg-gray-50 dark:bg-slate-900 p-5 rounded-xl border border-gray-100 dark:border-slate-700">
                 <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">
                   Localização Física
                 </p>
@@ -766,7 +766,7 @@ const AssetDetail = () => {
 
             {/* Campo editável para adicionar ou alterar o CPF do responsável pelo ativo */}
             {canWrite && (
-              <div className="mt-6 bg-gray-50 dark:bg-slate-900 p-4 rounded-2xl border border-gray-100 dark:border-slate-700">
+              <div className="mt-6 bg-gray-50 dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-700">
                 <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2 block">
                   CPF do Responsável
                 </label>
@@ -925,11 +925,11 @@ const AssetDetail = () => {
             </div>
 
             {canWrite && (
-              <div className="bg-gray-50 dark:bg-slate-900 rounded-2xl p-2 flex gap-2">
+              <div className="bg-gray-50 dark:bg-slate-900 rounded-xl p-2 flex gap-2 border border-slate-200/80 dark:border-slate-800">
                 <input
                   type="text"
                   placeholder="Adicionar (ex: Mouse Logitech, Base Dell...)"
-                  className="flex-1 bg-transparent px-4 text-sm font-medium outline-none text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  className="flex-1 bg-transparent px-3 text-xs font-medium outline-none text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   value={newPeripheral}
                   onChange={(e) => setNewPeripheral(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddPeripheral()}
@@ -937,9 +937,9 @@ const AssetDetail = () => {
                 <button
                   onClick={handleAddPeripheral}
                   disabled={isAddingPeripheral}
-                  className="bg-black text-white dark:bg-white dark:text-slate-900 p-2 rounded-xl hover:bg-gray-800 dark:hover:bg-slate-200 disabled:opacity-50"
+                  className="bg-slate-900 text-white dark:bg-white dark:text-slate-900 p-2 rounded-lg hover:bg-slate-800 dark:hover:bg-slate-100 disabled:opacity-50 transition-colors"
                 >
-                  <Plus size={18} />
+                  <Plus size={16} />
                 </button>
               </div>
             )}
@@ -1028,7 +1028,7 @@ const AssetDetail = () => {
               </div>
 
               {canWrite && (
-                <div className="flex flex-col gap-2 bg-gray-50 dark:bg-slate-900 p-3 rounded-2xl">
+                <div className="flex flex-col gap-2 bg-gray-50 dark:bg-slate-900 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800">
                   <input
                     type="text"
                     placeholder="Nome (ex: Manual PDF)"

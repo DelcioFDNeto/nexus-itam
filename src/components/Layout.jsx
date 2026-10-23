@@ -208,13 +208,19 @@ const Layout = ({ children }) => {
       {/* BARRA INFERIOR — apenas em telas pequenas                           */}
       {/* ------------------------------------------------------------------ */}
       <nav aria-label="Navegacao rapida" className="lg:hidden fixed inset-x-3 bottom-3 z-40 sm:inset-x-auto sm:left-1/2 sm:w-[420px] sm:-translate-x-1/2">
-        <div className="flex items-center justify-around rounded-xl border border-slate-800 bg-slate-900/95 px-2 py-1 text-white shadow-xl safe-area-pb">
+        <div className="flex items-center justify-around rounded-xl border border-slate-800 bg-slate-900/95 px-2 py-1.5 text-white shadow-xl safe-area-pb">
           {bottomNav.map(({ to, icon: Icon, label, primary }) =>
             primary ? (
-              <Link key={to} to={to} aria-label={label} className="-mt-6">
-                <span className="flex h-14 w-14 items-center justify-center rounded-full border-4 border-slate-50 bg-brand shadow-lg shadow-brand/40 transition-transform active:scale-90 dark:border-slate-950">
-                  <Icon size={22} className="text-white" />
+              <Link
+                key={to}
+                to={to}
+                aria-label={label}
+                className="flex flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-1 text-brand"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white shadow-sm transition-colors hover:bg-brand-dark">
+                  <Icon size={18} />
                 </span>
+                <span className="text-[9px] font-semibold tracking-wide text-brand">{label}</span>
               </Link>
             ) : (
               <Link
@@ -222,12 +228,12 @@ const Layout = ({ children }) => {
                 to={to}
                 aria-label={label}
                 aria-current={isActive(to) ? 'page' : undefined}
-                className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-2 transition-colors ${
-                  isActive(to) ? 'text-white' : 'text-slate-400 hover:text-slate-200'
+                className={`flex flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition-colors ${
+                  isActive(to) ? 'text-white font-semibold' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <Icon size={20} strokeWidth={isActive(to) ? 2.6 : 2} />
-                <span className="text-[9px] font-bold uppercase tracking-wide">{label}</span>
+                <Icon size={20} strokeWidth={isActive(to) ? 2.4 : 1.8} />
+                <span className="text-[9px] font-semibold uppercase tracking-wide">{label}</span>
               </Link>
             ),
           )}
@@ -235,10 +241,10 @@ const Layout = ({ children }) => {
           <button
             onClick={() => setIsMobileMenuOpen(true)}
             aria-label="Mais opcoes"
-            className="flex flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-2 text-slate-400 hover:text-slate-200"
+            className="flex flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-slate-400 hover:text-slate-200"
           >
-            <MoreHorizontal size={20} />
-            <span className="text-[9px] font-bold uppercase tracking-wide">Mais</span>
+            <MoreHorizontal size={20} strokeWidth={1.8} />
+            <span className="text-[9px] font-semibold uppercase tracking-wide">Mais</span>
           </button>
         </div>
       </nav>
