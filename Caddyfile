@@ -27,19 +27,3 @@
 		header_up X-Real-IP {remote_host}
 	}
 }
-
-# Frontend 1: Console Administrativo ITAM (React 19)
-{$CONSOLE_DOMAIN} {
-	import security_headers
-	encode zstd gzip
-
-	reverse_proxy console-react:8080
-}
-
-# Frontend 2: Portal Self-Service do Colaborador (Vue 3.5)
-{$PORTAL_DOMAIN} {
-	import security_headers
-	encode zstd gzip
-
-	reverse_proxy portal-vue:8080
-}

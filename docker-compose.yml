@@ -141,6 +141,7 @@ services:
   # Frontend 1 — Console Administrativo ITAM (React 19 + Vite)
   # ---------------------------------------------------------------------------
   console-react:
+    profiles: ["frontend"]
     build:
       context: .
       dockerfile: Dockerfile
@@ -165,6 +166,7 @@ services:
   # Frontend 2 — Portal Self-Service do Colaborador (Vue 3.5 + Vite)
   # ---------------------------------------------------------------------------
   portal-vue:
+    profiles: ["frontend"]
     build:
       context: ./portal-colaborador
       dockerfile: Dockerfile

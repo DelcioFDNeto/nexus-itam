@@ -59,10 +59,12 @@ services:
       NEXUS_COMPLIANCE_SECRET: ${NEXUS_COMPLIANCE_SECRET:?Defina NEXUS_COMPLIANCE_SECRET forte no .env.vps}
 
   console-react:
+    profiles: ["frontend"]
     mem_limit: 128m
     logging: *default-logging
 
   portal-vue:
+    profiles: ["frontend"]
     mem_limit: 128m
     logging: *default-logging
 
@@ -77,8 +79,6 @@ services:
     environment:
       ACME_EMAIL: ${ACME_EMAIL:?Defina ACME_EMAIL no .env.vps para certificados TLS}
       API_DOMAIN: ${API_DOMAIN:?Defina API_DOMAIN no .env.vps}
-      CONSOLE_DOMAIN: ${CONSOLE_DOMAIN:?Defina CONSOLE_DOMAIN no .env.vps}
-      PORTAL_DOMAIN: ${PORTAL_DOMAIN:?Defina PORTAL_DOMAIN no .env.vps}
     ports:
       - "80:80"
       - "443:443"
@@ -89,8 +89,6 @@ services:
       - caddy_config:/config
     depends_on:
       - api-gateway
-      - console-react
-      - portal-vue
     networks:
       - nexus-edge
 
