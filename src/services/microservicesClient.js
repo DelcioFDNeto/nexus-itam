@@ -84,7 +84,10 @@ export function resolvePortalUrl() {
 
   if (isBrowser && !isLocalHost) {
     const { protocol, hostname, port } = window.location;
-    if (port === '3000') {
+    if (hostname === 'itam-nexus.web.app' || hostname === 'itam-nexus.firebaseapp.com') {
+      return 'https://portal-itam-nexus.web.app';
+    }
+    if (port === '3000' || port === '3002') {
       return `${protocol}//${hostname}:3001`;
     }
     if (hostname.startsWith('itam.')) {
