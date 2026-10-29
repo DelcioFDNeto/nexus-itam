@@ -5,7 +5,7 @@ import { portalApi } from '../services/nexusApi';
 const props = defineProps({
   tickets: { type: Array, required: true },
   assets: { type: Array, default: () => [] },
-  userDepartment: { type: String, default: 'Corporativo' },
+  userDepartment: { type: String, default: 'Engenharia de Produto' },
   preselectedAssetTag: { type: String, default: '' },
 });
 
@@ -62,7 +62,7 @@ async function submitTicket() {
     });
     form.title = '';
     form.description = '';
-    feedback.value = `Chamado ${created.protocol} aberto e transmitido em tempo real à equipe de TI.`;
+    feedback.value = `Protocolo ${created.protocol} registrado com sucesso! Nossa equipe técnica já foi notificada.`;
     emit('created');
   } catch (err) {
     errorMsg.value = err.message || 'Não foi possível registrar o chamado.';
@@ -127,35 +127,36 @@ const priorityLabel = {
 
 <template>
   <section class="grid gap-6 lg:grid-cols-12">
+    <!-- Left Column: Create Ticket Form -->
     <div class="lg:col-span-5 space-y-4">
-      <div>
-        <p class="font-mono text-[11px] uppercase tracking-widest text-indigo-600 font-semibold">
-          API 2 (REST) • /api/v1/tickets
-        </p>
-        <h2 class="text-lg font-bold tracking-tight text-slate-900">
-          Abrir Solicitação para a Engenharia de TI
+      <div class="border-b border-slate-200 pb-3">
+        <h2 class="text-lg font-extrabold tracking-tight text-slate-900">
+          Nova Solicitação de Suporte
         </h2>
+        <p class="text-xs text-slate-500">
+          Abra um protocolo para reparos, novos softwares, acessos ou substituição de hardware.
+        </p>
       </div>
 
-      <form class="station-panel p-5 space-y-3.5" @submit.prevent="submitTicket">
+      <form class="station-panel p-5 sm:p-6 space-y-4" @submit.prevent="submitTicket">
         <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Assunto</label>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Assunto da Solicitação</label>
           <input
             v-model="form.title"
             type="text"
             required
             minlength="4"
-            placeholder="Ex.: Falha na porta USB-C da dockstation"
-            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
+            placeholder="Ex.: Lentidão na conexão VPN ou tela piscando"
+            class="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-xs sm:text-sm focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none transition-all"
           />
         </div>
 
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">Categoria</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Categoria</label>
             <select
               v-model="form.category"
-              class="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-xs font-medium"
+              class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium focus:border-brand focus:outline-none bg-white"
             >
               <option>Hardware & Periféricos</option>
               <option>Software & Acesso VPN</option>
@@ -165,10 +166,10 @@ const priorityLabel = {
           </div>
 
           <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">Urgência / SLA</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Prioridade / SLA</label>
             <select
               v-model="form.priority"
-              class="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-xs font-medium"
+              class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-medium focus:border-brand focus:outline-none bg-white"
             >
               <option value="low">Baixa (SLA 48h)</option>
               <option value="medium">Normal (SLA 24h)</option>
@@ -179,12 +180,12 @@ const priorityLabel = {
         </div>
 
         <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">
+          <label class="block text-xs font-bold text-slate-700 mb-1">
             Equipamento Relacionado (Opcional)
           </label>
           <select
             v-model="form.assetTag"
-            class="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-xs font-mono"
+            class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-mono focus:border-brand focus:outline-none bg-white"
           >
             <option value="">Sem vínculo específico</option>
             <option v-for="a in assets" :key="a.id" :value="a.internal_id">
@@ -194,162 +195,209 @@ const priorityLabel = {
         </div>
 
         <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">
-            Descrição Técnica do Sintoma
+          <label class="block text-xs font-bold text-slate-700 mb-1">
+            Descrição do Problema ou Necessidade
           </label>
           <textarea
             v-model="form.description"
             rows="3"
             required
             minlength="6"
-            placeholder="Descreva quando ocorre e mensagens exibidas..."
-            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
+            placeholder="Descreva com detalhes o sintoma, mensagens de erro e quando o problema começou..."
+            class="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-xs sm:text-sm focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none transition-all"
           />
         </div>
 
         <button
           type="submit"
           :disabled="submitting"
-          class="w-full py-2.5 rounded-lg bg-slate-900 text-white text-xs font-bold uppercase tracking-wider hover:bg-brand transition-colors disabled:opacity-50"
+          class="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-brand text-white text-xs font-bold uppercase tracking-wider transition-all shadow-sm disabled:opacity-50"
         >
-          {{ submitting ? 'Registrando protocolo...' : 'Registrar Chamado de Suporte' }}
+          {{ submitting ? 'Registrando Protocolo...' : 'Registrar Chamado' }}
         </button>
 
         <p
           v-if="feedback"
-          class="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5"
+          class="text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-3"
         >
           {{ feedback }}
         </p>
 
         <p
           v-if="errorMsg"
-          class="text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5"
+          class="text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-xl p-3"
         >
           {{ errorMsg }}
         </p>
       </form>
     </div>
 
+    <!-- Right Column: Tickets History & Interactive Chat -->
     <div class="lg:col-span-7 space-y-4">
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
         <div>
-          <p class="font-mono text-[11px] uppercase tracking-widest text-emerald-600 font-semibold">
-            Sincronização Instantânea via API 5 (WebSocket)
-          </p>
-          <h2 class="text-lg font-bold tracking-tight text-slate-900">
+          <h2 class="text-lg font-extrabold tracking-tight text-slate-900">
             Meus Protocolos de Atendimento
           </h2>
+          <p class="text-xs text-slate-500">
+            Acompanhe o andamento das solicitações e dialogue com os técnicos de suporte.
+          </p>
         </div>
-        <span class="mono-tag">{{ tickets.length }} protocolos</span>
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900 text-white text-xs font-mono font-bold shadow-xs">
+          <span>{{ tickets.length }}</span>
+          <span class="text-slate-300 font-sans font-normal">protocolos</span>
+        </span>
       </div>
 
+      <!-- Empty State -->
       <div
         v-if="tickets.length === 0"
-        class="station-panel p-8 text-center text-sm text-slate-500"
+        class="station-panel p-10 text-center space-y-3"
       >
-        Você ainda não possui chamados registrados.
+        <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 mx-auto flex items-center justify-center text-xl">
+          🎧
+        </div>
+        <div>
+          <h3 class="text-sm font-bold text-slate-800">Nenhum chamado aberto</h3>
+          <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+            Você não possui tickets de suporte em andamento. Preencha o formulário ao lado para abrir uma solicitação.
+          </p>
+        </div>
       </div>
 
+      <!-- Tickets List -->
       <div v-else class="space-y-3">
         <article
           v-for="tk in tickets"
           :key="tk.id"
-          class="station-panel p-4 space-y-2 hover:border-slate-300 transition-colors cursor-pointer"
+          class="station-panel p-4 sm:p-5 space-y-3 hover:border-brand/40 hover:shadow-xs transition-all cursor-pointer group"
           @click="openDetails(tk.id)"
         >
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex flex-wrap items-center gap-2">
-              <span class="mono-tag">{{ tk.protocol }}</span>
-              <span v-if="tk.asset_tag" class="mono-tag">{{ tk.asset_tag }}</span>
+              <span class="font-mono text-xs font-black px-2.5 py-0.5 rounded bg-slate-900 text-white shadow-2xs">
+                {{ tk.protocol }}
+              </span>
               <span
-                class="text-[10px] font-bold uppercase px-2 py-0.5 rounded"
+                v-if="tk.asset_tag"
+                class="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200"
+              >
+                {{ tk.asset_tag }}
+              </span>
+              <span
+                class="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full"
                 :class="{
                   'bg-slate-100 text-slate-700': tk.priority === 'low' || tk.priority === 'medium',
                   'bg-orange-100 text-orange-800': tk.priority === 'high',
-                  'bg-red-100 text-red-800': tk.priority === 'critical',
+                  'bg-rose-100 text-rose-800': tk.priority === 'critical',
                 }"
               >
-                Prioridade {{ priorityLabel[tk.priority] || tk.priority }}
+                {{ priorityLabel[tk.priority] || tk.priority }}
               </span>
             </div>
+
             <span
-              class="text-[11px] font-bold px-2.5 py-0.5 rounded-full"
+              class="text-[11px] font-bold px-2.5 py-0.5 rounded-full border shadow-2xs"
               :class="{
-                'bg-amber-100 text-amber-800': tk.status === 'open',
-                'bg-indigo-100 text-indigo-800': tk.status === 'in_progress',
-                'bg-emerald-100 text-emerald-800': tk.status === 'resolved' || tk.status === 'closed',
+                'bg-amber-50 text-amber-700 border-amber-200': tk.status === 'open',
+                'bg-indigo-50 text-indigo-700 border-indigo-200': tk.status === 'in_progress',
+                'bg-emerald-50 text-emerald-700 border-emerald-200': tk.status === 'resolved' || tk.status === 'closed',
               }"
             >
               {{ statusLabel[tk.status] || tk.status }}
             </span>
           </div>
 
-          <h3 class="text-sm font-bold text-slate-900">{{ tk.title }}</h3>
-          <p class="text-xs text-slate-600 line-clamp-2">{{ tk.description }}</p>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900 group-hover:text-brand transition-colors">
+              {{ tk.title }}
+            </h3>
+            <p class="text-xs text-slate-600 line-clamp-2 mt-0.5 leading-relaxed">
+              {{ tk.description }}
+            </p>
+          </div>
 
-          <div class="pt-1 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 font-mono">
-            <span>SLA até: {{ formatSla(tk.sla_due_at) }}</span>
+          <div class="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 font-sans">
+            <span class="text-slate-400">Prazo SLA: <strong class="text-slate-700 font-mono">{{ formatSla(tk.sla_due_at) }}</strong></span>
             <div class="flex items-center gap-3">
-              <span v-if="tk.assigned_tech_name">Técnico: {{ tk.assigned_tech_name }}</span>
-              <span v-if="tk.comments_count !== undefined">💬 {{ tk.comments_count }} msg</span>
+              <span v-if="tk.assigned_tech_name" class="font-medium text-slate-700">
+                👨‍💻 {{ tk.assigned_tech_name }}
+              </span>
+              <span class="font-semibold text-brand">
+                💬 {{ tk.comments_count || 0 }} mensagens
+              </span>
             </div>
           </div>
 
           <div
             v-if="tk.resolution_notes"
-            class="p-2.5 rounded bg-emerald-50 border border-emerald-200 text-xs text-emerald-900"
+            class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-0.5"
           >
-            <strong>Parecer da TI:</strong> {{ tk.resolution_notes }}
+            <p class="font-bold uppercase text-[10px] text-emerald-800">Parecer Conclusivo da TI:</p>
+            <p>{{ tk.resolution_notes }}</p>
           </div>
         </article>
       </div>
 
-      <div v-if="selectedTicket" class="station-panel p-5 space-y-3 border-indigo-300">
-        <div class="flex items-center justify-between">
-          <h4 class="text-sm font-bold text-slate-900">
-            Diálogo Técnico • {{ selectedTicket.protocol }}
-          </h4>
+      <!-- Selected Ticket Conversation Thread -->
+      <div
+        v-if="selectedTicket"
+        class="station-panel p-5 space-y-3.5 border-brand/50 shadow-md animate-in fade-in duration-200"
+      >
+        <div class="flex items-center justify-between border-b border-slate-200 pb-2.5">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-brand animate-pulse" />
+            <h4 class="text-sm font-bold text-slate-900">
+              Diálogo Técnico • {{ selectedTicket.protocol }}
+            </h4>
+          </div>
           <button
             type="button"
-            class="text-xs text-slate-400 hover:text-slate-700"
+            class="text-xs font-semibold text-slate-400 hover:text-slate-700 px-2 py-1"
             @click="selectedTicket = null"
           >
-            Fechar
+            ✕ Fechar
           </button>
         </div>
 
-        <div class="space-y-2 max-h-48 overflow-y-auto">
+        <div class="space-y-2.5 max-h-56 overflow-y-auto pr-1">
           <div
             v-if="!selectedTicket.comments || selectedTicket.comments.length === 0"
-            class="text-xs text-slate-400 italic py-2"
+            class="text-xs text-slate-400 italic py-3 text-center"
           >
             Nenhuma mensagem técnica registrada neste protocolo ainda.
           </div>
           <div
             v-for="cm in selectedTicket.comments || []"
             :key="cm.id"
-            class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs"
+            class="p-3 rounded-xl text-xs space-y-1"
+            :class="
+              cm.author_role === 'admin'
+                ? 'bg-indigo-50/70 border border-indigo-200/80 text-slate-900 ml-4'
+                : 'bg-slate-100 border border-slate-200 text-slate-900 mr-4'
+            "
           >
-            <div class="font-bold text-slate-800">
-              {{ cm.author_name }}
-              <span class="font-mono text-[10px] text-slate-400">({{ cm.author_role }})</span>
+            <div class="flex items-center justify-between font-bold text-[11px]">
+              <span class="text-slate-800">{{ cm.author_name }}</span>
+              <span class="text-[10px] uppercase font-mono text-slate-400">
+                {{ cm.author_role === 'admin' ? 'Engenharia de TI' : 'Colaborador' }}
+              </span>
             </div>
-            <p class="text-slate-600 mt-0.5">{{ cm.message }}</p>
+            <p class="text-slate-700 leading-relaxed">{{ cm.message }}</p>
           </div>
         </div>
 
-        <form class="flex gap-2" @submit.prevent="sendComment">
+        <form class="flex gap-2 pt-2 border-t border-slate-100" @submit.prevent="sendComment">
           <input
             v-model="newComment"
             type="text"
-            placeholder="Adicionar informação ao chamado..."
-            class="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs"
+            placeholder="Responder à equipe de suporte técnico..."
+            class="flex-1 rounded-xl border border-slate-300 px-3.5 py-2 text-xs focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none"
           />
           <button
             type="submit"
             :disabled="sendingComment || !newComment.trim()"
-            class="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-bold disabled:opacity-50"
+            class="px-4 py-2 rounded-xl bg-brand text-white text-xs font-bold uppercase tracking-wider hover:bg-brand-dark disabled:opacity-50 transition-colors shadow-2xs"
           >
             {{ sendingComment ? 'Enviando...' : 'Enviar' }}
           </button>

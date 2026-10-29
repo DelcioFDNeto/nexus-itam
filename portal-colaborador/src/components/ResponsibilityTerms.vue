@@ -23,12 +23,12 @@ function formatPtDate(iso) {
 
 function getStatusBadge(status) {
   if (status === 'signed') {
-    return { label: 'Assinado Digitalmente', cls: 'bg-emerald-100 text-emerald-800' };
+    return { label: 'Assinado Digitalmente', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
   }
   if (status === 'revoked') {
-    return { label: 'Termo Revogado', cls: 'bg-red-100 text-red-800' };
+    return { label: 'Termo Revogado', cls: 'bg-red-50 text-red-700 border-red-200' };
   }
-  return { label: 'Aguardando Assinatura', cls: 'bg-amber-100 text-amber-800' };
+  return { label: 'Aguardando Assinatura', cls: 'bg-amber-50 text-amber-700 border-amber-200' };
 }
 
 function isTamperedOrInvalid(res) {
@@ -72,132 +72,168 @@ async function handleVerify(termId) {
 
 <template>
   <section class="space-y-4">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
       <div>
-        <p class="font-mono text-[11px] uppercase tracking-widest text-indigo-600 font-semibold">
-          API 3 (REST) • /api/v1/compliance/terms • HMAC-SHA256
-        </p>
-        <h2 class="text-lg font-bold tracking-tight text-slate-900">
-          Passaporte Jurídico & Termos de Custódia CLT
+        <h2 class="text-lg font-extrabold tracking-tight text-slate-900">
+          Termos de Custódia & Conformidade CLT
         </h2>
+        <p class="text-xs text-slate-500">
+          Instrumentos jurídicos de cessão de equipamentos em conformidade com o Artigo 462 da CLT.
+        </p>
       </div>
+      <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold self-start sm:self-auto">
+        <span>Assinatura Digital Certificada</span>
+      </span>
     </div>
 
+    <!-- Error Alert -->
     <div
       v-if="actionError"
-      class="p-3 rounded-lg bg-red-50 border border-red-200 text-xs font-medium text-red-700"
+      class="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-medium text-red-700"
     >
       {{ actionError }}
     </div>
 
+    <!-- Empty State -->
     <div
       v-if="terms.length === 0"
-      class="station-panel p-8 text-center text-sm text-slate-500"
+      class="station-panel p-10 text-center space-y-3"
     >
-      Nenhum termo de responsabilidade emitido para o seu perfil.
+      <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 mx-auto flex items-center justify-center text-xl">
+        📋
+      </div>
+      <div>
+        <h3 class="text-sm font-bold text-slate-800">Nenhum termo pendente</h3>
+        <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+          Não há termos de responsabilidade aguardando assinatura para o seu usuário.
+        </p>
+      </div>
     </div>
 
-    <div v-else class="space-y-3">
+    <!-- Terms List -->
+    <div v-else class="space-y-4">
       <article
         v-for="term in terms"
         :key="term.id"
-        class="station-panel p-5 space-y-3"
+        class="station-panel p-6 space-y-4 border-l-4"
+        :class="term.status === 'signed' ? 'border-l-emerald-500' : 'border-l-amber-500'"
       >
-        <div class="flex flex-wrap items-center justify-between gap-2">
+        <!-- Header Ribbon -->
+        <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-2">
             <span
-              class="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded"
+              class="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border shadow-2xs"
               :class="getStatusBadge(term.status).cls"
             >
               {{ getStatusBadge(term.status).label }}
             </span>
-            <span class="mono-tag">Tipo: {{ term.term_type }}</span>
+            <span class="font-mono text-xs px-2.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+              Tipo: {{ term.term_type === 'entrega' ? 'Entrega de Equipamento' : term.term_type }}
+            </span>
           </div>
-          <div class="text-xs text-slate-400 font-mono">
-            <span>Emitido por {{ term.issued_by }}</span>
-            <span v-if="term.signed_at"> • Assinado em {{ formatPtDate(term.signed_at) }}</span>
+
+          <div class="text-xs text-slate-500 font-sans">
+            <span v-if="term.signed_at" class="text-emerald-700 font-medium">
+              ✓ Assinado em {{ formatPtDate(term.signed_at) }}
+            </span>
+            <span v-else class="text-amber-700 font-semibold">
+              ⚠️ Assinatura pendente
+            </span>
           </div>
         </div>
 
-        <p class="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-200/70">
-          {{ term.legal_clause }}
-        </p>
-
-        <div class="flex flex-wrap gap-2">
-          <span
-            v-for="(item, idx) in term.assets_snapshot"
-            :key="idx"
-            class="mono-tag"
-          >
-            {{ item.internalId }} — {{ item.model }}
-            <template v-if="item.serialNumber"> (S/N: {{ item.serialNumber }})</template>
-          </span>
+        <!-- Legal Statement Clause -->
+        <div class="bg-slate-50/80 p-4 rounded-xl border border-slate-200/90 text-xs text-slate-700 leading-relaxed font-sans space-y-1">
+          <p class="font-bold text-slate-900 uppercase text-[10px] tracking-wider">
+            Declaração de Responsabilidade (Art. 462 da CLT)
+          </p>
+          <p>{{ term.legal_clause }}</p>
         </div>
 
-        <div class="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+        <!-- Attached Hardware Snapshot -->
+        <div class="space-y-1.5">
+          <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            Equipamentos Descritos no Instrumento:
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <span
+              v-for="(item, idx) in term.assets_snapshot"
+              :key="idx"
+              class="font-mono text-xs font-semibold px-3 py-1 rounded-lg bg-white border border-slate-200 text-slate-800 shadow-2xs flex items-center gap-2"
+            >
+              <span class="font-black text-brand">{{ item.internalId }}</span>
+              <span>— {{ item.model }}</span>
+              <span v-if="item.serialNumber" class="text-slate-400 font-normal">
+                (S/N: {{ item.serialNumber }})
+              </span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Verification & Signature Actions -->
+        <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4">
           <div class="space-y-0.5 max-w-md">
-            <div class="font-mono text-[11px] text-slate-500 truncate">
-              SHA-256 Doc: {{ term.document_hash }}
+            <div class="font-mono text-[11px] text-slate-500 truncate" title="Hash criptográfico SHA-256 do documento">
+              Hash SHA-256: <span class="font-bold text-slate-700">{{ term.document_hash }}</span>
             </div>
             <div v-if="term.signer_ip" class="font-mono text-[10px] text-slate-400">
-              IP Registrado: {{ term.signer_ip }}
+              IP Autenticado: {{ term.signer_ip }}
             </div>
           </div>
 
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2.5">
             <button
               v-if="term.status === 'pending'"
               type="button"
               :disabled="signingId === term.id"
-              class="px-4 py-2 rounded-lg bg-brand text-white text-xs font-bold hover:bg-brand-dark disabled:opacity-50 transition-colors"
+              class="px-4 py-2 rounded-xl bg-gradient-to-r from-brand to-indigo-600 hover:from-brand-dark hover:to-indigo-700 text-white text-xs font-bold uppercase tracking-wider shadow-md shadow-brand/20 disabled:opacity-50 transition-all"
               @click="handleSign(term.id)"
             >
-              {{ signingId === term.id ? 'Selando HMAC-SHA256...' : 'Assinar Termo Digitalmente' }}
+              {{ signingId === term.id ? 'Gravando Selo Digital...' : 'Assinar Digitalmente' }}
             </button>
 
             <button
               type="button"
               :disabled="verifyingId === term.id"
-              class="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+              class="px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 transition-all shadow-2xs"
               @click="handleVerify(term.id)"
             >
-              {{ verifyingId === term.id ? 'Verificando...' : 'Auditar Criptografia' }}
+              {{ verifyingId === term.id ? 'Auditando...' : 'Verificar Autenticidade' }}
             </button>
           </div>
         </div>
 
+        <!-- Official Notarization / Verification Report -->
         <div
           v-if="verificationResult[term.id]"
-          class="p-3 rounded-lg border text-xs font-mono space-y-1"
+          class="p-4 rounded-xl border text-xs font-mono space-y-1.5 shadow-2xs transition-all animate-in fade-in duration-200"
           :class="
             isTamperedOrInvalid(verificationResult[term.id])
-              ? 'bg-red-50 border-red-300 text-red-900'
+              ? 'bg-rose-50 border-rose-300 text-rose-900'
               : verificationResult[term.id].signatureValid
-                ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
                 : 'bg-slate-100 border-slate-300 text-slate-800'
           "
         >
-          <div class="font-bold">
+          <div class="font-bold text-sm flex items-center gap-2">
             <template v-if="isTamperedOrInvalid(verificationResult[term.id])">
-              ✗ ALERTA CRIPTOGRÁFICO: ADULTERAÇÃO OU ASSINATURA INVÁLIDA DETECTADA
+              <span>❌ ALERTA: DIVERGÊNCIA OU ASSINATURA INVÁLIDA</span>
             </template>
             <template v-else-if="verificationResult[term.id].signatureValid">
-              ✓ SELO HMAC-SHA256 AUTÊNTICO E DOCUMENTO ÍNTEGRO
+              <span>✓ CERTIFICADO DIGITAL: ASSINATURA E DOCUMENTO ÍNTEGROS</span>
             </template>
             <template v-else>
-              ✓ Hash SHA-256 íntegro ({{
-                verificationResult[term.id].status === 'revoked'
-                  ? 'termo revogado'
-                  : 'aguardando assinatura do colaborador'
-              }})
+              <span>✓ Integridade Verificada (Aguardando assinatura do colaborador)</span>
             </template>
           </div>
-          <div class="truncate">Algoritmo: {{ verificationResult[term.id].algorithm }}</div>
-          <div v-if="verificationResult[term.id].signatureHash" class="truncate">
-            Assinatura HMAC: {{ verificationResult[term.id].signatureHash }}
+          <div class="truncate text-[11px] text-slate-600">
+            Algoritmo Criptográfico: <span class="font-bold">{{ verificationResult[term.id].algorithm }}</span>
           </div>
-          <div v-if="auditProofByTerm[term.id]" class="truncate text-[11px] opacity-85">
-            Bloco Hash-Chain #{{ auditProofByTerm[term.id].seq }}: {{ auditProofByTerm[term.id].entryHash }}
+          <div v-if="verificationResult[term.id].signatureHash" class="truncate text-[11px] text-slate-700">
+            Selo HMAC: <span class="font-bold">{{ verificationResult[term.id].signatureHash }}</span>
+          </div>
+          <div v-if="auditProofByTerm[term.id]" class="truncate text-[11px] text-emerald-800">
+            Registro Imutável Hash-Chain #{{ auditProofByTerm[term.id].seq }}: {{ auditProofByTerm[term.id].entryHash }}
           </div>
         </div>
       </article>
