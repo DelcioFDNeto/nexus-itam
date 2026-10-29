@@ -63,6 +63,7 @@ const TenantManager = lazy(() => import('./pages/TenantManager'));
 const NexusUserManager = lazy(() => import('./pages/NexusUserManager'));
 const NexusPlansManager = lazy(() => import('./pages/NexusPlansManager'));
 const TermsPage = lazy(() => import('./pages/TermsPage'));
+const ServiceDeskHub = lazy(() => import('./pages/ServiceDeskHub'));
 
 /**
  * Rota autenticada. `capability` e `masterOnly` sao a mesma linguagem usada em
@@ -127,6 +128,7 @@ function App() {
 
               {/* --- Administracao do inquilino --- */}
               <Route path="/agent" element={<AppRoute element={<AgentManager />} capability="agent:manage" feature="agent" />} />
+              <Route path="/service-desk" element={<AppRoute element={<ServiceDeskHub />} capability="assets:read" />} />
               <Route path="/import" element={<AppRoute element={<ImportData />} capability="assets:import" feature="import" />} />
               <Route path="/settings" element={<AppRoute element={<SettingsPage />} capability="settings:read" />} />
               <Route path="/users" element={<AppRoute element={<UserManager />} capability="users:manage" />} />

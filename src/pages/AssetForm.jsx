@@ -13,6 +13,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { assertWithinLimit, describeFirebaseError } from '../services/tenantService';
+import { microservicesApi } from '../services/microservicesClient';
 import { toast } from 'sonner';
 import {
   Save, ArrowLeft, Search, Server, User, MapPin, Building2, Tag,
@@ -106,12 +107,20 @@ const AssetForm = () => {
         setEmployees(empList);
 
         if (currentUser?.tenantId) {
-          const settingsSnap = await getDoc(doc(db, 'settings', currentUser.tenantId));
-          if (settingsSnap.exists()) {
-            const cfg = settingsSnap.data();
+          if (currentUser?.authSource === 'gateway') {
+            const cfg = {
+              companyName: currentUser?.companyName || 'Nexus Indústria & Tecnologia S.A.',
+              assetPrefix: currentUser?.assetPrefix || 'NEX',
+            };
             setTenantSettings(cfg);
-            if (cfg.customFields) setCustomFieldsDef(cfg.customFields);
-            if (cfg.assetTypes) setCustomTypes(cfg.assetTypes);
+          } else {
+            const settingsSnap = await getDoc(doc(db, 'settings', currentUser.tenantId));
+            if (settingsSnap.exists()) {
+              const cfg = settingsSnap.data();
+              setTenantSettings(cfg);
+              if (cfg.customFields) setCustomFieldsDef(cfg.customFields);
+              if (cfg.assetTypes) setCustomTypes(cfg.assetTypes);
+            }
           }
 
           // Carrega ativos da empresa em segundo plano para o sequenciador de tags
@@ -169,7 +178,7 @@ const AssetForm = () => {
       }
     };
     init();
-  }, [id, navigate, currentUser?.tenantId, currentUser?.role]);
+  }, [id, navigate, currentUser?.tenantId, currentUser?.role, currentUser?.authSource, currentUser?.companyName, currentUser?.assetPrefix]);
 
   // Validação em tempo real de Patrimônio (Tag) duplicado
   useEffect(() => {
@@ -245,6 +254,17 @@ const AssetForm = () => {
   const handleGenerateTag = useCallback(async () => {
     try {
       setTagGenerating(true);
+      if (currentUser?.authSource === 'gateway') {
+        const next = await microservicesApi.suggestNextTag(formData.type || 'Notebook').catch(() => null);
+        if (next?.suggestedTag) {
+          setFormData((prev) => ({ ...prev, internalId: next.suggestedTag }));
+          toast.success(`Patrimônio gerado: ${next.suggestedTag}`, {
+            description: `Sequência ${next.nextSequence} calculada pela API 1 do microsserviço de ativos.`,
+          });
+          return;
+        }
+      }
+
       let currentAssets = tenantAssets;
       if (!currentAssets || currentAssets.length === 0) {
         if (currentUser?.tenantId) {
@@ -277,7 +297,7 @@ const AssetForm = () => {
     } finally {
       setTagGenerating(false);
     }
-  }, [formData.type, formData.location, tenantAssets, tenantSettings, currentUser?.tenantId, currentUser?.companyName]);
+  }, [formData.type, formData.location, tenantAssets, tenantSettings, currentUser?.tenantId, currentUser?.companyName, currentUser?.authSource]);
 
   // Atalhos Rápidos para Cálculo de Garantia (+1A, +2A, +3A, +5A)
   const handleAddWarrantyYears = (years) => {
@@ -339,7 +359,9 @@ const AssetForm = () => {
 
       // Novo Ativo
       const tenantId = currentUser?.tenantId;
-      await assertWithinLimit(currentUser, 'assets', 1);
+      if (currentUser?.authSource !== 'gateway') {
+        await assertWithinLimit(currentUser, 'assets', 1);
+      }
       await createAsset({
         ...cleanData,
         createdBy: userEmail,

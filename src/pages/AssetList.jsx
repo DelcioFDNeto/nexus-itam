@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { db } from "../services/firebase";
 import { collection, query, orderBy, onSnapshot, doc, getDoc, where } from "firebase/firestore";
-import { updateAsset } from "../services/assetService";
+import { getAllAssets, updateAsset } from "../services/assetService";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
@@ -102,6 +102,24 @@ const AssetList = () => {
       return;
     }
     setLoading(true);
+
+    if (currentUser?.authSource === 'gateway') {
+      let active = true;
+      getAllAssets(tenantId)
+        .then((items) => {
+          if (active) setAssets(items);
+        })
+        .catch((error) => {
+          console.error("Erro ao sincronizar ativos:", error);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+      return () => {
+        active = false;
+      };
+    }
+
     const q = query(
       collection(db, "assets"),
       where("tenantId", "==", tenantId),
@@ -125,10 +143,17 @@ const AssetList = () => {
     );
 
     return () => unsubscribe();
-  }, [tenantId]);
+  }, [tenantId, currentUser?.authSource]);
 
   useEffect(() => {
     if (!tenantId) return;
+    if (currentUser?.authSource === 'gateway') {
+      setConfig({
+        companyName: currentUser?.companyName || 'Nexus Indústria & Tecnologia S.A.',
+        assetPrefix: currentUser?.assetPrefix || 'NEX',
+      });
+      return;
+    }
     const loadConfig = async () => {
       try {
         const snap = await getDoc(doc(db, "settings", tenantId));
@@ -139,7 +164,7 @@ const AssetList = () => {
     };
 
     loadConfig();
-  }, [tenantId]);
+  }, [tenantId, currentUser?.authSource, currentUser?.companyName, currentUser?.assetPrefix]);
 
   // Processa a lista de ativos otimizando filtragem e ordenação dependendo das seleções do menu
   const processedAssets = useMemo(() => {

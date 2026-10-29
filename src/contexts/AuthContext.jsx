@@ -1,6 +1,6 @@
 // src/contexts/AuthContext.jsx
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { auth, db } from '../services/firebase';
+import { auth, db, isFirebaseConfigured } from '../services/firebase';
 import {
   signInWithEmailAndPassword,
   signOut,
@@ -13,6 +13,13 @@ import { MASTER_TENANT } from '../utils/permissions';
 import { isTenantBlocked, isUserBlocked, resolveEntitlements } from '../utils/entitlements';
 import { safeCssColor, safeImageUrl } from '../utils/sanitize';
 import { buildInitialSettings, newTenantId } from '../services/tenantService';
+import {
+  clearGatewaySession,
+  getGatewaySession,
+  microservicesApi,
+  onGatewaySessionChange,
+  setGatewaySession,
+} from '../services/microservicesClient';
 
 const AuthContext = createContext();
 
@@ -31,6 +38,7 @@ const toDate = (value) => {
 };
 
 const touchLastLogin = (uid, profile) => {
+  if (!isFirebaseConfigured) return;
   const last = toDate(profile?.lastLoginAt);
   if (last && Date.now() - last.getTime() < LAST_LOGIN_THROTTLE_MS) return;
   updateDoc(doc(db, 'users', uid), { lastLoginAt: serverTimestamp() }).catch(() => {
@@ -47,9 +55,6 @@ const readDoc = async (path) => {
   }
 };
 
-// Ultima empresa deste usuario neste navegador. E so uma DICA para buscar
-// empresa e identidade visual em paralelo com o perfil; a autorizacao continua
-// vindo do perfil/claims (dica errada = leitura descartada e refeita).
 const tenantHintKey = (uid) => `nexus:tenant-hint:${uid}`;
 const readTenantHint = (uid) => {
   try {
@@ -62,7 +67,7 @@ const writeTenantHint = (uid, tenantId) => {
   try {
     localStorage.setItem(tenantHintKey(uid), tenantId);
   } catch {
-    /* modo privado: so nao guarda a dica */
+    /* modo privado */
   }
 };
 
@@ -71,6 +76,34 @@ const readPlans = () =>
     .then((snap) => Object.fromEntries(snap.docs.map((d) => [d.id, d.data()])))
     .catch(() => ({}));
 
+const buildGatewayAppUser = (gatewayUser) => {
+  if (!gatewayUser) return null;
+  const mappedRole = gatewayUser.role === 'technician' ? 'operator' : gatewayUser.role || 'operator';
+  const entitlements = resolveEntitlements({
+    tenant: { plan: 'enterprise', status: 'active' },
+  });
+
+  return {
+    uid: gatewayUser.id,
+    id: gatewayUser.id,
+    email: gatewayUser.email,
+    name: gatewayUser.name || 'Operador Nexus',
+    tenantId: gatewayUser.tenantId || 'nexus-corp',
+    role: mappedRole,
+    gatewayRole: gatewayUser.role,
+    department: gatewayUser.department || 'TI Corporativa',
+    companyName: gatewayUser.tenantName || 'Nexus Indústria & Tecnologia S.A.',
+    assetPrefix: gatewayUser.assetPrefix || 'NEX',
+    logoUrl: '',
+    primaryColor: null,
+    hiddenModules: [],
+    tenantStatus: 'active',
+    entitlements,
+    isMaster: false,
+    authSource: 'gateway',
+  };
+};
+
 /**
  * Resolve o usuario autenticado em uma sessao do app.
  * Nunca lanca: falhas viram `error` (texto para a UI) com tenant nulo, que as
@@ -78,20 +111,16 @@ const readPlans = () =>
  */
 const resolveSession = async (user) => {
   if (!user) return { user: null, error: null };
+  if (user.authSource === 'gateway') return { user, error: null };
 
   const base = { uid: user.uid, email: user.email, name: user.displayName || 'Usuário' };
   const denied = (error, extra = {}) => ({ user: { ...base, ...extra, tenantId: null, role: null }, error });
 
   try {
-    // 1) Custom claims sao a fonte autoritativa (definidas pelo backend).
-    //    O documento de perfil e apenas fallback de migracao.
     const tokenResult = await user.getIdTokenResult();
     const claimTenantId = tokenResult.claims.tenantId || null;
     const claimRole = tokenResult.claims.role || null;
 
-    // Leituras em paralelo: antes eram 3 idas ao Firestore em sequencia
-    // (perfil -> empresa/identidade -> plano) e a tela de login ficava parada
-    // nesse intervalo, parecendo que tinha voltado ao inicio.
     const hintedTenant = claimTenantId || readTenantHint(user.uid);
     const plansPromise = readPlans();
     const prefetched = hintedTenant
@@ -105,7 +134,6 @@ const resolveSession = async (user) => {
     const tenantId = claimTenantId || profile?.tenantId || null;
     const role = claimRole || profile?.role || null;
 
-    // FAIL-CLOSED: sem tenant ou sem papel o usuario entra sem privilegio algum.
     if (!tenantId || !role) {
       return denied(
         profile
@@ -119,8 +147,6 @@ const resolveSession = async (user) => {
       return denied('Seu acesso foi suspenso pelo administrador da empresa.', { name, blocked: 'user' });
     }
 
-    // 2) Empresa, identidade visual e plano. Falhas de leitura aqui nao
-    //    bloqueiam: o bloqueio real esta nas regras do Firestore.
     const [tenant, settings] = prefetched && hintedTenant === tenantId
       ? await prefetched
       : await Promise.all([readDoc(['tenants', tenantId]), readDoc(['settings', tenantId])]);
@@ -147,20 +173,17 @@ const resolveSession = async (user) => {
         ...profile,
         uid: user.uid,
         email: user.email,
-        // tenantId e role vem depois do spread: nenhum campo do documento
-        // sobrescreve a decisao de autorizacao.
         tenantId,
         role,
         name,
         companyName: branding.companyName || tenant?.companyName || 'Nexus ITAM',
         logoUrl: safeImageUrl(branding.logoUrl),
-        // Quem aplica a cor e o ThemeContext: duas fontes escrevendo
-        // --color-brand faziam o acento pessoal e o whitelabel se anularem.
         primaryColor: safeCssColor(branding.primaryColor),
         hiddenModules: Array.isArray(branding.hiddenModules) ? branding.hiddenModules : [],
         tenantStatus: tenant?.status || null,
         entitlements,
         isMaster: tenantId === MASTER_TENANT && role === 'superadmin',
+        authSource: 'firebase',
       },
       error: null,
     };
@@ -173,13 +196,7 @@ const resolveSession = async (user) => {
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  // Erro de carregamento de perfil: mantido separado para a UI poder explicar
-  // por que a sessao existe mas o acesso foi negado.
   const [profileError, setProfileError] = useState(null);
-
-  // Cada resolucao recebe um numero; so a mais recente pode gravar o estado.
-  // Sem isso, a resolucao disparada pelo login (ainda sem perfil) terminava
-  // DEPOIS da criacao da empresa e deixava o recem-cadastrado sem acesso.
   const resolveSeq = useRef(0);
 
   const applySession = useCallback(async (user) => {
@@ -193,11 +210,63 @@ export const AuthProvider = ({ children }) => {
     return result;
   }, []);
 
-  /** Recarrega perfil, plano e identidade visual (ex.: apos salvar Configuracoes). */
-  const refreshProfile = useCallback(() => applySession(auth.currentUser), [applySession]);
+  const loginWithGateway = useCallback(async (email, password) => {
+    const authData = await microservicesApi.authenticate(String(email || '').trim(), password);
+    if (authData?.user?.role === 'collaborator') {
+      clearGatewaySession();
+      const err = new Error(
+        'Contas de colaborador devem acessar o Portal de Autoatendimento (Vue 3). Use uma credencial administrativa ou técnica no Console ITAM.',
+      );
+      err.isGatewayPolicyError = true;
+      throw err;
+    }
+    const appUser = buildGatewayAppUser(authData.user);
+    setProfileError(null);
+    setCurrentUser(appUser);
+    setLoading(false);
+    return { user: appUser };
+  }, []);
 
-  const login = useCallback((email, password) => signInWithEmailAndPassword(auth, email.trim(), password), []);
-  const logout = useCallback(() => signOut(auth), []);
+  const login = useCallback(
+    async (email, password) => {
+      if (!isFirebaseConfigured) {
+        return loginWithGateway(email, password);
+      }
+      return signInWithEmailAndPassword(auth, String(email || '').trim(), password);
+    },
+    [loginWithGateway],
+  );
+
+  const logout = useCallback(async () => {
+    const wasGateway = currentUser?.authSource === 'gateway' || Boolean(getGatewaySession()?.token);
+    clearGatewaySession();
+    setCurrentUser(null);
+    setProfileError(null);
+    if (isFirebaseConfigured && auth.currentUser) {
+      await signOut(auth).catch(() => {});
+    } else if (!wasGateway && isFirebaseConfigured) {
+      await signOut(auth).catch(() => {});
+    }
+  }, [currentUser?.authSource]);
+
+  const refreshProfile = useCallback(() => {
+    if (currentUser?.authSource === 'gateway' || (!isFirebaseConfigured && getGatewaySession()?.token)) {
+      return microservicesApi
+        .getMe()
+        .then((res) => {
+          if (res?.user) {
+            setGatewaySession(res.token || getGatewaySession()?.token, res.user);
+            setCurrentUser(buildGatewayAppUser(res.user));
+          }
+        })
+        .catch(() => {
+          clearGatewaySession();
+          setCurrentUser(null);
+        });
+    }
+    return applySession(auth.currentUser);
+  }, [applySession, currentUser?.authSource]);
+
   const resetPassword = useCallback((email) => {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://itam-nexus.web.app';
     const actionCodeSettings = {
@@ -207,129 +276,196 @@ export const AuthProvider = ({ children }) => {
     return sendPasswordResetEmail(auth, email.trim(), actionCodeSettings);
   }, []);
 
-  // Cadastro de novo inquilino (SaaS B2B).
-  // Empresa e perfil vao no MESMO batch: as regras so aceitam o perfil de owner
-  // se a empresa nascer junto, apontando para este UID. A versao anterior lia
-  // /tenants dentro de uma transacao antes de o perfil existir — a regra negava
-  // a leitura e todo cadastro self-service falhava.
-  const registerTenant = useCallback(async (companyName, adminName, email, password) => {
-    const cleanCompany = String(companyName || '').trim().slice(0, 120);
-    const normalizedEmail = String(email || '').trim().toLowerCase();
+  const registerTenant = useCallback(
+    async (companyName, adminName, email, password) => {
+      if (!isFirebaseConfigured) {
+        throw new Error('Cadastro self-service de novas empresas está disponível apenas no modo Cloud Firebase.');
+      }
+      const cleanCompany = String(companyName || '').trim().slice(0, 120);
+      const normalizedEmail = String(email || '').trim().toLowerCase();
 
-    const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-    const user = userCredential.user;
-    const tenantId = newTenantId(cleanCompany);
+      const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+      const user = userCredential.user;
+      const tenantId = newTenantId(cleanCompany);
 
-    try {
+      try {
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'tenants', tenantId), {
+          id: tenantId,
+          companyName: cleanCompany,
+          ownerUid: user.uid,
+          plan: 'starter',
+          status: 'active',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        batch.set(doc(db, 'users', user.uid), {
+          id: user.uid,
+          email: normalizedEmail,
+          name: String(adminName || '').trim(),
+          tenantId,
+          role: 'owner',
+          status: 'active',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        await batch.commit();
+      } catch (error) {
+        await user.delete().catch(() => {});
+        throw error;
+      }
+
+      await setDoc(doc(db, 'settings', tenantId), buildInitialSettings(cleanCompany), { merge: true }).catch((error) =>
+        console.warn('Configuracoes iniciais nao gravadas:', error),
+      );
+
+      await applySession(user);
+      return { user, tenantId };
+    },
+    [applySession],
+  );
+
+  const acceptInvite = useCallback(
+    async (inviteId, displayName) => {
+      if (!isFirebaseConfigured) {
+        throw new Error('Aceite de convites está disponível apenas no modo Cloud Firebase.');
+      }
+      const user = auth.currentUser;
+      if (!user) throw new Error('Entre com a conta convidada para aceitar o convite.');
+
+      let invite;
+      try {
+        const snap = await getDoc(doc(db, 'invites', inviteId));
+        if (!snap.exists()) throw new Error('Convite não encontrado. Ele pode ter sido revogado.');
+        invite = snap.data();
+      } catch (error) {
+        if (error?.code === 'permission-denied') {
+          throw new Error(`Este convite não foi enviado para ${user.email}. Entre com o e-mail convidado.`);
+        }
+        throw error;
+      }
+
+      if (invite.status !== 'pending') throw new Error('Este convite já foi utilizado ou cancelado.');
+      const expiresAt = toDate(invite.expiresAt);
+      if (expiresAt && expiresAt < new Date()) throw new Error('Este convite expirou. Peça um novo ao administrador.');
+
       const batch = writeBatch(db);
-      batch.set(doc(db, 'tenants', tenantId), {
-        id: tenantId,
-        companyName: cleanCompany,
-        ownerUid: user.uid,
-        plan: 'starter',
-        status: 'active',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
       batch.set(doc(db, 'users', user.uid), {
         id: user.uid,
-        email: normalizedEmail,
-        name: String(adminName || '').trim(),
-        tenantId,
-        role: 'owner',
+        email: String(user.email || '').toLowerCase(),
+        name: String(displayName || user.displayName || '').trim() || user.email,
+        tenantId: invite.tenantId,
+        role: invite.role,
         status: 'active',
+        inviteId,
+        invitedBy: invite.invitedBy || null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      batch.update(doc(db, 'invites', inviteId), {
+        status: 'accepted',
+        acceptedAt: serverTimestamp(),
+        acceptedBy: user.uid,
+      });
       await batch.commit();
-    } catch (error) {
-      // A conta de Auth ficaria orfa sem perfil: remove para o e-mail voltar a ficar livre.
-      await user.delete().catch(() => {});
-      throw error;
-    }
 
-    // Identidade inicial: nome e prefixo de patrimonio da propria empresa, em
-    // vez dos padroes herdados da primeira cliente. Falha aqui nao desfaz o cadastro.
-    await setDoc(doc(db, 'settings', tenantId), buildInitialSettings(cleanCompany), { merge: true }).catch((error) =>
-      console.warn('Configuracoes iniciais nao gravadas:', error),
-    );
+      return applySession(user);
+    },
+    [applySession],
+  );
 
-    await applySession(user);
-    return { user, tenantId };
-  }, [applySession]);
-
-  /**
-   * Aceita um convite pendente com a conta ja autenticada.
-   * Perfil e baixa do convite vao no mesmo batch — exigencia das regras.
-   */
-  const acceptInvite = useCallback(async (inviteId, displayName) => {
-    const user = auth.currentUser;
-    if (!user) throw new Error('Entre com a conta convidada para aceitar o convite.');
-
-    let invite;
-    try {
-      const snap = await getDoc(doc(db, 'invites', inviteId));
-      if (!snap.exists()) throw new Error('Convite não encontrado. Ele pode ter sido revogado.');
-      invite = snap.data();
-    } catch (error) {
-      if (error?.code === 'permission-denied') {
-        throw new Error(`Este convite não foi enviado para ${user.email}. Entre com o e-mail convidado.`);
-      }
-      throw error;
-    }
-
-    if (invite.status !== 'pending') throw new Error('Este convite já foi utilizado ou cancelado.');
-    const expiresAt = toDate(invite.expiresAt);
-    if (expiresAt && expiresAt < new Date()) throw new Error('Este convite expirou. Peça um novo ao administrador.');
-
-    const batch = writeBatch(db);
-    batch.set(doc(db, 'users', user.uid), {
-      id: user.uid,
-      email: String(user.email || '').toLowerCase(),
-      name: String(displayName || user.displayName || '').trim() || user.email,
-      tenantId: invite.tenantId,
-      role: invite.role,
-      status: 'active',
-      inviteId,
-      invitedBy: invite.invitedBy || null,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    batch.update(doc(db, 'invites', inviteId), {
-      status: 'accepted',
-      acceptedAt: serverTimestamp(),
-      acceptedBy: user.uid,
-    });
-    await batch.commit();
-
-    return applySession(user);
-  }, [applySession]);
-
+  // Inicialização de sessão híbrida (Gateway Fastify ou Firebase Auth)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      // Enquanto o perfil resolve, as rotas mostram carregamento em vez de
-      // mandar o usuario de volta ao login.
-      if (user) setLoading(true);
-      applySession(user);
+    let active = true;
+
+    // 1. Tenta restaurar sessão ativa do API Gateway
+    const gwSession = getGatewaySession();
+    if (gwSession?.token && gwSession?.user?.role !== 'collaborator') {
+      const appUser = buildGatewayAppUser(gwSession.user);
+      setCurrentUser(appUser);
+      setLoading(false);
+
+      microservicesApi
+        .getMe()
+        .then((res) => {
+          if (!active) return;
+          if (res?.user) {
+            setGatewaySession(gwSession.token, res.user);
+            setCurrentUser(buildGatewayAppUser(res.user));
+          }
+        })
+        .catch(() => {
+          if (!active) return;
+          clearGatewaySession();
+          if (!isFirebaseConfigured) {
+            setCurrentUser(null);
+            setLoading(false);
+          }
+        });
+    }
+
+    // 2. Se Firebase estiver configurado, escuta alterações de estado
+    if (isFirebaseConfigured) {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        if (!active) return;
+        if (user) {
+          setLoading(true);
+          applySession(user);
+        } else if (!getGatewaySession()?.token) {
+          applySession(null);
+        }
+      });
+      return () => {
+        active = false;
+        unsubscribe();
+      };
+    }
+
+    // 3. Se Firebase NÃO estiver configurado e não houver sessão Gateway, encerra loading
+    if (!gwSession?.token) {
+      setLoading(false);
+    }
+
+    const unsubGateway = onGatewaySessionChange((session) => {
+      if (!active) return;
+      if (!session?.token && currentUser?.authSource === 'gateway') {
+        setCurrentUser(null);
+      }
     });
-    return unsubscribe;
-  }, [applySession]);
+
+    return () => {
+      active = false;
+      unsubGateway();
+    };
+  }, [applySession, currentUser?.authSource]);
 
   const value = useMemo(
     () => ({
       currentUser,
       loading,
       profileError,
+      isGatewayOnly: !isFirebaseConfigured,
       login,
+      loginWithGateway,
       logout,
       resetPassword,
       registerTenant,
       acceptInvite,
       refreshProfile,
     }),
-    [currentUser, loading, profileError, login, logout, resetPassword, registerTenant, acceptInvite, refreshProfile],
+    [
+      currentUser,
+      loading,
+      profileError,
+      login,
+      loginWithGateway,
+      logout,
+      resetPassword,
+      registerTenant,
+      acceptInvite,
+      refreshProfile,
+    ],
   );
 
-  // Renderiza sempre: as rotas decidem o que mostrar durante `loading`.
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

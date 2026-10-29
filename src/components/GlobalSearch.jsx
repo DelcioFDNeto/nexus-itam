@@ -14,6 +14,8 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Building2, Command, FileText, Monitor, Search, User } from 'lucide-react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { getAllAssets } from '../services/assetService';
+import { getEmployees } from '../services/employeeService';
 import { useAuth } from '../contexts/AuthContext';
 import { can, isSuperadmin } from '../utils/permissions';
 import { isModuleEnabled } from '../utils/entitlements';
@@ -107,6 +109,21 @@ const GlobalSearch = ({ isOpen, onClose }) => {
             setData(fetchedData);
           }
         } else if (tenantId) {
+          if (currentUser?.authSource === 'gateway') {
+            const [assetsList, employeesList] = await Promise.all([
+              getAllAssets(tenantId),
+              can(currentUser, 'employees:write') ? getEmployees(tenantId) : Promise.resolve([]),
+            ]);
+            if (!cancelled) {
+              const fetchedData = { assets: assetsList, employees: employeesList };
+              globalSearchCache.key = cacheKey;
+              globalSearchCache.timestamp = Date.now();
+              globalSearchCache.data = fetchedData;
+              setData(fetchedData);
+            }
+            return;
+          }
+
           const [assetsSnap, employeesSnap] = await Promise.all([
             getDocs(query(collection(db, 'assets'), where('tenantId', '==', tenantId))),
             can(currentUser, 'employees:write')

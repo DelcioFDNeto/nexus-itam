@@ -6,7 +6,7 @@ import {
   Users, LogOut, ClipboardCheck, X, ShieldCheck, Layers, Globe,
   FolderGit2, Settings, ChevronLeft, ChevronRight, ChevronDown,
   Search, Activity, UserCog, Building2, Moon, Sun, FileSignature,
-  RefreshCw, Shield, Boxes,
+  RefreshCw, Shield, Boxes, Network,
 } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../contexts/AuthContext';
@@ -127,6 +127,7 @@ const Sidebar = ({
         icon: Activity,
         items: [
           { path: '/agent', icon: Activity, label: 'NexusDesk & RMM', badge: 'v3.1', cap: 'agent:manage', feature: 'agent' },
+          { path: '/service-desk', icon: Network, label: 'Service Desk & APIs', badge: '5 APIs', cap: 'assets:read' },
           { path: '/audit', icon: ClipboardCheck, label: 'Auditoria QR Code', cap: 'audit:run', feature: 'audit' },
         ],
       },

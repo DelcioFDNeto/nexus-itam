@@ -35,6 +35,7 @@ dist-ssr
 .env
 .env.*
 !.env.example
+!.env.vps.example
 # Credenciais de servico do Firebase Admin (NUNCA comitar)
 serviceAccountKey.json
 *serviceAccount*.json

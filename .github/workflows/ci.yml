@@ -23,17 +23,38 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
 
-    - name: Install dependencies
+    - name: Install Root Dependencies (React 19 Console)
       run: npm ci
 
-    - name: Run Linter
+    - name: Run Linter (React 19 + Fastify Microservices)
       run: npm run lint
 
-    - name: Run Tests
+    - name: Run Frontend Unit Tests
       run: npm run test
 
-    - name: Build Project
+    - name: Build Frontend 1 (React 19 Console)
       run: npm run build
+
+  microservices-and-portal:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 22.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.x
+
+    - name: Install & Test Fastify Microservices (4 REST + 1 WebSocket)
+      run: |
+        npm --prefix services ci
+        npm --prefix services test
+
+    - name: Install & Build Frontend 2 (Vue 3.5 Collaborator Portal)
+      run: |
+        npm --prefix portal-colaborador ci
+        npm --prefix portal-colaborador run build
 
   # As regras do Firestore sao a fronteira real de seguranca entre empresas.
   # Esta suite roda cenarios de ataque (tomada de empresa, escalonamento de

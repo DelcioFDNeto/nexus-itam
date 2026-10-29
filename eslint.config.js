@@ -5,9 +5,9 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'portal-colaborador/**', '**/node_modules/**']),
   {
-    files: ['**/*.{js,jsx}', '!scripts/**'],
+    files: ['**/*.{js,jsx}', '!scripts/**', '!services/**'],
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,
@@ -32,10 +32,23 @@ export default defineConfig([
     },
   },
   {
-    // Scripts de backend e testes de regras (rodam no Node, contra o emulador).
-    files: ['scripts/**/*.js', 'tests/**/*.js', 'vitest.rules.config.js'],
+    // Microsservicos Fastify, scripts de backend e testes de regras (Node.js).
+    files: ['services/**/*.js', 'scripts/**/*.{js,mjs}', 'tests/**/*.js', 'vitest.rules.config.js'],
+    extends: [js.configs.recommended],
     languageOptions: {
-      globals: globals.node,
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      'no-unused-vars': [
+        'error',
+        { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_' },
+      ],
+      // Sanitizacao defensiva remove caracteres de controle ASCII intencionalmente.
+      'no-control-regex': 'off',
     },
   },
 ])

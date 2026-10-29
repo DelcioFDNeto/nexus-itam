@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { releaseAssetFromLicenses } from './licenseService';
 import { lifecycleBlocker } from '../utils/assetStatus';
+import { isGatewayActiveSession, microservicesApi } from './microservicesClient';
 
 const assertOperable = (asset, action) => {
   const reason = lifecycleBlocker(asset, action);
@@ -24,10 +25,98 @@ const assertOperable = (asset, action) => {
 const assetsCollection = collection(db, 'assets');
 const historyCollection = collection(db, 'history'); // Coleção Global de Histórico
 
+// --- MAPEADORES ADAPTER MICROSERVICES <-> REACT ---
+
+export const mapGatewayAssetToReact = (row) => {
+  if (!row) return null;
+  const brand = row.brand || '';
+  const model = row.model || '';
+  const fullModel = brand && !model.toLowerCase().startsWith(brand.toLowerCase()) ? `${brand} ${model}`.trim() : model;
+  const specs = row.specs && typeof row.specs === 'object' ? row.specs : {};
+
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    internalId: row.internal_id,
+    type: specs.uiType || row.type || 'Computador',
+    brand: row.brand || '',
+    model: fullModel || row.internal_id,
+    serialNumber: row.serial_number || '',
+    status: row.status || 'Em Uso',
+    location: row.location || '',
+    department: row.department || '',
+    sector: row.department || '',
+    assignedTo: row.assigned_to_name || '',
+    assignedToEmail: row.assigned_to_email || '',
+    purchase_value: row.purchase_value,
+    purchaseValue: row.purchase_value,
+    valor: String(row.purchase_value ?? 0),
+    notes: specs.notes || '',
+    attachments: Array.isArray(specs.attachments) ? specs.attachments : [],
+    peripherals: Array.isArray(specs.peripherals) ? specs.peripherals : [],
+    clientCpf: specs.clientCpf || '',
+    purchaseDate: specs.purchaseDate || '',
+    warrantyEnd: specs.warrantyEnd || '',
+    supplier: specs.supplier || '',
+    invoiceNumber: specs.invoiceNumber || '',
+    costCenter: specs.costCenter || '',
+    category: specs.category || 'Corporativo',
+    writeOffDate: specs.writeOffDate || '',
+    writeOffReason: specs.writeOffReason || '',
+    writeOffNotes: specs.writeOffNotes || '',
+    specs: { ...specs, processor: specs.processor || specs.cpu || '' },
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
+
+export const mapReactAssetToGateway = (assetData) => {
+  const modelStr = String(assetData.model || '').trim();
+  const parts = modelStr.split(/\s+/);
+  const brand = assetData.brand?.trim() || parts[0] || 'Geral';
+  const model = parts.length > 1 ? parts.slice(1).join(' ') : (parts[0] || 'Equipamento');
+  const purchaseValue = Number(
+    String(assetData.valor ?? assetData.purchaseValue ?? 0)
+      .replace(/[R$\s]/g, '')
+      .replace(/\./g, '')
+      .replace(',', '.')
+  ) || 0;
+
+  return {
+    internalId: assetData.internalId ? String(assetData.internalId).trim().toUpperCase() : undefined,
+    type: assetData.type || 'Notebook',
+    brand: brand.slice(0, 80),
+    model: model.slice(0, 120),
+    serialNumber: assetData.serialNumber ? String(assetData.serialNumber).trim().slice(0, 120) : null,
+    status: assetData.status || 'Em Uso',
+    location: assetData.location ? String(assetData.location).trim().slice(0, 120) : undefined,
+    department: (assetData.department || assetData.sector) ? String(assetData.department || assetData.sector).trim().slice(0, 120) : undefined,
+    assignedToName: assetData.assignedTo ? String(assetData.assignedTo).trim().slice(0, 160) : null,
+    assignedToEmail: assetData.assignedToEmail ? String(assetData.assignedToEmail).trim().toLowerCase().slice(0, 180) : null,
+    purchaseValue,
+    specs: {
+      ...(assetData.specs || {}),
+      uiType: assetData.type,
+      notes: assetData.notes || '',
+      category: assetData.category || 'Corporativo',
+      supplier: assetData.supplier || '',
+      invoiceNumber: assetData.invoiceNumber || '',
+      costCenter: assetData.costCenter || '',
+      clientCpf: assetData.clientCpf || '',
+      purchaseDate: assetData.purchaseDate || '',
+      warrantyEnd: assetData.warrantyEnd || '',
+    },
+  };
+};
+
 // --- LEITURA (READ) ---
 
 export const getAllAssets = async (tenantId) => {
   if (!tenantId) return [];
+  if (isGatewayActiveSession()) {
+    const res = await microservicesApi.listAssets();
+    return (res.items || []).map(mapGatewayAssetToReact);
+  }
   const q = query(
     assetsCollection, 
     where('tenantId', '==', tenantId),
@@ -40,6 +129,10 @@ export const getAllAssets = async (tenantId) => {
 /** Ativos sob responsabilidade de uma pessoa (pelo nome gravado em `assignedTo`). */
 export const getAssetsAssignedTo = async (tenantId, holderName) => {
   if (!tenantId || !holderName) return [];
+  if (isGatewayActiveSession()) {
+    const res = await microservicesApi.listAssets();
+    return (res.items || []).map(mapGatewayAssetToReact).filter((a) => a.assignedTo === holderName);
+  }
   const q = query(assetsCollection, where('tenantId', '==', tenantId), where('assignedTo', '==', holderName));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -52,6 +145,10 @@ export const getGlobalAssets = async () => {
 };
 
 export const getAssetById = async (id, tenantId) => {
+  if (isGatewayActiveSession()) {
+    const raw = await microservicesApi.getAssetById(id);
+    return mapGatewayAssetToReact(raw);
+  }
   const docRef = doc(db, 'assets', id);
   const docSnap = await getDoc(docRef);
   if (docSnap.exists()) {
@@ -67,6 +164,13 @@ export const getAssetById = async (id, tenantId) => {
 /** Busca um ativo pelo código de patrimônio (Tag) no mesmo inquilino. */
 export const getAssetByInternalId = async (internalId, tenantId) => {
   if (!internalId || !tenantId) return null;
+  if (isGatewayActiveSession()) {
+    const res = await microservicesApi.listAssets({ search: internalId });
+    const match = (res.items || []).find(
+      (a) => String(a.internal_id).toUpperCase() === String(internalId).trim().toUpperCase(),
+    );
+    return match ? mapGatewayAssetToReact(match) : null;
+  }
   const q = query(
     assetsCollection,
     where('tenantId', '==', tenantId),
@@ -81,8 +185,20 @@ export const getAssetByInternalId = async (internalId, tenantId) => {
 // Busca histórico na coleção global filtrando pelo ID do ativo
 export const getAssetHistory = async (assetId, tenantId, limitCount = 20) => {
   if (!tenantId) return [];
-  // Sem o filtro de tenant a consulta varria o historico global: as regras
-  // rejeitavam a query inteira e a timeline vinha vazia sem explicacao.
+  if (isGatewayActiveSession()) {
+    const asset = await microservicesApi.getAssetById(assetId).catch(() => null);
+    if (!asset || !Array.isArray(asset.history)) return [];
+    return asset.history.slice(0, limitCount).map((h) => ({
+      id: h.id,
+      assetId: h.asset_id,
+      tenantId: h.tenant_id,
+      action: h.action,
+      details: h.details,
+      user: h.actor_name || h.actor_email || 'Sistema',
+      date: h.created_at,
+      jsDate: new Date(h.created_at),
+    }));
+  }
   const q = query(
     historyCollection,
     where('tenantId', '==', tenantId),
@@ -111,6 +227,27 @@ export const getGlobalActivity = async (limitCount = 20) => {
 
 export const getRecentActivity = async (tenantId, limitCount = 8) => {
   if (!tenantId) return [];
+  if (isGatewayActiveSession()) {
+    const res = await microservicesApi.listAssets();
+    const assets = (res.items || []).slice(0, 8);
+    const detailed = await Promise.all(assets.map((a) => microservicesApi.getAssetById(a.id).catch(() => null)));
+    const historyList = [];
+    detailed.filter(Boolean).forEach((a) => {
+      (a.history || []).forEach((h) => {
+        historyList.push({
+          id: h.id,
+          assetId: h.asset_id,
+          tenantId: h.tenant_id,
+          action: h.action,
+          details: h.details,
+          user: h.actor_name || h.actor_email || 'Sistema',
+          date: h.created_at,
+          jsDate: new Date(h.created_at),
+        });
+      });
+    });
+    return historyList.sort((a, b) => b.jsDate - a.jsDate).slice(0, limitCount);
+  }
   const q = query(
     historyCollection, 
     where('tenantId', '==', tenantId),
@@ -135,6 +272,12 @@ export const getRecentActivity = async (tenantId, limitCount = 8) => {
 export const createAsset = async (assetData) => {
   if (!assetData.tenantId) {
     throw new Error("Não é possível cadastrar um ativo sem especificar o inquilino (tenantId).");
+  }
+
+  if (isGatewayActiveSession()) {
+    const payload = mapReactAssetToGateway(assetData);
+    const created = await microservicesApi.createAsset(payload);
+    return { id: created.id };
   }
 
   const batch = writeBatch(db);
@@ -162,12 +305,6 @@ export const createAsset = async (assetData) => {
   return assetRef;
 };
 
-/**
- * tenantId para o registro na timeline. As regras recusam historico sem
- * tenantId: chamadas que esqueciam de passa-lo (ex.: alteracao de status em
- * massa) atualizavam o ativo e em seguida falhavam no log — a tela acusava
- * erro e a trilha de auditoria ficava sem a alteracao. Na falta, le do ativo.
- */
 const resolveTenantId = async (assetId, ...candidates) => {
   const known = candidates.find((value) => typeof value === 'string' && value);
   if (known) return known;
@@ -177,6 +314,15 @@ const resolveTenantId = async (assetId, ...candidates) => {
 
 // Atualiza dados e registra na timeline com detalhes personalizados atomicamente
 export const updateAsset = async (id, assetData, historyOptions = null) => {
+  if (isGatewayActiveSession()) {
+    const payload = mapReactAssetToGateway(assetData);
+    if (historyOptions?.details || historyOptions?.action) {
+      payload.historyNote = `${historyOptions.action || 'Atualização'}: ${historyOptions.details || ''}`.trim();
+    }
+    await microservicesApi.updateAsset(id, payload);
+    return;
+  }
+
   const docRef = doc(db, 'assets', id);
   const tenantId = await resolveTenantId(id, assetData?.tenantId, historyOptions?.tenantId);
   const batch = writeBatch(db);
@@ -211,12 +357,16 @@ export const updateAsset = async (id, assetData, historyOptions = null) => {
 };
 
 export const deleteAsset = async (id, tenantId, user = 'Sistema') => {
+  if (isGatewayActiveSession()) {
+    await microservicesApi.retireAsset(id, 'Exclusão solicitada pelo operador');
+    return true;
+  }
+
   const assetRef = doc(db, 'assets', id);
   const resolvedTenantId = await resolveTenantId(id, tenantId);
   const batch = writeBatch(db);
 
   batch.delete(assetRef);
-  // Inventario do Agente ITAM vai junto (sem ele o documento ficaria orfao).
   batch.delete(doc(db, 'assetInventory', id));
   
   // Log de Exclusão
@@ -251,10 +401,19 @@ export const deleteAsset = async (id, tenantId, user = 'Sistema') => {
 
 // Realiza a movimentação atomicamente
 export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema') => {
-  // Antes: movimentava ativo em transito (a transferencia ficava orfa) e
-  // gravava sempre "Em Uso" — reativando em silencio um ativo baixado e
-  // tirando da manutencao um equipamento que ainda estava no conserto.
   assertOperable(currentData, 'movimentar');
+  if (isGatewayActiveSession()) {
+    const holder = (moveData.newResponsible || '').trim();
+    const updatePayload = {
+      location: moveData.newLocation,
+      assignedToName: holder || null,
+      status: holder ? 'Em Uso' : 'Disponível',
+      historyNote: `Transferência para ${moveData.newLocation} (${holder || 'Sem responsável'}). Motivo: ${moveData.reason || 'Rotina'}`,
+    };
+    await microservicesApi.updateAsset(assetId, updatePayload);
+    return true;
+  }
+
   const assetRef = doc(db, 'assets', assetId);
   const batch = writeBatch(db);
   const historyRef = doc(historyCollection);
@@ -300,24 +459,15 @@ export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema'
 
 // --- BAIXA PATRIMONIAL ---
 
-/**
- * Retira o ativo do patrimonio sem apagar o registro atomicamente.
- *
- * Antes so existia `deleteAsset`: aposentar um equipamento significava excluir
- * o documento e perder junto toda a timeline — movimentacoes, manutencoes e
- * responsaveis anteriores. A baixa preserva o historico e exige data e motivo.
- *
- * @param {string} assetId
- * @param {object} currentData ativo como esta hoje
- * @param {{status?:string, date:string, reason:string, notes?:string, residualValue?:string}} writeOff
- * @param {string} user quem registrou
- */
 export const writeOffAsset = async (assetId, currentData, writeOff, user = 'Sistema') => {
   if (!writeOff?.reason) throw new Error('A baixa exige um motivo.');
   if (!writeOff?.date) throw new Error('A baixa exige a data.');
-  // Baixar em transito deixava a transferencia viva: ao concluir, o termo
-  // devolvia o ativo ao inventario como "Disponível".
   if (currentData?.transit?.termId) assertOperable(currentData, 'dar baixa');
+
+  if (isGatewayActiveSession()) {
+    await microservicesApi.retireAsset(assetId, writeOff.reason);
+    return true;
+  }
 
   const tenantId = currentData?.tenantId;
   if (!tenantId) throw new Error('Ativo sem inquilino: baixa nao registrada.');
@@ -334,7 +484,6 @@ export const writeOffAsset = async (assetId, currentData, writeOff, user = 'Sist
     writeOffNotes: writeOff.notes || '',
     writeOffResidualValue: writeOff.residualValue || '',
     writeOffBy: user,
-    // Solta o responsavel: um ativo baixado nao fica sob a guarda de ninguem.
     assignedTo: '',
     employeeId: '',
     clientCpf: '',
@@ -361,7 +510,6 @@ export const writeOffAsset = async (assetId, currentData, writeOff, user = 'Sist
 
   await batch.commit();
 
-  // Equipamento baixado nao consome licenca (SAM). Nao bloqueia a baixa.
   try {
     await releaseAssetFromLicenses(tenantId, assetId);
   } catch (err) {
@@ -372,6 +520,16 @@ export const writeOffAsset = async (assetId, currentData, writeOff, user = 'Sist
 
 /** Desfaz a baixa, devolvendo o ativo ao inventario ativo atomicamente. */
 export const reactivateAsset = async (assetId, currentData, user = 'Sistema', newStatus = 'Disponível') => {
+  if (isGatewayActiveSession()) {
+    await microservicesApi.updateAsset(assetId, {
+      status: newStatus,
+      assignedToName: null,
+      assignedToEmail: null,
+      historyNote: `Reativação de ativo como ${newStatus}`,
+    });
+    return true;
+  }
+
   const tenantId = currentData?.tenantId;
   if (!tenantId) throw new Error('Ativo sem inquilino: reativacao nao registrada.');
 
@@ -409,6 +567,14 @@ export const reactivateAsset = async (assetId, currentData, user = 'Sistema', ne
 // Registra manutenção atomicamente
 export const registerMaintenance = async (assetId, maintenanceData, user = 'Sistema') => {
   if (maintenanceData?.asset) assertOperable(maintenanceData.asset, 'enviar para manutenção');
+  if (isGatewayActiveSession()) {
+    await microservicesApi.updateAsset(assetId, {
+      status: 'Manutenção',
+      historyNote: `Manutenção iniciada: ${maintenanceData.defect || 'Reparo técnico'} (Custo R$ ${maintenanceData.cost || '0,00'}, Fornecedor: ${maintenanceData.provider || 'Interno'})`,
+    });
+    return true;
+  }
+
   const assetRef = doc(db, 'assets', assetId);
   const tenantId = await resolveTenantId(assetId, maintenanceData?.tenantId);
   const batch = writeBatch(db);

@@ -14,6 +14,8 @@ import {
   limit,
 } from "firebase/firestore";
 import {
+  getAssetById,
+  getAssetHistory,
   moveAsset,
   registerMaintenance,
   updateAsset,
@@ -114,9 +116,16 @@ const AssetDetail = () => {
   const [termsVersion, setTermsVersion] = useState(0);
 
   useEffect(() => {
+    if (!tenantId) return;
+    if (currentUser?.authSource === 'gateway') {
+      setConfig({
+        companyName: currentUser?.companyName || 'Nexus Indústria & Tecnologia S.A.',
+        assetPrefix: currentUser?.assetPrefix || 'NEX',
+      });
+      return;
+    }
     const loadConfig = async () => {
       try {
-        if (!tenantId) return;
         const snap = await getDoc(doc(db, "settings", tenantId));
         if (snap.exists()) setConfig(snap.data());
       } catch (err) {
@@ -124,7 +133,7 @@ const AssetDetail = () => {
       }
     };
     loadConfig();
-  }, [tenantId]);
+  }, [tenantId, currentUser?.authSource, currentUser?.companyName, currentUser?.assetPrefix]);
 
   // Impressos com a identidade da empresa e todos os campos escapados
   const openPrint = (html) => {
@@ -154,10 +163,15 @@ const AssetDetail = () => {
     );
   };
 
-  // Busca de dados no banco (Firestore)
+  // Busca de dados no banco (Firestore / PostgreSQL 16)
   const fetchHistory = async (historyTenantId) => {
     if (!historyTenantId) return;
     try {
+      if (currentUser?.authSource === 'gateway') {
+        const hItems = await getAssetHistory(id, historyTenantId, 50);
+        setHistory(hItems);
+        return;
+      }
       const q = query(
         collection(db, "history"),
         where("tenantId", "==", historyTenantId),
@@ -175,6 +189,36 @@ const AssetDetail = () => {
   useEffect(() => {
     notesLoadedRef.current = false;
     setLoading(true);
+
+    if (currentUser?.authSource === 'gateway') {
+      let active = true;
+      getAssetById(id, tenantId)
+        .then((data) => {
+          if (!active) return;
+          if (data) {
+            setAsset(data);
+            if (!notesLoadedRef.current) {
+              setNotes(data.notes || "");
+              setCpfInput(data.clientCpf || "");
+              notesLoadedRef.current = true;
+            }
+            fetchHistory(data.tenantId || tenantId);
+          } else {
+            navigate("/assets");
+          }
+        })
+        .catch((err) => {
+          console.error(err);
+          if (active) navigate("/assets");
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+      return () => {
+        active = false;
+      };
+    }
+
     const assetRef = doc(db, "assets", id);
     const unsubscribe = onSnapshot(
       assetRef,
@@ -199,7 +243,7 @@ const AssetDetail = () => {
       },
     );
     return () => unsubscribe();
-  }, [id, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, navigate, currentUser?.authSource, tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ações de usuário e eventos de interface (Movimentação, Manutenção, Anexos...)
 

@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FileCheck2, FileSignature, Printer } from 'lucide-react';
 import { listTermsForAsset } from '../../services/termService';
+import { isGatewayActiveSession, microservicesApi } from '../../services/microservicesClient';
 import { useTermPrinter } from '../../hooks/useTermPrinter';
 import { TermKindTag, TermStatusBadge } from './termUi';
 import SignedCopyViewer from './SignedCopyViewer';
@@ -20,6 +21,36 @@ const AssetTermsCard = ({ tenantId, assetId, refreshKey }) => {
   useEffect(() => {
     if (!tenantId || !assetId) return undefined;
     let active = true;
+
+    if (isGatewayActiveSession()) {
+      microservicesApi
+        .listTerms()
+        .then((res) => {
+          if (!active) return;
+          const matching = (res.items || [])
+            .filter((t) => {
+              const snap = Array.isArray(t.assets_snapshot) ? t.assets_snapshot : [];
+              return snap.some((item) => item.id === assetId || item.internalId === assetId);
+            })
+            .map((t) => ({
+              id: t.id,
+              number: `TR-CLT-${t.id.slice(0, 8).toUpperCase()}`,
+              kind: t.term_type || 'responsabilidade',
+              status: t.status === 'signed' ? 'assinado' : 'pendente',
+              issuedAtDate: t.created_at ? new Date(t.created_at) : new Date(),
+              employeeName: t.employee_name,
+              documentHash: t.document_hash,
+            }));
+          setState({ key: requestKey, terms: matching, error: false });
+        })
+        .catch(() => {
+          if (active) setState({ key: requestKey, terms: [], error: false });
+        });
+      return () => {
+        active = false;
+      };
+    }
+
     listTermsForAsset(tenantId, assetId)
       .then((terms) => active && setState({ key: requestKey, terms, error: false }))
       .catch((error) => {

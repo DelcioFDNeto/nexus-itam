@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, getCountFromServer, query, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getAllAssets, getRecentActivity } from '../services/assetService';
+import { getEmployees } from '../services/employeeService';
 import { useAuth } from '../contexts/AuthContext';
 import { isRetired } from '../utils/assetStatus';
 import { getAssetType } from '../utils/assetTypes';
@@ -66,6 +67,8 @@ const TenantDashboard = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const tenantId = currentUser?.tenantId;
+  const isGateway = currentUser?.authSource === 'gateway';
+
   const [loading, setLoading] = useState(true);
   const [assets, setAssets] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
@@ -85,10 +88,15 @@ const TenantDashboard = () => {
     let cancelled = false;
     (async () => {
       const countEmployees = async (tId) => {
+        if (isGateway) {
+          const empList = await getEmployees(tId);
+          return empList.length;
+        }
         const snap = await getCountFromServer(query(collection(db, 'employees'), where('tenantId', '==', tId)));
         return snap.data().count;
       };
       const countProjects = async (tId) => {
+        if (isGateway) return 0;
         const snap = await getCountFromServer(query(collection(db, 'projects'), where('tenantId', '==', tId)));
         return snap.data().count;
       };
@@ -108,7 +116,7 @@ const TenantDashboard = () => {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [tenantId, showProjects]);
+  }, [tenantId, showProjects, isGateway]);
 
   const loadMoreActivity = async () => {
     const next = activityLimit + 15;

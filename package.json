@@ -1,16 +1,21 @@
 {
   "name": "nexus-itam",
   "private": true,
-  "version": "2.2.0",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:microservices": "node services/orchestrator.js",
+    "dev:portal": "npm --prefix portal-colaborador run dev",
     "build": "vite build",
+    "build:portal": "npm --prefix portal-colaborador run build",
     "lint": "eslint .",
     "preview": "vite preview",
     "deploy": "npm run build && firebase deploy",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:services": "npm --prefix services test",
+    "test:all": "npm run test && npm --prefix services test",
     "test:rules": "firebase emulators:exec --only firestore --project demo-nexus-itam \"vitest run --config vitest.rules.config.js\"",
     "build:agent": "node scripts/build-agent.mjs"
   },

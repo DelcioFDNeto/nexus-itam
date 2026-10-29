@@ -37,19 +37,22 @@ const loadSettings = (tenantId) => {
 export const useTenantSettings = () => {
   const { currentUser } = useAuth();
   const tenantId = currentUser?.tenantId;
+  const isGateway = currentUser?.authSource === 'gateway';
+
   const [state, setState] = useState({ tenantId: null, settings: {} });
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
+    if (isGateway) return undefined;
     const listener = (changed) => {
       if (changed === tenantId) setVersion((v) => v + 1);
     };
     listeners.add(listener);
     return () => listeners.delete(listener);
-  }, [tenantId]);
+  }, [tenantId, isGateway]);
 
   useEffect(() => {
-    if (!tenantId) return undefined;
+    if (!tenantId || isGateway) return undefined;
     let active = true;
     loadSettings(tenantId).then((settings) => {
       if (active) setState({ tenantId, settings });
@@ -57,7 +60,17 @@ export const useTenantSettings = () => {
     return () => {
       active = false;
     };
-  }, [tenantId, version]);
+  }, [tenantId, version, isGateway]);
+
+  if (isGateway && tenantId) {
+    return {
+      settings: {
+        companyName: currentUser?.companyName || 'Nexus Indústria & Tecnologia S.A.',
+        assetPrefix: currentUser?.assetPrefix || 'NEX',
+      },
+      loaded: true,
+    };
+  }
 
   return {
     settings: state.tenantId === tenantId ? state.settings : {},

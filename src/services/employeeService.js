@@ -1,6 +1,7 @@
 // src/services/employeeService.js
 import { db } from './firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, collectionGroup, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { isGatewayActiveSession, microservicesApi } from './microservicesClient';
 
 const empCollection = collection(db, 'employees');
 const secCollection = collection(db, 'sectors');
@@ -11,6 +12,20 @@ const sortByName = (list) =>
 // --- COLABORADORES ---
 export const getEmployees = async (tenantId) => {
   if (!tenantId) return [];
+  if (isGatewayActiveSession()) {
+    const res = await microservicesApi.listUsers().catch(() => ({ items: [] }));
+    const users = (res.items || []).map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      sector: u.department || 'TI Corporativa',
+      branch: 'Matriz - 4º Andar',
+      cpf: '',
+      tenantId: u.tenantId || tenantId,
+    }));
+    return sortByName(users);
+  }
   const q = query(
     empCollection, 
     where('tenantId', '==', tenantId)
@@ -81,6 +96,14 @@ export const deleteEmployee = async (id) => {
 // --- SETORES ---
 export const getSectors = async (tenantId) => {
   if (!tenantId) return [];
+  if (isGatewayActiveSession()) {
+    return [
+      { id: 'sec-1', name: 'Governança & Infraestrutura TI', tenantId },
+      { id: 'sec-2', name: 'Engenharia de Produto', tenantId },
+      { id: 'sec-3', name: 'Service Desk N2', tenantId },
+      { id: 'sec-4', name: 'Operações', tenantId },
+    ];
+  }
   const q = query(
     secCollection, 
     where('tenantId', '==', tenantId)

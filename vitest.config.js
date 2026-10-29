@@ -22,7 +22,8 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: './src/setupTests.js',
-    // Regras do Firestore exigem o emulador: `npm run test:rules`.
-    exclude: [...configDefaults.exclude, 'tests/rules/**'],
+    // Regras do Firestore exigem o emulador (`npm run test:rules`) e os
+    // microsservicos Node possuem suite propria (`npm run test:services`).
+    exclude: [...configDefaults.exclude, 'tests/rules/**', 'services/**', 'portal-colaborador/**'],
   },
 })

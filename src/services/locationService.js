@@ -1,11 +1,6 @@
 // src/services/locationService.js
 // -----------------------------------------------------------------------------
 // Filiais e locais fisicos, escopados por inquilino.
-//
-// Antes esta lista estava fixa no codigo, com as filiais da Shineray, e
-// duplicada em quatro arquivos (AssetForm, MoveAssetModal, EmployeeManager e
-// SettingsPage). Toda empresa nova do SaaS herdava Belem, Ananindeua,
-// Castanhal e Fortaleza como opcoes.
 // -----------------------------------------------------------------------------
 import {
   addDoc,
@@ -21,14 +16,21 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { isGatewayActiveSession } from './microservicesClient';
 
-// Resolvido sob demanda: no escopo do modulo, o import sozinho ja exigiria
-// o SDK do Firestore inicializado, quebrando qualquer teste do consumidor.
 const locationsCollection = () => collection(db, 'locations');
 
 /** Lista os locais do inquilino, ordenados por regiao e nome. */
 export const getLocations = async (tenantId) => {
   if (!tenantId) return [];
+  if (isGatewayActiveSession()) {
+    return [
+      { id: 'loc-1', name: 'Matriz - 4º Andar', region: 'São Paulo', kind: 'matriz', tenantId },
+      { id: 'loc-2', name: 'Matriz - Cofre TI', region: 'São Paulo', kind: 'matriz', tenantId },
+      { id: 'loc-3', name: 'CD Barueri', region: 'São Paulo', kind: 'deposito', tenantId },
+      { id: 'loc-4', name: 'Home Office', region: 'Outros', kind: 'outro', tenantId },
+    ];
+  }
   const q = query(locationsCollection(), where('tenantId', '==', tenantId), orderBy('name', 'asc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));

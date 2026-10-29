@@ -18,6 +18,16 @@ export default defineConfig({
       workbox: {
         cleanupOutdatedCaches: true,
         clientsClaim: true,
+        // Impede que o Service Worker PWA intercepte endpoints do API Gateway
+        // (/api, /ws, /docs, /openapi.json, /health) quando hospedado sob o mesmo
+        // domínio/Nginx na VPS.
+        navigateFallbackDenylist: [
+          /^\/api\//,
+          /^\/ws\//,
+          /^\/docs/,
+          /^\/openapi\.json/,
+          /^\/health/,
+        ],
         // Bibliotecas pesadas usadas sob demanda (leitura de PDF, Excel,
         // exportacao em PDF) ficam fora do precache obrigatorio: so quem usa
         // baixa, e o cache de runtime guarda depois.
@@ -89,5 +99,27 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/health': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/docs': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/openapi.json': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://127.0.0.1:8000',
+        ws: true,
+      },
+    },
   }
 })

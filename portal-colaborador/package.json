@@ -1,0 +1,22 @@
+{
+  "name": "@nexus-itam/portal-colaborador-vue",
+  "version": "3.0.0",
+  "private": true,
+  "description": "2º Framework Front-end (Vue 3 + Composition API + Tailwind CSS) — Portal de Autoatendimento, Custódia e Chamados do Colaborador",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 3001",
+    "build": "vite build",
+    "preview": "vite preview --port 3001"
+  },
+  "dependencies": {
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.1.0"
+  }
+}

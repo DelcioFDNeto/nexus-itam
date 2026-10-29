@@ -1,3 +1,6 @@
-# Scripts do agente: bash exige LF; o app normaliza ao gerar, mas o repo tambem.
+# Scripts do agente e de deploy VPS: bash exige LF; preserva tambem no clone Windows.
 src/agent/**/*.sh text eol=lf
 src/agent/**/*.ps1 text eol=crlf
+scripts/*.sh text eol=lf
+Caddyfile text eol=lf
+.env.vps.example text eol=lf

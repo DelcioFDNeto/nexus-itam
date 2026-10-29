@@ -1,0 +1,188 @@
+# =============================================================================
+# Nexus ITAM v3.0 — Orquestração Completa da Malha de Microsserviços
+# =============================================================================
+# Topologia:
+# - 2 Frontends: Console Admin (React 19 :3000) + Portal Colaborador (Vue 3.5 :3001)
+# - 1 API Gateway Zero-Trust (:8000) com OpenAPI 3.1 + Bridge WebSocket
+# - 4 Microsserviços Fastify isolados na rede interna `nexus-mesh` (:8001..:8004)
+# - 1 Banco Relacional PostgreSQL 16 isolado em 5 schemas (`nexus-mesh`)
+# =============================================================================
+
+name: nexus-itam-cluster
+
+x-microservice-common: &microservice-common
+  build:
+    context: ./services
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  environment: &microservice-env
+    NODE_ENV: production
+    HOST: 0.0.0.0
+    DATABASE_URL: postgresql://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus_dev_secure_2026}@postgres:5432/${POSTGRES_DB:-nexus_itam}
+    NEXUS_JWT_SECRET: ${NEXUS_JWT_SECRET:-nexus-dev-jwt-secret-change-in-vps-production-2026}
+    NEXUS_INTERNAL_SECRET: ${NEXUS_INTERNAL_SECRET:-nexus-dev-gateway-hmac-secret-change-in-vps-2026}
+    NEXUS_COMPLIANCE_SECRET: ${NEXUS_COMPLIANCE_SECRET:-nexus-dev-clt-legal-hmac-secret-change-in-vps-2026}
+    NEXUSDESK_SERVICE_URL: http://service-nexusdesk:8004
+
+services:
+  # ---------------------------------------------------------------------------
+  # Banco de Dados Relacional Multi-Schema (Isolado em nexus-mesh)
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nexus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexus_dev_secure_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-nexus_itam}
+    volumes:
+      - nexus_pgdata:/var/lib/postgresql/data
+      - ./services/shared/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - nexus-mesh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-nexus} -d ${POSTGRES_DB:-nexus_itam}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Microsserviço 1 — API 1 (REST): Ativos & Numeração Inteligente
+  # ---------------------------------------------------------------------------
+  service-assets:
+    <<: *microservice-common
+    environment:
+      <<: *microservice-env
+      PORT: 8001
+      SERVICE_ENTRY: service-assets/src/server.js
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nexus-mesh
+
+  # ---------------------------------------------------------------------------
+  # Microsserviço 2 — API 2 (REST): Central de Chamados & SLA
+  # ---------------------------------------------------------------------------
+  service-tickets:
+    <<: *microservice-common
+    environment:
+      <<: *microservice-env
+      PORT: 8002
+      SERVICE_ENTRY: service-tickets/src/server.js
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nexus-mesh
+
+  # ---------------------------------------------------------------------------
+  # Microsserviço 3 — API 3 (REST): Compliance CLT & Hash-Chain SHA-256
+  # ---------------------------------------------------------------------------
+  service-compliance:
+    <<: *microservice-common
+    environment:
+      <<: *microservice-env
+      PORT: 8003
+      SERVICE_ENTRY: service-compliance/src/server.js
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nexus-mesh
+
+  # ---------------------------------------------------------------------------
+  # Microsserviço 4 — API 4 (REST RMM) + API 5 (WebSocket Bidirecional RFC 6455)
+  # ---------------------------------------------------------------------------
+  service-nexusdesk:
+    <<: *microservice-common
+    environment:
+      <<: *microservice-env
+      PORT: 8004
+      SERVICE_ENTRY: service-nexusdesk/src/server.js
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nexus-mesh
+
+  # ---------------------------------------------------------------------------
+  # Edge API Gateway Zero-Trust (Única ponte entre nexus-edge e nexus-mesh)
+  # ---------------------------------------------------------------------------
+  api-gateway:
+    <<: *microservice-common
+    environment:
+      <<: *microservice-env
+      PORT: 8000
+      SERVICE_ENTRY: api-gateway/src/server.js
+      ASSETS_SERVICE_URL: http://service-assets:8001
+      TICKETS_SERVICE_URL: http://service-tickets:8002
+      COMPLIANCE_SERVICE_URL: http://service-compliance:8003
+      NEXUSDESK_SERVICE_URL: http://service-nexusdesk:8004
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+    ports:
+      - "${EXPOSE_HOST_IP:-0.0.0.0}:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      service-assets:
+        condition: service_started
+      service-tickets:
+        condition: service_started
+      service-compliance:
+        condition: service_started
+      service-nexusdesk:
+        condition: service_started
+    networks:
+      - nexus-edge
+      - nexus-mesh
+
+  # ---------------------------------------------------------------------------
+  # Frontend 1 — Console Administrativo ITAM (React 19 + Vite)
+  # ---------------------------------------------------------------------------
+  console-react:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_GATEWAY_URL: ${VITE_API_GATEWAY_URL:-}
+        VITE_PORTAL_URL: ${VITE_PORTAL_URL:-}
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
+        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET:-}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID:-}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
+    restart: unless-stopped
+    ports:
+      - "${EXPOSE_HOST_IP:-0.0.0.0}:${CONSOLE_PORT:-3002}:8080"
+    depends_on:
+      - api-gateway
+    networks:
+      - nexus-edge
+
+  # ---------------------------------------------------------------------------
+  # Frontend 2 — Portal Self-Service do Colaborador (Vue 3.5 + Vite)
+  # ---------------------------------------------------------------------------
+  portal-vue:
+    build:
+      context: ./portal-colaborador
+      dockerfile: Dockerfile
+      args:
+        VITE_API_GATEWAY_URL: ${VITE_API_GATEWAY_URL:-}
+    restart: unless-stopped
+    ports:
+      - "${EXPOSE_HOST_IP:-0.0.0.0}:3001:8080"
+    depends_on:
+      - api-gateway
+    networks:
+      - nexus-edge
+
+networks:
+  nexus-edge:
+    driver: bridge
+  nexus-mesh:
+    driver: bridge
+
+volumes:
+  nexus_pgdata:

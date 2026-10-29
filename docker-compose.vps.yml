@@ -1,0 +1,99 @@
+# =============================================================================
+# Nexus ITAM v3.0 — Overlay Hardened de Produção para VPS (Caddy TLS 1.3 + Limites)
+# =============================================================================
+# Uso na VPS:
+#   docker compose --env-file .env.vps -f docker-compose.yml -f docker-compose.vps.yml up -d --build
+# =============================================================================
+
+x-logging-hardened: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    mem_limit: 512m
+    logging: *default-logging
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD forte no .env.vps}
+
+  service-assets:
+    mem_limit: 256m
+    logging: *default-logging
+    environment:
+      NEXUS_JWT_SECRET: ${NEXUS_JWT_SECRET:?Defina NEXUS_JWT_SECRET forte no .env.vps}
+      NEXUS_INTERNAL_SECRET: ${NEXUS_INTERNAL_SECRET:?Defina NEXUS_INTERNAL_SECRET forte no .env.vps}
+      NEXUS_COMPLIANCE_SECRET: ${NEXUS_COMPLIANCE_SECRET:?Defina NEXUS_COMPLIANCE_SECRET forte no .env.vps}
+
+  service-tickets:
+    mem_limit: 256m
+    logging: *default-logging
+    environment:
+      NEXUS_JWT_SECRET: ${NEXUS_JWT_SECRET:?Defina NEXUS_JWT_SECRET forte no .env.vps}
+      NEXUS_INTERNAL_SECRET: ${NEXUS_INTERNAL_SECRET:?Defina NEXUS_INTERNAL_SECRET forte no .env.vps}
+      NEXUS_COMPLIANCE_SECRET: ${NEXUS_COMPLIANCE_SECRET:?Defina NEXUS_COMPLIANCE_SECRET forte no .env.vps}
+
+  service-compliance:
+    mem_limit: 256m
+    logging: *default-logging
+    environment:
+      NEXUS_JWT_SECRET: ${NEXUS_JWT_SECRET:?Defina NEXUS_JWT_SECRET forte no .env.vps}
+      NEXUS_INTERNAL_SECRET: ${NEXUS_INTERNAL_SECRET:?Defina NEXUS_INTERNAL_SECRET forte no .env.vps}
+      NEXUS_COMPLIANCE_SECRET: ${NEXUS_COMPLIANCE_SECRET:?Defina NEXUS_COMPLIANCE_SECRET forte no .env.vps}
+
+  service-nexusdesk:
+    mem_limit: 256m
+    logging: *default-logging
+    environment:
+      NEXUS_JWT_SECRET: ${NEXUS_JWT_SECRET:?Defina NEXUS_JWT_SECRET forte no .env.vps}
+      NEXUS_INTERNAL_SECRET: ${NEXUS_INTERNAL_SECRET:?Defina NEXUS_INTERNAL_SECRET forte no .env.vps}
+      NEXUS_COMPLIANCE_SECRET: ${NEXUS_COMPLIANCE_SECRET:?Defina NEXUS_COMPLIANCE_SECRET forte no .env.vps}
+
+  api-gateway:
+    mem_limit: 384m
+    logging: *default-logging
+    environment:
+      NEXUS_JWT_SECRET: ${NEXUS_JWT_SECRET:?Defina NEXUS_JWT_SECRET forte no .env.vps}
+      NEXUS_INTERNAL_SECRET: ${NEXUS_INTERNAL_SECRET:?Defina NEXUS_INTERNAL_SECRET forte no .env.vps}
+      NEXUS_COMPLIANCE_SECRET: ${NEXUS_COMPLIANCE_SECRET:?Defina NEXUS_COMPLIANCE_SECRET forte no .env.vps}
+
+  console-react:
+    mem_limit: 128m
+    logging: *default-logging
+
+  portal-vue:
+    mem_limit: 128m
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # Reverse Proxy Edge — Caddy 2 (Let's Encrypt TLS 1.3 Automático + WSS)
+  # ---------------------------------------------------------------------------
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    mem_limit: 192m
+    logging: *default-logging
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?Defina ACME_EMAIL no .env.vps para certificados TLS}
+      API_DOMAIN: ${API_DOMAIN:?Defina API_DOMAIN no .env.vps}
+      CONSOLE_DOMAIN: ${CONSOLE_DOMAIN:?Defina CONSOLE_DOMAIN no .env.vps}
+      PORTAL_DOMAIN: ${PORTAL_DOMAIN:?Defina PORTAL_DOMAIN no .env.vps}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api-gateway
+      - console-react
+      - portal-vue
+    networks:
+      - nexus-edge
+
+volumes:
+  caddy_data:
+  caddy_config:

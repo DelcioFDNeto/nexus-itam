@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-feature-settings: "cv11", "ss01", "tnum";
+  }
+}
+
+@layer components {
+  .station-panel {
+    @apply bg-white border border-slate-200/90 rounded-xl shadow-sm;
+  }
+  .mono-tag {
+    @apply font-mono text-[11px] font-semibold tracking-tight px-2 py-0.5 rounded border border-slate-200 bg-slate-100 text-slate-700;
+  }
+}

@@ -2,11 +2,30 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Lock, Mail, ArrowRight, AlertCircle, KeyRound, X, CheckCircle, Loader2 } from 'lucide-react';
+import {
+  Lock,
+  Mail,
+  ArrowRight,
+  AlertCircle,
+  KeyRound,
+  X,
+  CheckCircle,
+  Loader2,
+  Server,
+  ExternalLink,
+  Sparkles,
+} from 'lucide-react';
 import Logo from '../components/Logo';
+import { resolvePortalUrl } from '../services/microservicesClient';
 
-// Mensagens por codigo do Firebase Auth.
+// Mensagens por código do Firebase Auth / Gateway Fastify
 const loginErrorMessage = (err) => {
+  if (err?.isGatewayPolicyError) {
+    return err.message;
+  }
+  if (err?.isGatewayError && err.message) {
+    return err.message;
+  }
   switch (err?.code) {
     case 'auth/too-many-requests':
       return 'Muitas tentativas seguidas. Aguarde alguns minutos ou redefina a senha.';
@@ -33,10 +52,12 @@ const Login = () => {
   const [resetError, setResetError] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
 
-  const { login, resetPassword, currentUser, loading: authLoading } = useAuth();
+  const { login, resetPassword, currentUser, loading: authLoading, isGatewayOnly = false } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const destination = location.state?.from && location.state.from !== '/' ? location.state.from : '/dashboard';
+
+  const portalUrl = resolvePortalUrl();
 
   useEffect(() => {
     if (currentUser && !authLoading) navigate(destination, { replace: true });
@@ -54,6 +75,12 @@ const Login = () => {
       setError(loginErrorMessage(err));
       setSigningIn(false);
     }
+  };
+
+  const handleFillDemoAdmin = () => {
+    setEmail('admin@nexuscorp.com.br');
+    setPassword('Nexus@2026!');
+    setError('');
   };
 
   // Splashscreen de inicialização / validação de sessão
@@ -97,9 +124,11 @@ const Login = () => {
       }, 5000);
     } catch (err) {
       console.error(err);
-      setResetError(err?.code === 'auth/too-many-requests'
-        ? 'Muitas solicitações. Tente novamente em alguns minutos.'
-        : 'Falha ao enviar e-mail. Verifique se o endereço está correto.');
+      setResetError(
+        err?.code === 'auth/too-many-requests'
+          ? 'Muitas solicitações. Tente novamente em alguns minutos.'
+          : 'Falha ao enviar e-mail. Verifique se o endereço está correto.',
+      );
     } finally {
       setResetLoading(false);
     }
@@ -119,6 +148,13 @@ const Login = () => {
               Nexus <span className="text-brand">ITAM</span>
             </h2>
             <p className="text-xs text-slate-400 mt-1">Acesso à plataforma operacional</p>
+
+            {isGatewayOnly && (
+              <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-mono font-bold text-emerald-400">
+                <Server size={11} />
+                <span>Modo Cluster VPS • PostgreSQL 16</span>
+              </div>
+            )}
           </div>
 
           {error && (
@@ -130,9 +166,20 @@ const Login = () => {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="login-email" className="block text-xs font-semibold text-slate-300 mb-1.5">
-                E-mail corporativo
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label htmlFor="login-email" className="block text-xs font-semibold text-slate-300">
+                  E-mail corporativo
+                </label>
+                <button
+                  type="button"
+                  onClick={handleFillDemoAdmin}
+                  className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-brand font-medium transition-colors"
+                  title="Preencher com a conta de demonstração Nexus Corp"
+                >
+                  <Sparkles size={11} />
+                  <span>Demo Admin</span>
+                </button>
+              </div>
               <div className="relative">
                 <Mail className="absolute left-3 top-3 text-slate-500" size={16} />
                 <input
@@ -202,6 +249,18 @@ const Login = () => {
             >
               Criar conta
             </Link>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-center">
+            <a
+              href={portalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              <span>Portal do Colaborador (Vue 3)</span>
+              <ExternalLink size={12} />
+            </a>
           </div>
         </div>
 
