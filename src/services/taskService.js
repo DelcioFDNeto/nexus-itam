@@ -20,11 +20,12 @@ export const addTask = async (task) => {
   if (!task.tenantId) {
     throw new Error("Não é possível adicionar uma tarefa sem especificar o inquilino (tenantId).");
   }
-  await addDoc(taskCollection, {
+  const ref = await addDoc(taskCollection, {
     ...task,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
+  return ref.id;
 };
 
 export const updateTask = async (id, updatedFields) => {
