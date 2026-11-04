@@ -19,6 +19,7 @@ import {
   MessageSquare,
   Network,
   Play,
+  Plus,
   Radio,
   RefreshCw,
   Search,
@@ -31,6 +32,7 @@ import {
   Ticket,
   TrendingUp,
   User,
+  X,
   Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -71,6 +73,41 @@ const PRIORITY_NAMES = {
   low: 'Baixa',
 };
 
+const PRIORITY_META = {
+  critical: { label: 'P1 Crítica', color: 'bg-rose-500', text: 'text-rose-600 dark:text-rose-400', border: 'border-rose-500/30 bg-rose-500/10' },
+  high: { label: 'P2 Alta', color: 'bg-orange-500', text: 'text-orange-600 dark:text-orange-400', border: 'border-orange-500/30 bg-orange-500/10' },
+  medium: { label: 'P3 Normal', color: 'bg-sky-500', text: 'text-sky-600 dark:text-sky-400', border: 'border-sky-500/30 bg-sky-500/10' },
+  low: { label: 'P4 Baixa', color: 'bg-slate-400', text: 'text-slate-600 dark:text-slate-400', border: 'border-slate-500/30 bg-slate-500/10' },
+};
+
+const CATEGORY_NAMES = {
+  hardware: 'Hardware',
+  software: 'Software',
+  network: 'Rede & VPN',
+  access: 'Acesso',
+  other: 'Geral',
+};
+
+const formatRelativeTime = (timestamp) => {
+  if (!timestamp) return 'Hoje';
+  try {
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return 'Hoje';
+    const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (diffSec < 60) return 'agora';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `há ${diffMin} min`;
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) return `há ${diffHours}h`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return 'ontem';
+    if (diffDays < 7) return `há ${diffDays} dias`;
+    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  } catch {
+    return 'Recente';
+  }
+};
+
 const ServiceDeskHub = () => {
   const [gatewaySession, setGatewaySessionState] = useState(() => getGatewaySession());
   const [clusterHealth, setClusterHealth] = useState(null);
@@ -89,6 +126,17 @@ const ServiceDeskHub = () => {
   const [ticketSearch, setTicketSearch] = useState('');
   const [showDevDrawer, setShowDevDrawer] = useState(false);
 
+  const [isNewTicketModalOpen, setIsNewTicketModalOpen] = useState(false);
+  const [submittingTicket, setSubmittingTicket] = useState(false);
+  const [newTicketForm, setNewTicketForm] = useState({
+    title: '',
+    description: '',
+    category: 'hardware',
+    priority: 'medium',
+    assetTag: '',
+    department: 'TI Corporativa',
+  });
+
   const [credentials, setCredentials] = useState({
     email: 'admin@nexuscorp.com.br',
     password: 'Nexus@2026!',
@@ -97,6 +145,40 @@ const ServiceDeskHub = () => {
   const wsRef = useRef(null);
   const gatewayUrl = getGatewayBaseUrl();
   const portalUrl = resolvePortalUrl();
+
+  const handleCreateNewTicket = async (e) => {
+    e.preventDefault();
+    if (!newTicketForm.title.trim() || !newTicketForm.description.trim()) {
+      toast.error('Preencha o título e a descrição do chamado.');
+      return;
+    }
+    setSubmittingTicket(true);
+    try {
+      const created = await microservicesApi.createTicket({
+        title: newTicketForm.title.trim(),
+        description: newTicketForm.description.trim(),
+        category: newTicketForm.category,
+        priority: newTicketForm.priority,
+        department: newTicketForm.department || 'Corporativo',
+        assetTag: newTicketForm.assetTag.trim() || null,
+      });
+      toast.success(`Chamado ${created?.protocol || ''} registrado com sucesso!`);
+      setIsNewTicketModalOpen(false);
+      setNewTicketForm({
+        title: '',
+        description: '',
+        category: 'hardware',
+        priority: 'medium',
+        assetTag: '',
+        department: 'TI Corporativa',
+      });
+      loadDomainData();
+    } catch (err) {
+      toast.error(err.message || 'Falha ao registrar novo chamado.');
+    } finally {
+      setSubmittingTicket(false);
+    }
+  };
 
   useEffect(() => {
     return onGatewaySessionChange((session) => {
@@ -322,18 +404,40 @@ const ServiceDeskHub = () => {
     return terms.filter((t) => t.status === 'signed');
   }, [terms]);
 
+  const ticketCounts = useMemo(() => {
+    const total = tickets.length;
+    const open = tickets.filter((t) => t.status === 'open').length;
+    const inProgress = tickets.filter((t) => t.status === 'in_progress').length;
+    const resolved = tickets.filter((t) => t.status === 'resolved' || t.status === 'closed').length;
+    return { total, open, inProgress, resolved };
+  }, [tickets]);
+
   const filteredTickets = useMemo(() => {
     return tickets.filter((t) => {
-      const matchesFilter = ticketFilter === 'all' || t.status === ticketFilter;
+      let matchesFilter = true;
+      if (ticketFilter === 'open') matchesFilter = t.status === 'open';
+      else if (ticketFilter === 'in_progress') matchesFilter = t.status === 'in_progress';
+      else if (ticketFilter === 'resolved') matchesFilter = t.status === 'resolved' || t.status === 'closed';
+      else if (ticketFilter === 'mine') {
+        const userName = gatewaySession?.user?.name?.toLowerCase() || '';
+        matchesFilter =
+          Boolean(t.technician_name && t.technician_name.toLowerCase().includes(userName)) ||
+          Boolean(t.assigned_to && t.assigned_to.toLowerCase().includes(userName)) ||
+          Boolean(t.requester_name && t.requester_name.toLowerCase().includes(userName));
+      } else if (ticketFilter === 'critical') {
+        matchesFilter = t.priority === 'critical' || t.priority === 'high' || t.status === 'open';
+      }
+
       const matchesSearch =
         !ticketSearch ||
         t.title?.toLowerCase().includes(ticketSearch.toLowerCase()) ||
         t.protocol?.toLowerCase().includes(ticketSearch.toLowerCase()) ||
         t.requester_name?.toLowerCase().includes(ticketSearch.toLowerCase()) ||
-        t.asset_tag?.toLowerCase().includes(ticketSearch.toLowerCase());
+        t.asset_tag?.toLowerCase().includes(ticketSearch.toLowerCase()) ||
+        t.category?.toLowerCase().includes(ticketSearch.toLowerCase());
       return matchesFilter && matchesSearch;
     });
-  }, [tickets, ticketFilter, ticketSearch]);
+  }, [tickets, ticketFilter, ticketSearch, gatewaySession?.user?.name]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -683,77 +787,207 @@ const ServiceDeskHub = () => {
             </div>
           </div>
 
+          {/* Executive Quick Ticket KPIs - 2x2 Grid on Mobile, 4 Cols on Desktop */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+            <div
+              onClick={() => setTicketFilter('all')}
+              className={`surface-card p-3 sm:p-4 flex flex-col justify-between cursor-pointer border-l-4 border-l-brand hover:border-slate-300 dark:hover:border-slate-700 transition-all active:scale-[0.98] ${
+                ticketFilter === 'all' ? 'ring-1 ring-brand/40 bg-brand/5 dark:bg-brand/10' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+                <span className="truncate font-semibold">Total Chamados</span>
+                <span className="p-1 sm:p-1.5 rounded-lg bg-brand/10 text-brand">
+                  <Ticket size={14} />
+                </span>
+              </div>
+              <div className="mt-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                    {ticketCounts.total}
+                  </span>
+                  <span className="text-[10px] font-mono font-medium text-slate-400 hidden sm:inline">
+                    registrados
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  Central de Atendimento N1/N2
+                </p>
+              </div>
+            </div>
+
+            <div
+              onClick={() => setTicketFilter('open')}
+              className={`surface-card p-3 sm:p-4 flex flex-col justify-between cursor-pointer border-l-4 border-l-amber-500 hover:border-slate-300 dark:hover:border-slate-700 transition-all active:scale-[0.98] ${
+                ticketFilter === 'open' ? 'ring-1 ring-amber-500/40 bg-amber-500/5 dark:bg-amber-500/10' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+                <span className="truncate font-semibold">Abertos</span>
+                <span className="p-1 sm:p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <Inbox size={14} />
+                </span>
+              </div>
+              <div className="mt-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                    {ticketCounts.open}
+                  </span>
+                  {ticketCounts.open > 0 && (
+                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 animate-pulse">
+                      Pendente
+                    </span>
+                  )}
+                </div>
+                <p className="mt-0.5 text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  Fila inicial sem atribuição
+                </p>
+              </div>
+            </div>
+
+            <div
+              onClick={() => setTicketFilter('in_progress')}
+              className={`surface-card p-3 sm:p-4 flex flex-col justify-between cursor-pointer border-l-4 border-l-indigo-500 hover:border-slate-300 dark:hover:border-slate-700 transition-all active:scale-[0.98] ${
+                ticketFilter === 'in_progress' ? 'ring-1 ring-indigo-500/40 bg-indigo-500/5 dark:bg-indigo-500/10' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+                <span className="truncate font-semibold">Em Atendimento</span>
+                <span className="p-1 sm:p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                  <Activity size={14} />
+                </span>
+              </div>
+              <div className="mt-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                    {ticketCounts.inProgress}
+                  </span>
+                  <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                    Em curso
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  Técnico em diagnóstico
+                </p>
+              </div>
+            </div>
+
+            <div
+              onClick={() => setTicketFilter('resolved')}
+              className={`surface-card p-3 sm:p-4 flex flex-col justify-between cursor-pointer border-l-4 border-l-emerald-500 hover:border-slate-300 dark:hover:border-slate-700 transition-all active:scale-[0.98] ${
+                ticketFilter === 'resolved' ? 'ring-1 ring-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-500/10' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+                <span className="truncate font-semibold">Concluídos</span>
+                <span className="p-1 sm:p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 size={14} />
+                </span>
+              </div>
+              <div className="mt-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                    {ticketCounts.resolved}
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                    Resolvidos
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  Histórico fechado
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Main 2-Column Command Workspace */}
           <div className="grid gap-6 lg:grid-cols-12">
             {/* Left Column: Tickets Queue */}
             <div className="lg:col-span-7 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <Ticket size={17} className="text-brand" />
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100">
+                  <Ticket size={17} className="text-brand shrink-0" />
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100 truncate">
                     Fila Operacional de Chamados ({filteredTickets.length})
                   </h2>
                 </div>
 
-                {/* Filter Tabs */}
-                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setTicketFilter('all')}
-                    className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
-                      ticketFilter === 'all'
-                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs font-bold'
-                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    Todos ({tickets.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTicketFilter('open')}
-                    className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
-                      ticketFilter === 'open'
-                        ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-xs font-bold'
-                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    Abertos
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTicketFilter('in_progress')}
-                    className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
-                      ticketFilter === 'in_progress'
-                        ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs font-bold'
-                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    Em Atendimento
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTicketFilter('resolved')}
-                    className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
-                      ticketFilter === 'resolved'
-                        ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs font-bold'
-                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    Resolvidos
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsNewTicketModalOpen(true)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand hover:bg-brand-dark px-3.5 py-2 text-xs font-bold text-white shadow-sm transition-all min-h-[44px] sm:min-h-[36px] shrink-0 active:scale-[0.98]"
+                >
+                  <Plus size={15} />
+                  <span>Novo Chamado</span>
+                </button>
               </div>
 
-              {/* Search input */}
+              {/* Horizontal Scrolling Filter Tabs */}
+              <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide py-1">
+                {[
+                  { id: 'all', label: 'Todos', count: ticketCounts.total },
+                  { id: 'open', label: 'Abertos', count: ticketCounts.open },
+                  { id: 'in_progress', label: 'Em Atendimento', count: ticketCounts.inProgress },
+                  { id: 'resolved', label: 'Concluídos', count: ticketCounts.resolved },
+                  { id: 'mine', label: 'Meus Chamados', icon: User },
+                  { id: 'critical', label: 'SLA Crítico', icon: AlertCircle },
+                ].map((tab) => {
+                  const isTabActive = ticketFilter === tab.id;
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setTicketFilter(tab.id)}
+                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 border shrink-0 ${
+                        isTabActive
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-sm dark:bg-white dark:text-slate-900 dark:border-white'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {Icon && (
+                        <Icon
+                          size={13}
+                          className={isTabActive ? 'text-white dark:text-slate-900' : 'text-slate-400'}
+                        />
+                      )}
+                      <span>{tab.label}</span>
+                      {tab.count !== undefined && (
+                        <span
+                          className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono tabular-nums ${
+                            isTabActive
+                              ? 'bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900'
+                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                          }`}
+                        >
+                          {tab.count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Search input with Clear button */}
               <div className="relative">
-                <Search size={14} className="absolute left-3 top-3 text-slate-400" />
+                <Search size={14} className="absolute left-3 top-3.5 text-slate-400" />
                 <input
                   type="text"
                   value={ticketSearch}
                   onChange={(e) => setTicketSearch(e.target.value)}
                   placeholder="Pesquisar por protocolo, solicitante, tag ou assunto..."
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pl-9 pr-4 py-2 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:border-brand focus:outline-none"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pl-9 pr-9 py-2.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:border-brand focus:outline-none min-h-[44px]"
                 />
+                {ticketSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setTicketSearch('')}
+                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-full"
+                    aria-label="Limpar pesquisa"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
 
               {/* Ticket Cards */}
@@ -766,104 +1000,136 @@ const ServiceDeskHub = () => {
                     </p>
                   </div>
                 ) : (
-                  filteredTickets.map((tk) => (
-                    <div
-                      key={tk.id}
-                      className="surface-card p-4 space-y-3 hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-900 text-white dark:bg-slate-800">
-                            {tk.protocol}
-                          </span>
-                          {tk.asset_tag && (
-                            <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center gap-1">
-                              <Laptop size={11} />
-                              {tk.asset_tag}
+                  filteredTickets.map((tk) => {
+                    const priorityMeta = PRIORITY_META[tk.priority] || PRIORITY_META.medium;
+
+                    return (
+                      <div
+                        key={tk.id}
+                        className="surface-card p-4 space-y-3 hover:border-slate-300 dark:hover:border-slate-700 transition-all active:bg-slate-50/50 dark:active:bg-slate-800/40"
+                      >
+                        {/* Linha 1: Protocolo, Tag, Categoria, Prioridade com Dot, Status */}
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-900 text-white dark:bg-slate-800 border border-slate-700">
+                              {tk.protocol}
                             </span>
-                          )}
-                          <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 font-medium">
-                            <User size={12} />
-                            <span>{tk.requester_name}</span>
-                            {tk.department && (
-                              <span className="text-[11px] text-slate-400">({tk.department})</span>
+                            {tk.asset_tag && (
+                              <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center gap-1">
+                                <Laptop size={11} />
+                                {tk.asset_tag}
+                              </span>
                             )}
+                            {tk.category && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                                {CATEGORY_NAMES[tk.category] || tk.category}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {/* Prioridade com Dot colorido */}
+                            <span
+                              className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full border ${priorityMeta.border} ${priorityMeta.text}`}
+                            >
+                              <span className={`h-1.5 w-1.5 rounded-full ${priorityMeta.color}`} />
+                              <span>{priorityMeta.label}</span>
+                            </span>
+
+                            <span
+                              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                STATUS_BADGES[tk.status] || STATUS_BADGES.open
+                              }`}
+                            >
+                              {STATUS_NAMES[tk.status] || tk.status}
+                            </span>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5">
-                          {tk.priority && (
-                            <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                PRIORITY_BADGES[tk.priority] || PRIORITY_BADGES.medium
-                              }`}
-                            >
-                              {PRIORITY_NAMES[tk.priority] || tk.priority}
+                        {/* Linha 2: Título e Descrição */}
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">
+                            {tk.title}
+                          </h3>
+                          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-3">
+                            {tk.description}
+                          </p>
+                        </div>
+
+                        {/* Parecer Técnico quando houver */}
+                        {tk.resolution_notes && (
+                          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 p-2.5 text-xs text-emerald-900 dark:text-emerald-300">
+                            <span className="font-bold">Parecer Técnico:</span> {tk.resolution_notes}
+                          </div>
+                        )}
+
+                        {/* Linha 3: Solicitante e Data de abertura relativa */}
+                        <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 pt-1">
+                          <div className="flex items-center gap-1.5 truncate max-w-[70%]">
+                            <div className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase shrink-0">
+                              {(tk.requester_name || 'C').charAt(0)}
+                            </div>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                              {tk.requester_name}
                             </span>
-                          )}
-                          <span
-                            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                              STATUS_BADGES[tk.status] || STATUS_BADGES.open
-                            }`}
-                          >
-                            {STATUS_NAMES[tk.status] || tk.status}
-                          </span>
+                            {tk.department && (
+                              <span className="text-[11px] text-slate-400 hidden sm:inline">
+                                ({tk.department})
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0">
+                            <Clock size={11} />
+                            <span>{formatRelativeTime(tk.created_at || tk.createdAt)}</span>
+                          </div>
                         </div>
-                      </div>
 
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                          {tk.title}
-                        </h3>
-                        <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                          {tk.description}
-                        </p>
-                      </div>
-
-                      {tk.resolution_notes && (
-                        <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 p-2.5 text-xs text-emerald-900 dark:text-emerald-300">
-                          <span className="font-bold">Parecer Técnico:</span> {tk.resolution_notes}
-                        </div>
-                      )}
-
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
-                        <div className="flex items-center gap-2">
-                          {tk.status !== 'resolved' && tk.status !== 'closed' && (
-                            <>
-                              {tk.status === 'open' && (
+                        {/* Linha 4: Ações Operacionais com alvos de toque generosos (44px+ mobile) */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {tk.status !== 'resolved' && tk.status !== 'closed' && (
+                              <>
+                                {tk.status === 'open' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResolveTicket(tk.id, 'in_progress')}
+                                    className="min-h-[44px] sm:min-h-[36px] rounded-xl border border-indigo-500/40 bg-indigo-50/50 dark:bg-indigo-950/30 px-3.5 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors flex items-center gap-1.5 active:scale-[0.98]"
+                                  >
+                                    <Zap size={13} />
+                                    <span>Assumir Chamado</span>
+                                  </button>
+                                )}
                                 <button
                                   type="button"
-                                  onClick={() => handleResolveTicket(tk.id, 'in_progress')}
-                                  className="rounded-lg border border-indigo-500/40 bg-indigo-50/50 dark:bg-indigo-950/30 px-3 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors"
+                                  onClick={() => handleResolveTicket(tk.id, 'resolved')}
+                                  className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition-colors active:scale-[0.98]"
                                 >
-                                  Assumir Chamado
+                                  <CheckCircle2 size={13} />
+                                  <span>Concluir Atendimento</span>
                                 </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleResolveTicket(tk.id, 'resolved')}
-                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3 py-1 text-xs font-bold text-white shadow-xs transition-colors"
-                              >
-                                <CheckCircle2 size={13} />
-                                <span>Concluir Atendimento</span>
-                              </button>
-                            </>
-                          )}
-                        </div>
+                              </>
+                            )}
+                          </div>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setActiveTicketCommentId(
-                              activeTicketCommentId === tk.id ? null : tk.id,
-                            )
-                          }
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-brand transition-colors"
-                        >
-                          <MessageSquare size={13} />
-                          <span>Diálogo Técnico ({tk.comments_count ?? 0})</span>
-                        </button>
-                      </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActiveTicketCommentId(
+                                activeTicketCommentId === tk.id ? null : tk.id,
+                              )
+                            }
+                            className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-brand transition-colors"
+                          >
+                            <MessageSquare size={13} />
+                            <span>Diálogo Técnico ({tk.comments_count ?? 0})</span>
+                            {activeTicketCommentId === tk.id ? (
+                              <ChevronUp size={13} />
+                            ) : (
+                              <ChevronDown size={13} />
+                            )}
+                          </button>
+                        </div>
 
                       {/* Technical Dialog Drawer */}
                       {activeTicketCommentId === tk.id && (
@@ -894,8 +1160,9 @@ const ServiceDeskHub = () => {
                         </div>
                       )}
                     </div>
-                  ))
-                )}
+                  );
+                })
+              )}
               </div>
             </div>
 
@@ -1088,6 +1355,177 @@ const ServiceDeskHub = () => {
             </div>
           </div>
         </>
+      )}
+
+      {/* Modal de Abertura de Novo Chamado (Mobile-first Bottom Sheet / Desktop Dialog) */}
+      {isNewTicketModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200"
+            onClick={() => setIsNewTicketModalOpen(false)}
+          />
+
+          <div className="relative bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-lg p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar animate-in slide-in-from-bottom duration-300 safe-area-pb">
+            {/* Handle on mobile */}
+            <div className="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto -mt-2 mb-2 sm:hidden" />
+
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-brand/10 text-brand">
+                  <Ticket size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Novo Chamado Técnico
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Registre a ocorrência para a Engenharia de Suporte N1/N2
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNewTicketModalOpen(false)}
+                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+                aria-label="Fechar modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateNewTicket} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                  Assunto / Título da Demanda *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newTicketForm.title}
+                  onChange={(e) =>
+                    setNewTicketForm((p) => ({ ...p, title: e.target.value }))
+                  }
+                  placeholder="Ex: Falha na conexão VPN corporativa"
+                  className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-brand focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                    Categoria
+                  </label>
+                  <select
+                    value={newTicketForm.category}
+                    onChange={(e) =>
+                      setNewTicketForm((p) => ({ ...p, category: e.target.value }))
+                    }
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                  >
+                    <option value="hardware">Hardware / Equipamento</option>
+                    <option value="software">Software / SO</option>
+                    <option value="network">Rede & Conectividade VPN</option>
+                    <option value="access">Acesso & Credenciais</option>
+                    <option value="other">Outros</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                    Prioridade & Impacto
+                  </label>
+                  <select
+                    value={newTicketForm.priority}
+                    onChange={(e) =>
+                      setNewTicketForm((p) => ({ ...p, priority: e.target.value }))
+                    }
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                  >
+                    <option value="medium">P3 Normal (SLA 24h)</option>
+                    <option value="high">P2 Alta (SLA 8h)</option>
+                    <option value="critical">P1 Crítica / Bloqueante (SLA 2h)</option>
+                    <option value="low">P4 Baixa (Planejada)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                    Patrimônio / Tag (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={newTicketForm.assetTag}
+                    onChange={(e) =>
+                      setNewTicketForm((p) => ({ ...p, assetTag: e.target.value }))
+                    }
+                    placeholder="Ex: NEX-NB-0001"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-brand focus:outline-none uppercase"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                    Departamento / Área
+                  </label>
+                  <input
+                    type="text"
+                    value={newTicketForm.department}
+                    onChange={(e) =>
+                      setNewTicketForm((p) => ({ ...p, department: e.target.value }))
+                    }
+                    placeholder="Ex: Operações / Logística"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-brand focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                  Descrição Detalhada do Problema *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={newTicketForm.description}
+                  onChange={(e) =>
+                    setNewTicketForm((p) => ({ ...p, description: e.target.value }))
+                  }
+                  placeholder="Descreva o sintoma observado, mensagem de erro ou equipamento afetado..."
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-brand focus:outline-none resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsNewTicketModalOpen(false)}
+                  className="min-h-[44px] rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingTicket}
+                  className="min-h-[44px] rounded-xl bg-brand hover:bg-brand-dark px-4 py-2 text-xs font-bold text-white shadow-md transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {submittingTicket ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      <span>Registrando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={15} />
+                      <span>Abrir Chamado</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

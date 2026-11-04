@@ -44,9 +44,12 @@ export default defineConfig({
         ],
       },
       manifest: {
+        id: '/',
+        start_url: '/',
+        scope: '/',
         name: 'Nexus ITAM',
-        short_name: 'ITAM',
-        description: 'Gestão de Ativos Nexus ITAM',
+        short_name: 'Nexus ITAM',
+        description: 'Plataforma Corporativa de Gestão de Ativos e Operações de TI — Nexus ITAM',
         theme_color: '#020617',
         background_color: '#020617',
         display: 'standalone',
@@ -54,19 +57,64 @@ export default defineConfig({
         orientation: 'any',
         display_override: ['standalone', 'minimal-ui'],
         categories: ['business', 'productivity'],
+        prefer_related_applications: false,
         icons: [
           {
             src: 'pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: 'pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable',
           },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/png'
-          }
-        ]
-      }
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+        shortcuts: [
+          {
+            name: 'Novo Ativo',
+            short_name: 'Novo Ativo',
+            description: 'Cadastrar novo ativo patrimonial',
+            url: '/assets/new',
+            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }],
+          },
+          {
+            name: 'Auditoria QR',
+            short_name: 'Auditoria',
+            description: 'Auditoria rápida de ativos via QR Code',
+            url: '/audit',
+            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }],
+          },
+          {
+            name: 'Tarefas',
+            short_name: 'Tarefas',
+            description: 'Acompanhar ordens de serviço e tarefas',
+            url: '/tasks',
+            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }],
+          },
+          {
+            name: 'Service Desk',
+            short_name: 'Service Desk',
+            description: 'Central de suporte e chamados de TI',
+            url: '/service-desk',
+            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }],
+          },
+        ],
+      },
     })
   ],
   build: {

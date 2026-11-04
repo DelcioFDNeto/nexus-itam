@@ -12,6 +12,7 @@ import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import PWAUpdatePrompt from './components/PWAUpdatePrompt';
+import PWAInstallModal from './components/pwa/PWAInstallModal';
 import { PWAProvider } from './contexts/PWAContext';
 import { ConfirmProvider } from './components/ConfirmDialog';
 
@@ -97,6 +98,7 @@ function App() {
             <PWAProvider>
           <Router>
             <PWAUpdatePrompt />
+            <PWAInstallModal />
             <Routes>
               {/* --- Rotas publicas --- */}
               <Route path="/" element={<Login />} />

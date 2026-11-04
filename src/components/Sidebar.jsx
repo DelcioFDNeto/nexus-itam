@@ -6,7 +6,7 @@ import {
   Users, LogOut, ClipboardCheck, X, ShieldCheck, Layers, Globe,
   FolderGit2, Settings, ChevronLeft, ChevronRight, ChevronDown,
   Search, Activity, UserCog, Building2, Moon, Sun, FileSignature,
-  RefreshCw, Shield, Boxes, Network,
+  RefreshCw, Shield, Boxes, Network, Smartphone,
 } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../contexts/AuthContext';
@@ -37,7 +37,7 @@ const Sidebar = ({
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
   const { isDark, setTheme } = useTheme();
-  const { needRefresh, applyUpdate } = usePWA();
+  const { needRefresh, applyUpdate, isStandalone, setIsInstallModalOpen } = usePWA();
 
   const master = isSuperadmin(currentUser);
 
@@ -207,10 +207,10 @@ const Sidebar = ({
 
   return (
     <>
-      {/* Overlay mobile */}
+      {/* Overlay mobile com transição fluida */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden transition-opacity"
+          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden transition-opacity duration-300 ease-out animate-fade-in"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -221,16 +221,20 @@ const Sidebar = ({
           width: isCollapsed ? 78 : (width || undefined),
         }}
         className={`
-          relative fixed top-3.5 bottom-3.5 left-3.5 z-50 flex flex-col
-          rounded-2xl
+          fixed inset-y-0 left-0 z-50 flex flex-col
+          w-[85vw] max-w-[320px]
           bg-white/95 dark:bg-[#0D121F]/95 backdrop-blur-xl
-          border border-slate-200/90 dark:border-slate-800/80
-          shadow-[0_12px_36px_-6px_rgba(15,23,42,0.08),0_4px_12px_-2px_rgba(15,23,42,0.03)]
-          dark:shadow-[0_20px_50px_-10px_rgba(0,0,0,0.65)]
-          transition-all duration-150 ease-out select-none
+          border-r border-slate-200/90 dark:border-slate-800/80
+          shadow-2xl
+          safe-area-pt safe-area-pb
+          transition-transform duration-300 ease-out select-none
           lg:static lg:z-auto lg:h-full lg:w-full lg:translate-x-0
-          ${isOpen ? 'translate-x-0 w-[calc(100vw-28px)] max-w-[320px]' : '-translate-x-[115%] lg:translate-x-0'}
-          ${isCollapsed ? 'w-[78px]' : ''}
+          lg:rounded-2xl lg:border lg:border-slate-200/90 lg:dark:border-slate-800/80
+          lg:shadow-[0_12px_36px_-6px_rgba(15,23,42,0.08),0_4px_12px_-2px_rgba(15,23,42,0.03)]
+          lg:dark:shadow-[0_20px_50px_-10px_rgba(0,0,0,0.65)]
+          lg:pt-0 lg:pb-0
+          ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          ${isCollapsed ? 'lg:w-[78px]' : ''}
         `}
         aria-label="Navegação corporativa"
       >
@@ -516,7 +520,53 @@ const Sidebar = ({
         {/* RODAPÉ: WORKSPACE TELEMETRY & PERFIL DO OPERADOR                   */}
         {/* ================================================================= */}
         <div className="shrink-0 p-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-2">
-          {/* Alerta de atualização PWA */}
+          {/* Card Executivo PWA / Aplicativo Nexus ITAM Nativo */}
+          {!isCollapsed && (
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/90 p-2.5 dark:border-slate-800/80 dark:bg-slate-900/60 shadow-2xs">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                      isStandalone
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:bg-emerald-500/25 dark:text-emerald-400'
+                        : 'bg-brand/12 text-brand dark:bg-brand/25 dark:text-brand-light'
+                    }`}
+                  >
+                    <Smartphone size={15} strokeWidth={2.2} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      Aplicativo Nexus ITAM Nativo
+                    </p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
+                      <span
+                        className={`inline-block h-1.5 w-1.5 rounded-full ${
+                          isStandalone ? 'bg-emerald-500' : 'bg-brand'
+                        }`}
+                      />
+                      <span>{isStandalone ? 'Instalado' : 'Instalar no smartphone'}</span>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInstallModalOpen(true);
+                    onClose?.();
+                  }}
+                  aria-label={isStandalone ? 'Gerenciar aplicativo' : 'Instalar aplicativo'}
+                  className={`shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all active:scale-95 cursor-pointer ${
+                    isStandalone
+                      ? 'bg-slate-200/80 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                      : 'bg-brand text-white hover:bg-brand-dark shadow-xs'
+                  }`}
+                >
+                  {isStandalone ? 'Gerenciar' : 'Instalar'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {needRefresh && !isCollapsed && (
             <button
               type="button"

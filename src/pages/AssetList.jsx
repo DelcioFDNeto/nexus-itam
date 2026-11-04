@@ -78,17 +78,56 @@ const AssetList = () => {
     () => searchParams.get("type") || sessionStorage.getItem("itam_asset_filterType") || "Todos",
   );
   const [filterStatus, setFilterStatus] = useState(() => sessionStorage.getItem("itam_asset_filterStatus") || "Todos");
+  const [filterLocation, setFilterLocation] = useState(() => sessionStorage.getItem("itam_asset_filterLocation") || "Todos");
   const [sortOrder, setSortOrder] = useState(() => sessionStorage.getItem("itam_asset_sortOrder") || "asc");
   const [sortBy, setSortBy] = useState(() => sessionStorage.getItem("itam_asset_sortBy") || "internalId");
   const [showRetired, setShowRetired] = useState(false);
+
+  // Estados temporários do Drawer/Bottom Sheet mobile
+  const [draftStatus, setDraftStatus] = useState(filterStatus);
+  const [draftType, setDraftType] = useState(filterType);
+  const [draftLocation, setDraftLocation] = useState(filterLocation);
+  const [draftSortBy, setDraftSortBy] = useState(sortBy);
+  const [draftSortOrder, setDraftSortOrder] = useState(sortOrder);
+  const [draftShowRetired, setDraftShowRetired] = useState(showRetired);
 
   useEffect(() => {
     sessionStorage.setItem("itam_asset_searchTerm", searchTerm);
     sessionStorage.setItem("itam_asset_filterType", filterType);
     sessionStorage.setItem("itam_asset_filterStatus", filterStatus);
+    sessionStorage.setItem("itam_asset_filterLocation", filterLocation);
     sessionStorage.setItem("itam_asset_sortBy", sortBy);
     sessionStorage.setItem("itam_asset_sortOrder", sortOrder);
-  }, [searchTerm, filterType, filterStatus, sortBy, sortOrder, showRetired]);
+  }, [searchTerm, filterType, filterStatus, filterLocation, sortBy, sortOrder, showRetired]);
+
+  const uniqueLocations = useMemo(() => {
+    const locs = new Set();
+    assets.forEach((a) => {
+      if (a.location && typeof a.location === "string" && a.location.trim()) {
+        locs.add(a.location.trim());
+      }
+    });
+    return Array.from(locs).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [assets]);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filterStatus !== "Todos") count++;
+    if (filterType !== "Todos") count++;
+    if (filterLocation !== "Todos") count++;
+    if (showRetired) count++;
+    return count;
+  }, [filterStatus, filterType, filterLocation, showRetired]);
+
+  const handleOpenMobileFilters = () => {
+    setDraftStatus(filterStatus);
+    setDraftType(filterType);
+    setDraftLocation(filterLocation);
+    setDraftSortBy(sortBy);
+    setDraftSortOrder(sortOrder);
+    setDraftShowRetired(showRetired);
+    setShowMobileFilters(true);
+  };
 
   // Controle da seleção múltipla para exportação, impressão corporativa e edições conjuntas
   const [selectedIds, setSelectedIds] = useState([]);
@@ -202,6 +241,10 @@ const AssetList = () => {
       if (filterStatus !== "Todos" && asset.status !== filterStatus)
         return false;
 
+      // Filtra por localidade específica
+      if (filterLocation !== "Todos" && asset.location !== filterLocation)
+        return false;
+
       // Navega rapidamente através das abas horizontais focadas no tipo da máquina
       if (filterType === "Todos") return true;
       if (filterType === "Promocionais") return isPromo;
@@ -241,7 +284,7 @@ const AssetList = () => {
             sensitivity: "base",
           });
     });
-  }, [assets, searchTerm, filterType, filterStatus, sortBy, sortOrder, showRetired]);
+  }, [assets, searchTerm, filterType, filterStatus, filterLocation, sortBy, sortOrder, showRetired]);
 
   const toggleSelectAll = () => {
     if (selectedIds.length === processedAssets.length) setSelectedIds([]);
@@ -400,88 +443,269 @@ const AssetList = () => {
 
       {/* Controles de Busca, Visualização, Botão de Filtro Expandido e Ações Inicias */}
       <div className="px-4 md:px-8 pb-6 bg-slate-50 dark:bg-slate-950 sticky top-0 md:static z-20">
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col md:flex-row gap-4 items-center">
-          {/* Campo de pesquisa global que abrange IDs e Nomes */}
+        <div className="bg-white dark:bg-slate-800 p-3 sm:p-4 rounded-xl shadow-sm border border-slate-200/80 dark:border-slate-700 flex flex-col md:flex-row gap-3 md:gap-4 items-stretch md:items-center">
+          {/* Campo de pesquisa global com botão de limpar integrado */}
           <div className="flex w-full md:flex-1 gap-2 items-center">
             <div className="relative flex-1">
               <Search
-                className="absolute left-4 top-3.5 text-gray-400 dark:text-gray-500"
-                size={20}
+                className="absolute left-3.5 top-3 text-slate-400 dark:text-slate-500"
+                size={18}
               />
               <input
                 type="text"
                 placeholder="Buscar por tag, modelo, serial ou responsável..."
-                className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-slate-900 border-transparent focus:bg-white dark:focus:bg-slate-800 border-2 focus:border-brand rounded-2xl outline-none font-bold text-sm text-gray-800 dark:text-gray-100 transition-all"
+                className="w-full pl-10 pr-9 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-800 focus:border-brand rounded-xl outline-none font-semibold text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 transition-all min-h-[44px]"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-2.5 top-2.5 p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
+                  aria-label="Limpar busca"
+                  title="Limpar busca"
+                >
+                  <X size={16} />
+                </button>
+              )}
             </div>
+
+            {/* Botão de Filtros Mobile (Abre Bottom Sheet Nativo) */}
             <button
               type="button"
-              onClick={() => setShowMobileFilters((prev) => !prev)}
-              className={`md:hidden p-2.5 rounded-lg border transition-colors ${showMobileFilters ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-slate-900" : "bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-400"}`}
+              onClick={handleOpenMobileFilters}
+              className={`md:hidden relative flex items-center justify-center min-h-[44px] min-w-[44px] px-3 rounded-xl border transition-all ${
+                activeFiltersCount > 0
+                  ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-slate-900 shadow-sm"
+                  : "bg-slate-50 dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100"
+              }`}
               title="Filtros avançados"
               aria-label="Filtros avançados"
             >
-              <Filter size={18} />
+              <SlidersHorizontal size={18} />
+              {activeFiltersCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-brand text-[10px] font-mono font-bold text-white shadow-xs">
+                  {activeFiltersCount}
+                </span>
+              )}
             </button>
           </div>
 
-          {showMobileFilters && (
-            <div className="md:hidden w-full flex flex-wrap gap-2 pt-3 border-t border-gray-100 dark:border-slate-700 animate-in slide-in-from-top-2">
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="flex-1 p-2.5 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 text-xs font-bold text-gray-800 dark:text-gray-100 outline-none"
-              >
-                <option value="Todos">Todos os Status</option>
-                {statusOptions.map((st) => (
-                  <option key={st} value={st}>
-                    {st}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                type="button"
-                onClick={() => setShowRetired((v) => !v)}
-                className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
-                  showRetired
-                    ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
-                    : "border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 text-gray-600 dark:text-gray-300"
-                }`}
-              >
-                <Archive size={14} />
-                <span>Baixados</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
-                className="p-2.5 bg-gray-50 dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300"
-                title="Inverter ordenação"
-              >
-                {sortOrder === "asc" ? <ArrowDownAZ size={16} /> : <ArrowUpAZ size={16} />}
-              </button>
-
+          {/* Contador dinâmico e atalhos rápidos mobile */}
+          <div className="flex md:hidden items-center justify-between px-1 text-xs text-slate-500 dark:text-slate-400 font-medium">
+            <span className="flex items-center gap-1.5">
+              <span className="font-mono font-bold text-slate-900 dark:text-white">{processedAssets.length}</span>
+              <span>{processedAssets.length === 1 ? 'ativo encontrado' : 'ativos encontrados'}</span>
+            </span>
+            <div className="flex items-center gap-2">
+              {activeFiltersCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterStatus("Todos");
+                    setFilterType("Todos");
+                    setFilterLocation("Todos");
+                    setShowRetired(false);
+                    toast.info("Filtros resetados");
+                  }}
+                  className="text-[11px] font-bold text-brand hover:underline"
+                >
+                  Limpar ({activeFiltersCount})
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleExportExcel}
-                className="p-2.5 bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-400 rounded-xl border border-green-200 dark:border-green-900/50"
+                className="p-1.5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors"
                 title="Exportar Excel"
               >
                 <Download size={16} />
               </button>
+            </div>
+          </div>
 
-              {canImport && (
-                <Link
-                  to="/import"
-                  className="p-2.5 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 rounded-xl border border-blue-200 dark:border-blue-900/50"
-                  title="Importar"
-                >
-                  <FileText size={16} />
-                </Link>
-              )}
+          {/* Bottom Sheet de Filtros Mobile */}
+          {showMobileFilters && (
+            <div className="fixed inset-0 z-50 md:hidden flex flex-col justify-end">
+              <div
+                className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200"
+                onClick={() => setShowMobileFilters(false)}
+              />
+
+              <div className="relative bg-white dark:bg-slate-900 rounded-t-2xl border-t border-slate-200 dark:border-slate-800 shadow-2xl p-5 space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar animate-in slide-in-from-bottom duration-300 safe-area-pb">
+                <div className="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto -mt-2 mb-2" />
+
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <SlidersHorizontal size={18} className="text-brand" />
+                      <span>Filtros do Inventário</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Refine a listagem por status, categoria e localidade
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowMobileFilters(false)}
+                    className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+                    aria-label="Fechar filtros"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="space-y-4 text-xs">
+                  {/* Status */}
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                      Status Operacional
+                    </label>
+                    <select
+                      value={draftStatus}
+                      onChange={(e) => setDraftStatus(e.target.value)}
+                      className="w-full min-h-[44px] px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold text-slate-900 dark:text-white outline-none focus:border-brand"
+                    >
+                      <option value="Todos">Todos os Status</option>
+                      {statusOptions.map((st) => (
+                        <option key={st} value={st}>
+                          {st}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Categoria / Tipo */}
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                      Tipo de Ativo
+                    </label>
+                    <select
+                      value={draftType}
+                      onChange={(e) => setDraftType(e.target.value)}
+                      className="w-full min-h-[44px] px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold text-slate-900 dark:text-white outline-none focus:border-brand"
+                    >
+                      {filters.map((f) => (
+                        <option key={f.value} value={f.value}>
+                          {f.label} {f.count !== undefined ? `(${f.count})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Localização */}
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                      Localização / Setor
+                    </label>
+                    <select
+                      value={draftLocation}
+                      onChange={(e) => setDraftLocation(e.target.value)}
+                      className="w-full min-h-[44px] px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold text-slate-900 dark:text-white outline-none focus:border-brand"
+                    >
+                      <option value="Todos">Todas as Localizações</option>
+                      {uniqueLocations.map((loc) => (
+                        <option key={loc} value={loc}>
+                          {loc}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Ordenação */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                        Ordenar por
+                      </label>
+                      <select
+                        value={draftSortBy}
+                        onChange={(e) => setDraftSortBy(e.target.value)}
+                        className="w-full min-h-[44px] px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold text-slate-900 dark:text-white outline-none focus:border-brand"
+                      >
+                        <option value="internalId">Tag Patrimonial</option>
+                        <option value="model">Modelo</option>
+                        <option value="assignedTo">Responsável</option>
+                        <option value="createdAt">Data de Registro</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                        Ordem
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setDraftSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
+                        className="w-full min-h-[44px] px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold text-slate-900 dark:text-white flex items-center justify-between"
+                      >
+                        <span>{draftSortOrder === "asc" ? "Crescente (A-Z)" : "Decrescente (Z-A)"}</span>
+                        {draftSortOrder === "asc" ? <ArrowDownAZ size={16} /> : <ArrowUpAZ size={16} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Incluir Baixados switch/button */}
+                  <div className="pt-2">
+                    <label className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 cursor-pointer">
+                      <div className="flex items-center gap-2.5">
+                        <Archive size={16} className="text-slate-500" />
+                        <div>
+                          <p className="font-bold text-slate-900 dark:text-white text-xs">Exibir Ativos Baixados</p>
+                          <p className="text-[11px] text-slate-400">Inclui itens desativados ou descartados</p>
+                        </div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={draftShowRetired}
+                        onChange={(e) => setDraftShowRetired(e.target.checked)}
+                        className="w-5 h-5 rounded text-brand focus:ring-brand cursor-pointer"
+                      />
+                    </label>
+                  </div>
+
+                  {/* Ações: Limpar e Aplicar */}
+                  <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDraftStatus("Todos");
+                        setDraftType("Todos");
+                        setDraftLocation("Todos");
+                        setDraftSortBy("internalId");
+                        setDraftSortOrder("asc");
+                        setDraftShowRetired(false);
+                        setFilterStatus("Todos");
+                        setFilterType("Todos");
+                        setFilterLocation("Todos");
+                        setSortBy("internalId");
+                        setSortOrder("asc");
+                        setShowRetired(false);
+                        setShowMobileFilters(false);
+                        toast.info("Filtros limpos.");
+                      }}
+                      className="w-full min-h-[44px] py-2.5 px-4 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      Limpar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterStatus(draftStatus);
+                        setFilterType(draftType);
+                        setFilterLocation(draftLocation);
+                        setSortBy(draftSortBy);
+                        setSortOrder(draftSortOrder);
+                        setShowRetired(draftShowRetired);
+                        setShowMobileFilters(false);
+                      }}
+                      className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-brand hover:bg-brand-dark text-white font-bold text-xs shadow-md transition-colors"
+                    >
+                      Aplicar Filtros
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -617,67 +841,121 @@ const AssetList = () => {
           </div>
         ) : (
           <>
-            {/* Exibe listagem agrupada em cards com menos detalhes quando no celular */}
-            <div className="grid grid-cols-1 gap-3 md:hidden pb-20">
-              {processedAssets.map((asset) => (
-                <div
-                  key={asset.id}
-                  onClick={() => navigate(`/assets/${asset.id}`)}
-                  className={`p-4 rounded-xl border transition-colors group cursor-pointer ${selectedIds.includes(asset.id) ? "border-brand bg-brand/5 dark:bg-brand/10 dark:border-brand/50" : "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm"}`}
-                >
-                  <div className="flex justify-between items-center mb-3">
-                    <StatusBadge status={asset.status} size="sm" />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSelectOne(asset.id);
-                      }}
-                      className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors p-1"
-                    >
-                      {selectedIds.includes(asset.id) ? (
-                        <CheckSquare size={20} className="text-brand" />
-                      ) : (
-                        <Square size={20} />
-                      )}
-                    </button>
-                  </div>
+            {/* Exibe listagem em cards nativos corporativos de alta fidelidade no mobile */}
+            <div className="grid grid-cols-1 gap-3 md:hidden pb-24">
+              {processedAssets.map((asset) => {
+                const responsible = asset.assignedTo || asset.clientName || null;
+                const isOnline = asset.agentOnline || asset.agentStatus === "online" || asset.isOnline;
+                const isSelected = selectedIds.includes(asset.id);
 
-                  <div className="flex items-center gap-3.5">
-                    <div className="w-10 h-10 bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0">
-                      <AssetIcon
-                        type={asset.type}
-                        category={asset.category}
-                        model={asset.model}
-                        internalId={asset.internalId}
-                        size={20}
-                      />
+                return (
+                  <div
+                    key={asset.id}
+                    onClick={() => navigate(`/assets/${asset.id}`)}
+                    className={`p-3.5 sm:p-4 rounded-xl border transition-all duration-150 cursor-pointer active:scale-[0.99] select-none ${
+                      isSelected
+                        ? "border-brand bg-brand/5 dark:bg-brand/10 dark:border-brand/60 shadow-sm"
+                        : "bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 active:bg-slate-50 dark:active:bg-slate-800/80"
+                    }`}
+                  >
+                    {/* Linha 1: Tag Patrimonial em badge mono estilizado, tipo de ativo com ícone, e badge de status corporativo + seleção */}
+                    <div className="flex items-center justify-between gap-2 mb-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 tracking-wider shrink-0">
+                          {asset.internalId}
+                        </span>
+                        <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">
+                          <AssetIcon
+                            type={asset.type}
+                            category={asset.category}
+                            model={asset.model}
+                            internalId={asset.internalId}
+                            size={13}
+                            className="shrink-0"
+                          />
+                          <span className="truncate">{asset.type || "Equipamento"}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <StatusBadge status={asset.status} size="sm" />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSelectOne(asset.id);
+                          }}
+                          className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1 -mr-1 transition-colors"
+                          aria-label={isSelected ? `Desmarcar ${asset.internalId}` : `Selecionar ${asset.internalId}`}
+                        >
+                          {isSelected ? (
+                            <CheckSquare size={19} className="text-brand" />
+                          ) : (
+                            <Square size={19} />
+                          )}
+                        </button>
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="font-bold text-slate-900 dark:text-white leading-tight truncate text-sm">
+
+                    {/* Linha 2: Modelo/Nome do ativo em tipografia expressiva e número de série em monospace discreto */}
+                    <div className="mb-2.5">
+                      <h3 className="font-bold text-slate-900 dark:text-white text-sm leading-snug tracking-tight line-clamp-1">
                         {asset.model}
                       </h3>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-                        {asset.internalId}
-                      </p>
+                      {asset.serialNumber && (
+                        <p className="font-mono text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 tracking-tight truncate">
+                          S/N: {asset.serialNumber}
+                        </p>
+                      )}
                     </div>
-                  </div>
 
-                  <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                    <div className="flex items-center gap-1.5 truncate max-w-[60%]">
-                      <div className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0">
-                        <User size={11} />
+                    {/* Linha 3: Usuário responsável (com mini avatar) e Localização (com ícone de pino) */}
+                    <div className="flex items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-300 py-1">
+                      <div className="flex items-center gap-1.5 min-w-0 max-w-[60%]">
+                        <div className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase shrink-0">
+                          {responsible ? responsible.charAt(0) : <User size={10} />}
+                        </div>
+                        <span className="truncate font-medium text-xs text-slate-700 dark:text-slate-200" title={responsible || "Não atribuído"}>
+                          {responsible || "Não atribuído"}
+                        </span>
                       </div>
-                      <span className="truncate">
-                        {asset.assignedTo || asset.clientName || "—"}
-                      </span>
+
+                      <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 shrink-0 max-w-[40%]" title={asset.location || "Sem local"}>
+                        <MapPin size={11} className="text-slate-400 shrink-0" />
+                        <span className="truncate">{asset.location || "Sem local"}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1 text-[11px] text-slate-400">
-                      <MapPin size={11} />
-                      <span className="truncate max-w-[100px]">{asset.location || "—"}</span>
+
+                    {/* Linha 4: Metadados táticos (agente online com dot pulsante, data ou garantia) e navegação */}
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 pt-2 mt-1 border-t border-slate-100 dark:border-slate-800/80">
+                      <div className="flex items-center gap-2">
+                        {isOnline ? (
+                          <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>Agente Online</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-slate-400">
+                            <Clock size={11} />
+                            <span>
+                              {asset.warrantyEnd
+                                ? `Garantia: ${asset.warrantyEnd}`
+                                : asset.createdAt
+                                ? `Cadastrado ${new Date(asset.createdAt?.toDate ? asset.createdAt.toDate() : asset.createdAt).toLocaleDateString("pt-BR")}`
+                                : "Inventariado"}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-0.5 text-slate-400 group-hover:text-brand transition-colors font-semibold text-[11px]">
+                        <span>Detalhes</span>
+                        <ChevronRight size={13} />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Quando no formato para computadores, usa tabelas extensas super rápidas de varrer a visão */}

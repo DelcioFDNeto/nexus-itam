@@ -4,13 +4,14 @@ import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import {
   Home, Box, QrCode, Search, Plus, Settings, Menu, Monitor,
-  Building2, Users, Layers, LayoutDashboard, MoreHorizontal,
+  Building2, Users, Layers, LayoutDashboard, MoreHorizontal, Download,
 } from 'lucide-react';
 import Sidebar from './Sidebar';
 import GlobalSearch from './GlobalSearch';
 import Logo from './Logo';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { usePWA } from '../contexts/PWAContext';
 import { can, isSuperadmin, ROLE_LABELS } from '../utils/permissions';
 import { hasFeature, isModuleEnabled } from '../utils/entitlements';
 import { useAgentAutoSync } from '../hooks/useAgentAutoSync';
@@ -42,6 +43,7 @@ const computeOptimalSidebarWidth = (companyName) => {
 const Layout = ({ children }) => {
   const { currentUser } = useAuth();
   const { resolvedTheme } = useTheme();
+  const { isStandalone, canInstall, setIsInstallModalOpen } = usePWA();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -58,6 +60,24 @@ const Layout = ({ children }) => {
       return false;
     }
   });
+
+  // Indicador de conectividade em tempo real para header mobile
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator !== 'undefined' && 'onLine' in navigator ? navigator.onLine : true,
+  );
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const optimalWidth = useMemo(
     () => computeOptimalSidebarWidth(currentUser?.companyName),
@@ -201,7 +221,7 @@ const Layout = ({ children }) => {
         />
       </div>
 
-      {/* Drawer para mobile e tablet */}
+      {/* Drawer para mobile e tablet com slide-over e safe areas */}
       <div className="lg:hidden">
         <Sidebar
           isOpen={isMobileMenuOpen}
@@ -219,36 +239,82 @@ const Layout = ({ children }) => {
         }}
         className="flex min-h-screen flex-col lg:[padding-left:var(--sidebar-offset)] transition-[padding] duration-150 ease-out"
       >
-        {/* Topo compacto mobile estilo console */}
-        <header className="lg:hidden sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 dark:border-slate-800/80 dark:bg-[#0B0F17]/95 safe-area-pt">
-          <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-            <div className="flex min-w-0 items-center gap-3">
+        {/* Topo compacto mobile estilo console com Safe Area Top */}
+        <header className="lg:hidden sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 dark:border-slate-800/80 dark:bg-[#0B0F17]/95 backdrop-blur-xl safe-area-pt">
+          <div className="flex items-center justify-between gap-2 px-3.5 py-2.5">
+            {/* Esquerda: Menu Drawer, Logo e Empresa/Tenant */}
+            <div className="flex min-w-0 items-center gap-2.5">
               <button
+                type="button"
                 onClick={() => setIsMobileMenuOpen(true)}
                 aria-label="Abrir menu"
-                className="-ml-1 rounded-lg p-2 text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+                className="-ml-1 rounded-lg p-2 text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors active:scale-95"
               >
                 <Menu size={20} />
               </button>
               <div className="min-w-0">
-                <Logo size="sm" />
-                <p className="truncate text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-400">
-                  {currentUser?.companyName || 'Nexus ITAM'}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <Logo size="sm" />
+                  {/* Indicador sutil de conectividade em tempo real */}
+                  <span
+                    className="inline-flex items-center gap-1 shrink-0"
+                    title={isOnline ? 'Conexão ativa (Online)' : 'Modo Offline (Sem internet)'}
+                    aria-label={isOnline ? 'Online' : 'Offline'}
+                  >
+                    <span
+                      className={`h-2 w-2 rounded-full transition-colors ${
+                        isOnline
+                          ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]'
+                          : 'bg-rose-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]'
+                      }`}
+                    />
+                    {!isOnline && (
+                      <span className="text-[9px] font-mono font-bold text-rose-500 uppercase tracking-tight">
+                        Off
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 min-w-0">
+                  <p className="truncate text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    {currentUser?.companyName || 'Nexus ITAM'}
+                  </p>
+                  {currentUser?.tenantId && (
+                    <span className="hidden xs:inline-block font-mono text-[9px] text-slate-400 dark:text-slate-500 truncate">
+                      · #{currentUser.tenantId.slice(0, 8)}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2">
+            {/* Direita: Botão Instalar App (quando disponível e não standalone), Busca Rápida e Avatar */}
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              {!isStandalone && canInstall && (
+                <button
+                  type="button"
+                  onClick={() => setIsInstallModalOpen(true)}
+                  aria-label="Instalar App"
+                  className="flex items-center gap-1 rounded-lg border border-brand/30 bg-brand/10 hover:bg-brand/20 text-brand dark:text-brand-light px-2 py-1 text-xs font-semibold transition-all active:scale-95 shadow-2xs cursor-pointer"
+                  title="Instalar aplicativo Nexus ITAM no dispositivo"
+                >
+                  <Download size={13} strokeWidth={2.4} className="shrink-0" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Instalar</span>
+                </button>
+              )}
+
               <button
+                type="button"
                 onClick={() => setIsSearchOpen(true)}
                 aria-label="Buscar"
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 transition-all active:scale-95"
               >
                 <Search size={15} />
               </button>
+
               <div
-                title={`${currentUser?.name || ''} — ${ROLE_LABELS[currentUser?.role] || ''}`}
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 font-mono text-[11px] font-bold text-white dark:bg-slate-800 border border-slate-700/60"
+                title={`${currentUser?.name || 'Usuário'} — ${ROLE_LABELS[currentUser?.role] || 'Operador'} (${currentUser?.companyName || 'Nexus ITAM'})`}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 font-mono text-[11px] font-bold text-white dark:bg-slate-800 border border-slate-700/60 shadow-2xs select-none"
               >
                 {initials}
               </div>
@@ -256,53 +322,83 @@ const Layout = ({ children }) => {
           </div>
         </header>
 
-        {/* Conteúdo */}
+        {/* Conteúdo com Safe Area Bottom para não colidir com o Bottom Nav */}
         <main className="flex-1 px-4 pt-4 pb-28 sm:px-6 lg:px-8 lg:py-6 lg:pb-8 safe-area-pb">
           <div className="mx-auto w-full max-w-[1600px]">{children}</div>
         </main>
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* BARRA INFERIOR — apenas em telas pequenas                           */}
+      {/* BARRA INFERIOR — Bottom Navigation Bar Corporativa Nativa          */}
       {/* ------------------------------------------------------------------ */}
-      <nav aria-label="Navegacao rapida" className="lg:hidden fixed inset-x-3 bottom-3 z-40 sm:inset-x-auto sm:left-1/2 sm:w-[420px] sm:-translate-x-1/2">
-        <div className="flex items-center justify-around rounded-xl border border-slate-800 bg-slate-900/95 px-2 py-1.5 text-white shadow-xl safe-area-pb">
-          {bottomNav.map(({ to, icon: Icon, label, primary }) =>
-            primary ? (
+      <nav
+        aria-label="Navegacao rapida"
+        className="lg:hidden fixed inset-x-3 z-40 bottom-[calc(0.6rem+env(safe-area-inset-bottom,0px))] sm:inset-x-auto sm:left-1/2 sm:w-[440px] sm:-translate-x-1/2"
+      >
+        <div className="flex items-center justify-around rounded-2xl border border-slate-200/80 bg-white/90 dark:border-slate-800/80 dark:bg-[#0D121F]/90 backdrop-blur-xl px-2 py-1.5 shadow-[0_10px_30px_-5px_rgba(0,0,0,0.25)] dark:shadow-[0_12px_36px_-6px_rgba(0,0,0,0.7)] select-none">
+          {bottomNav.map(({ to, icon: Icon, label, primary }) => {
+            const active = isActive(to);
+            if (primary) {
+              return (
+                <Link
+                  key={to}
+                  to={to}
+                  aria-label={label}
+                  className="group relative flex flex-1 flex-col items-center justify-center py-1 transition-all duration-150 active:scale-95"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand text-white shadow-md shadow-brand/30 transition-transform group-hover:scale-105 group-active:scale-95">
+                    <Icon size={19} strokeWidth={2.5} />
+                  </span>
+                  <span className="mt-0.5 text-[9.5px] font-bold tracking-tight text-brand dark:text-brand-light">
+                    {label}
+                  </span>
+                </Link>
+              );
+            }
+
+            return (
               <Link
                 key={to}
                 to={to}
                 aria-label={label}
-                className="flex flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-1 text-brand"
-              >
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white shadow-sm transition-colors hover:bg-brand-dark">
-                  <Icon size={18} />
-                </span>
-                <span className="text-[9px] font-semibold tracking-wide text-brand">{label}</span>
-              </Link>
-            ) : (
-              <Link
-                key={to}
-                to={to}
-                aria-label={label}
-                aria-current={isActive(to) ? 'page' : undefined}
-                className={`flex flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition-colors ${
-                  isActive(to) ? 'text-white font-semibold' : 'text-slate-400 hover:text-slate-200'
+                aria-current={active ? 'page' : undefined}
+                className={`group relative flex flex-1 flex-col items-center justify-center py-1 px-1 rounded-xl transition-all duration-150 active:scale-95 ${
+                  active
+                    ? 'text-brand dark:text-brand-light font-semibold'
+                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
                 }`}
               >
-                <Icon size={20} strokeWidth={isActive(to) ? 2.4 : 1.8} />
-                <span className="text-[9px] font-semibold uppercase tracking-wide">{label}</span>
+                {/* Active pill indicator com microinteração suave */}
+                <span
+                  className={`flex h-7 w-12 items-center justify-center rounded-full transition-all duration-200 ${
+                    active
+                      ? 'bg-brand/12 dark:bg-brand/25 text-brand dark:text-brand-light shadow-2xs'
+                      : 'bg-transparent text-slate-500 dark:text-slate-400 group-hover:bg-slate-100/60 dark:group-hover:bg-slate-800/40'
+                  }`}
+                >
+                  <Icon size={18} strokeWidth={active ? 2.4 : 1.9} />
+                </span>
+                <span
+                  className={`mt-0.5 text-[9.5px] tracking-tight transition-colors ${
+                    active ? 'font-bold text-slate-900 dark:text-white' : 'font-medium'
+                  }`}
+                >
+                  {label}
+                </span>
               </Link>
-            ),
-          )}
+            );
+          })}
 
           <button
+            type="button"
             onClick={() => setIsMobileMenuOpen(true)}
             aria-label="Mais opcoes"
-            className="flex flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-slate-400 hover:text-slate-200"
+            className="group relative flex flex-1 flex-col items-center justify-center py-1 px-1 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 transition-all duration-150 active:scale-95 cursor-pointer"
           >
-            <MoreHorizontal size={20} strokeWidth={1.8} />
-            <span className="text-[9px] font-semibold uppercase tracking-wide">Mais</span>
+            <span className="flex h-7 w-12 items-center justify-center rounded-full transition-all duration-200 group-hover:bg-slate-100/60 dark:group-hover:bg-slate-800/40">
+              <MoreHorizontal size={18} strokeWidth={1.9} />
+            </span>
+            <span className="mt-0.5 text-[9.5px] font-medium tracking-tight">Mais</span>
           </button>
         </div>
       </nav>

@@ -16,10 +16,18 @@
     scroll-behavior: smooth;
   }
 
+  *,
+  *::before,
+  *::after {
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
     /* O fundo responde ao tema com contraste rigoroso de engenharia. */
     @apply antialiased text-slate-900 bg-slate-50 dark:text-slate-100 dark:bg-slate-950 selection:bg-brand selection:text-white;
     font-feature-settings: "cv11", "ss01", "tnum";
+    /* Evita pull-to-refresh acidental no body em PWA standalone */
+    overscroll-behavior-y: none;
   }
 
   /* Respeita quem pediu menos animacao no sistema operacional. */
@@ -34,7 +42,7 @@
     }
   }
 
-  /* Alvo de toque minimo confortavel em telas pequenas. */
+  /* Alvo de toque minimo confortavel em telas pequenas (padrao Apple/Google de 44px). */
   @media (pointer: coarse) {
     button,
     a[role='button'],
@@ -43,19 +51,41 @@
     }
   }
 
-  /* Safe Area for Mobile Notch */
+  /* Prevenção de zoom acidental no iOS em inputs menores de 16px */
   @media screen and (max-width: 768px) {
     input:not([type='checkbox']):not([type='radio']):not([type='range']),
     select,
     textarea {
-      font-size: 16px;
+      font-size: 16px !important;
     }
   }
+
+  /* Safe Areas rigorosas para iPhone Notch, Dynamic Island e barras de gestos Android/iOS */
   .safe-area-pt {
-    padding-top: env(safe-area-inset-top);
+    padding-top: env(safe-area-inset-top, 0px);
   }
   .safe-area-pb {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .safe-area-pl {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .safe-area-pr {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .safe-area-b {
+    bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .safe-area-mb {
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Microinteracao e toque haptico visual nativo */
+  .tap-haptic {
+    transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .tap-haptic:active {
+    transform: scale(0.95);
   }
 }
 

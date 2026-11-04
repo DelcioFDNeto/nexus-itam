@@ -1,13 +1,18 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import Layout from './Layout';
 import { useAuth } from '../contexts/AuthContext';
 
+const mockUsePWA = vi.fn();
+
 vi.mock('../contexts/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('../contexts/ThemeContext', () => ({
   useTheme: () => ({ theme: 'light', setTheme: vi.fn() }),
+}));
+vi.mock('../contexts/PWAContext', () => ({
+  usePWA: () => mockUsePWA(),
 }));
 vi.mock('./GlobalSearch', () => ({ default: () => null }));
 vi.mock('sonner', () => ({ Toaster: () => null, toast: { success: vi.fn(), error: vi.fn() } }));
@@ -24,7 +29,21 @@ const renderLayout = (user) => {
 };
 
 describe('Layout', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUsePWA.mockReturnValue({
+      isStandalone: false,
+      canInstall: false,
+      isInstallModalOpen: false,
+      setIsInstallModalOpen: vi.fn(),
+      installProgress: { isInstalling: false, progress: 0, statusText: '' },
+      storageDiagnostics: { quota: 0, usage: 0, percentage: 0, isPersisted: false },
+      startInstallWithProgress: vi.fn(),
+      checkForUpdates: vi.fn(),
+      forceHardReset: vi.fn(),
+      appVersion: '3.0.0',
+    });
+  });
 
   it('renderiza os filhos UMA unica vez', () => {
     // Regressao: a versao anterior montava duas arvores (uma para mobile, outra
@@ -68,5 +87,79 @@ describe('Layout', () => {
     // Escalonamento: role adulterado sem o tenant master nao abre o console.
     renderLayout({ uid: 'x', name: 'Fake', role: 'superadmin', tenantId: 'acme-1234' });
     expect(screen.queryByLabelText('Empresas')).toBeNull();
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* NOVAS FUNCIONALIDADES MOBILE & NATIVAS                             */
+  /* ------------------------------------------------------------------ */
+  it('renderiza o indicador de conectividade em tempo real e reage a eventos online/offline', () => {
+    renderLayout({ uid: 'u1', name: 'Ana Souza', role: 'owner', tenantId: 'acme-1234' });
+    expect(screen.getByLabelText('Online')).toBeTruthy();
+
+    act(() => {
+      window.dispatchEvent(new Event('offline'));
+    });
+    expect(screen.getByLabelText('Offline')).toBeTruthy();
+
+    act(() => {
+      window.dispatchEvent(new Event('online'));
+    });
+    expect(screen.getByLabelText('Online')).toBeTruthy();
+  });
+
+  it('exibe o botao de instalacao mobile quando disponivel e abre o modal ao clicar', () => {
+    const setIsInstallModalOpen = vi.fn();
+    mockUsePWA.mockReturnValue({
+      isStandalone: false,
+      canInstall: true,
+      isInstallModalOpen: false,
+      setIsInstallModalOpen,
+      installProgress: { isInstalling: false, progress: 0, statusText: '' },
+      storageDiagnostics: { quota: 0, usage: 0, percentage: 0, isPersisted: false },
+      appVersion: '3.0.0',
+    });
+
+    renderLayout({ uid: 'u1', name: 'Ana Souza', role: 'owner', tenantId: 'acme-1234' });
+    const installBtn = screen.getByLabelText('Instalar App');
+    expect(installBtn).toBeTruthy();
+
+    fireEvent.click(installBtn);
+    expect(setIsInstallModalOpen).toHaveBeenCalledWith(true);
+  });
+
+  it('oculta o botao de instalacao no header quando o app ja esta em modo standalone', () => {
+    mockUsePWA.mockReturnValue({
+      isStandalone: true,
+      canInstall: true,
+      isInstallModalOpen: false,
+      setIsInstallModalOpen: vi.fn(),
+      installProgress: { isInstalling: false, progress: 0, statusText: '' },
+      storageDiagnostics: { quota: 0, usage: 0, percentage: 0, isPersisted: false },
+      appVersion: '3.0.0',
+    });
+
+    renderLayout({ uid: 'u1', name: 'Ana Souza', role: 'owner', tenantId: 'acme-1234' });
+    expect(screen.queryByLabelText('Instalar App')).toBeNull();
+  });
+
+  it('renderiza o card executivo no menu com opcao de instalar ou gerenciar', () => {
+    const setIsInstallModalOpen = vi.fn();
+    mockUsePWA.mockReturnValue({
+      isStandalone: false,
+      canInstall: true,
+      isInstallModalOpen: false,
+      setIsInstallModalOpen,
+      installProgress: { isInstalling: false, progress: 0, statusText: '' },
+      storageDiagnostics: { quota: 0, usage: 0, percentage: 0, isPersisted: false },
+      appVersion: '3.0.0',
+    });
+
+    renderLayout({ uid: 'u1', name: 'Ana Souza', role: 'owner', tenantId: 'acme-1234' });
+    expect(screen.getAllByText('Aplicativo Nexus ITAM Nativo').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Instalar no smartphone').length).toBeGreaterThanOrEqual(1);
+
+    const installBtns = screen.getAllByRole('button', { name: /instalar aplicativo/i });
+    fireEvent.click(installBtns[0]);
+    expect(setIsInstallModalOpen).toHaveBeenCalledWith(true);
   });
 });

@@ -103,5 +103,52 @@ describe('AssetList Page', () => {
       expect(screen.getAllByText('Samsung Galaxy A15')[0]).toBeInTheDocument();
     });
   });
-});
 
+  it('clears search input when clear button is clicked', async () => {
+    render(
+      <BrowserRouter>
+        <AssetList />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/PAT-001/)[0]).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText(/Buscar por tag, modelo, serial ou responsável/i);
+    fireEvent.change(searchInput, { target: { value: 'Dell' } });
+    expect(searchInput.value).toBe('Dell');
+
+    const clearBtn = screen.getByLabelText(/Limpar busca/i);
+    expect(clearBtn).toBeInTheDocument();
+
+    fireEvent.click(clearBtn);
+    expect(searchInput.value).toBe('');
+  });
+
+  it('opens and closes mobile filter bottom sheet drawer', async () => {
+    render(
+      <BrowserRouter>
+        <AssetList />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/PAT-001/)[0]).toBeInTheDocument();
+    });
+
+    const filterBtn = screen.getByLabelText(/Filtros avançados/i);
+    fireEvent.click(filterBtn);
+
+    expect(await screen.findByText('Filtros do Inventário')).toBeInTheDocument();
+    expect(screen.getByText('Status Operacional')).toBeInTheDocument();
+    expect(screen.getByText('Localização / Setor')).toBeInTheDocument();
+
+    const closeBtn = screen.getByLabelText(/Fechar filtros/i);
+    fireEvent.click(closeBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByText('Filtros do Inventário')).not.toBeInTheDocument();
+    });
+  });
+});

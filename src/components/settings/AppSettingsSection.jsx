@@ -35,6 +35,7 @@ const AppSettingsSection = () => {
     applyUpdate,
     forceHardReset,
     installApp,
+    setIsInstallModalOpen,
   } = usePWA();
   const confirm = useConfirm();
 
@@ -166,6 +167,16 @@ const AppSettingsSection = () => {
                 className="flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-brand/20 transition-all hover:bg-brand-dark active:scale-95"
               >
                 <Download size={14} /> Instalar Aplicativo no Dispositivo
+              </button>
+            )}
+
+            {isStandalone && (
+              <button
+                type="button"
+                onClick={() => setIsInstallModalOpen(true)}
+                className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 transition-all hover:bg-emerald-500/20 active:scale-95"
+              >
+                <Smartphone size={14} /> Diagnóstico & Cache do App
               </button>
             )}
 

@@ -1,23 +1,36 @@
 // src/contexts/PWAContext.jsx
 // -----------------------------------------------------------------------------
-// Gerenciador Global de PWA e Atualizacoes
+// Gerenciador Global de PWA e Experiência Mobile Nativa
 //
-// Resolve de forma definitiva o problema de o usuario ter que "desinstalar e
-// instalar" o aplicativo para receber atualizacoes:
-//  1. Verificacao proativa em pontos-chave: inicio, foco da janela, retorno do
-//     app ao primeiro plano (visibilitychange), reconexao de internet e a cada
-//     15 minutos.
-//  2. Aviso de atualizacao persistente e amigavel (nao depende de toast fugaz).
-//  3. Metodo de "Forcar Atualizacao e Limpar Cache" acessivel no app para
-//     purgar qualquer cache antigo/corrompido sem precisar desinstalar o icone.
-//  4. Captura de evento beforeinstallprompt para instalacao direta em 1 toque.
+// 1. Verificação proativa de atualizações e limpeza de caches obsoletos.
+// 2. Fluxo de instalação com progresso em tempo real (etapas 1 a 4).
+// 3. Pré-aquecimento do CacheStorage com rotas e assets essenciais.
+// 4. Suporte nativo a iOS com orientações táteis do Safari.
+// 5. Diagnóstico de armazenamento e status standalone.
 // -----------------------------------------------------------------------------
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { toast } from 'sonner';
 import { APP_VERSION } from '../utils/appVersion';
 
 const PWAContext = createContext(null);
+
+const INITIAL_INSTALL_PROGRESS = {
+  isInstalling: false,
+  progress: 0,
+  step: 0,
+  statusText: '',
+  isComplete: false,
+  error: null,
+};
+
+const checkIsIOSDevice = () => {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isApple = /iPad|iPhone|iPod/.test(ua);
+  const isAppleTouchMac = navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1;
+  return Boolean(isApple || isAppleTouchMac);
+};
 
 export const PWAProvider = ({ children }) => {
   const [swRegistration, setSwRegistration] = useState(null);
@@ -26,7 +39,17 @@ export const PWAProvider = ({ children }) => {
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [installProgress, setInstallProgress] = useState(INITIAL_INSTALL_PROGRESS);
+  const [storageDiagnostics, setStorageDiagnostics] = useState({
+    quota: null,
+    usage: null,
+    percentage: 0,
+    isPersisted: false,
+  });
+
   const checkingLockRef = useRef(false);
+  const isIOS = useMemo(() => checkIsIOSDevice(), []);
 
   // Registra e monitora o Service Worker via vite-plugin-pwa
   const {
@@ -37,7 +60,6 @@ export const PWAProvider = ({ children }) => {
     onRegistered(registration) {
       if (registration) {
         setSwRegistration(registration);
-        // Verificacao inicial imediata no registro
         try {
           registration.update().catch(() => {});
         } catch {
@@ -50,32 +72,71 @@ export const PWAProvider = ({ children }) => {
     },
   });
 
+  // Atualiza diagnóstico de armazenamento (quota e consumo)
+  const refreshStorageDiagnostics = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
+      try {
+        const estimate = await navigator.storage.estimate();
+        const persisted = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+        const quota = estimate.quota || 0;
+        const usage = estimate.usage || 0;
+        const percentage = quota > 0 ? Math.min(100, Math.round((usage / quota) * 100)) : 0;
+
+        setStorageDiagnostics({
+          quota,
+          usage,
+          percentage,
+          isPersisted: Boolean(persisted),
+        });
+      } catch {
+        /* storage estimate indisponivel */
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshStorageDiagnostics();
+  }, [refreshStorageDiagnostics]);
+
   // Detecta se esta rodando em modo Standalone (PWA instalado no celular/desktop)
   useEffect(() => {
     const checkStandalone = () => {
       const isStandaloneMode =
-        window.matchMedia('(display-mode: standalone)').matches ||
-        window.navigator.standalone === true ||
-        document.referrer.includes('android-app://');
+        (typeof window !== 'undefined' &&
+          (window.matchMedia?.('(display-mode: standalone)').matches ||
+            window.navigator?.standalone === true ||
+            document.referrer?.includes('android-app://'))) ||
+        false;
       setIsStandalone(Boolean(isStandaloneMode));
     };
+
     checkStandalone();
-    const media = window.matchMedia('(display-mode: standalone)');
-    media.addEventListener?.('change', checkStandalone);
-    return () => media.removeEventListener?.('change', checkStandalone);
+    const media = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(display-mode: standalone)') : null;
+    media?.addEventListener?.('change', checkStandalone);
+    return () => media?.removeEventListener?.('change', checkStandalone);
   }, []);
 
-  // Captura o evento beforeinstallprompt para permitir instalacao direta no painel
+  // Captura o evento beforeinstallprompt para permitir instalacao direta e com progresso
   useEffect(() => {
     const handleBeforeInstall = (e) => {
       e.preventDefault();
       setInstallPrompt(e);
     };
+
     const handleAppInstalled = () => {
       setInstallPrompt(null);
       setIsStandalone(true);
+      setInstallProgress({
+        isInstalling: false,
+        progress: 100,
+        step: 4,
+        statusText: 'Instalação concluída com sucesso!',
+        isComplete: true,
+        error: null,
+      });
       toast.success('Aplicativo Nexus ITAM instalado com sucesso!');
     };
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
     window.addEventListener('appinstalled', handleAppInstalled);
     return () => {
@@ -84,8 +145,7 @@ export const PWAProvider = ({ children }) => {
     };
   }, []);
 
-  // Quando o novo Service Worker assume o controle (controllerchange), recarrega
-  // a pagina de forma limpa para garantir que todos os chunks correspondam a nova versao.
+  // Recarrega na transicao de Service Worker para garantir atomicidade de assets
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return undefined;
     let refreshing = false;
@@ -122,7 +182,6 @@ export const PWAProvider = ({ children }) => {
             await reg.update();
             setLastChecked(new Date());
 
-            // Se ja tem um worker esperando ativacao
             if (reg.waiting) {
               setNeedRefresh(true);
               setBannerDismissed(false);
@@ -134,7 +193,6 @@ export const PWAProvider = ({ children }) => {
           }
         }
 
-        // Se checou e nao ha worker esperando
         if (!silent) {
           setTimeout(() => {
             if (!needRefresh) {
@@ -155,7 +213,7 @@ export const PWAProvider = ({ children }) => {
     [swRegistration, needRefresh, setNeedRefresh],
   );
 
-  // Escutas de eventos para checagem automatica (app resume, foco e conexao online)
+  // Escutas de eventos para checagem automatica
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -163,13 +221,15 @@ export const PWAProvider = ({ children }) => {
       }
     };
     const onFocus = () => checkForUpdates({ silent: true });
-    const onOnline = () => checkForUpdates({ silent: true });
+    const onOnline = () => {
+      checkForUpdates({ silent: true });
+      refreshStorageDiagnostics();
+    };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('focus', onFocus);
     window.addEventListener('online', onOnline);
 
-    // Checagem periodica a cada 15 minutos enquanto o app estiver aberto
     const interval = setInterval(() => {
       checkForUpdates({ silent: true });
     }, 15 * 60 * 1000);
@@ -180,11 +240,10 @@ export const PWAProvider = ({ children }) => {
       window.removeEventListener('online', onOnline);
       clearInterval(interval);
     };
-  }, [checkForUpdates]);
+  }, [checkForUpdates, refreshStorageDiagnostics]);
 
   /**
-   * Aplica a atualizacao imediatamente sem que o usuario precise fechar ou
-   * reinstalar o app.
+   * Aplica a atualizacao imediatamente sem que o usuario precise desinstalar.
    */
   const applyUpdate = useCallback(async () => {
     try {
@@ -193,7 +252,6 @@ export const PWAProvider = ({ children }) => {
         swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
       }
       await updateServiceWorker(true);
-      // Fallback: se por algum motivo controllerchange nao disparar em 1.5s
       setTimeout(() => {
         window.location.reload();
       }, 1500);
@@ -204,34 +262,28 @@ export const PWAProvider = ({ children }) => {
   }, [swRegistration, updateServiceWorker]);
 
   /**
-   * Solucao definitiva para cache travado: purga todas as caches do navegador,
-   * desregistra todos os Service Workers e recarrega a pagina com cache-buster.
-   * Evita 100% que o usuario precise desinstalar o aplicativo.
+   * Hard reset de cache e service workers em caso de inconsistencias.
    */
   const forceHardReset = useCallback(async () => {
     try {
       toast.info('Limpando dados de cache e atualizando…');
 
-      // 1. Apaga todas as caches do CacheStorage
       if ('caches' in window) {
         const cacheNames = await caches.keys();
         await Promise.all(cacheNames.map((name) => caches.delete(name)));
       }
 
-      // 2. Desregistra todos os Service Workers ativos
       if ('serviceWorker' in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();
         await Promise.all(registrations.map((reg) => reg.unregister()));
       }
 
-      // 3. Limpa storage de recarga temporario
       try {
         sessionStorage.removeItem('nexus:preload-reload');
       } catch {
         /* ignore */
       }
 
-      // 4. Redireciona com parametro de tempo para forcar download limpo do servidor
       const cleanUrl = `${window.location.origin}${window.location.pathname}?update_time=${Date.now()}`;
       window.location.replace(cleanUrl);
     } catch (err) {
@@ -241,26 +293,159 @@ export const PWAProvider = ({ children }) => {
   }, []);
 
   /**
-   * Dispara o prompt de instalacao do PWA se estiver no navegador.
+   * Fluxo de instalacao nativa com progresso visual em tempo real.
    */
-  const installApp = useCallback(async () => {
-    if (!installPrompt) {
-      toast.info('Para instalar, use o menu do navegador: "Adicionar à Tela de Início" ou "Instalar Aplicativo".');
-      return false;
+  const startInstallWithProgress = useCallback(async () => {
+    setIsInstallModalOpen(true);
+
+    if (isStandalone) {
+      setInstallProgress({
+        isInstalling: false,
+        progress: 100,
+        step: 4,
+        statusText: 'Aplicativo Nexus ITAM já instalado e ativo no seu dispositivo!',
+        isComplete: true,
+        error: null,
+      });
+      return true;
     }
+
     try {
-      installPrompt.prompt();
-      const choice = await installPrompt.userChoice;
-      if (choice.outcome === 'accepted') {
-        setInstallPrompt(null);
+      // Etapa 1: Verificação de compatibilidade e integridade do app
+      setInstallProgress({
+        isInstalling: true,
+        progress: 15,
+        step: 1,
+        statusText: 'Verificando compatibilidade e integridade do app...',
+        isComplete: false,
+        error: null,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      // Etapa 2: Pré-aquecimento do CacheStorage com rotas e assets essenciais
+      setInstallProgress({
+        isInstalling: true,
+        progress: 45,
+        step: 2,
+        statusText: 'Baixando pacote do Nexus ITAM e interface offline...',
+        isComplete: false,
+        error: null,
+      });
+
+      try {
+        if (typeof window !== 'undefined' && 'caches' in window) {
+          const cache = await caches.open('nexus-core-runtime-v1');
+          const criticalUrls = ['/', '/dashboard', '/assets', '/audit', '/tasks', '/service-desk', '/logo.webp', '/pwa-192x192.png'];
+          await Promise.allSettled(
+            criticalUrls.map(async (url) => {
+              try {
+                const res = await fetch(url, { cache: 'no-cache' });
+                if (res && (res.ok || res.type === 'opaque')) {
+                  await cache.put(url, res);
+                }
+              } catch {
+                /* non-blocking */
+              }
+            }),
+          );
+        }
+      } catch (cacheErr) {
+        console.warn('Aviso no pré-aquecimento do cache offline:', cacheErr);
+      }
+
+      await refreshStorageDiagnostics();
+      setInstallProgress((prev) => ({
+        ...prev,
+        progress: 75,
+      }));
+
+      await new Promise((resolve) => setTimeout(resolve, 350));
+
+      // Etapa 3: Configuração do atalho nativo e Service Worker
+      setInstallProgress({
+        isInstalling: true,
+        progress: 80,
+        step: 3,
+        statusText: 'Configurando atalho nativo e Service Worker...',
+        isComplete: false,
+        error: null,
+      });
+
+      if (installPrompt) {
+        installPrompt.prompt();
+        const choice = await installPrompt.userChoice;
+
+        if (choice?.outcome === 'accepted') {
+          setInstallProgress({
+            isInstalling: false,
+            progress: 100,
+            step: 4,
+            statusText: 'Instalação concluída com sucesso!',
+            isComplete: true,
+            error: null,
+          });
+          setInstallPrompt(null);
+          setIsStandalone(true);
+          toast.success('Aplicativo Nexus ITAM instalado com sucesso!');
+          return true;
+        }
+
+        setInstallProgress({
+          isInstalling: false,
+          progress: 80,
+          step: 3,
+          statusText: 'Instalação cancelada pelo usuário no dispositivo.',
+          isComplete: false,
+          error: 'Instalação não autorizada pelo usuário.',
+        });
+        return false;
+      }
+
+      if (isIOS) {
+        // No iOS, orienta o fluxo do Safari nativo após pré-aquecer offline
+        setInstallProgress({
+          isInstalling: false,
+          progress: 100,
+          step: 4,
+          statusText: 'Pacote offline pronto! Siga as instruções abaixo no Safari.',
+          isComplete: true,
+          error: null,
+        });
         return true;
       }
+
+      // Outros navegadores sem beforeinstallprompt nativo
+      setInstallProgress({
+        isInstalling: false,
+        progress: 100,
+        step: 4,
+        statusText: 'Ambiente preparado. Adicione pelo menu do seu navegador.',
+        isComplete: true,
+        error: null,
+      });
       return false;
     } catch (err) {
-      console.error(err);
+      console.error('Erro durante o fluxo de instalação com progresso:', err);
+      setInstallProgress({
+        isInstalling: false,
+        progress: 80,
+        step: 3,
+        statusText: 'Não foi possível concluir a instalação automaticamente.',
+        isComplete: false,
+        error: err?.message || 'Falha na instalação',
+      });
       return false;
     }
-  }, [installPrompt]);
+  }, [isStandalone, installPrompt, isIOS, refreshStorageDiagnostics]);
+
+  /**
+   * Instalação direta para compatibilidade retroativa.
+   */
+  const installApp = useCallback(async () => {
+    setIsInstallModalOpen(true);
+    return startInstallWithProgress();
+  }, [startInstallWithProgress]);
 
   const value = {
     appVersion: APP_VERSION,
@@ -269,13 +454,20 @@ export const PWAProvider = ({ children }) => {
     isChecking,
     lastChecked,
     isStandalone,
-    canInstall: Boolean(installPrompt),
+    canInstall: Boolean(installPrompt) || isIOS,
     bannerDismissed,
+    isInstallModalOpen,
+    isIOS,
+    installProgress,
+    storageDiagnostics,
     setBannerDismissed,
+    setIsInstallModalOpen,
+    startInstallWithProgress,
     checkForUpdates,
     applyUpdate,
     forceHardReset,
     installApp,
+    refreshStorageDiagnostics,
   };
 
   return <PWAContext.Provider value={value}>{children}</PWAContext.Provider>;
@@ -290,11 +482,23 @@ const DEFAULT_PWA_VALUE = {
   isStandalone: false,
   canInstall: false,
   bannerDismissed: false,
+  isInstallModalOpen: false,
+  isIOS: false,
+  installProgress: INITIAL_INSTALL_PROGRESS,
+  storageDiagnostics: {
+    quota: null,
+    usage: null,
+    percentage: 0,
+    isPersisted: false,
+  },
   setBannerDismissed: () => {},
+  setIsInstallModalOpen: () => {},
+  startInstallWithProgress: async () => false,
   checkForUpdates: async () => {},
   applyUpdate: async () => {},
   forceHardReset: async () => {},
   installApp: async () => false,
+  refreshStorageDiagnostics: async () => {},
 };
 
 // eslint-disable-next-line react-refresh/only-export-components

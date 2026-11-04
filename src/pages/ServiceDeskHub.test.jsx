@@ -48,6 +48,8 @@ describe('ServiceDeskHub (Integração Console React 19 <-> Malha Fastify)', () 
           title: 'Lentidão na VPN corporativa',
           description: 'Oscilação no túnel WireGuard.',
           status: 'open',
+          priority: 'high',
+          category: 'network',
         },
       ],
     });
@@ -87,6 +89,11 @@ describe('ServiceDeskHub (Integração Console React 19 <-> Malha Fastify)', () 
       handlers?.onFrame?.({ event: 'welcome', role: 'admin' });
       return mockSocketHandle;
     });
+
+    vi.spyOn(microservicesApi, 'createTicket').mockResolvedValue({
+      protocol: 'CHM-2026-0002',
+      status: 'open',
+    });
   });
 
   it('exibe a topologia de saúde distribuída e o formulário Zero-Trust quando desconectado', async () => {
@@ -121,5 +128,39 @@ describe('ServiceDeskHub (Integração Console React 19 <-> Malha Fastify)', () 
     expect(screen.getByText(/ÍNTEGRA \(4 blocos\)/i)).toBeInTheDocument();
     expect(screen.getByText('NEX-ENG-MCOSTA')).toBeInTheDocument();
     expect(screen.getByText('HMAC Assinado')).toBeInTheDocument();
+    expect(screen.getByText('P2 Alta')).toBeInTheDocument();
+    expect(screen.getByText('Total Chamados')).toBeInTheDocument();
+  });
+
+  it('permite abrir o modal de novo chamado técnico e enviá-lo', async () => {
+    const user = { id: 'u-1', name: 'Ricardo Almeida', role: 'admin', tenantId: 'nexus-corp' };
+    setGatewaySession('jwt-test-token', user);
+
+    render(<ServiceDeskHub />);
+
+    expect(await screen.findByText('CHM-2026-0001')).toBeInTheDocument();
+
+    const newTicketBtn = screen.getByText('Novo Chamado');
+    fireEvent.click(newTicketBtn);
+
+    expect(await screen.findByText('Novo Chamado Técnico')).toBeInTheDocument();
+
+    const titleInput = screen.getByPlaceholderText(/Falha na conexão VPN corporativa/i);
+    const descInput = screen.getByPlaceholderText(/Descreva o sintoma observado/i);
+
+    fireEvent.change(titleInput, { target: { value: 'Falha no teclado mecânico' } });
+    fireEvent.change(descInput, { target: { value: 'Teclas W e S não registram.' } });
+
+    const submitBtn = screen.getByRole('button', { name: /Abrir Chamado/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(microservicesApi.createTicket).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Falha no teclado mecânico',
+          description: 'Teclas W e S não registram.',
+        })
+      );
+    });
   });
 });
