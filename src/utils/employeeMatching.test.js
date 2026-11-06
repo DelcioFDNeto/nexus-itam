@@ -10,7 +10,7 @@ describe('employeeMatching utilities', () => {
   it('matches compound names where one is a subset of the other', () => {
     expect(isMatchingHolder('Délcio Farias', 'Délcio Farias Dias Neto')).toBe(true);
     expect(isMatchingHolder('Délcio Farias Dias Neto', 'Délcio Farias')).toBe(true);
-    expect(isMatchingHolder('Danillo Sabel', 'Danillo Sabel Portal')).toBe(true);
+    expect(isMatchingHolder('Carlos Alberto', 'Carlos Alberto Souza')).toBe(true);
     expect(isMatchingHolder('Karen Matos', 'Karen Cristina Matos')).toBe(true);
   });
 

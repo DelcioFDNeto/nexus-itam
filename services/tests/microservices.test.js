@@ -48,7 +48,7 @@ describe('Nexus ITAM v3.0 — Malha de Microsserviços, Segurança Zero-Trust e 
     expect(spec.paths['/ws/nexusdesk']).toBeDefined();
   });
 
-  it('2. Autenticação Scrypt + JWT HS256 autentica Admin, Dono, Colaboradora e isola Tenants rejeitando senha incorreta', async () => {
+  it('2. Autenticação Scrypt + JWT HS256 autentica TI (Dono & Admin), Colaboradora e isola Tenants rejeitando senha incorreta', async () => {
     const badRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -56,33 +56,23 @@ describe('Nexus ITAM v3.0 — Malha de Microsserviços, Segurança Zero-Trust e 
     });
     expect(badRes.status).toBe(401);
 
-    const adminRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/login`, {
+    // ti@shineraybysabel.com.br é o Dono (owner) e Gestor de TI oficial
+    const tiRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'ti@shineraybysabel.com.br', password: 'Shineray@2026!' }),
     });
-    expect(adminRes.status).toBe(200);
-    const adminData = await adminRes.json();
-    expect(adminData.user.role).toBe('admin');
-    expect(adminData.user.tenantId).toBe('tenant-ap3htf6');
-    adminToken = adminData.accessToken;
+    expect(tiRes.status).toBe(200);
+    const tiData = await tiRes.json();
+    expect(tiData.user.role).toBe('owner');
+    expect(tiData.user.tenantId).toBe('tenant-ap3htf6');
+    adminToken = tiData.accessToken;
+    ownerToken = tiData.accessToken;
 
     const meRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/me`, {
       headers: { authorization: `Bearer ${adminToken}` },
     });
     expect(meRes.status).toBe(200);
-
-    // Perfil de Dono (owner) ativo e autenticado
-    const ownerRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/login`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'danillo.portal@shineraybysabel.com.br', password: 'Diretoria@2026!' }),
-    });
-    expect(ownerRes.status).toBe(200);
-    const ownerData = await ownerRes.json();
-    expect(ownerData.user.role).toBe('owner');
-    expect(ownerData.user.tenantId).toBe('tenant-ap3htf6');
-    ownerToken = ownerData.accessToken;
 
     // Perfil de Colaboradora (collaborator) ativo para Portal do Colaborador
     const colabRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/login`, {
@@ -257,7 +247,7 @@ describe('Nexus ITAM v3.0 — Malha de Microsserviços, Segurança Zero-Trust e 
     const chainHashOrderA = computeAuditChainHash({
       prevHash: '0'.repeat(64),
       tenantId: 'tenant-ap3htf6',
-      actorEmail: 'danillo.portal@shineraybysabel.com.br',
+      actorEmail: 'ti@shineraybysabel.com.br',
       actorRole: 'owner',
       action: 'TEST',
       resourceType: 'term',
@@ -268,7 +258,7 @@ describe('Nexus ITAM v3.0 — Malha de Microsserviços, Segurança Zero-Trust e 
     const chainHashOrderB = computeAuditChainHash({
       prevHash: '0'.repeat(64),
       tenantId: 'tenant-ap3htf6',
-      actorEmail: 'danillo.portal@shineraybysabel.com.br',
+      actorEmail: 'ti@shineraybysabel.com.br',
       actorRole: 'owner',
       action: 'TEST',
       resourceType: 'term',
@@ -614,7 +604,7 @@ describe('Nexus ITAM v3.0 — Malha de Microsserviços, Segurança Zero-Trust e 
     expect(createRes.status).toBe(201);
     const ticket = await createRes.json();
     expect(ticket.protocol).toMatch(/^CHM-2026-/);
-    expect(ticket.requester_name).toBe('Danillo Sabel Portal');
+    expect(ticket.requester_name).toBe('TI & Gestão Shineray');
 
     // 2. Dono adiciona comentário
     const commentRes = await fetch(`${cluster.gatewayUrl}/api/v1/tickets/${ticket.id}/comments`, {

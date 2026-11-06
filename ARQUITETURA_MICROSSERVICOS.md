@@ -133,8 +133,7 @@ npm run dev:portal
 ### Credenciais Corporativas Cadastradas (Tenant Shineray By Sabel)
 | Perfil | E-mail | Função / Perfil | Aplicação |
 | :--- | :--- | :--- | :--- |
-| **Dono (Owner)** | `danillo.portal@shineraybysabel.com.br` | `owner` | **Console React 19** (Visão Executiva, Nexus Master, Cluster de Chamados) |
-| **Administrador de TI** | `ti@shineraybysabel.com.br` | `admin` | **Console React 19** (`/service-desk` — Operação de chamados, ativos e termos) |
+| **Dono & Administrador TI** | `ti@shineraybysabel.com.br` | `owner` | **Console React 19** (Visão Executiva, Nexus Master, Cluster de Chamados e Operação de TI) |
 | **Colaboradora** | `karen.matos@shineraybysabel.com.br` | `collaborator` | **Portal Vue 3** (Assinar termos, consultar equipamentos e abrir chamados) |
 
 ---

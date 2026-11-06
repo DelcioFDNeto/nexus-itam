@@ -78,8 +78,8 @@ describe('TaskManager Page', () => {
     vi.spyOn(authContext, 'useAuth').mockReturnValue({
       currentUser: {
         id: 'user-1',
-        name: 'Danillo Sabel Portal',
-        email: 'danillo.portal@shineraybysabel.com.br',
+        name: 'TI Shineray',
+        email: 'ti@shineraybysabel.com.br',
         role: 'owner',
         tenantId: 'tenant-ap3htf6',
       },

@@ -8,7 +8,7 @@ const BRAZILIAN_STOP_WORDS = new Set(['de', 'da', 'do', 'dos', 'das', 'e']);
  *
  * Exemplo:
  * - "Délcio Farias" casa com "Délcio Farias Dias Neto"
- * - "Danillo Sabel" casa com "Danillo Sabel Portal"
+ * - "Carlos Alberto" casa com "Carlos Alberto Souza"
  * - "João da Silva" casa com "João Silva"
  * - "Ana" NÃO casa falsamente com "Mariana"
  */

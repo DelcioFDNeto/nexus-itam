@@ -109,7 +109,7 @@ describe('ServiceDeskHub (Integração Console React 19 <-> Malha Fastify)', () 
 
   it('autentica via API Gateway e renderiza chamados, Hash-Chain SHA-256, frota e WebSocket', async () => {
     vi.spyOn(microservicesApi, 'authenticate').mockImplementation(async () => {
-      const user = { id: 'u-1', name: 'Danillo Sabel Portal', role: 'owner', tenantId: 'tenant-ap3htf6' };
+      const user = { id: 'u-1', name: 'TI Shineray', role: 'owner', tenantId: 'tenant-ap3htf6' };
       setGatewaySession('jwt-test-token', user);
       return { accessToken: 'jwt-test-token', user };
     });
@@ -133,7 +133,7 @@ describe('ServiceDeskHub (Integração Console React 19 <-> Malha Fastify)', () 
   });
 
   it('permite abrir o modal de novo chamado técnico e enviá-lo', async () => {
-    const user = { id: 'u-1', name: 'Danillo Sabel Portal', role: 'owner', tenantId: 'tenant-ap3htf6' };
+    const user = { id: 'u-1', name: 'TI Shineray', role: 'owner', tenantId: 'tenant-ap3htf6' };
     setGatewaySession('jwt-test-token', user);
 
     render(<ServiceDeskHub />);
