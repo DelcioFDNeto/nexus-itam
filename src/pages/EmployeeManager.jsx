@@ -6,13 +6,15 @@ import {
 } from '../services/employeeService';
 import { 
   Users, Briefcase, Plus, Trash2, Search, Edit,
-  UserCircle, Building2, MapPin, Mail, Save, X, CreditCard, FileSignature, Undo2, RefreshCcw
+  UserCircle, Building2, MapPin, Mail, Save, X, CreditCard, FileSignature, Undo2, RefreshCcw, Laptop
 } from 'lucide-react';
-import { getAssetsAssignedTo } from '../services/assetService';
+import { getAssets, getAssetsAssignedTo } from '../services/assetService';
 import { isRetired } from '../utils/assetStatus';
+import { isMatchingHolder } from '../utils/employeeMatching';
 import { can } from '../utils/permissions';
 import { useConfirm } from '../components/ConfirmDialog';
 import TermIssueModal from '../components/terms/TermIssueModal';
+import EmployeeCustodyModal from '../components/employees/EmployeeCustodyModal';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import ManagerSkeleton from '../components/dashboard/ManagerSkeleton';
@@ -28,11 +30,13 @@ const EmployeeManager = () => {
   // { kind, assets, holder } — termo do colaborador com os ativos que estao no nome dele
   const [termModal, setTermModal] = useState(null);
   const [loadingTermFor, setLoadingTermFor] = useState(null);
+  const [custodyModalEmp, setCustodyModalEmp] = useState(null);
+  const [tenantAssets, setTenantAssets] = useState([]);
 
   const openEmployeeTerm = async (emp, kind) => {
     setLoadingTermFor(`${emp.id}-${kind}`);
     try {
-      const assets = (await getAssetsAssignedTo(tenantId, emp.name)).filter((a) => !isRetired(a.status) && !a.transit);
+      const assets = custodyMap[emp.name] || (await getAssetsAssignedTo(tenantId, emp.name)).filter((a) => !isRetired(a.status) && !a.transit);
       if (kind === 'devolucao' && assets.length === 0) {
         toast.info(`Nenhum ativo está sob responsabilidade de ${emp.name}.`);
         return;
@@ -68,14 +72,15 @@ const EmployeeManager = () => {
   };
   const [formData, setFormData] = useState(initialForm);
 
-  // Puxa colaboradores e departamentos simultaneamente para tornar a tela mais rápida
+  // Puxa colaboradores, departamentos e inventário simultaneamente para sincronizar a custódia
   const loadData = async () => {
     if (!tenantId) return;
     setLoading(true);
     try {
-        const [empRes, secRes] = await Promise.allSettled([
+        const [empRes, secRes, assetRes] = await Promise.allSettled([
           getEmployees(tenantId), 
-          getSectors(tenantId)
+          getSectors(tenantId),
+          getAssets(tenantId)
         ]);
         if (empRes.status === 'fulfilled') {
           setEmployees(empRes.value || []);
@@ -87,12 +92,31 @@ const EmployeeManager = () => {
         } else {
           console.error("Erro ao carregar setores:", secRes.reason);
         }
+        if (assetRes.status === 'fulfilled') {
+          setTenantAssets(assetRes.value || []);
+        } else {
+          console.error("Erro ao carregar ativos para custódia:", assetRes.reason);
+        }
     } catch (error) {
         console.error("Erro ao carregar:", error);
     } finally {
         setLoading(false);
     }
   };
+
+  // Mapa reativo de ativos em custódia indexados pelo colaborador com suporte a nomes compostos
+  const custodyMap = React.useMemo(() => {
+    const map = {};
+    (employees || []).forEach(emp => {
+      map[emp.name] = (tenantAssets || []).filter(a => {
+        if (isRetired(a.status) || a.transit) return false;
+        const holder = (a.assignedTo || '').trim();
+        if (!holder) return false;
+        return isMatchingHolder(emp.name, holder) || (emp.email && a.assignedEmail && emp.email.toLowerCase() === a.assignedEmail.toLowerCase());
+      });
+    });
+    return map;
+  }, [employees, tenantAssets]);
 
   useEffect(() => {
     if (tenantId) {
@@ -300,11 +324,13 @@ const EmployeeManager = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               
               {/* Mapeia a lista de funcionários em pequenos cartões estilo crachá de contato */}
-              {activeTab === 'employees' && filteredList.map(emp => (
+              {activeTab === 'employees' && filteredList.map(emp => {
+                const empAssets = custodyMap[emp.name] || [];
+                return (
                   <div key={emp.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-gray-200 dark:border-slate-600 shadow-sm hover:shadow-md transition-all group relative flex flex-col">
                       <div className="flex justify-between items-start mb-3">
                           <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-black text-lg border border-gray-200 dark:border-slate-600 uppercase">
+                              <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-slate-700 flex items-center justify-center text-gray-600 dark:text-gray-300 font-black text-lg border border-gray-200 dark:border-slate-600 uppercase">
                                   {(emp.name || '?').substring(0,2)}
                               </div>
                               <div>
@@ -319,9 +345,26 @@ const EmployeeManager = () => {
                               </div>
                           )}
                       </div>
+
+                      {/* Resumo de Ativos em Custódia */}
+                      <div className="my-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-700/60 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Laptop size={14} className={empAssets.length > 0 ? "text-brand" : "text-slate-400"} />
+                          <span className={`font-bold truncate text-[11px] ${empAssets.length > 0 ? "text-slate-800 dark:text-slate-200" : "text-slate-400"}`}>
+                            {empAssets.length > 0 ? `${empAssets.length} ${empAssets.length === 1 ? 'ativo' : 'ativos'} em posse` : 'Sem ativos vinculados'}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setCustodyModalEmp(emp)}
+                          className="text-[10px] font-bold text-brand hover:underline px-2 py-0.5 rounded hover:bg-brand/10 transition-colors shrink-0"
+                          title="Abrir prontuário de equipamentos e custódia deste colaborador"
+                        >
+                          Ver Custódia
+                        </button>
+                      </div>
                       
-                      <div className="mt-auto space-y-2 pt-3 border-t border-gray-50">
-                          <div className="flex items-center gap-2 text-xs text-gray-600">
+                      <div className="mt-auto space-y-2 pt-3 border-t border-gray-50 dark:border-slate-700">
+                          <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                               <Briefcase size={14} className="text-brand"/> 
                               <span className="font-bold bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded">{emp.sector}</span>
                           </div>
@@ -360,7 +403,8 @@ const EmployeeManager = () => {
                           </div>
                       )}
                   </div>
-              ))}
+                );
+              })}
 
               {/* Lista focada nas informações departamentais criando pequenos resumos do setor */}
               {activeTab === 'sectors' && filteredList.map(sec => (
@@ -405,6 +449,20 @@ const EmployeeManager = () => {
           initialAssets={termModal.assets}
           initialHolder={termModal.holder}
           onClose={() => setTermModal(null)}
+        />
+      )}
+
+      {custodyModalEmp && (
+        <EmployeeCustodyModal
+          employee={custodyModalEmp}
+          assets={custodyMap[custodyModalEmp.name] || []}
+          onClose={() => setCustodyModalEmp(null)}
+          onOpenTerm={(kind) => {
+            const target = custodyModalEmp;
+            setCustodyModalEmp(null);
+            openEmployeeTerm(target, kind);
+          }}
+          canIssueTerms={canIssueTerms}
         />
       )}
 

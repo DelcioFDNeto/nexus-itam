@@ -98,7 +98,13 @@ async function handleLogin() {
 }
 
 function fillDemo(type) {
-  if (type === 'colab') {
+  if (type === 'shineray-colab') {
+    loginForm.email = 'joao.silva@shineray.com.br';
+    loginForm.password = 'Colab@2026!';
+  } else if (type === 'shineray-admin') {
+    loginForm.email = 'ti@shineraybysabel.com.br';
+    loginForm.password = 'Shineray@2026!';
+  } else if (type === 'colab') {
     loginForm.email = 'mariana.costa@nexuscorp.com.br';
     loginForm.password = 'Colab@2026!';
   } else {
@@ -243,10 +249,26 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="p-2.5 rounded-lg border border-slate-200 bg-white hover:border-brand hover:shadow-xs text-left transition-all"
+              @click="fillDemo('shineray-colab')"
+            >
+              <div class="text-xs font-bold text-slate-800">João da Silva</div>
+              <div class="text-[10px] text-slate-500 truncate">Shineray • Vendas</div>
+            </button>
+            <button
+              type="button"
+              class="p-2.5 rounded-lg border border-slate-200 bg-white hover:border-brand hover:shadow-xs text-left transition-all"
+              @click="fillDemo('shineray-admin')"
+            >
+              <div class="text-xs font-bold text-slate-800">Admin Shineray</div>
+              <div class="text-[10px] text-slate-500 truncate">Shineray • TI Infra</div>
+            </button>
+            <button
+              type="button"
+              class="p-2.5 rounded-lg border border-slate-200 bg-white hover:border-brand hover:shadow-xs text-left transition-all"
               @click="fillDemo('colab')"
             >
               <div class="text-xs font-bold text-slate-800">Mariana Costa</div>
-              <div class="text-[10px] text-slate-500 truncate">Colaboradora • Engenharia</div>
+              <div class="text-[10px] text-slate-500 truncate">Nexus • Engenharia</div>
             </button>
             <button
               type="button"
@@ -254,7 +276,7 @@ onBeforeUnmount(() => {
               @click="fillDemo('admin')"
             >
               <div class="text-xs font-bold text-slate-800">Ricardo Almeida</div>
-              <div class="text-[10px] text-slate-500 truncate">Gestor de TI • Admin</div>
+              <div class="text-[10px] text-slate-500 truncate">Nexus • Gestor TI</div>
             </button>
           </div>
         </div>

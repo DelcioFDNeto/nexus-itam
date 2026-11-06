@@ -16,6 +16,7 @@ import {
 import { releaseAssetFromLicenses } from './licenseService';
 import { lifecycleBlocker } from '../utils/assetStatus';
 import { isGatewayActiveSession, microservicesApi } from './microservicesClient';
+import { isMatchingHolder } from '../utils/employeeMatching';
 
 const assertOperable = (asset, action) => {
   const reason = lifecycleBlocker(asset, action);
@@ -126,16 +127,13 @@ export const getAllAssets = async (tenantId) => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-/** Ativos sob responsabilidade de uma pessoa (pelo nome gravado em `assignedTo`). */
+export const getAssets = getAllAssets;
+
+/** Ativos sob responsabilidade de uma pessoa (pelo nome gravado em `assignedTo`), com suporte a nomes compostos. */
 export const getAssetsAssignedTo = async (tenantId, holderName) => {
   if (!tenantId || !holderName) return [];
-  if (isGatewayActiveSession()) {
-    const res = await microservicesApi.listAssets();
-    return (res.items || []).map(mapGatewayAssetToReact).filter((a) => a.assignedTo === holderName);
-  }
-  const q = query(assetsCollection, where('tenantId', '==', tenantId), where('assignedTo', '==', holderName));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const all = await getAllAssets(tenantId);
+  return all.filter((a) => isMatchingHolder(holderName, a.assignedTo));
 };
 
 export const getGlobalAssets = async () => {

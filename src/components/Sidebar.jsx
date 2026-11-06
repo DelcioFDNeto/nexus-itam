@@ -145,6 +145,7 @@ const Sidebar = ({
         title: 'Governança & Custódia',
         icon: ShieldCheck,
         items: [
+          { path: '/meus-ativos', icon: Smartphone, label: 'Meus Ativos (Custódia)', cap: 'assets:read' },
           { path: '/termos', icon: FileSignature, label: 'Termos de Custódia', cap: 'terms:read' },
           { path: '/employees', icon: Users, label: 'Equipe & Posse', cap: 'employees:write' },
           { path: '/licenses', icon: ShieldCheck, label: 'Softwares & Licenças', cap: 'licenses:write', feature: 'licenses' },

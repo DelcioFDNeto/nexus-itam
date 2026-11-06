@@ -44,6 +44,20 @@ const cleanIp = (raw, fallback = '127.0.0.1') => {
   return (first || fallback).slice(0, 64);
 };
 
+export const canonicalTenantId = (raw) => {
+  const t = String(raw || '').trim().toLowerCase();
+  if (t === 'shineray' || t === 'shineray-by-sabel') return 'tenant-ap3htf6';
+  return raw;
+};
+
+export const matchTenant = (itemTenant, requestedTenant) => {
+  if (itemTenant === requestedTenant) return true;
+  if (!itemTenant || !requestedTenant) return false;
+  const c1 = canonicalTenantId(itemTenant);
+  const c2 = canonicalTenantId(requestedTenant);
+  return c1 === c2;
+};
+
 // Normalizadores de linha garantem paridade 100% exata entre `node-pg`
 // (TIMESTAMPTZ -> Date, NUMERIC/BIGSERIAL -> string) e modo em memória.
 const normalizeTenantRow = (r) =>
@@ -191,6 +205,26 @@ function buildSeedBundle() {
       status: 'active',
       created_at: yesterdayIso,
     },
+    {
+      id: 'tenant-ap3htf6',
+      name: 'Shineray By Sabel',
+      cnpj: '14.412.308/0001-90',
+      plan: 'enterprise',
+      asset_prefix: 'SHL',
+      agent_token_hash: hashAgentToken('agt_shineray_2026_v3_secure_token'),
+      status: 'active',
+      created_at: yesterdayIso,
+    },
+    {
+      id: 'shineray',
+      name: 'Shineray By Sabel',
+      cnpj: '14.412.308/0001-90',
+      plan: 'enterprise',
+      asset_prefix: 'SHL',
+      agent_token_hash: hashAgentToken('agt_shineray_2026_v3_secure_token'),
+      status: 'active',
+      created_at: yesterdayIso,
+    },
   ];
 
   const users = [
@@ -239,6 +273,66 @@ function buildSeedBundle() {
       role: 'admin',
       department: 'TI Corporativa',
       job_title: 'Coordenadora de TI',
+      active: true,
+      created_at: yesterdayIso,
+    },
+    {
+      id: '33333333-3333-4333-8333-333333333301',
+      tenant_id: 'tenant-ap3htf6',
+      name: 'Admin Shineray',
+      email: 'ti@shineraybysabel.com.br',
+      password_hash: hashPassword('Shineray@2026!'),
+      role: 'admin',
+      department: 'TI Corporativa',
+      job_title: 'Coordenador de TI & Infra',
+      active: true,
+      created_at: yesterdayIso,
+    },
+    {
+      id: '33333333-3333-4333-8333-333333333302',
+      tenant_id: 'tenant-ap3htf6',
+      name: 'João da Silva',
+      email: 'joao.silva@shineray.com.br',
+      password_hash: hashPassword('Colab@2026!'),
+      role: 'collaborator',
+      department: 'Vendas Concessionária',
+      job_title: 'Consultor de Vendas',
+      active: true,
+      created_at: yesterdayIso,
+    },
+    {
+      id: '33333333-3333-4333-8333-333333333303',
+      tenant_id: 'tenant-ap3htf6',
+      name: 'Délcio Farias',
+      email: 'delcio.farias@shineraybysabel.com.br',
+      password_hash: hashPassword('Nexus@2026!'),
+      role: 'manager',
+      department: 'TI & Operações',
+      job_title: 'Gestor de TI & Sistemas',
+      active: true,
+      created_at: yesterdayIso,
+    },
+    {
+      id: '33333333-3333-4333-8333-333333333304',
+      tenant_id: 'tenant-ap3htf6',
+      name: 'Karen Matos',
+      email: 'karen.matos@shineraybysabel.com.br',
+      password_hash: hashPassword('Colab@2026!'),
+      role: 'collaborator',
+      department: 'Vendas & Pós-Vendas',
+      job_title: 'Consultora Comercial',
+      active: true,
+      created_at: yesterdayIso,
+    },
+    {
+      id: '33333333-3333-4333-8333-333333333305',
+      tenant_id: 'tenant-ap3htf6',
+      name: 'Danillo Sabel Portal',
+      email: 'danillo.portal@shineraybysabel.com.br',
+      password_hash: hashPassword('Diretoria@2026!'),
+      role: 'collaborator',
+      department: 'Diretoria & Operações',
+      job_title: 'Diretor Operacional',
       active: true,
       created_at: yesterdayIso,
     },
@@ -329,6 +423,142 @@ function buildSeedBundle() {
       specs: { cpu: 'Intel Core i7-1355U', ram: '16 GB', storage: '512 GB SSD' },
       created_at: yesterdayIso,
       updated_at: yesterdayIso,
+    },
+    {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa05',
+      tenant_id: 'tenant-ap3htf6',
+      internal_id: 'SHL-BEL-NTB-001',
+      type: 'Notebook',
+      brand: 'Samsung',
+      model: 'Galaxy Book 2 Core i5',
+      serial_number: 'NP550XED-KF2BR',
+      status: 'Em Uso',
+      location: 'Matriz Belém - TI',
+      department: 'TI & Infraestrutura',
+      assigned_to_name: 'Délcio Farias Dias Neto',
+      assigned_to_email: 'delcio.farias@shineraybysabel.com.br',
+      purchase_value: 4890.0,
+      specs: {
+        cpu: 'Intel Core i5-1235U',
+        ram: '16 GB DDR4',
+        storage: '512 GB NVMe SSD',
+        os: 'Windows 11 Pro 24H2',
+      },
+      created_at: yesterdayIso,
+      updated_at: twoHoursAgoIso,
+    },
+    {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa06',
+      tenant_id: 'tenant-ap3htf6',
+      internal_id: 'SHL-BEL-NTB-016',
+      type: 'Notebook',
+      brand: 'Lenovo',
+      model: 'Lenovo V15 G3 Core i7',
+      serial_number: 'PF3Z881K',
+      status: 'Em Uso',
+      location: 'Matriz Belém - Diretoria',
+      department: 'Diretoria & Operações',
+      assigned_to_name: 'Danillo Sabel Portal',
+      assigned_to_email: 'danillo.portal@shineraybysabel.com.br',
+      purchase_value: 5490.0,
+      specs: {
+        cpu: 'Intel Core i7-1255U',
+        ram: '16 GB DDR4',
+        storage: '512 GB SSD',
+        os: 'Windows 11 Pro',
+      },
+      created_at: yesterdayIso,
+      updated_at: twoHoursAgoIso,
+    },
+    {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa07',
+      tenant_id: 'tenant-ap3htf6',
+      internal_id: 'SHL-BEL-NTB-007',
+      type: 'Notebook',
+      brand: 'Dell',
+      model: 'Inspiron 15 3567 Core i5',
+      serial_number: '8XYZ123',
+      status: 'Em Uso',
+      location: 'Matriz Belém - Comercial',
+      department: 'Vendas & Pós-Vendas',
+      assigned_to_name: 'Karen Matos',
+      assigned_to_email: 'karen.matos@shineraybysabel.com.br',
+      purchase_value: 3890.0,
+      specs: {
+        cpu: 'Intel Core i5-7200U',
+        ram: '8 GB DDR4',
+        storage: '256 GB SSD',
+        os: 'Windows 11 Pro',
+      },
+      created_at: yesterdayIso,
+      updated_at: twoHoursAgoIso,
+    },
+    {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa08',
+      tenant_id: 'tenant-ap3htf6',
+      internal_id: 'SHL-BEL-CEL-003',
+      type: 'Smartphone',
+      brand: 'Xiaomi',
+      model: 'Redmi Note 13 128GB',
+      serial_number: 'XM-RNOTE13-8812',
+      status: 'Em Uso',
+      location: 'Matriz Belém - Salão de Vendas',
+      department: 'Vendas & Pós-Vendas',
+      assigned_to_name: 'Karen Matos',
+      assigned_to_email: 'karen.matos@shineraybysabel.com.br',
+      purchase_value: 1399.0,
+      specs: {
+        storage: '128 GB',
+        ram: '6 GB',
+        os: 'Android 14 HyperOS',
+        imei: '864920059128371',
+      },
+      created_at: yesterdayIso,
+      updated_at: twoHoursAgoIso,
+    },
+    {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa09',
+      tenant_id: 'tenant-ap3htf6',
+      internal_id: 'SHL-BEL-PGT-004',
+      type: 'PGT',
+      brand: 'Rede Verifone',
+      model: 'Laranjinha L400',
+      serial_number: 'VERI-400-9921',
+      status: 'Em Uso',
+      location: 'Matriz Belém - TI & Operações',
+      department: 'TI & Infraestrutura',
+      assigned_to_name: 'Délcio Farias Dias Neto',
+      assigned_to_email: 'delcio.farias@shineraybysabel.com.br',
+      purchase_value: 850.0,
+      specs: {
+        connectivity: '4G + Wi-Fi',
+        protocol: 'POS EMV Chip & Contactless',
+      },
+      created_at: yesterdayIso,
+      updated_at: twoHoursAgoIso,
+    },
+    {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10',
+      tenant_id: 'tenant-ap3htf6',
+      internal_id: 'SHL-BEL-NTB-002',
+      type: 'Notebook',
+      brand: 'Lenovo',
+      model: 'IdeaPad 3 Core i3',
+      serial_number: 'PF2K884X',
+      status: 'Em Uso',
+      location: 'Matriz Belém - Showroom',
+      department: 'Vendas Concessionária',
+      assigned_to_name: 'João da Silva',
+      assigned_to_email: 'joao.silva@shineray.com.br',
+      purchase_value: 3200.0,
+      specs: {
+        cpu: 'Intel Core i3-1115G4',
+        ram: '8 GB DDR4',
+        storage: '256 GB SSD',
+        os: 'Windows 11 Home',
+      },
+      created_at: yesterdayIso,
+      updated_at: twoHoursAgoIso,
     },
   ];
 
@@ -430,6 +660,95 @@ function buildSeedBundle() {
       created_at: twoHoursAgoIso,
       updated_at: nowIso,
     },
+    {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb02',
+      protocol: 'CHM-2026-0501',
+      tenant_id: 'tenant-ap3htf6',
+      requester_name: 'Danillo Sabel Portal',
+      requester_email: 'danillo.portal@shineraybysabel.com.br',
+      department: 'Diretoria & Operações',
+      asset_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa06',
+      asset_tag: 'SHL-BEL-NTB-016',
+      category: 'Hardware & Sistema',
+      priority: 'high',
+      status: 'in_progress',
+      title: 'Upgrade de Sistema Operacional Windows 11 e lentidão no ERP Microwork',
+      description:
+        'Notebook Lenovo V15 (SHL-BEL-NTB-016) necessita de atualização do SO para Windows 11 Pro e otimização de performance para emissão de relatórios no ERP Microwork.',
+      assigned_tech_name: 'Délcio Farias',
+      resolution_notes: null,
+      sla_due_at: new Date(Date.now() + 4 * 3_600_000).toISOString(),
+      resolved_at: null,
+      created_at: twoHoursAgoIso,
+      updated_at: nowIso,
+    },
+    {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb03',
+      protocol: 'CHM-2026-0502',
+      tenant_id: 'tenant-ap3htf6',
+      requester_name: 'Karen Matos',
+      requester_email: 'karen.matos@shineraybysabel.com.br',
+      department: 'Vendas & Pós-Vendas',
+      asset_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa08',
+      asset_tag: 'SHL-BEL-CEL-003',
+      category: 'Acessos & Softwares',
+      priority: 'medium',
+      status: 'resolved',
+      title: 'Liberação de perfil no Microwork ERP para módulo de seminovos filial Ananindeua',
+      description:
+        'Solicitação de permissão no módulo de estoque de motocicletas seminovas para fechamento de vendas comerciais.',
+      assigned_tech_name: 'Admin Shineray',
+      resolution_notes:
+        'Perfil concedido no grupo VENDAS_SEMINOVOS no ERP Microwork. Validação efetuada com a consultora.',
+      sla_due_at: yesterdayIso,
+      resolved_at: twoHoursAgoIso,
+      created_at: yesterdayIso,
+      updated_at: twoHoursAgoIso,
+    },
+    {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb04',
+      protocol: 'CHM-2026-0503',
+      tenant_id: 'tenant-ap3htf6',
+      requester_name: 'Délcio Farias',
+      requester_email: 'delcio.farias@shineraybysabel.com.br',
+      department: 'TI & Infraestrutura',
+      asset_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa05',
+      asset_tag: 'SHL-BEL-NTB-001',
+      category: 'Periféricos & Acessórios',
+      priority: 'medium',
+      status: 'open',
+      title: 'Solicitação de fonte carregador 65W Tipo-C e limpeza preventiva de hardware',
+      description:
+        'Carregador adicional para atendimento externo e manutenção preventiva no notebook Samsung Galaxy Book 2.',
+      assigned_tech_name: null,
+      resolution_notes: null,
+      sla_due_at: new Date(Date.now() + 24 * 3_600_000).toISOString(),
+      resolved_at: null,
+      created_at: nowIso,
+      updated_at: nowIso,
+    },
+    {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb05',
+      protocol: 'CHM-2026-0504',
+      tenant_id: 'tenant-ap3htf6',
+      requester_name: 'João da Silva',
+      requester_email: 'joao.silva@shineray.com.br',
+      department: 'Vendas Concessionária',
+      asset_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10',
+      asset_tag: 'SHL-BEL-NTB-002',
+      category: 'Hardware & Manutenção',
+      priority: 'low',
+      status: 'open',
+      title: 'Envio de suprimentos de toner e revisão de impressora para filial Barcarena',
+      description:
+        'Demanda operacional de envio de toner Brother e alinhamento de impressão na filial Barcarena.',
+      assigned_tech_name: null,
+      resolution_notes: null,
+      sla_due_at: new Date(Date.now() + 48 * 3_600_000).toISOString(),
+      resolved_at: null,
+      created_at: nowIso,
+      updated_at: nowIso,
+    },
   ];
 
   const ticketComments = [
@@ -443,6 +762,28 @@ function buildSeedBundle() {
       message:
         'Recebido pela equipe N2. Já geramos o novo par de chaves e estamos validando a rota via NexusDesk.',
       created_at: nowIso,
+    },
+    {
+      id: 'dddddddd-dddd-4ddd-8ddd-dddddddddd02',
+      ticket_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb02',
+      tenant_id: 'tenant-ap3htf6',
+      author_name: 'Délcio Farias',
+      author_email: 'delcio.farias@shineraybysabel.com.br',
+      author_role: 'manager',
+      message:
+        'Chamado assumido pela equipe técnica de TI Shineray By Sabel. Agendamos a troca da pasta térmica e limpeza física para o final do expediente hoje.',
+      created_at: nowIso,
+    },
+    {
+      id: 'dddddddd-dddd-4ddd-8ddd-dddddddddd03',
+      ticket_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb03',
+      tenant_id: 'tenant-ap3htf6',
+      author_name: 'Admin Shineray',
+      author_email: 'ti@shineraybysabel.com.br',
+      author_role: 'admin',
+      message:
+        'Acessos concedidos com sucesso e sincronizados com a filial Ananindeua.',
+      created_at: twoHoursAgoIso,
     },
   ];
 
@@ -889,9 +1230,10 @@ export const authRepo = {
 
   async findTenantById(tenantId) {
     if (!USE_PG) {
-      return mem.tenants.find((t) => t.id === tenantId) || null;
+      return mem.tenants.find((t) => matchTenant(t.id, tenantId)) || null;
     }
-    const { rows } = await pool.query('SELECT * FROM auth_svc.tenants WHERE id = $1 LIMIT 1', [tenantId]);
+    const clean = canonicalTenantId(tenantId);
+    const { rows } = await pool.query('SELECT * FROM auth_svc.tenants WHERE id = $1 OR id = $2 LIMIT 1', [tenantId, clean]);
     return normalizeTenantRow(rows[0]);
   },
 
@@ -904,14 +1246,15 @@ export const authRepo = {
   async listTenantUsers(tenantId) {
     if (!USE_PG) {
       return mem.users
-        .filter((u) => u.tenant_id === tenantId)
+        .filter((u) => matchTenant(u.tenant_id, tenantId))
         .map(({ password_hash: _ph, ...safe }) => safe)
         .sort((a, b) => String(a.name).localeCompare(String(b.name)));
     }
+    const clean = canonicalTenantId(tenantId);
     const { rows } = await pool.query(
       `SELECT id, tenant_id, name, email, role, department, job_title, active, created_at
-       FROM auth_svc.users WHERE tenant_id = $1 ORDER BY name ASC`,
-      [tenantId],
+       FROM auth_svc.users WHERE tenant_id = $1 OR tenant_id = $2 ORDER BY name ASC`,
+      [tenantId, clean],
     );
     return rows.map(normalizeUserRow);
   },
@@ -925,7 +1268,7 @@ export const assetsRepo = {
     if (!USE_PG) {
       return mem.assets
         .filter((a) => {
-          if (a.tenant_id !== tenantId) return false;
+          if (!matchTenant(a.tenant_id, tenantId)) return false;
           if (
             assignedToEmail &&
             String(a.assigned_to_email || '').toLowerCase() !== assignedToEmail.toLowerCase()
@@ -944,8 +1287,9 @@ export const assetsRepo = {
         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
     }
 
-    const params = [tenantId];
-    const clauses = ['tenant_id = $1'];
+    const clean = canonicalTenantId(tenantId);
+    const params = [tenantId, clean];
+    const clauses = ['(tenant_id = $1 OR tenant_id = $2)'];
     if (assignedToEmail) {
       params.push(assignedToEmail.toLowerCase());
       clauses.push(`LOWER(assigned_to_email) = $${params.length}`);
@@ -974,23 +1318,24 @@ export const assetsRepo = {
 
   async findById(tenantId, assetId) {
     if (!USE_PG) {
-      const asset = mem.assets.find((a) => a.id === assetId && a.tenant_id === tenantId);
+      const asset = mem.assets.find((a) => a.id === assetId && matchTenant(a.tenant_id, tenantId));
       if (!asset) return null;
       const history = mem.assetHistory
-        .filter((h) => h.asset_id === assetId && h.tenant_id === tenantId)
+        .filter((h) => h.asset_id === assetId && matchTenant(h.tenant_id, tenantId))
         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
         .slice(0, 30);
       return { ...asset, history };
     }
     if (!isUuid(assetId)) return null;
+    const clean = canonicalTenantId(tenantId);
     const { rows } = await pool.query(
-      'SELECT * FROM assets_svc.assets WHERE id = $1 AND tenant_id = $2 LIMIT 1',
-      [assetId, tenantId],
+      'SELECT * FROM assets_svc.assets WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3) LIMIT 1',
+      [assetId, tenantId, clean],
     );
     if (!rows[0]) return null;
     const histRes = await pool.query(
-      'SELECT * FROM assets_svc.asset_history WHERE asset_id = $1 AND tenant_id = $2 ORDER BY created_at DESC LIMIT 30',
-      [assetId, tenantId],
+      'SELECT * FROM assets_svc.asset_history WHERE asset_id = $1 AND (tenant_id = $2 OR tenant_id = $3) ORDER BY created_at DESC LIMIT 30',
+      [assetId, tenantId, clean],
     );
     return {
       ...normalizeAssetRow(rows[0]),
@@ -1004,7 +1349,7 @@ export const assetsRepo = {
 
     if (!USE_PG) {
       const exists = mem.assets.some(
-        (a) => a.tenant_id === tenantId && a.internal_id.toUpperCase() === internalId,
+        (a) => matchTenant(a.tenant_id, tenantId) && a.internal_id.toUpperCase() === internalId,
       );
       if (exists) {
         const err = new Error(`A tag patrimonial '${internalId}' já está em uso nesta empresa.`);
@@ -1098,7 +1443,7 @@ export const assetsRepo = {
   async update(tenantId, assetId, patch, actor) {
     const nowIso = new Date().toISOString();
     if (!USE_PG) {
-      const idx = mem.assets.findIndex((a) => a.id === assetId && a.tenant_id === tenantId);
+      const idx = mem.assets.findIndex((a) => a.id === assetId && matchTenant(a.tenant_id, tenantId));
       if (idx === -1) return null;
       const current = mem.assets[idx];
       const updated = {
@@ -1139,12 +1484,13 @@ export const assetsRepo = {
 
     if (!isUuid(assetId)) return null;
 
+    const clean = canonicalTenantId(tenantId);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       const existingRes = await client.query(
-        'SELECT * FROM assets_svc.assets WHERE id = $1 AND tenant_id = $2 FOR UPDATE',
-        [assetId, tenantId],
+        'SELECT * FROM assets_svc.assets WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3) FOR UPDATE',
+        [assetId, tenantId, clean],
       );
       const existing = existingRes.rows[0];
       if (!existing) {
@@ -1239,7 +1585,7 @@ export const ticketsRepo = {
     if (!USE_PG) {
       return mem.tickets
         .filter((t) => {
-          if (t.tenant_id !== tenantId) return false;
+          if (!matchTenant(t.tenant_id, tenantId)) return false;
           if (requesterEmail && t.requester_email.toLowerCase() !== requesterEmail.toLowerCase()) {
             return false;
           }
@@ -1254,8 +1600,9 @@ export const ticketsRepo = {
         }));
     }
 
-    const params = [tenantId];
-    const clauses = ['t.tenant_id = $1'];
+    const clean = canonicalTenantId(tenantId);
+    const params = [tenantId, clean];
+    const clauses = ['(t.tenant_id = $1 OR t.tenant_id = $2)'];
     if (requesterEmail) {
       params.push(requesterEmail.toLowerCase());
       clauses.push(`LOWER(t.requester_email) = $${params.length}`);
@@ -1282,22 +1629,23 @@ export const ticketsRepo = {
 
   async findById(tenantId, ticketId) {
     if (!USE_PG) {
-      const tk = mem.tickets.find((t) => t.id === ticketId && t.tenant_id === tenantId);
+      const tk = mem.tickets.find((t) => t.id === ticketId && matchTenant(t.tenant_id, tenantId));
       if (!tk) return null;
       const comments = mem.ticketComments
-        .filter((c) => c.ticket_id === ticketId && c.tenant_id === tenantId)
+        .filter((c) => c.ticket_id === ticketId && matchTenant(c.tenant_id, tenantId))
         .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
       return { ...tk, comments };
     }
     if (!isUuid(ticketId)) return null;
+    const clean = canonicalTenantId(tenantId);
     const { rows } = await pool.query(
-      'SELECT * FROM tickets_svc.tickets WHERE id = $1 AND tenant_id = $2 LIMIT 1',
-      [ticketId, tenantId],
+      'SELECT * FROM tickets_svc.tickets WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3) LIMIT 1',
+      [ticketId, tenantId, clean],
     );
     if (!rows[0]) return null;
     const cmRes = await pool.query(
-      'SELECT * FROM tickets_svc.ticket_comments WHERE ticket_id = $1 AND tenant_id = $2 ORDER BY created_at ASC',
-      [ticketId, tenantId],
+      'SELECT * FROM tickets_svc.ticket_comments WHERE ticket_id = $1 AND (tenant_id = $2 OR tenant_id = $3) ORDER BY created_at ASC',
+      [ticketId, tenantId, clean],
     );
     return {
       ...normalizeTicketRow(rows[0]),
@@ -1378,7 +1726,7 @@ export const ticketsRepo = {
     const resolvedAt = status === 'resolved' || status === 'closed' ? nowIso : null;
 
     if (!USE_PG) {
-      const idx = mem.tickets.findIndex((t) => t.id === ticketId && t.tenant_id === tenantId);
+      const idx = mem.tickets.findIndex((t) => t.id === ticketId && matchTenant(t.tenant_id, tenantId));
       if (idx === -1) return null;
       const cur = mem.tickets[idx];
       const updated = {
@@ -1394,6 +1742,7 @@ export const ticketsRepo = {
     }
 
     if (!isUuid(ticketId)) return null;
+    const clean = canonicalTenantId(tenantId);
     const { rows } = await pool.query(
       `UPDATE tickets_svc.tickets
        SET status = COALESCE($3, status),
@@ -1401,9 +1750,9 @@ export const ticketsRepo = {
            resolution_notes = COALESCE($5, resolution_notes),
            resolved_at = CASE WHEN $3 IN ('resolved', 'closed') THEN NOW() ELSE resolved_at END,
            updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2
+       WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $6)
        RETURNING *`,
-      [ticketId, tenantId, status || null, assignedTechName || null, resolutionNotes || null],
+      [ticketId, tenantId, status || null, assignedTechName || null, resolutionNotes || null, clean],
     );
     return normalizeTicketRow(rows[0]);
   },
@@ -1411,7 +1760,7 @@ export const ticketsRepo = {
   async addComment(tenantId, ticketId, author, message) {
     const nowIso = new Date().toISOString();
     if (!USE_PG) {
-      const tk = mem.tickets.find((t) => t.id === ticketId && t.tenant_id === tenantId);
+      const tk = mem.tickets.find((t) => t.id === ticketId && matchTenant(t.tenant_id, tenantId));
       if (!tk) return null;
       const cm = {
         id: crypto.randomUUID(),
@@ -1428,9 +1777,10 @@ export const ticketsRepo = {
     }
 
     if (!isUuid(ticketId)) return null;
+    const clean = canonicalTenantId(tenantId);
     const tkCheck = await pool.query(
-      'SELECT id FROM tickets_svc.tickets WHERE id = $1 AND tenant_id = $2 LIMIT 1',
-      [ticketId, tenantId],
+      'SELECT id FROM tickets_svc.tickets WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3) LIMIT 1',
+      [ticketId, tenantId, clean],
     );
     if (!tkCheck.rows[0]) return null;
 
@@ -1464,7 +1814,7 @@ export const complianceRepo = {
     if (!USE_PG) {
       return mem.terms
         .filter((t) => {
-          if (t.tenant_id !== tenantId) return false;
+          if (!matchTenant(t.tenant_id, tenantId)) return false;
           if (employeeEmail && t.employee_email.toLowerCase() !== employeeEmail.toLowerCase()) {
             return false;
           }
@@ -1474,8 +1824,9 @@ export const complianceRepo = {
         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
     }
 
-    const params = [tenantId];
-    const clauses = ['tenant_id = $1'];
+    const clean = canonicalTenantId(tenantId);
+    const params = [tenantId, clean];
+    const clauses = ['(tenant_id = $1 OR tenant_id = $2)'];
     if (employeeEmail) {
       params.push(employeeEmail.toLowerCase());
       clauses.push(`LOWER(employee_email) = $${params.length}`);
@@ -1493,12 +1844,13 @@ export const complianceRepo = {
 
   async findTermById(tenantId, termId) {
     if (!USE_PG) {
-      return mem.terms.find((t) => t.id === termId && t.tenant_id === tenantId) || null;
+      return mem.terms.find((t) => t.id === termId && matchTenant(t.tenant_id, tenantId)) || null;
     }
     if (!isUuid(termId)) return null;
+    const clean = canonicalTenantId(tenantId);
     const { rows } = await pool.query(
-      'SELECT * FROM compliance_svc.responsibility_terms WHERE id = $1 AND tenant_id = $2 LIMIT 1',
-      [termId, tenantId],
+      'SELECT * FROM compliance_svc.responsibility_terms WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3) LIMIT 1',
+      [termId, tenantId, clean],
     );
     return normalizeTermRow(rows[0]);
   },
@@ -1588,7 +1940,7 @@ export const complianceRepo = {
     });
 
     if (!USE_PG) {
-      const idx = mem.terms.findIndex((t) => t.id === termId && t.tenant_id === tenantId);
+      const idx = mem.terms.findIndex((t) => t.id === termId && matchTenant(t.tenant_id, tenantId));
       mem.terms[idx] = {
         ...term,
         status: 'signed',
@@ -1600,6 +1952,7 @@ export const complianceRepo = {
       return mem.terms[idx];
     }
 
+    const clean = canonicalTenantId(tenantId);
     const { rows } = await pool.query(
       `UPDATE compliance_svc.responsibility_terms
        SET status = 'signed',
@@ -1607,9 +1960,9 @@ export const complianceRepo = {
            signer_ip = $4,
            signer_user_agent = $5,
            signed_at = $6
-       WHERE id = $1 AND tenant_id = $2 AND status = 'pending'
+       WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $7) AND status = 'pending'
        RETURNING *`,
-      [termId, tenantId, sigHash, safeIp, safeUa, signedAtIso],
+      [termId, tenantId, sigHash, safeIp, safeUa, signedAtIso, clean],
     );
     if (!rows[0]) {
       const err = new Error('Este termo já foi processado ou revogado em requisição concorrente.');
@@ -1620,17 +1973,18 @@ export const complianceRepo = {
   },
 
   async appendAuditLog(tenantId, { actorEmail, actorRole, action, resourceType, resourceId, payload }) {
+    const clean = canonicalTenantId(tenantId);
     const createdAtIso = new Date().toISOString();
 
     if (!USE_PG) {
       const tenantChain = mem.auditChain
-        .filter((e) => e.tenant_id === tenantId)
+        .filter((e) => matchTenant(e.tenant_id, tenantId))
         .sort((a, b) => a.seq - b.seq);
       const prevHash =
         tenantChain.length > 0 ? tenantChain[tenantChain.length - 1].entry_hash : GENESIS_HASH;
       const entryHash = computeAuditChainHash({
         prevHash,
-        tenantId,
+        tenantId: clean,
         actorEmail,
         actorRole,
         action,
@@ -1643,7 +1997,7 @@ export const complianceRepo = {
       const entry = {
         seq: mem.seqCounter,
         id: crypto.randomUUID(),
-        tenant_id: tenantId,
+        tenant_id: clean,
         actor_email: actorEmail,
         actor_role: actorRole,
         action,
@@ -1663,15 +2017,15 @@ export const complianceRepo = {
       await client.query('BEGIN');
       // Advisory lock transacional por tenant serializa gravações concorrentes na Hash-Chain,
       // mesmo quando a empresa ainda não possui nenhum registro anterior (0 linhas).
-      await client.query('SELECT pg_advisory_xact_lock(202603, hashtext($1))', [tenantId]);
+      await client.query('SELECT pg_advisory_xact_lock(202603, hashtext($1))', [clean]);
       const lastRes = await client.query(
-        'SELECT entry_hash FROM compliance_svc.audit_chain WHERE tenant_id = $1 ORDER BY seq DESC LIMIT 1',
-        [tenantId],
+        'SELECT entry_hash FROM compliance_svc.audit_chain WHERE (tenant_id = $1 OR tenant_id = $2) ORDER BY seq DESC LIMIT 1',
+        [tenantId, clean],
       );
       const prevHash = lastRes.rows[0]?.entry_hash || GENESIS_HASH;
       const entryHash = computeAuditChainHash({
         prevHash,
-        tenantId,
+        tenantId: clean,
         actorEmail,
         actorRole,
         action,
@@ -1687,7 +2041,7 @@ export const complianceRepo = {
          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10)
          RETURNING *`,
         [
-          tenantId,
+          clean,
           actorEmail,
           actorRole,
           action,
@@ -1710,29 +2064,31 @@ export const complianceRepo = {
   },
 
   async listAuditChain(tenantId, limit = 50) {
+    const clean = canonicalTenantId(tenantId);
     if (!USE_PG) {
       return mem.auditChain
-        .filter((e) => e.tenant_id === tenantId)
+        .filter((e) => matchTenant(e.tenant_id, tenantId))
         .sort((a, b) => b.seq - a.seq)
         .slice(0, limit);
     }
     const { rows } = await pool.query(
-      'SELECT * FROM compliance_svc.audit_chain WHERE tenant_id = $1 ORDER BY seq DESC LIMIT $2',
-      [tenantId, limit],
+      'SELECT * FROM compliance_svc.audit_chain WHERE (tenant_id = $1 OR tenant_id = $3) ORDER BY seq DESC LIMIT $2',
+      [tenantId, limit, clean],
     );
     return rows.map(normalizeAuditRow);
   },
 
   async verifyAuditChainIntegrity(tenantId) {
+    const clean = canonicalTenantId(tenantId);
     let entries;
     if (!USE_PG) {
       entries = mem.auditChain
-        .filter((e) => e.tenant_id === tenantId)
+        .filter((e) => matchTenant(e.tenant_id, tenantId))
         .sort((a, b) => a.seq - b.seq);
     } else {
       const { rows } = await pool.query(
-        'SELECT * FROM compliance_svc.audit_chain WHERE tenant_id = $1 ORDER BY seq ASC',
-        [tenantId],
+        'SELECT * FROM compliance_svc.audit_chain WHERE (tenant_id = $1 OR tenant_id = $2) ORDER BY seq ASC',
+        [tenantId, clean],
       );
       entries = rows.map(normalizeAuditRow);
     }

@@ -44,6 +44,7 @@ import {
   onGatewaySessionChange,
   resolvePortalUrl,
 } from '../services/microservicesClient';
+import { useAuth } from '../contexts/AuthContext';
 
 const STATUS_BADGES = {
   open: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
@@ -137,10 +138,16 @@ const ServiceDeskHub = () => {
     department: 'TI Corporativa',
   });
 
-  const [credentials, setCredentials] = useState({
-    email: 'admin@nexuscorp.com.br',
-    password: 'Nexus@2026!',
-  });
+  const { currentUser } = useAuth() || {};
+  const isShinerayTenant =
+    currentUser?.tenantId === 'tenant-ap3htf6' ||
+    String(currentUser?.tenantId || '').includes('shineray') ||
+    String(currentUser?.email || '').includes('shineray');
+
+  const [credentials, setCredentials] = useState(() => ({
+    email: isShinerayTenant ? 'ti@shineraybysabel.com.br' : 'admin@nexuscorp.com.br',
+    password: isShinerayTenant ? 'Shineray@2026!' : 'Nexus@2026!',
+  }));
 
   const wsRef = useRef(null);
   const gatewayUrl = getGatewayBaseUrl();
@@ -327,16 +334,20 @@ const ServiceDeskHub = () => {
 
   const handleIssueQuickTerm = async () => {
     try {
+      const isShl =
+        gatewaySession?.user?.tenantId === 'tenant-ap3htf6' ||
+        gatewaySession?.user?.tenantId === 'shineray' ||
+        isShinerayTenant;
       await microservicesApi.issueTerm({
         termType: 'entrega',
-        employeeName: 'Mariana Costa',
-        employeeEmail: 'mariana.costa@nexuscorp.com.br',
-        department: 'Engenharia de Produto',
+        employeeName: isShl ? 'João da Silva' : 'Mariana Costa',
+        employeeEmail: isShl ? 'joao.silva@shineray.com.br' : 'mariana.costa@nexuscorp.com.br',
+        department: isShl ? 'Vendas Concessionária' : 'Engenharia de Produto',
         assetsSnapshot: [
           {
-            internalId: 'NEX-NB-0001',
-            model: 'Lenovo ThinkPad T14 Gen 4',
-            serialNumber: 'PF4X92K1',
+            internalId: isShl ? 'SHL-BEL-NTB-001' : 'NEX-NB-0001',
+            model: isShl ? 'Dell Latitude 3420 Core i5' : 'Lenovo ThinkPad T14 Gen 4',
+            serialNumber: isShl ? '8XYZ123' : 'PF4X92K1',
           },
         ],
       });
@@ -383,11 +394,15 @@ const ServiceDeskHub = () => {
       toast.error('Conecte-se primeiro ao API Gateway.');
       return;
     }
+    const isShl =
+      gatewaySession?.user?.tenantId === 'tenant-ap3htf6' ||
+      gatewaySession?.user?.tenantId === 'shineray' ||
+      isShinerayTenant;
     const cpu = Number((18 + Math.random() * 55).toFixed(1));
     const ram = Number((44 + Math.random() * 35).toFixed(1));
     wsRef.current.pushLiveTelemetry({
-      deviceKey: 'WKS-ENG-PF4X92K1',
-      hostname: 'NEX-ENG-MCOSTA',
+      deviceKey: isShl ? 'WKS-SHL-8XYZ123' : 'WKS-ENG-PF4X92K1',
+      hostname: isShl ? 'SHL-BEL-NTB-001' : 'NEX-ENG-MCOSTA',
       cpuPercent: cpu,
       ramPercent: ram,
       diskPercent: 44.2,
@@ -710,6 +725,51 @@ const ServiceDeskHub = () => {
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 Sessão com criptografia Scrypt e tokens assinados JWT HS256.
               </p>
+            </div>
+          </div>
+
+          {/* Quick Tenant Profile Presets */}
+          <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Perfis de Acesso Rápido por Empresa
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setCredentials({ email: 'ti@shineraybysabel.com.br', password: 'Shineray@2026!' })}
+                className={`p-2 rounded-lg border text-left transition-all ${
+                  credentials.email === 'ti@shineraybysabel.com.br'
+                    ? 'border-brand bg-brand/5 dark:bg-brand/10 text-brand'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                }`}
+              >
+                <div className="text-xs font-bold truncate">Shineray By Sabel</div>
+                <div className="text-[10px] text-slate-400 truncate">TI Corporativa</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCredentials({ email: 'admin@nexuscorp.com.br', password: 'Nexus@2026!' })}
+                className={`p-2 rounded-lg border text-left transition-all ${
+                  credentials.email === 'admin@nexuscorp.com.br'
+                    ? 'border-brand bg-brand/5 dark:bg-brand/10 text-brand'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                }`}
+              >
+                <div className="text-xs font-bold truncate">Nexus Corp</div>
+                <div className="text-[10px] text-slate-400 truncate">Admin Demo</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCredentials({ email: 'ti@alphalogistica.com.br', password: 'Alpha@2026!' })}
+                className={`p-2 rounded-lg border text-left transition-all ${
+                  credentials.email === 'ti@alphalogistica.com.br'
+                    ? 'border-brand bg-brand/5 dark:bg-brand/10 text-brand'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                }`}
+              >
+                <div className="text-xs font-bold truncate">Alpha Logística</div>
+                <div className="text-[10px] text-slate-400 truncate">TI Operações</div>
+              </button>
             </div>
           </div>
 
