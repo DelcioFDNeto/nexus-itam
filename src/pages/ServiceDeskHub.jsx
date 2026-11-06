@@ -44,7 +44,6 @@ import {
   onGatewaySessionChange,
   resolvePortalUrl,
 } from '../services/microservicesClient';
-import { useAuth } from '../contexts/AuthContext';
 
 const STATUS_BADGES = {
   open: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
@@ -138,15 +137,9 @@ const ServiceDeskHub = () => {
     department: 'TI Corporativa',
   });
 
-  const { currentUser } = useAuth() || {};
-  const isShinerayTenant =
-    currentUser?.tenantId === 'tenant-ap3htf6' ||
-    String(currentUser?.tenantId || '').includes('shineray') ||
-    String(currentUser?.email || '').includes('shineray');
-
   const [credentials, setCredentials] = useState(() => ({
-    email: isShinerayTenant ? 'ti@shineraybysabel.com.br' : 'admin@nexuscorp.com.br',
-    password: isShinerayTenant ? 'Shineray@2026!' : 'Nexus@2026!',
+    email: 'ti@shineraybysabel.com.br',
+    password: 'Shineray@2026!',
   }));
 
   const wsRef = useRef(null);
@@ -309,7 +302,7 @@ const ServiceDeskHub = () => {
         resolutionNotes:
           nextStatus === 'resolved'
             ? 'Atendimento técnico concluído. Solicitação atendida de acordo com os padrões corporativos de SLA.'
-            : 'Chamado assumido pela Engenharia de Suporte N2.',
+            : 'Chamado assumido pela equipe de TI & Infraestrutura Shineray By Sabel.',
       });
       toast.success(`Status do chamado atualizado para ${STATUS_NAMES[nextStatus]}.`);
       loadDomainData();
@@ -334,20 +327,16 @@ const ServiceDeskHub = () => {
 
   const handleIssueQuickTerm = async () => {
     try {
-      const isShl =
-        gatewaySession?.user?.tenantId === 'tenant-ap3htf6' ||
-        gatewaySession?.user?.tenantId === 'shineray' ||
-        isShinerayTenant;
       await microservicesApi.issueTerm({
         termType: 'entrega',
-        employeeName: isShl ? 'João da Silva' : 'Mariana Costa',
-        employeeEmail: isShl ? 'joao.silva@shineray.com.br' : 'mariana.costa@nexuscorp.com.br',
-        department: isShl ? 'Vendas Concessionária' : 'Engenharia de Produto',
+        employeeName: 'João da Silva',
+        employeeEmail: 'joao.silva@shineray.com.br',
+        department: 'Vendas Concessionária',
         assetsSnapshot: [
           {
-            internalId: isShl ? 'SHL-BEL-NTB-001' : 'NEX-NB-0001',
-            model: isShl ? 'Dell Latitude 3420 Core i5' : 'Lenovo ThinkPad T14 Gen 4',
-            serialNumber: isShl ? '8XYZ123' : 'PF4X92K1',
+            internalId: 'SHL-BEL-NTB-002',
+            model: 'Lenovo IdeaPad 3 Core i3',
+            serialNumber: 'PF2K884X',
           },
         ],
       });
@@ -394,15 +383,11 @@ const ServiceDeskHub = () => {
       toast.error('Conecte-se primeiro ao API Gateway.');
       return;
     }
-    const isShl =
-      gatewaySession?.user?.tenantId === 'tenant-ap3htf6' ||
-      gatewaySession?.user?.tenantId === 'shineray' ||
-      isShinerayTenant;
     const cpu = Number((18 + Math.random() * 55).toFixed(1));
     const ram = Number((44 + Math.random() * 35).toFixed(1));
     wsRef.current.pushLiveTelemetry({
-      deviceKey: isShl ? 'WKS-SHL-8XYZ123' : 'WKS-ENG-PF4X92K1',
-      hostname: isShl ? 'SHL-BEL-NTB-001' : 'NEX-ENG-MCOSTA',
+      deviceKey: 'WKS-SHL-NP550XED',
+      hostname: 'SHL-BEL-NTB-001',
       cpuPercent: cpu,
       ramPercent: ram,
       diskPercent: 44.2,
@@ -437,6 +422,7 @@ const ServiceDeskHub = () => {
         const userName = gatewaySession?.user?.name?.toLowerCase() || '';
         matchesFilter =
           Boolean(t.technician_name && t.technician_name.toLowerCase().includes(userName)) ||
+          Boolean(t.assigned_tech_name && t.assigned_tech_name.toLowerCase().includes(userName)) ||
           Boolean(t.assigned_to && t.assigned_to.toLowerCase().includes(userName)) ||
           Boolean(t.requester_name && t.requester_name.toLowerCase().includes(userName));
       } else if (ticketFilter === 'critical') {
@@ -728,49 +714,14 @@ const ServiceDeskHub = () => {
             </div>
           </div>
 
-          {/* Quick Tenant Profile Presets */}
-          <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Perfis de Acesso Rápido por Empresa
+          {/* Informação de Acesso Produção Shineray */}
+          <div className="bg-slate-50 dark:bg-slate-900/60 rounded-xl p-3 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+            <span className="font-medium">
+              Acesso exclusivo para o <strong className="text-slate-900 dark:text-white">Proprietário (Dono)</strong> e equipe de <strong className="text-slate-900 dark:text-white">TI da Shineray By Sabel</strong>.
             </span>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setCredentials({ email: 'ti@shineraybysabel.com.br', password: 'Shineray@2026!' })}
-                className={`p-2 rounded-lg border text-left transition-all ${
-                  credentials.email === 'ti@shineraybysabel.com.br'
-                    ? 'border-brand bg-brand/5 dark:bg-brand/10 text-brand'
-                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                }`}
-              >
-                <div className="text-xs font-bold truncate">Shineray By Sabel</div>
-                <div className="text-[10px] text-slate-400 truncate">TI Corporativa</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setCredentials({ email: 'admin@nexuscorp.com.br', password: 'Nexus@2026!' })}
-                className={`p-2 rounded-lg border text-left transition-all ${
-                  credentials.email === 'admin@nexuscorp.com.br'
-                    ? 'border-brand bg-brand/5 dark:bg-brand/10 text-brand'
-                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                }`}
-              >
-                <div className="text-xs font-bold truncate">Nexus Corp</div>
-                <div className="text-[10px] text-slate-400 truncate">Admin Demo</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setCredentials({ email: 'ti@alphalogistica.com.br', password: 'Alpha@2026!' })}
-                className={`p-2 rounded-lg border text-left transition-all ${
-                  credentials.email === 'ti@alphalogistica.com.br'
-                    ? 'border-brand bg-brand/5 dark:bg-brand/10 text-brand'
-                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                }`}
-              >
-                <div className="text-xs font-bold truncate">Alpha Logística</div>
-                <div className="text-[10px] text-slate-400 truncate">TI Operações</div>
-              </button>
-            </div>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-brand/10 text-brand font-bold shrink-0">
+              tenant-ap3htf6
+            </span>
           </div>
 
           <form onSubmit={handleConnectGateway} className="space-y-4">
@@ -783,7 +734,7 @@ const ServiceDeskHub = () => {
                 value={credentials.email}
                 onChange={(e) => setCredentials((p) => ({ ...p, email: e.target.value }))}
                 className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-brand focus:outline-none"
-                placeholder="operador@nexuscorp.com.br"
+                placeholder="ti@shineraybysabel.com.br"
                 required
               />
             </div>
@@ -1520,7 +1471,7 @@ const ServiceDeskHub = () => {
                     onChange={(e) =>
                       setNewTicketForm((p) => ({ ...p, assetTag: e.target.value }))
                     }
-                    placeholder="Ex: NEX-NB-0001"
+                    placeholder="Ex: SHL-BEL-NTB-001"
                     className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-brand focus:outline-none uppercase"
                   />
                 </div>

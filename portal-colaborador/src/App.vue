@@ -22,8 +22,8 @@ const liveBanner = ref('');
 const preselectedTag = ref('');
 
 const loginForm = reactive({
-  email: 'mariana.costa@nexuscorp.com.br',
-  password: 'Colab@2026!',
+  email: '',
+  password: '',
 });
 
 const assets = ref([]);
@@ -94,22 +94,6 @@ async function handleLogin() {
     authError.value = err.message;
   } finally {
     loading.value = false;
-  }
-}
-
-function fillDemo(type) {
-  if (type === 'shineray-colab') {
-    loginForm.email = 'joao.silva@shineray.com.br';
-    loginForm.password = 'Colab@2026!';
-  } else if (type === 'shineray-admin') {
-    loginForm.email = 'ti@shineraybysabel.com.br';
-    loginForm.password = 'Shineray@2026!';
-  } else if (type === 'colab') {
-    loginForm.email = 'mariana.costa@nexuscorp.com.br';
-    loginForm.password = 'Colab@2026!';
-  } else {
-    loginForm.email = 'admin@nexuscorp.com.br';
-    loginForm.password = 'Nexus@2026!';
   }
 }
 
@@ -240,47 +224,6 @@ onBeforeUnmount(() => {
           </p>
         </div>
 
-        <!-- Quick Demo Profiles -->
-        <div class="bg-slate-50 rounded-xl p-3 border border-slate-200/80 space-y-2">
-          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            Acesso Rápido para Demonstração
-          </p>
-          <div class="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              class="p-2.5 rounded-lg border border-slate-200 bg-white hover:border-brand hover:shadow-xs text-left transition-all"
-              @click="fillDemo('shineray-colab')"
-            >
-              <div class="text-xs font-bold text-slate-800">João da Silva</div>
-              <div class="text-[10px] text-slate-500 truncate">Shineray • Vendas</div>
-            </button>
-            <button
-              type="button"
-              class="p-2.5 rounded-lg border border-slate-200 bg-white hover:border-brand hover:shadow-xs text-left transition-all"
-              @click="fillDemo('shineray-admin')"
-            >
-              <div class="text-xs font-bold text-slate-800">Admin Shineray</div>
-              <div class="text-[10px] text-slate-500 truncate">Shineray • TI Infra</div>
-            </button>
-            <button
-              type="button"
-              class="p-2.5 rounded-lg border border-slate-200 bg-white hover:border-brand hover:shadow-xs text-left transition-all"
-              @click="fillDemo('colab')"
-            >
-              <div class="text-xs font-bold text-slate-800">Mariana Costa</div>
-              <div class="text-[10px] text-slate-500 truncate">Nexus • Engenharia</div>
-            </button>
-            <button
-              type="button"
-              class="p-2.5 rounded-lg border border-slate-200 bg-white hover:border-brand hover:shadow-xs text-left transition-all"
-              @click="fillDemo('admin')"
-            >
-              <div class="text-xs font-bold text-slate-800">Ricardo Almeida</div>
-              <div class="text-[10px] text-slate-500 truncate">Nexus • Gestor TI</div>
-            </button>
-          </div>
-        </div>
-
         <form class="space-y-4" @submit.prevent="handleLogin">
           <div>
             <label class="block text-xs font-semibold text-slate-700 mb-1">E-mail Corporativo</label>
@@ -289,7 +232,7 @@ onBeforeUnmount(() => {
               type="email"
               required
               class="w-full rounded-lg border border-slate-300 px-3.5 py-2 text-xs sm:text-sm focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none transition-all"
-              placeholder="seu.nome@empresa.com.br"
+              placeholder="seu.email@shineraybysabel.com.br"
             />
           </div>
           <div>
@@ -483,7 +426,7 @@ onBeforeUnmount(() => {
         v-else
         :tickets="tickets"
         :assets="assets"
-        :user-department="session.user.department || 'Engenharia de Produto'"
+        :user-department="session.user.department || 'Geral'"
         :preselected-asset-tag="preselectedTag"
         @clear-preselected="preselectedTag = ''"
         @created="refreshPortalData"

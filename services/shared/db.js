@@ -160,7 +160,8 @@ const normalizeCommandRow = (r) =>
 let pool = null;
 let initialized = false;
 
-export const DEFAULT_DEMO_AGENT_TOKEN = 'agt_nexus_corp_2026_v3_secure_token';
+export const SHINERAY_AGENT_TOKEN = 'agt_shineray_2026_v3_secure_token';
+export const DEFAULT_DEMO_AGENT_TOKEN = SHINERAY_AGENT_TOKEN;
 
 // =============================================================================
 // Estado em Memória (Fallback Determinístico / Suíte de Testes)
@@ -186,26 +187,6 @@ function buildSeedBundle() {
 
   const tenants = [
     {
-      id: 'nexus-corp',
-      name: 'Nexus Indústria & Tecnologia S.A.',
-      cnpj: '18.420.915/0001-62',
-      plan: 'enterprise',
-      asset_prefix: 'NEX',
-      agent_token_hash: hashAgentToken(DEFAULT_DEMO_AGENT_TOKEN),
-      status: 'active',
-      created_at: yesterdayIso,
-    },
-    {
-      id: 'alpha-logistica',
-      name: 'Alpha Logística Integrada Ltda.',
-      cnpj: '29.110.400/0001-18',
-      plan: 'pro',
-      asset_prefix: 'ALP',
-      agent_token_hash: hashAgentToken('agt_alpha_log_2026_v3_secure_token'),
-      status: 'active',
-      created_at: yesterdayIso,
-    },
-    {
       id: 'tenant-ap3htf6',
       name: 'Shineray By Sabel',
       cnpj: '14.412.308/0001-90',
@@ -229,50 +210,26 @@ function buildSeedBundle() {
 
   const users = [
     {
-      id: '11111111-1111-4111-8111-111111111101',
-      tenant_id: 'nexus-corp',
-      name: 'Ricardo Almeida',
-      email: 'admin@nexuscorp.com.br',
-      password_hash: hashPassword('Nexus@2026!'),
-      role: 'admin',
-      department: 'Governança & Infraestrutura TI',
-      job_title: 'Head de Operações de TI',
+      id: '33333333-3333-4333-8333-333333333300',
+      tenant_id: 'tenant-ap3htf6',
+      name: 'Danillo Sabel Portal',
+      email: 'danillo.portal@shineraybysabel.com.br',
+      password_hash: hashPassword('Diretoria@2026!'),
+      role: 'owner',
+      department: 'Diretoria Executiva',
+      job_title: 'Diretor Geral & Proprietário',
       active: true,
       created_at: yesterdayIso,
     },
     {
-      id: '11111111-1111-4111-8111-111111111102',
-      tenant_id: 'nexus-corp',
-      name: 'Mariana Costa',
-      email: 'mariana.costa@nexuscorp.com.br',
-      password_hash: hashPassword('Colab@2026!'),
-      role: 'collaborator',
-      department: 'Engenharia de Produto',
-      job_title: 'Engenheira de Sistemas Sênior',
-      active: true,
-      created_at: yesterdayIso,
-    },
-    {
-      id: '11111111-1111-4111-8111-111111111103',
-      tenant_id: 'nexus-corp',
-      name: 'Lucas Mendes',
-      email: 'suporte@nexuscorp.com.br',
-      password_hash: hashPassword('Suporte@2026!'),
-      role: 'operator',
-      department: 'Service Desk N2',
-      job_title: 'Analista de Suporte & RMM',
-      active: true,
-      created_at: yesterdayIso,
-    },
-    {
-      id: '22222222-2222-4222-8222-222222222201',
-      tenant_id: 'alpha-logistica',
-      name: 'Fernanda Rocha',
-      email: 'ti@alphalogistica.com.br',
-      password_hash: hashPassword('Alpha@2026!'),
-      role: 'admin',
-      department: 'TI Corporativa',
-      job_title: 'Coordenadora de TI',
+      id: '33333333-3333-4333-8333-333333333306',
+      tenant_id: 'tenant-ap3htf6',
+      name: 'Dono Shineray',
+      email: 'dono@shineraybysabel.com.br',
+      password_hash: hashPassword('Shineray@2026!'),
+      role: 'owner',
+      department: 'Diretoria Executiva',
+      job_title: 'Proprietário',
       active: true,
       created_at: yesterdayIso,
     },
@@ -324,106 +281,9 @@ function buildSeedBundle() {
       active: true,
       created_at: yesterdayIso,
     },
-    {
-      id: '33333333-3333-4333-8333-333333333305',
-      tenant_id: 'tenant-ap3htf6',
-      name: 'Danillo Sabel Portal',
-      email: 'danillo.portal@shineraybysabel.com.br',
-      password_hash: hashPassword('Diretoria@2026!'),
-      role: 'collaborator',
-      department: 'Diretoria & Operações',
-      job_title: 'Diretor Operacional',
-      active: true,
-      created_at: yesterdayIso,
-    },
   ];
 
   const assets = [
-    {
-      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',
-      tenant_id: 'nexus-corp',
-      internal_id: 'NEX-NB-0001',
-      type: 'Notebook',
-      brand: 'Lenovo',
-      model: 'ThinkPad T14 Gen 4',
-      serial_number: 'PF4X92K1',
-      status: 'Em Uso',
-      location: 'Matriz - 4º Andar',
-      department: 'Engenharia de Produto',
-      assigned_to_name: 'Mariana Costa',
-      assigned_to_email: 'mariana.costa@nexuscorp.com.br',
-      purchase_value: 8450.0,
-      specs: {
-        cpu: 'Intel Core i7-1365U vPro',
-        ram: '32 GB LPDDR5',
-        storage: '1 TB NVMe PCIe 4.0',
-        os: 'Windows 11 Pro 24H2',
-      },
-      created_at: yesterdayIso,
-      updated_at: twoHoursAgoIso,
-    },
-    {
-      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa02',
-      tenant_id: 'nexus-corp',
-      internal_id: 'NEX-MN-0001',
-      type: 'Monitor',
-      brand: 'Dell',
-      model: 'UltraSharp U2723QE 4K USB-C Hub',
-      serial_number: 'CN0X827Q742',
-      status: 'Em Uso',
-      location: 'Matriz - 4º Andar',
-      department: 'Engenharia de Produto',
-      assigned_to_name: 'Mariana Costa',
-      assigned_to_email: 'mariana.costa@nexuscorp.com.br',
-      purchase_value: 4190.0,
-      specs: {
-        panel: 'IPS Black 27" 3840x2160',
-        ports: 'USB-C 90W PD, RJ45, DP 1.4',
-      },
-      created_at: yesterdayIso,
-      updated_at: twoHoursAgoIso,
-    },
-    {
-      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa03',
-      tenant_id: 'nexus-corp',
-      internal_id: 'NEX-NB-0002',
-      type: 'Notebook',
-      brand: 'Dell',
-      model: 'Latitude 5440',
-      serial_number: 'BR9928L4',
-      status: 'Disponível',
-      location: 'Matriz - Cofre TI',
-      department: 'Estoque TI',
-      assigned_to_name: null,
-      assigned_to_email: null,
-      purchase_value: 6790.0,
-      specs: {
-        cpu: 'Intel Core i5-1345U',
-        ram: '16 GB DDR4',
-        storage: '512 GB NVMe',
-        os: 'Windows 11 Pro 24H2',
-      },
-      created_at: yesterdayIso,
-      updated_at: yesterdayIso,
-    },
-    {
-      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa04',
-      tenant_id: 'alpha-logistica',
-      internal_id: 'ALP-NB-0001',
-      type: 'Notebook',
-      brand: 'HP',
-      model: 'EliteBook 840 G10',
-      serial_number: '5CG3410Z9',
-      status: 'Em Uso',
-      location: 'CD Barueri',
-      department: 'Operações',
-      assigned_to_name: 'Fernanda Rocha',
-      assigned_to_email: 'ti@alphalogistica.com.br',
-      purchase_value: 7200.0,
-      specs: { cpu: 'Intel Core i7-1355U', ram: '16 GB', storage: '512 GB SSD' },
-      created_at: yesterdayIso,
-      updated_at: yesterdayIso,
-    },
     {
       id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa05',
       tenant_id: 'tenant-ap3htf6',
@@ -560,18 +420,62 @@ function buildSeedBundle() {
       created_at: yesterdayIso,
       updated_at: twoHoursAgoIso,
     },
+    {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa11',
+      tenant_id: 'tenant-ap3htf6',
+      internal_id: 'SHL-BEL-NTB-003',
+      type: 'Notebook',
+      brand: 'Dell',
+      model: 'Latitude 3420 Core i5',
+      serial_number: '8XYZ124',
+      status: 'Disponível',
+      location: 'Matriz Belém - TI',
+      department: 'Estoque TI',
+      assigned_to_name: null,
+      assigned_to_email: null,
+      purchase_value: 4690.0,
+      specs: {
+        cpu: 'Intel Core i5-1135G7',
+        ram: '16 GB DDR4',
+        storage: '512 GB SSD',
+        os: 'Windows 11 Pro 24H2',
+      },
+      created_at: yesterdayIso,
+      updated_at: yesterdayIso,
+    },
+    {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa12',
+      tenant_id: 'tenant-ap3htf6',
+      internal_id: 'SHL-BEL-MON-001',
+      type: 'Monitor',
+      brand: 'Dell',
+      model: 'Dell Professional P2422H 24"',
+      serial_number: 'CN0M719Q881',
+      status: 'Em Uso',
+      location: 'Matriz Belém - Comercial',
+      department: 'Vendas & Pós-Vendas',
+      assigned_to_name: 'Karen Matos',
+      assigned_to_email: 'karen.matos@shineraybysabel.com.br',
+      purchase_value: 1290.0,
+      specs: {
+        panel: 'IPS FHD 1920x1080 60Hz',
+        ports: 'HDMI 1.4, DP 1.2, VGA, USB 3.2 Hub',
+      },
+      created_at: yesterdayIso,
+      updated_at: twoHoursAgoIso,
+    },
   ];
 
   const legalClauseSigned =
     'Declaro, nos termos do Art. 462 §1º da CLT e da Política de Segurança da Informação Corporativa, ter recebido em perfeito estado de funcionamento o equipamento listado, comprometendo-me com sua guarda, conservação e uso estritamente profissional.';
 
   const signedAssets = [
-    { internalId: 'NEX-NB-0001', model: 'Lenovo ThinkPad T14 Gen 4', serialNumber: 'PF4X92K1' },
+    { internalId: 'SHL-BEL-NTB-007', model: 'Dell Inspiron 15 3567 Core i5', serialNumber: '8XYZ123' },
   ];
   const signedDocHash = computeTermDocumentHash({
-    tenantId: 'nexus-corp',
+    tenantId: 'tenant-ap3htf6',
     termType: 'entrega',
-    employeeEmail: 'mariana.costa@nexuscorp.com.br',
+    employeeEmail: 'karen.matos@shineraybysabel.com.br',
     assetsSnapshot: signedAssets,
     legalClause: legalClauseSigned,
   });
@@ -579,19 +483,19 @@ function buildSeedBundle() {
   const signedAtIso = yesterdayIso;
   const sigHash = signResponsibilityTerm({
     termId: signedTermId,
-    tenantId: 'nexus-corp',
-    employeeEmail: 'mariana.costa@nexuscorp.com.br',
+    tenantId: 'tenant-ap3htf6',
+    employeeEmail: 'karen.matos@shineraybysabel.com.br',
     documentHash: signedDocHash,
     signedAt: signedAtIso,
   });
 
   const pendingAssets = [
-    { internalId: 'NEX-MN-0001', model: 'Dell UltraSharp U2723QE 4K', serialNumber: 'CN0X827Q742' },
+    { internalId: 'SHL-BEL-NTB-002', model: 'Lenovo IdeaPad 3 Core i3', serialNumber: 'PF2K884X' },
   ];
   const pendingDocHash = computeTermDocumentHash({
-    tenantId: 'nexus-corp',
+    tenantId: 'tenant-ap3htf6',
     termType: 'entrega',
-    employeeEmail: 'mariana.costa@nexuscorp.com.br',
+    employeeEmail: 'joao.silva@shineray.com.br',
     assetsSnapshot: pendingAssets,
     legalClause: legalClauseSigned,
   });
@@ -599,12 +503,12 @@ function buildSeedBundle() {
   const terms = [
     {
       id: signedTermId,
-      tenant_id: 'nexus-corp',
+      tenant_id: 'tenant-ap3htf6',
       term_type: 'entrega',
-      employee_name: 'Mariana Costa',
-      employee_email: 'mariana.costa@nexuscorp.com.br',
+      employee_name: 'Karen Matos',
+      employee_email: 'karen.matos@shineraybysabel.com.br',
       employee_cpf: '***.482.910-**',
-      department: 'Engenharia de Produto',
+      department: 'Vendas & Pós-Vendas',
       assets_snapshot: signedAssets,
       legal_clause: legalClauseSigned,
       status: 'signed',
@@ -612,18 +516,18 @@ function buildSeedBundle() {
       signature_hash: sigHash,
       signer_ip: '10.24.0.18',
       signer_user_agent: 'NexusSelfService/3.0 (Vue 3)',
-      issued_by: 'Ricardo Almeida',
+      issued_by: 'Danillo Sabel Portal',
       signed_at: signedAtIso,
       created_at: yesterdayIso,
     },
     {
       id: 'cccccccc-cccc-4ccc-8ccc-cccccccccc02',
-      tenant_id: 'nexus-corp',
+      tenant_id: 'tenant-ap3htf6',
       term_type: 'entrega',
-      employee_name: 'Mariana Costa',
-      employee_email: 'mariana.costa@nexuscorp.com.br',
-      employee_cpf: '***.482.910-**',
-      department: 'Engenharia de Produto',
+      employee_name: 'João da Silva',
+      employee_email: 'joao.silva@shineray.com.br',
+      employee_cpf: '***.719.340-**',
+      department: 'Vendas Concessionária',
       assets_snapshot: pendingAssets,
       legal_clause: legalClauseSigned,
       status: 'pending',
@@ -631,7 +535,7 @@ function buildSeedBundle() {
       signature_hash: null,
       signer_ip: null,
       signer_user_agent: null,
-      issued_by: 'Ricardo Almeida',
+      issued_by: 'Admin Shineray',
       signed_at: null,
       created_at: twoHoursAgoIso,
     },
@@ -640,20 +544,20 @@ function buildSeedBundle() {
   const tickets = [
     {
       id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01',
-      protocol: 'CHM-2026-0101',
-      tenant_id: 'nexus-corp',
-      requester_name: 'Mariana Costa',
-      requester_email: 'mariana.costa@nexuscorp.com.br',
-      department: 'Engenharia de Produto',
-      asset_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',
-      asset_tag: 'NEX-NB-0001',
+      protocol: 'CHM-2026-0500',
+      tenant_id: 'tenant-ap3htf6',
+      requester_name: 'Danillo Sabel Portal',
+      requester_email: 'danillo.portal@shineraybysabel.com.br',
+      department: 'Diretoria Executiva',
+      asset_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa06',
+      asset_tag: 'SHL-BEL-NTB-016',
       category: 'Software & Acesso VPN',
       priority: 'high',
       status: 'in_progress',
-      title: 'Renovação de certificado VPN WireGuard para ambiente de homologação',
+      title: 'Renovação de certificado VPN WireGuard e link Matriz-Filiais',
       description:
-        'O túnel corporativo apresenta expiração de chave ao conectar na VLAN de containers de homologação.',
-      assigned_tech_name: 'Lucas Mendes',
+        'Túnel de comunicação criptografado entre as concessionárias e Matriz requer renovação de chaves.',
+      assigned_tech_name: 'Admin Shineray',
       resolution_notes: null,
       sla_due_at: new Date(Date.now() + 6 * 3_600_000).toISOString(),
       resolved_at: null,
@@ -755,12 +659,12 @@ function buildSeedBundle() {
     {
       id: 'dddddddd-dddd-4ddd-8ddd-dddddddddd01',
       ticket_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01',
-      tenant_id: 'nexus-corp',
-      author_name: 'Lucas Mendes',
-      author_email: 'suporte@nexuscorp.com.br',
-      author_role: 'operator',
+      tenant_id: 'tenant-ap3htf6',
+      author_name: 'Admin Shineray',
+      author_email: 'ti@shineraybysabel.com.br',
+      author_role: 'admin',
       message:
-        'Recebido pela equipe N2. Já geramos o novo par de chaves e estamos validando a rota via NexusDesk.',
+        'Recebido pela equipe de infraestrutura Shineray. Validação de rotas e segurança em andamento.',
       created_at: nowIso,
     },
     {
@@ -790,45 +694,45 @@ function buildSeedBundle() {
   const telemetry = [
     {
       id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeee01',
-      tenant_id: 'nexus-corp',
-      device_key: 'WKS-ENG-PF4X92K1',
-      hostname: 'NEX-ENG-MCOSTA',
-      serial_number: 'PF4X92K1',
+      tenant_id: 'tenant-ap3htf6',
+      device_key: 'WKS-SHL-PF3Z881K',
+      hostname: 'SHL-BEL-NTB-016',
+      serial_number: 'PF3Z881K',
       os_version: 'Windows 11 Pro 24H2 (26100)',
       agent_version: '3.2.0',
-      ip_address: '10.24.12.48',
-      logged_user: 'NEXUS\\mariana.costa',
-      cpu_percent: 24.5,
-      ram_percent: 61.2,
-      disk_percent: 43.8,
+      ip_address: '10.50.12.16',
+      logged_user: 'SHINERAY\\danillo.portal',
+      cpu_percent: 21.4,
+      ram_percent: 54.0,
+      disk_percent: 38.5,
       antivirus_active: true,
       firewall_active: true,
       last_seen_at: nowIso,
     },
     {
       id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeee02',
-      tenant_id: 'nexus-corp',
-      device_key: 'SRV-DOCKER-NODE01',
-      hostname: 'NEX-VPS-PROD01',
-      serial_number: 'VMW-9941-PROD',
-      os_version: 'Ubuntu Server 24.04 LTS',
+      tenant_id: 'tenant-ap3htf6',
+      device_key: 'WKS-SHL-NP550XED',
+      hostname: 'SHL-BEL-NTB-001',
+      serial_number: 'NP550XED-KF2BR',
+      os_version: 'Windows 11 Pro 24H2 (26100)',
       agent_version: '3.2.0',
-      ip_address: '10.24.0.10',
-      logged_user: 'svc_containers',
-      cpu_percent: 18.0,
-      ram_percent: 48.5,
-      disk_percent: 31.0,
+      ip_address: '10.50.12.10',
+      logged_user: 'SHINERAY\\delcio.farias',
+      cpu_percent: 17.5,
+      ram_percent: 48.0,
+      disk_percent: 32.1,
       antivirus_active: true,
       firewall_active: true,
       last_seen_at: nowIso,
     },
   ];
 
-  const genesisPayload = { termId: signedTermId, tag: 'NEX-NB-0001' };
+  const genesisPayload = { termId: signedTermId, tag: 'SHL-BEL-NTB-007' };
   const firstEntryHash = computeAuditChainHash({
     prevHash: GENESIS_HASH,
-    tenantId: 'nexus-corp',
-    actorEmail: 'mariana.costa@nexuscorp.com.br',
+    tenantId: 'tenant-ap3htf6',
+    actorEmail: 'karen.matos@shineraybysabel.com.br',
     actorRole: 'collaborator',
     action: 'TERM_SIGNED_HMAC',
     resourceType: 'responsibility_term',
@@ -841,8 +745,8 @@ function buildSeedBundle() {
     {
       seq: 1,
       id: 'ffffffff-ffff-4fff-8fff-ffffffffff01',
-      tenant_id: 'nexus-corp',
-      actor_email: 'mariana.costa@nexuscorp.com.br',
+      tenant_id: 'tenant-ap3htf6',
+      actor_email: 'karen.matos@shineraybysabel.com.br',
       actor_role: 'collaborator',
       action: 'TERM_SIGNED_HMAC',
       resource_type: 'responsibility_term',
@@ -857,12 +761,12 @@ function buildSeedBundle() {
   const assetHistory = [
     {
       id: '99999999-9999-4999-8999-999999999901',
-      tenant_id: 'nexus-corp',
-      asset_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',
+      tenant_id: 'tenant-ap3htf6',
+      asset_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa06',
       action: 'CADASTRO_E_ALOCACAO',
-      actor_name: 'Ricardo Almeida',
-      actor_email: 'admin@nexuscorp.com.br',
-      details: 'Ativo cadastrado e vinculado à colaboradora Mariana Costa (Engenharia).',
+      actor_name: 'Admin Shineray',
+      actor_email: 'ti@shineraybysabel.com.br',
+      details: 'Notebook Lenovo V15 cadastrado e alocado à Diretoria Operacional (Danillo Sabel Portal).',
       created_at: yesterdayIso,
     },
   ];
@@ -1257,6 +1161,84 @@ export const authRepo = {
       [tenantId, clean],
     );
     return rows.map(normalizeUserRow);
+  },
+
+  async createUser({
+    tenantId,
+    name,
+    email,
+    password,
+    role = 'collaborator',
+    department = 'Geral',
+    jobTitle = 'Colaborador',
+    active = true,
+  }) {
+    const cleanEmail = String(email || '').toLowerCase().trim();
+    if (!cleanEmail) {
+      const err = new Error('E-mail é obrigatório para cadastro de usuário.');
+      err.statusCode = 400;
+      throw err;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      const err = new Error('Formato de e-mail inválido. Utilize um endereço corporativo válido.');
+      err.statusCode = 400;
+      throw err;
+    }
+    const cleanTenantId = canonicalTenantId(tenantId) || 'tenant-ap3htf6';
+    const pwdHash = hashPassword(password);
+    const nowIso = new Date().toISOString();
+
+    if (!USE_PG) {
+      const existing = mem.users.find((u) => u.email.toLowerCase() === cleanEmail);
+      if (existing) {
+        const err = new Error('E-mail já cadastrado na plataforma.');
+        err.statusCode = 409;
+        throw err;
+      }
+      const user = {
+        id: crypto.randomUUID(),
+        tenant_id: cleanTenantId,
+        name: String(name || '').trim() || 'Colaborador',
+        email: cleanEmail,
+        password_hash: pwdHash,
+        role: String(role || 'collaborator').toLowerCase(),
+        department: String(department || 'Geral').trim(),
+        job_title: String(jobTitle || 'Colaborador').trim(),
+        active: Boolean(active),
+        created_at: nowIso,
+      };
+      mem.users.push(user);
+      const { password_hash: _ph, ...safe } = user;
+      return safe;
+    }
+
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO auth_svc.users
+         (tenant_id, name, email, password_hash, role, department, job_title, active, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+         RETURNING id, tenant_id, name, email, role, department, job_title, active, created_at`,
+        [
+          cleanTenantId,
+          String(name || '').trim() || 'Colaborador',
+          cleanEmail,
+          pwdHash,
+          String(role || 'collaborator').toLowerCase(),
+          String(department || 'Geral').trim(),
+          String(jobTitle || 'Colaborador').trim(),
+          Boolean(active),
+        ],
+      );
+      return normalizeUserRow(rows[0]);
+    } catch (pgErr) {
+      if (pgErr.code === '23505') {
+        const err = new Error('E-mail já cadastrado na plataforma.');
+        err.statusCode = 409;
+        throw err;
+      }
+      throw pgErr;
+    }
   },
 };
 

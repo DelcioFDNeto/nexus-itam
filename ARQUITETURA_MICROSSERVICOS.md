@@ -67,7 +67,7 @@ flowchart TB
    - Senhas derivadas com **`crypto.scrypt` (`N=16384, r=8, p=1`)** + sal aleatório de 128 bits e comparação em tempo constante (`crypto.timingSafeEqual`) imune a *timing attacks*.
    - O **API Gateway** valida o token **JWT (RFC 7519 HS256)** na borda e injeta o contexto do inquilino (`X-Tenant-Id`, `X-User-Id`, `X-User-Role`) assinado com **`X-Gateway-Signature` (HMAC-SHA256 + janela anti-replay de 60s)**. Qualquer tentativa de pular o Gateway ou forjar cabeçalhos de tenant é bloqueada com `401/403`.
 2. **Isolamento Multi-Tenant e Row-Level Security Lógica:**
-   - Um colaborador autenticado no **Portal Vue 3** (`role: collaborator`) enxerga **exclusivamente** os equipamentos sob sua guarda, seus próprios chamados e seus próprios termos CLT; tentativas de escalar privilégios ou ler dados de outra empresa (`alpha-logistica` vs `nexus-corp`) são bloqueadas no servidor.
+   - Um colaborador autenticado no **Portal Vue 3** (`role: collaborator`) enxerga **exclusivamente** os equipamentos sob sua guarda, seus próprios chamados e seus próprios termos CLT; tentativas de escalar privilégios ou cruzar dados entre inquilinos ou perfis são bloqueadas no servidor.
 3. **Validade Jurídica CLT Art. 462 §1º e Trilha Imutável em Hash-Chain SHA-256:**
    - No `service-compliance`, cada Termo de Responsabilidade gera um hash canônico SHA-256 do snapshot patrimonial e recebe um **Selo Criptográfico HMAC-SHA256** auditável em `/api/v1/compliance/terms/:id/verify`.
    - O log de auditoria encadeia cada registro ao `chain_hash` anterior (`prev_hash -> chain_hash`), exatamente como um *ledger* imutável verificável em tempo real em `/api/v1/compliance/audit/verify-chain`.
@@ -88,7 +88,7 @@ sequenceDiagram
     actor Admin as Analista TI (Console React 19 :3000)
 
     Admin->>GW: Conecta canal ws://.../ws/nexusdesk?token=JWT
-    GW->>WS: Upgrade RFC 6455 (Sala: tenant:nexus-corp)
+    GW->>WS: Upgrade RFC 6455 (Sala: tenant:shineray)
     WS-->>Admin: Frame {"event": "welcome", "protocol": "RFC-6455"}
 
     Colab->>GW: POST /api/v1/tickets (API 2 REST)
@@ -130,12 +130,12 @@ npm run dev
 npm run dev:portal
 ```
 
-### Credenciais Corporativas Pré-Semeadas para Demonstração Ao Vivo
-| Perfil | E-mail | Senha | Onde Demonstrar |
+### Credenciais Corporativas Cadastradas (Tenant Shineray By Sabel)
+| Perfil | E-mail | Função / Perfil | Aplicação |
 | :--- | :--- | :--- | :--- |
-| **Colaboradora (Engenharia)** | `mariana.costa@nexuscorp.com.br` | `Colab@2026!` | **Portal Vue 3** (Assinar termo CLT, ver ativos em posse e abrir chamado) |
-| **Administrador de TI** | `admin@nexuscorp.com.br` | `Nexus@2026!` | **Console React 19** (`/service-desk` — resolver chamado ao vivo, emitir termo e auditar Hash-Chain) |
-| **Tenant Isolado (Prova de Segurança)** | `ti@alphalogistica.com.br` | `Alpha@2026!` | Demonstra isolamento multi-tenant total entre empresas distintas |
+| **Dono (Owner)** | `danillo.portal@shineraybysabel.com.br` | `owner` | **Console React 19** (Visão Executiva, Nexus Master, Cluster de Chamados) |
+| **Administrador de TI** | `ti@shineraybysabel.com.br` | `admin` | **Console React 19** (`/service-desk` — Operação de chamados, ativos e termos) |
+| **Colaboradora** | `karen.matos@shineraybysabel.com.br` | `collaborator` | **Portal Vue 3** (Assinar termos, consultar equipamentos e abrir chamados) |
 
 ---
 

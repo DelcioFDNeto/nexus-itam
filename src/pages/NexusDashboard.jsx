@@ -18,7 +18,7 @@ import {
 } from 'chart.js';
 import {
   Activity, AlertTriangle, ArrowRight, Building2, CircleDollarSign, Layers, PlusSquare, RefreshCcw,
-  Server, ShieldAlert, Sparkles, UserCheck, Users,
+  Server, ShieldAlert, ShieldCheck, Sparkles, UserCheck, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getGlobalActivity } from '../services/assetService';
@@ -196,6 +196,39 @@ const NexusDashboard = () => {
           <button onClick={() => load(true)} disabled={refreshing} className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-300 px-3.5 py-2 rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-60">
             <RefreshCcw size={15} className={refreshing ? 'animate-spin' : ''} /> Atualizar
           </button>
+        </div>
+      </div>
+
+      {/* Governança & Privacidade LGPD (Art. 6º e 46 da Lei 13.709/2018) */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-2xl p-5 md:p-6 text-white shadow-xl relative overflow-hidden">
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="space-y-2 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold font-mono">
+              <ShieldCheck size={14} />
+              <span>Conformidade LGPD Ativa • Art. 6º, 46 e 50</span>
+            </div>
+            <h2 className="text-lg md:text-xl font-black tracking-tight text-white flex items-center gap-2">
+              Visão de Governança & Proteção de Dados do Sistema
+            </h2>
+            <p className="text-xs text-indigo-200/80 leading-relaxed">
+              O ecossistema Nexus opera sob arquitetura de <strong className="text-white">Minimização Estrita de Dados</strong> e <strong className="text-white">Zero-Surveillance</strong>. O console Nexus Master monitora a integridade das instâncias corporativas (cliente ativo em produção: <strong className="text-white">Shineray By Sabel</strong>) sem inspecionar telas, arquivos privados ou telemetria invasiva de colaboradores.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 shrink-0">
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
+              <span className="block text-[10px] uppercase font-bold text-indigo-300">Cliente em Produção</span>
+              <span className="text-sm font-black text-white">Shineray</span>
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
+              <span className="block text-[10px] uppercase font-bold text-indigo-300">Selo Digital CLT</span>
+              <span className="text-sm font-black text-emerald-400">HMAC-SHA256</span>
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center col-span-2 sm:col-span-1">
+              <span className="block text-[10px] uppercase font-bold text-indigo-300">Auditoria</span>
+              <span className="text-sm font-black text-sky-400">Hash-Chain</span>
+            </div>
+          </div>
         </div>
       </div>
 

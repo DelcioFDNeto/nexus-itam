@@ -68,8 +68,8 @@ describe('TaskManager Page', () => {
   ];
 
   const mockEmployees = [
-    { id: 'emp-1', name: 'Ricardo Almeida', email: 'ricardo@nexuscorp.com.br' },
-    { id: 'emp-2', name: 'Mariana Costa', email: 'mariana@nexuscorp.com.br' },
+    { id: 'emp-1', name: 'Délcio Farias', email: 'delcio.farias@shineraybysabel.com.br' },
+    { id: 'emp-2', name: 'Karen Matos', email: 'karen.matos@shineraybysabel.com.br' },
   ];
 
   beforeEach(() => {
@@ -78,10 +78,10 @@ describe('TaskManager Page', () => {
     vi.spyOn(authContext, 'useAuth').mockReturnValue({
       currentUser: {
         id: 'user-1',
-        name: 'Ricardo Almeida',
-        email: 'ricardo@nexuscorp.com.br',
-        role: 'admin',
-        tenantId: 'tenant-test',
+        name: 'Danillo Sabel Portal',
+        email: 'danillo.portal@shineraybysabel.com.br',
+        role: 'owner',
+        tenantId: 'tenant-ap3htf6',
       },
     });
 
@@ -158,7 +158,7 @@ describe('TaskManager Page', () => {
           title: 'Nova tarefa de teste',
           status: 'A Fazer',
           priority: 'Média',
-          tenantId: 'tenant-test',
+          tenantId: 'tenant-ap3htf6',
         })
       );
     });

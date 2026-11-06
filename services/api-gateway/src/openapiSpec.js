@@ -54,7 +54,7 @@ export function buildOpenApiSpec(gatewayBaseUrl = 'http://localhost:8000') {
             required: true,
             content: {
               'application/json': {
-                example: { email: 'admin@nexuscorp.com.br', password: 'Nexus@2026!' },
+                example: { email: 'ti@shineraybysabel.com.br', password: 'Shineray@2026!' },
               },
             },
           },

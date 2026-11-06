@@ -285,6 +285,62 @@ export async function buildApiGateway(opts = {}) {
     return { tenantId: claims.tenantId, total: users.length, items: users };
   });
 
+  app.post(
+    '/api/v1/auth/users',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['name', 'email', 'password'],
+          properties: {
+            name: { type: 'string', minLength: 2, maxLength: 160 },
+            email: { type: 'string', minLength: 5, maxLength: 180 },
+            password: { type: 'string', minLength: 8, maxLength: 128 },
+            role: {
+              type: 'string',
+              enum: ['owner', 'admin', 'manager', 'operator', 'viewer', 'collaborator'],
+            },
+            department: { type: 'string', maxLength: 120 },
+            jobTitle: { type: 'string', maxLength: 120 },
+            active: { type: 'boolean' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      let claims;
+      try {
+        claims = verifyJwt(request.headers.authorization || '');
+      } catch (err) {
+        return reply.code(401).send({ error: 'UNAUTHORIZED', message: err.message });
+      }
+      requireRoles(claims, ['owner', 'admin', 'manager']);
+      const body = request.body;
+      const targetTenantId = claims.tenantId;
+
+      try {
+        const newUser = await authRepo.createUser({
+          tenantId: targetTenantId,
+          name: sanitizeText(body.name, 160),
+          email: sanitizeText(body.email, 180),
+          password: body.password,
+          role: body.role || 'collaborator',
+          department: sanitizeText(body.department || 'Geral', 120),
+          jobTitle: sanitizeText(body.jobTitle || 'Colaborador', 120),
+          active: body.active !== undefined ? body.active : true,
+        });
+        return reply.code(201).send({ user: newUser });
+      } catch (err) {
+        const status = err.statusCode || 400;
+        return reply.code(status).send({
+          error: 'USER_CREATION_FAILED',
+          message: err.message,
+        });
+      }
+    },
+  );
+
   // ---------------------------------------------------------------------------
   // Reverse Proxy Zero-Trust HTTP para os 4 Microsserviços
   // ---------------------------------------------------------------------------

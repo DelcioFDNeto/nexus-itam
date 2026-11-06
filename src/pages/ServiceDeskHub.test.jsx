@@ -43,8 +43,8 @@ describe('ServiceDeskHub (Integração Console React 19 <-> Malha Fastify)', () 
         {
           id: 'tkt-1',
           protocol: 'CHM-2026-0001',
-          asset_tag: 'NEX-NB-0001',
-          requester_name: 'Mariana Costa',
+          asset_tag: 'SHL-BEL-NTB-016',
+          requester_name: 'Karen Matos',
           title: 'Lentidão na VPN corporativa',
           description: 'Oscilação no túnel WireGuard.',
           status: 'open',
@@ -58,7 +58,7 @@ describe('ServiceDeskHub (Integração Console React 19 <-> Malha Fastify)', () 
       items: [
         {
           id: 'trm-1',
-          employee_name: 'Mariana Costa',
+          employee_name: 'Karen Matos',
           document_hash: 'abc123def456',
           status: 'signed',
         },
@@ -70,8 +70,8 @@ describe('ServiceDeskHub (Integração Console React 19 <-> Malha Fastify)', () 
       devices: [
         {
           id: 'dev-1',
-          device_key: 'WKS-ENG-PF4X92K1',
-          hostname: 'NEX-ENG-MCOSTA',
+          device_key: 'WKS-SHL-PF3Z881K',
+          hostname: 'SHL-BEL-NTB-001',
           os_version: 'Windows 11 Pro 24H2',
           cpu_percent: 22.5,
           ram_percent: 48.1,
@@ -86,7 +86,7 @@ describe('ServiceDeskHub (Integração Console React 19 <-> Malha Fastify)', () 
 
     vi.spyOn(microservicesApi, 'openNexusDeskSocket').mockImplementation((_token, handlers) => {
       handlers?.onStatus?.('connected');
-      handlers?.onFrame?.({ event: 'welcome', role: 'admin' });
+      handlers?.onFrame?.({ event: 'welcome', role: 'owner' });
       return mockSocketHandle;
     });
 
@@ -109,7 +109,7 @@ describe('ServiceDeskHub (Integração Console React 19 <-> Malha Fastify)', () 
 
   it('autentica via API Gateway e renderiza chamados, Hash-Chain SHA-256, frota e WebSocket', async () => {
     vi.spyOn(microservicesApi, 'authenticate').mockImplementation(async () => {
-      const user = { id: 'u-1', name: 'Ricardo Almeida', role: 'admin', tenantId: 'nexus-corp' };
+      const user = { id: 'u-1', name: 'Danillo Sabel Portal', role: 'owner', tenantId: 'tenant-ap3htf6' };
       setGatewaySession('jwt-test-token', user);
       return { accessToken: 'jwt-test-token', user };
     });
@@ -126,14 +126,14 @@ describe('ServiceDeskHub (Integração Console React 19 <-> Malha Fastify)', () 
     expect(await screen.findByText('CHM-2026-0001')).toBeInTheDocument();
     expect(screen.getByText('Lentidão na VPN corporativa')).toBeInTheDocument();
     expect(screen.getByText(/ÍNTEGRA \(4 blocos\)/i)).toBeInTheDocument();
-    expect(screen.getByText('NEX-ENG-MCOSTA')).toBeInTheDocument();
+    expect(screen.getByText('SHL-BEL-NTB-016')).toBeInTheDocument();
     expect(screen.getByText('HMAC Assinado')).toBeInTheDocument();
     expect(screen.getByText('P2 Alta')).toBeInTheDocument();
     expect(screen.getByText('Total Chamados')).toBeInTheDocument();
   });
 
   it('permite abrir o modal de novo chamado técnico e enviá-lo', async () => {
-    const user = { id: 'u-1', name: 'Ricardo Almeida', role: 'admin', tenantId: 'nexus-corp' };
+    const user = { id: 'u-1', name: 'Danillo Sabel Portal', role: 'owner', tenantId: 'tenant-ap3htf6' };
     setGatewaySession('jwt-test-token', user);
 
     render(<ServiceDeskHub />);

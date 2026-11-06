@@ -11,6 +11,7 @@ export const MASTER_TENANT = 'nexus-master';
 export const ROLES = ['viewer', 'operator', 'member', 'manager', 'admin', 'owner', 'superadmin'];
 
 export const ROLE_LABELS = {
+  collaborator: 'Colaborador',
   viewer: 'Visualizador',
   operator: 'Operador',
   member: 'Membro',
@@ -30,6 +31,7 @@ export const ROLE_DESCRIPTIONS = {
   member: 'Opera ativos, projetos, licenças e cadastro da equipe.',
   operator: 'Cadastra e movimenta ativos, executa tarefas e auditorias.',
   viewer: 'Somente leitura do inventário.',
+  collaborator: 'Acesso ao Portal do Colaborador (autoatendimento patrimonial e chamados).',
 };
 
 const rank = (role) => {

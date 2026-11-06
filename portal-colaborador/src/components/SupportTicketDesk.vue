@@ -5,7 +5,7 @@ import { portalApi } from '../services/nexusApi';
 const props = defineProps({
   tickets: { type: Array, required: true },
   assets: { type: Array, default: () => [] },
-  userDepartment: { type: String, default: 'Engenharia de Produto' },
+  userDepartment: { type: String, default: 'Geral' },
   preselectedAssetTag: { type: String, default: '' },
 });
 

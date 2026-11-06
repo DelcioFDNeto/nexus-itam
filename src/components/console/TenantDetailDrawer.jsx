@@ -8,7 +8,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import {
   AlertTriangle, Building2, CheckCircle, Copy, KeyRound, Layers, Lock, NotebookPen, Palette, Pause, Play,
-  RotateCcw, Save, Unlock, Users, X, XCircle,
+  RotateCcw, Save, ShieldCheck, Unlock, Users, X, XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '../../services/firebase';
@@ -28,6 +28,7 @@ const TABS = [
   { id: 'plan', label: 'Plano', icon: Layers },
   { id: 'brand', label: 'Identidade', icon: Palette },
   { id: 'members', label: 'Membros', icon: Users },
+  { id: 'lgpd', label: 'LGPD & DPA', icon: ShieldCheck },
   { id: 'notes', label: 'Notas', icon: NotebookPen },
 ];
 
@@ -537,6 +538,76 @@ const TenantDetailDrawer = ({ tenant, plans, initialTab = 'overview', onClose, o
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* ------------------------------------------------ LGPD & DPA */}
+          {tab === 'lgpd' && (
+            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 p-5 space-y-5">
+              <div className="flex items-start justify-between gap-4 pb-4 border-b border-gray-100 dark:border-slate-800">
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                    <ShieldCheck size={18} className="text-emerald-500" /> Governança & Conformidade LGPD (Lei 13.709/2018)
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Visão de controle para o proprietário da plataforma assegurando proteção jurídica e privacidade.
+                  </p>
+                </div>
+                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-mono text-[10px] font-bold shrink-0">
+                  DPA Vigente
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 space-y-1">
+                  <span className="text-[10px] font-black uppercase text-slate-400">Base Legal Predominante</span>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Art. 7º, V (Execução de Contrato CLT) & IX (Legítimo Interesse)
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Tratamento restrito à gestão patrimonial de ativos fornecidos para execução laboral.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 space-y-1">
+                  <span className="text-[10px] font-black uppercase text-slate-400">Política Zero-Surveillance</span>
+                  <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    Sem Monitoramento Invasivo
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Bloqueio técnico estrito de captura de tela, gravação de teclas ou inspeção de mensagens/arquivos pessoais.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 space-y-1">
+                  <span className="text-[10px] font-black uppercase text-slate-400">Segurança Técnica (Art. 46)</span>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Hash-Chain SHA-256 + HMAC CLT
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Logs imutáveis de custódia e selo criptográfico em termos CLT para garantia de não-repúdio.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 space-y-1">
+                  <span className="text-[10px] font-black uppercase text-slate-400">Isolamento Multi-Tenant</span>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Schemas Dedicados & RLS
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Segregação lógica nativa com tokens criptográficos assinados por inquilino.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200/60 dark:border-indigo-800/40 text-xs text-indigo-900 dark:text-indigo-200 space-y-1">
+                <span className="font-bold flex items-center gap-1.5 text-indigo-950 dark:text-indigo-100">
+                  <ShieldCheck size={14} className="text-brand" /> Atendimento aos Direitos dos Titulares (Art. 18):
+                </span>
+                <p className="text-[11px] leading-relaxed text-indigo-800 dark:text-indigo-300">
+                  Em caso de encerramento do contrato de trabalho de um colaborador, as senhas geradas e acessos ao Portal do Colaborador são revogáveis imediatamente pelo Console do Dono, preservando os registros de auditoria em conformidade com o prazo prescricional trabalhista (Art. 16, I da LGPD).
+                </p>
+              </div>
             </div>
           )}
 

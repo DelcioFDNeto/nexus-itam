@@ -43,7 +43,7 @@ describe('Login Page', () => {
       </BrowserRouter>
     );
 
-    expect(screen.getByPlaceholderText('acesso@nexusitam.com')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('seu.email@shineraybysabel.com.br')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('••••••••')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Autenticar/i })).toBeInTheDocument();
   });
@@ -62,7 +62,7 @@ describe('Login Page', () => {
       </BrowserRouter>
     );
 
-    fireEvent.change(screen.getByPlaceholderText('acesso@nexusitam.com'), { target: { value: 'admin@test.com' } });
+    fireEvent.change(screen.getByPlaceholderText('seu.email@shineraybysabel.com.br'), { target: { value: 'admin@test.com' } });
     fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'password123' } });
     fireEvent.click(screen.getByRole('button', { name: /Autenticar/i }));
 
@@ -85,7 +85,7 @@ describe('Login Page', () => {
       </BrowserRouter>
     );
 
-    fireEvent.change(screen.getByPlaceholderText('acesso@nexusitam.com'), { target: { value: 'admin@test.com' } });
+    fireEvent.change(screen.getByPlaceholderText('seu.email@shineraybysabel.com.br'), { target: { value: 'admin@test.com' } });
     fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'wrongpass' } });
     fireEvent.click(screen.getByRole('button', { name: /Autenticar/i }));
 
@@ -109,6 +109,6 @@ describe('Login Page', () => {
     expect(screen.getByRole('status')).toBeInTheDocument();
     expect(screen.getByText('Abrindo o sistema…')).toBeInTheDocument();
     expect(screen.getByText('Gestão Inteligente de Ativos')).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText('acesso@nexusitam.com')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('seu.email@shineraybysabel.com.br')).not.toBeInTheDocument();
   });
 });

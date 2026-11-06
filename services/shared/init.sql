@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS auth_svc.tenants (
     name VARCHAR(160) NOT NULL,
     cnpj VARCHAR(24),
     plan VARCHAR(32) NOT NULL DEFAULT 'enterprise',
-    asset_prefix VARCHAR(12) NOT NULL DEFAULT 'NEX',
+    asset_prefix VARCHAR(12) NOT NULL DEFAULT 'SHL',
     agent_token_hash VARCHAR(128) NOT NULL,
     status VARCHAR(24) NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

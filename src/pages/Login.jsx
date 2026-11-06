@@ -13,7 +13,6 @@ import {
   Loader2,
   Server,
   ExternalLink,
-  Sparkles,
 } from 'lucide-react';
 import Logo from '../components/Logo';
 import { resolvePortalUrl } from '../services/microservicesClient';
@@ -75,12 +74,6 @@ const Login = () => {
       setError(loginErrorMessage(err));
       setSigningIn(false);
     }
-  };
-
-  const handleFillDemoAdmin = () => {
-    setEmail('admin@nexuscorp.com.br');
-    setPassword('Nexus@2026!');
-    setError('');
   };
 
   // Splashscreen de inicialização / validação de sessão
@@ -166,20 +159,9 @@ const Login = () => {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="login-email" className="block text-xs font-semibold text-slate-300">
-                  E-mail corporativo
-                </label>
-                <button
-                  type="button"
-                  onClick={handleFillDemoAdmin}
-                  className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-brand font-medium transition-colors"
-                  title="Preencher com a conta de demonstração Nexus Corp"
-                >
-                  <Sparkles size={11} />
-                  <span>Demo Admin</span>
-                </button>
-              </div>
+              <label htmlFor="login-email" className="block text-xs font-semibold text-slate-300 mb-1.5">
+                E-mail corporativo
+              </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-3 text-slate-500" size={16} />
                 <input
@@ -188,7 +170,7 @@ const Login = () => {
                   required
                   autoComplete="username"
                   className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 rounded-lg focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand text-white text-sm placeholder-slate-600 transition-colors"
-                  placeholder="acesso@nexusitam.com"
+                  placeholder="seu.email@shineraybysabel.com.br"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />

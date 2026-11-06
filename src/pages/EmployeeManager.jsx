@@ -6,7 +6,8 @@ import {
 } from '../services/employeeService';
 import { 
   Users, Briefcase, Plus, Trash2, Search, Edit,
-  UserCircle, Building2, MapPin, Mail, Save, X, CreditCard, FileSignature, Undo2, RefreshCcw, Laptop
+  UserCircle, Building2, MapPin, Mail, Save, X, CreditCard, FileSignature, Undo2, RefreshCcw, Laptop,
+  KeyRound, Copy, Check, Eye, EyeOff, ExternalLink, ShieldCheck, RefreshCw, Lock
 } from 'lucide-react';
 import { getAssets, getAssetsAssignedTo } from '../services/assetService';
 import { isRetired } from '../utils/assetStatus';
@@ -19,6 +20,8 @@ import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import ManagerSkeleton from '../components/dashboard/ManagerSkeleton';
 import LocationSelect from '../components/LocationSelect';
+import { microservicesApi, resolvePortalUrl } from '../services/microservicesClient';
+import { generateRandomSecurePassword } from '../utils/passwords';
 
 const EmployeeManager = () => {
   const { currentUser } = useAuth();
@@ -71,6 +74,134 @@ const EmployeeManager = () => {
     sectorName: '', manager: '', description: ''
   };
   const [formData, setFormData] = useState(initialForm);
+
+  const [portalUsers, setPortalUsers] = useState([]);
+  const [loadingPortalUsers, setLoadingPortalUsers] = useState(false);
+  const [portalForm, setPortalForm] = useState(() => ({
+    name: '',
+    email: '',
+    department: '',
+    jobTitle: '',
+    password: generateRandomSecurePassword(14),
+  }));
+  const [showPortalPassword, setShowPortalPassword] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(null);
+  const [createdCredentialsModal, setCreatedCredentialsModal] = useState(null);
+
+  const portalUrl = resolvePortalUrl();
+
+  const loadPortalUsers = React.useCallback(async () => {
+    setLoadingPortalUsers(true);
+    try {
+      const res = await microservicesApi.listUsers();
+      if (res?.items) {
+        setPortalUsers(res.items);
+      }
+    } catch (err) {
+      console.warn('Não foi possível sincronizar usuários com o Gateway:', err);
+    } finally {
+      setLoadingPortalUsers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'portal') {
+      loadPortalUsers();
+    }
+  }, [activeTab, loadPortalUsers]);
+
+  const handleRegeneratePassword = () => {
+    setPortalForm((prev) => ({
+      ...prev,
+      password: generateRandomSecurePassword(14),
+    }));
+    toast.info('Nova senha aleatória gerada.');
+  };
+
+  const handleCopyPassword = () => {
+    if (!portalForm.password) return;
+    navigator.clipboard.writeText(portalForm.password);
+    setCopiedKey('formPassword');
+    setTimeout(() => setCopiedKey(null), 2500);
+    toast.success('Senha copiada para a área de transferência.');
+  };
+
+  const handleCreatePortalCollaborator = async (e) => {
+    e.preventDefault();
+    const cleanName = portalForm.name.trim();
+    const cleanEmail = portalForm.email.trim().toLowerCase();
+    const cleanPassword = portalForm.password.trim();
+
+    if (!cleanName || !cleanEmail || !cleanPassword) {
+      toast.error('Preencha nome completo, e-mail corporativo e a senha.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const department = portalForm.department.trim() || 'Geral';
+      const jobTitle = portalForm.jobTitle.trim() || 'Colaborador';
+
+      await microservicesApi.createUser({
+        name: cleanName,
+        email: cleanEmail,
+        password: cleanPassword,
+        role: 'collaborator',
+        department,
+        jobTitle,
+        active: true,
+      });
+
+      const existing = employees.find(
+        (emp) => (emp.email || '').toLowerCase() === cleanEmail
+      );
+      if (!existing && tenantId) {
+        try {
+          await addEmployee({
+            name: cleanName,
+            email: cleanEmail,
+            role: jobTitle,
+            sector: department,
+            branch: 'Matriz Belém',
+            tenantId,
+          });
+        } catch {
+          // Ignora falha local para não abortar provisionamento de credenciais
+        }
+        loadData();
+      }
+
+      setCreatedCredentialsModal({
+        name: cleanName,
+        email: cleanEmail,
+        password: cleanPassword,
+        department,
+        jobTitle,
+        portalUrl,
+      });
+
+      toast.success('Colaborador ativado com sucesso para o Portal!');
+      setPortalForm({
+        name: '',
+        email: '',
+        department: '',
+        jobTitle: '',
+        password: generateRandomSecurePassword(14),
+      });
+      loadPortalUsers();
+    } catch (err) {
+      console.error(err);
+      toast.error(err.message || 'Erro ao registrar colaborador no portal.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCopyFullCredentials = (creds) => {
+    const text = `Credenciais de Acesso — Portal do Colaborador (Nexus ITAM / Shineray)\n\nColaborador: ${creds.name}\nPortal: ${creds.portalUrl}\nE-mail: ${creds.email}\nSenha Provisória: ${creds.password}\n\nInstruções: Acesse o link acima para visualizar seus equipamentos em posse, assinar seus Termos de Responsabilidade CLT e abrir chamados de TI.`;
+    navigator.clipboard.writeText(text);
+    toast.success('Credenciais completas copiadas!');
+  };
 
   // Puxa colaboradores, departamentos e inventário simultaneamente para sincronizar a custódia
   const loadData = async () => {
@@ -283,7 +414,7 @@ const EmployeeManager = () => {
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">Mantenha a estrutura organizacional atualizada</p>
         </div>
-        {canWrite && (
+        {canWrite && activeTab !== 'portal' && (
           <button onClick={openCreateModal} className="bg-black text-white dark:bg-white dark:text-slate-900 px-5 py-2.5 rounded-xl font-bold hover:bg-gray-800 dark:hover:bg-gray-100 flex items-center gap-2 shadow-lg transition-all active:scale-95">
               <Plus size={20}/> {activeTab === 'employees' ? 'Novo Colaborador' : 'Novo Setor'}
           </button>
@@ -291,18 +422,24 @@ const EmployeeManager = () => {
       </div>
 
       {/* Chaves principais que alternam a visão entre pessoas ou a visão por hierarquia */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full md:w-fit mb-6">
+      <div className="flex flex-wrap gap-1 bg-gray-100 dark:bg-slate-800 p-1 rounded-xl w-full md:w-fit mb-6 border border-gray-200/60 dark:border-slate-700/60">
           <button 
             onClick={() => setActiveTab('employees')} 
-            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'employees' ? 'bg-white text-black shadow-sm dark:bg-slate-700 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+            className={`px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'employees' ? 'bg-white text-black shadow-sm dark:bg-slate-700 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
           >
               <UserCircle size={18}/> Colaboradores
           </button>
           <button 
             onClick={() => setActiveTab('sectors')} 
-            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'sectors' ? 'bg-white text-black shadow-sm dark:bg-slate-700 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+            className={`px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'sectors' ? 'bg-white text-black shadow-sm dark:bg-slate-700 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
           >
               <Briefcase size={18}/> Setores / Deptos
+          </button>
+          <button 
+            onClick={() => setActiveTab('portal')} 
+            className={`px-5 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeTab === 'portal' ? 'bg-white text-black shadow-sm dark:bg-slate-700 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+          >
+              <KeyRound size={18} className="text-brand"/> Portal do Colaborador (Acessos)
           </button>
       </div>
 
@@ -312,13 +449,244 @@ const EmployeeManager = () => {
           <input 
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            placeholder={activeTab === 'employees' ? "Buscar por nome, cargo, email..." : "Buscar setor..."}
-            className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl outline-none focus:border-black focus:ring-1 focus:ring-black transition-all"
+            placeholder={activeTab === 'employees' ? "Buscar por nome, cargo, email..." : activeTab === 'sectors' ? "Buscar setor..." : "Buscar colaboradores cadastrados no portal..."}
+            className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl outline-none focus:border-black focus:ring-1 focus:ring-black transition-all text-sm"
           />
       </div>
 
       {/* Área flexível que injeta os cartões da aba selecionada */}
-      {loading ? (
+      {activeTab === 'portal' ? (
+        <div className="space-y-6">
+          {/* Card de Cadastro com Gerador de Senha */}
+          <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-6 border-b border-slate-100 dark:border-slate-700/80">
+              <div>
+                <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <KeyRound className="text-brand" size={22} />
+                  Cadastro de Acesso ao Portal do Colaborador
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Cadastre colaboradores com geração automática de senha aleatória segura para autoatendimento e custódia CLT.
+                </p>
+              </div>
+              <a
+                href={portalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-xs font-bold text-brand bg-brand/10 hover:bg-brand/20 px-3.5 py-2 rounded-xl transition-all shrink-0"
+              >
+                <span>Acessar Portal (Vue 3)</span>
+                <ExternalLink size={14} />
+              </a>
+            </div>
+
+            <form onSubmit={handleCreatePortalCollaborator} className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                    Nome Completo *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={portalForm.name}
+                    onChange={(e) => setPortalForm((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="Ex: Roberto Souza"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-brand"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                    E-mail Corporativo *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={portalForm.email}
+                    onChange={(e) => setPortalForm((p) => ({ ...p, email: e.target.value }))}
+                    placeholder="colaborador@shineraybysabel.com.br"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-brand"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                    Setor / Departamento
+                  </label>
+                  <input
+                    type="text"
+                    value={portalForm.department}
+                    onChange={(e) => setPortalForm((p) => ({ ...p, department: e.target.value }))}
+                    placeholder="Ex: Vendas Concessionária"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-brand"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                    Cargo / Função
+                  </label>
+                  <input
+                    type="text"
+                    value={portalForm.jobTitle}
+                    onChange={(e) => setPortalForm((p) => ({ ...p, jobTitle: e.target.value }))}
+                    placeholder="Ex: Consultor Comercial"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-brand"
+                  />
+                </div>
+              </div>
+
+              {/* Gerador de Senha Aleatória */}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700/80 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Lock size={15} className="text-brand" />
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Geração de Senha Aleatória Segura
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/20">
+                      Alta Entropia (14 caracteres)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleRegeneratePassword}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-brand px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 transition-all hover:shadow-xs"
+                      title="Gerar nova sequência aleatória"
+                    >
+                      <RefreshCw size={13} />
+                      <span>Gerar Outra Senha</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyPassword}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-brand px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 transition-all hover:shadow-xs"
+                      title="Copiar senha atual"
+                    >
+                      {copiedKey === 'formPassword' ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                      <span>{copiedKey === 'formPassword' ? 'Copiada!' : 'Copiar Senha'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <input
+                    type={showPortalPassword ? 'text' : 'password'}
+                    required
+                    value={portalForm.password}
+                    onChange={(e) => setPortalForm((p) => ({ ...p, password: e.target.value }))}
+                    className="w-full pr-12 pl-4 py-2.5 font-mono text-sm tracking-wider bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-brand"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPortalPassword(!showPortalPassword)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                    title={showPortalPassword ? 'Ocultar senha' : 'Exibir senha'}
+                  >
+                    {showPortalPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="bg-brand hover:bg-brand-dark text-white font-bold py-2.5 px-6 rounded-xl transition-all shadow-md flex items-center gap-2 text-xs sm:text-sm disabled:opacity-60"
+                >
+                  <KeyRound size={16} />
+                  <span>{saving ? 'Registrando Acesso...' : 'Cadastrar e Liberar Acesso ao Portal'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Banner LGPD de Privacidade e Segurança */}
+          <div className="p-4 rounded-xl bg-sky-50/70 dark:bg-sky-950/20 border border-sky-200/80 dark:border-sky-800/60 flex items-start gap-3">
+            <ShieldCheck size={20} className="text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
+            <div className="text-xs text-sky-900 dark:text-sky-200 leading-relaxed">
+              <strong className="font-bold">Aderência às Normas LGPD (Lei 13.709/2018 - Art. 6º e 46):</strong>
+              <p className="mt-0.5 text-sky-800 dark:text-sky-300">
+                O acesso ao Portal do Colaborador implementa o princípio da estrita necessidade e minimização de dados. Os colaboradores autenticam-se com credenciais seguras hash Scrypt exclusivamente para assinar seus próprios Termos de Responsabilidade CLT (com selo HMAC-SHA256) e abrir chamados de TI. Nenhum dado sensível ou telemetria invasiva de tela/comportamento é coletado.
+              </p>
+            </div>
+          </div>
+
+          {/* Lista de Colaboradores com Acesso Ativo ao Portal */}
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-black text-slate-900 dark:text-white text-base">
+                  Usuários Cadastrados com Acesso ao Portal
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {portalUsers.length} conta(s) ativas no Gateway para a Shineray
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={loadPortalUsers}
+                className="text-xs font-bold text-slate-500 hover:text-brand flex items-center gap-1.5 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                title="Recarregar lista"
+              >
+                <RefreshCcw size={14} className={loadingPortalUsers ? 'animate-spin' : ''} />
+                <span>Atualizar</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {portalUsers
+                .filter((u) => {
+                  if (!searchTerm) return true;
+                  const term = searchTerm.toLowerCase();
+                  return (
+                    (u.name || '').toLowerCase().includes(term) ||
+                    (u.email || '').toLowerCase().includes(term) ||
+                    (u.department || '').toLowerCase().includes(term)
+                  );
+                })
+                .map((u) => (
+                  <div
+                    key={u.id}
+                    className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/40 flex flex-col justify-between space-y-3"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                          {u.name}
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                          {u.role === 'collaborator' ? 'Colaborador' : u.role}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate" title={u.email}>
+                        {u.email}
+                      </p>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-xs">
+                      <span className="text-slate-500 dark:text-slate-400 text-[11px] truncate">
+                        {u.department || 'Geral'} • {u.job_title || 'Colaborador'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(u.email);
+                          toast.success(`E-mail ${u.email} copiado!`);
+                        }}
+                        className="text-[11px] font-bold text-brand hover:underline shrink-0"
+                      >
+                        Copiar E-mail
+                      </button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      ) : loading ? (
           <div className="text-center py-20 text-gray-400 dark:text-gray-500 animate-pulse">Carregando dados...</div>
       ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -556,6 +924,71 @@ const EmployeeManager = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação & Cópia de Credenciais do Portal */}
+      {createdCredentialsModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 w-full max-w-md rounded-2xl shadow-2xl p-6 relative space-y-4">
+            <button
+              onClick={() => setCreatedCredentialsModal(null)}
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <Check size={20} />
+              </div>
+              <div>
+                <h3 className="font-black text-slate-900 dark:text-white text-base">
+                  Acesso Criado com Sucesso!
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Transmita as credenciais abaixo ao colaborador com segurança.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-xs font-mono">
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Colaborador</span>
+                <span className="text-slate-900 dark:text-white font-bold">{createdCredentialsModal.name}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Link do Portal</span>
+                <span className="text-brand break-all">{createdCredentialsModal.portalUrl}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">E-mail</span>
+                <span className="text-slate-900 dark:text-white">{createdCredentialsModal.email}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Senha Provisória</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-black text-sm">{createdCredentialsModal.password}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => handleCopyFullCredentials(createdCredentialsModal)}
+                className="flex-1 bg-brand hover:bg-brand-dark text-white font-bold py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-2 text-xs shadow-sm"
+              >
+                <Copy size={15} />
+                <span>Copiar Credenciais Completas</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreatedCredentialsModal(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}

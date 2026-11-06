@@ -20,7 +20,7 @@ export const getEmployees = async (tenantId) => {
       email: u.email,
       role: u.role,
       sector: u.department || 'TI Corporativa',
-      branch: 'Matriz - 4º Andar',
+      branch: 'Matriz Belém',
       cpf: '',
       tenantId: u.tenantId || tenantId,
     }));
@@ -98,10 +98,12 @@ export const getSectors = async (tenantId) => {
   if (!tenantId) return [];
   if (isGatewayActiveSession()) {
     return [
-      { id: 'sec-1', name: 'Governança & Infraestrutura TI', tenantId },
-      { id: 'sec-2', name: 'Engenharia de Produto', tenantId },
-      { id: 'sec-3', name: 'Service Desk N2', tenantId },
-      { id: 'sec-4', name: 'Operações', tenantId },
+      { id: 'sec-1', name: 'Diretoria Executiva', tenantId },
+      { id: 'sec-2', name: 'TI & Infraestrutura', tenantId },
+      { id: 'sec-3', name: 'Vendas Concessionária', tenantId },
+      { id: 'sec-4', name: 'Vendas & Pós-Vendas', tenantId },
+      { id: 'sec-5', name: 'Estoque TI', tenantId },
+      { id: 'sec-6', name: 'Administrativo & Financeiro', tenantId },
     ];
   }
   const q = query(

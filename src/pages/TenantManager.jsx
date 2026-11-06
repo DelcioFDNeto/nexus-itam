@@ -15,7 +15,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  AlertTriangle, Building2, ChevronRight, CircleDollarSign, Pause, Play, PlusSquare, RefreshCcw, Search, X,
+  AlertTriangle, Building2, ChevronRight, CircleDollarSign, Pause, Play, PlusSquare, RefreshCcw, Search, ShieldCheck, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { describeFirebaseError, loadConsoleSnapshot, provisionTenant, updateTenant } from '../services/tenantService';
@@ -218,6 +218,19 @@ const TenantManager = () => {
               Com alertas <X size={12} />
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Governança e DPA (Data Processing Agreement) LGPD */}
+      <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <ShieldCheck size={18} className="text-emerald-400 shrink-0" />
+          <span className="truncate">
+            <strong className="text-white font-bold">Acordo de Processamento de Dados (DPA):</strong> Isolamento lógico multi-tenant e hash criptográfico para conformidade com a LGPD (Lei 13.709/2018).
+          </span>
+        </div>
+        <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-[10px] font-bold shrink-0">
+          DPA Ativo • Shineray
         </div>
       </div>
 

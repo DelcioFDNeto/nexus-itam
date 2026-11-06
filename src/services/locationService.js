@@ -25,10 +25,11 @@ export const getLocations = async (tenantId) => {
   if (!tenantId) return [];
   if (isGatewayActiveSession()) {
     return [
-      { id: 'loc-1', name: 'Matriz - 4º Andar', region: 'São Paulo', kind: 'matriz', tenantId },
-      { id: 'loc-2', name: 'Matriz - Cofre TI', region: 'São Paulo', kind: 'matriz', tenantId },
-      { id: 'loc-3', name: 'CD Barueri', region: 'São Paulo', kind: 'deposito', tenantId },
-      { id: 'loc-4', name: 'Home Office', region: 'Outros', kind: 'outro', tenantId },
+      { id: 'loc-1', name: 'Matriz Belém - TI', region: 'Pará', kind: 'matriz', tenantId },
+      { id: 'loc-2', name: 'Matriz Belém - Comercial', region: 'Pará', kind: 'matriz', tenantId },
+      { id: 'loc-3', name: 'Filial Ananindeua', region: 'Pará', kind: 'loja', tenantId },
+      { id: 'loc-4', name: 'Filial Barcarena', region: 'Pará', kind: 'loja', tenantId },
+      { id: 'loc-5', name: 'Home Office', region: 'Outros', kind: 'outro', tenantId },
     ];
   }
   const q = query(locationsCollection(), where('tenantId', '==', tenantId), orderBy('name', 'asc'));

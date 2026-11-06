@@ -11,7 +11,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { collection, deleteDoc, doc, getDocs, serverTimestamp, updateDoc } from 'firebase/firestore';
 import {
-  CheckCircle, Edit, KeyRound, Mail, Pause, Play, RefreshCcw, Save, Search, Trash2, Users, X, XCircle,
+  CheckCircle, Edit, KeyRound, Mail, Pause, Play, RefreshCcw, Save, Search, ShieldCheck, Trash2, Users, X, XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '../services/firebase';
@@ -26,12 +26,14 @@ const ROLE_STYLE = {
   superadmin: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
   owner: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
   admin: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
+  collaborator: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
 };
 
 const fieldClass =
   'w-full px-3 py-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand text-sm font-semibold text-gray-900 dark:text-white';
 
-const rolesForTenant = (tenantId) => (tenantId === MASTER_TENANT ? ['superadmin'] : TENANT_ROLES);
+const rolesForTenant = (tenantId) =>
+  tenantId === MASTER_TENANT ? ['superadmin'] : [...TENANT_ROLES, 'collaborator'];
 
 const toDate = (value) => (value?.toDate ? value.toDate() : null);
 
@@ -197,6 +199,14 @@ const NexusUserManager = () => {
         </button>
       </div>
 
+      {/* Aviso LGPD de Minimização de Dados */}
+      <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 flex items-center gap-3">
+        <ShieldCheck size={18} className="text-emerald-400 shrink-0" />
+        <div className="leading-relaxed">
+          <strong className="text-white font-bold">Privacidade & LGPD (Art. 6º, III):</strong> Visão administrativa restrita à gestão de acesso. Dados sensíveis e telemetria de tela de colaboradores são tecnicamente isolados para proteção da privacidade dos clientes e colaboradores da Shineray.
+        </div>
+      </div>
+
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center">
         <div className="relative w-full md:flex-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -211,7 +221,7 @@ const NexusUserManager = () => {
         <div className="flex flex-wrap gap-2">
           <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} aria-label="Filtrar por papel" className="text-xs bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-2.5 font-bold text-gray-600 dark:text-slate-300 cursor-pointer focus:outline-none">
             <option value="ALL">Todos os papéis</option>
-            {['superadmin', ...TENANT_ROLES].map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+            {['superadmin', ...TENANT_ROLES, 'collaborator'].map((r) => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
           </select>
           <select
             value={tenantFilter}

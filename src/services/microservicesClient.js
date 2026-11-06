@@ -178,6 +178,8 @@ export const microservicesApi = {
   },
   getMe: () => gatewayRequest('/api/v1/auth/me'),
   listUsers: () => gatewayRequest('/api/v1/auth/users'),
+  createUser: (payload) =>
+    gatewayRequest('/api/v1/auth/users', { method: 'POST', body: payload }),
 
   // API 1 (REST) — Gestão de Ativos (`service-assets`)
   listAssets: (params = {}) => {
