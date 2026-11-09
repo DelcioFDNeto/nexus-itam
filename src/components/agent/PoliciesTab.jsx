@@ -46,7 +46,7 @@ const PoliciesTab = ({ tenantId, currentUser, agentToken, onTokenChange }) => {
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [tokenVisible, setTokenVisible] = useState(false);
-  const [autoAccept, setAutoAccept] = useState(false);
+  const [autoAccept, setAutoAccept] = useState(true);
   const [trustedIps, setTrustedIps] = useState('');
   const [naming, setNaming] = useState(DEFAULT_AGENT_NAMING);
   const [policy, setPolicy] = useState({ ...DEFAULT_AGENT_POLICY, blockedSoftware: '', requiredSoftware: '' });
@@ -84,7 +84,7 @@ const PoliciesTab = ({ tenantId, currentUser, agentToken, onTokenChange }) => {
         if (!active) return;
         const data = snap.exists() ? snap.data() : {};
         const resolved = resolveAgentPolicy(data);
-        setAutoAccept(Boolean(data.autoAcceptEnabled));
+        setAutoAccept(data.autoAcceptEnabled !== false);
         setTrustedIps(data.trustedIps || '');
         setNaming({ ...DEFAULT_AGENT_NAMING, ...(data.agentNaming || {}) });
         setPolicy({ ...resolved, blockedSoftware: toLines(resolved.blockedSoftware), requiredSoftware: toLines(resolved.requiredSoftware) });
@@ -181,7 +181,7 @@ const PoliciesTab = ({ tenantId, currentUser, agentToken, onTokenChange }) => {
       <section className={card}>
         <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2"><Zap size={18} className="text-emerald-500" /> Aceite automático</h3>
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          Ligado, o sistema incorpora sozinho o que as máquinas mandam: enquanto um administrador estiver com o Nexus aberto, a fila é processada a cada 10 minutos.
+          Ligado, o sistema incorpora em tempo real o que as máquinas mandam enquanto um administrador estiver com o Nexus aberto.
         </p>
         <label className="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" checked={autoAccept} onChange={(e) => setAutoAccept(e.target.checked)} className="h-5 w-5" disabled={!loaded} />

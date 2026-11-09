@@ -22,6 +22,7 @@ import {
   getDoc,
   getDocs,
   limit,
+  onSnapshot,
   orderBy,
   query,
   runTransaction,
@@ -408,6 +409,22 @@ export const getAgentSubmissions = async (tenantId, max = 100) => {
   return snapshot.docs.map((submission) => ({ id: submission.id, ...submission.data() }));
 };
 
+/** Escuta a fila de recepcao do agente em tempo real. */
+export const subscribeAgentSubmissions = (tenantId, onUpdate, max = 100) => {
+  if (!tenantId || typeof onSnapshot !== 'function') return () => {};
+  const q = query(agentInboxCollection, where('tenantId', '==', tenantId), orderBy('createdAt', 'desc'), limit(max));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const items = (snapshot?.docs || []).map((submission) => ({ id: submission.id, ...submission.data() }));
+      onUpdate(items);
+    },
+    (err) => {
+      console.warn('Falha ao escutar fila do agente:', err);
+    },
+  );
+};
+
 /** Reserva o envio para este navegador. Devolve null se outro ja pegou. */
 const claimSubmission = (submissionId, user) =>
   runTransaction(db, async (tx) => {
@@ -445,7 +462,7 @@ const finishSubmission = (submission, patch) =>
  */
 export const processAgentInbox = async ({ tenantId, user, ids = null, max = 50, canCreate = null, trustedOnly = false, onProgress = null }) => {
   requireTenant(tenantId);
-  const summary = { processed: 0, created: 0, updated: 0, alerts: 0, skipped: 0, errors: [] };
+  const summary = { processed: 0, created: 0, updated: 0, alerts: 0, skipped: 0, errors: [], items: [] };
 
   let candidates;
   if (ids?.length) {
@@ -483,6 +500,12 @@ export const processAgentInbox = async ({ tenantId, user, ids = null, max = 50, 
       summary.processed += 1;
       summary[result.action] += 1;
       summary.alerts += result.alerts;
+      summary.items.push({
+        id: claimed.id,
+        hostname: claimed.hostname || inventory.hostname,
+        internalId: result.internalId,
+        action: result.action,
+      });
     } catch (error) {
       console.error('Falha ao processar envio do agente:', error);
       summary.errors.push({ id: claimed.id, hostname: claimed.hostname, message: error.message });

@@ -1,10 +1,11 @@
 // src/components/agent/RemoteControlModal.jsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
   ArrowUpCircle,
   Camera,
+  CheckCircle2,
   Cpu,
   Hand,
   HardDrive,
@@ -55,6 +56,7 @@ import {
   updateRemoteQuality,
   wakeAgentDevice,
 } from '../../services/rmmService';
+import { processAgentInbox } from '../../services/agentService';
 import { AGENT_VERSION, isAgentOutdated } from '../../utils/agentInventory';
 import { can } from '../../utils/permissions';
 
@@ -108,10 +110,12 @@ export default function RemoteControlModal({
   const [mobileKbOpen, setMobileKbOpen] = useState(false);
   const [updatingAgent, setUpdatingAgent] = useState(false);
 
-  // Estado do Terminal PowerShell
+  // Estado do Terminal PowerShell e Feedback de Ordens
   const [psInput, setPsInput] = useState('');
   const [commandHistory, setCommandHistory] = useState([]);
   const [runningCmdId, setRunningCmdId] = useState('');
+  const [runningCmdLabel, setRunningCmdLabel] = useState('');
+  const [syncingInventory, setSyncingInventory] = useState(false);
 
   // Estado de Processos
   const [procFilter, setProcFilter] = useState('');
@@ -129,6 +133,8 @@ export default function RemoteControlModal({
   const inputQueueRef = useRef([]);
   const lastClearedAckRef = useRef(0);
   const flushTimerRef = useRef(null);
+  const syncTimersRef = useRef([]);
+  const lastProcessedCmdIdRef = useRef('');
   const lastMouseMoveAtRef = useRef(0);
   const sessionIdRef = useRef('');
   const touchStateRef = useRef({
@@ -154,6 +160,69 @@ export default function RemoteControlModal({
   // "Sem supervisao" so existe se a empresa liberou na politica.
   const effectiveMode = policy.remoteAccess === 'unattended' ? sessionMode : 'attended';
 
+  const clearSyncTimers = useCallback(() => {
+    syncTimersRef.current.forEach((t) => clearTimeout(t));
+    syncTimersRef.current = [];
+  }, []);
+
+  const incorporatePendingInventory = useCallback(
+    async (targetCmdId = '', notifyWhenEmpty = false) => {
+      if (!tenantId) return null;
+      try {
+        setSyncingInventory(true);
+        const summary = await processAgentInbox({
+          tenantId,
+          user: currentUser?.email || operatorName,
+        });
+        if (summary?.processed > 0) {
+          const itemInfo =
+            summary.items?.find(
+              (it) =>
+                String(it.hostname || '').toUpperCase() === String(hostLabel || '').toUpperCase() ||
+                String(it.internalId || '').toUpperCase() === String(hostLabel || '').toUpperCase(),
+            ) || summary.items?.[0];
+          const tagLabel = itemInfo?.internalId || hostLabel || 'Equipamento';
+          const actionLabel = itemInfo?.action === 'created' ? 'cadastrado no patrimônio' : 'atualizado no patrimônio';
+          const note = `\n[Inventário Incorporado] ${tagLabel} ${actionLabel} (${summary.created} novo(s), ${summary.updated} atualizado(s)).`;
+          if (targetCmdId) {
+            setCommandHistory((prev) =>
+              prev.map((entry) =>
+                entry.commandId === targetCmdId && !String(entry.output || '').includes('[Inventário Incorporado]')
+                  ? { ...entry, output: `${entry.output || ''}${note}`.trim() }
+                  : entry,
+              ),
+            );
+          }
+          toast.success(`Inventário de ${tagLabel} incorporado com sucesso na base de ativos!`);
+          return summary;
+        }
+        if (notifyWhenEmpty) {
+          toast.info('Nenhum envio pendente na fila de inventário neste momento.');
+        }
+      } catch (err) {
+        console.warn('Falha ao incorporar fila do agente:', err);
+      } finally {
+        setSyncingInventory(false);
+      }
+      return null;
+    },
+    [tenantId, currentUser?.email, operatorName, hostLabel],
+  );
+
+  const scheduleInventoryIncorporation = useCallback(
+    (cmdId = '') => {
+      clearSyncTimers();
+      incorporatePendingInventory(cmdId, false);
+      [6_000, 15_000, 26_000, 38_000].forEach((delayMs) => {
+        const timer = setTimeout(() => {
+          incorporatePendingInventory(cmdId, false);
+        }, delayMs);
+        syncTimersRef.current.push(timer);
+      });
+    },
+    [clearSyncTimers, incorporatePendingInventory],
+  );
+
   useEffect(() => {
     setActiveTab(initialTab || 'screen');
   }, [initialTab, isOpen]);
@@ -161,6 +230,13 @@ export default function RemoteControlModal({
   useEffect(() => {
     setLiveDevice(initialDevice || null);
   }, [initialDevice]);
+
+  // Ao abrir o modal de controle remoto, ja processa qualquer inventario pendente na fila (ex: SHL-BEL-NTB-031)
+  useEffect(() => {
+    if (!isOpen || !tenantId) return undefined;
+    incorporatePendingInventory('', false);
+    return () => clearSyncTimers();
+  }, [isOpen, tenantId, incorporatePendingInventory, clearSyncTimers]);
 
   useEffect(() => {
     if (!isOpen || !tenantId || !deviceKey) return undefined;
@@ -212,7 +288,7 @@ export default function RemoteControlModal({
     if (!isOpen || !tenantId || !deviceKey) return undefined;
     const wake = () => wakeAgentDevice({ tenantId, deviceKey }).catch(() => {});
     wake();
-    const timer = setInterval(wake, 90_000);
+    const timer = setInterval(wake, 45_000);
     return () => clearInterval(timer);
   }, [isOpen, tenantId, deviceKey]);
 
@@ -231,11 +307,31 @@ export default function RemoteControlModal({
       if (prev.some((item) => item.commandId === res.commandId)) return prev;
       return [res, ...prev].slice(0, 30);
     });
+    const isNewCompletion = lastProcessedCmdIdRef.current !== res.commandId;
+    if (isNewCompletion) {
+      lastProcessedCmdIdRef.current = res.commandId;
+      if (
+        res.type === REMOTE_COMMANDS.FORCE_INVENTORY ||
+        res.command === 'sync' ||
+        /inventario/i.test(String(res.output || ''))
+      ) {
+        scheduleInventoryIncorporation(res.commandId);
+      }
+    }
     if (runningCmdId && res.commandId === runningCmdId) {
       setRunningCmdId('');
-      toast.success('Resposta recebida do computador remoto.');
+      setRunningCmdLabel('');
+      if (Number(res.exitCode) && Number(res.exitCode) !== 0) {
+        toast.error(res.output || 'O agente reportou falha ao executar o comando.');
+      } else {
+        toast.success(
+          res.type === REMOTE_COMMANDS.FORCE_INVENTORY || res.command === 'sync'
+            ? 'Coleta recebida pelo agente! Incorporando dados no inventário...'
+            : 'Ordem executada com sucesso pelo computador remoto!',
+        );
+      }
     }
-  }, [liveDevice?.lastCommandResult, runningCmdId]);
+  }, [liveDevice?.lastCommandResult, runningCmdId, scheduleInventoryIncorporation]);
 
   // Encerra sessao e limpa frame ao desmontar, fechar modal ou fechar aba do navegador
   useEffect(() => {
@@ -253,8 +349,9 @@ export default function RemoteControlModal({
         stopRemoteSession({ tenantId, deviceKey }).catch(() => {});
       }
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      clearSyncTimers();
     };
-  }, [sessionId, tenantId, deviceKey]);
+  }, [sessionId, tenantId, deviceKey, clearSyncTimers]);
 
   if (!isOpen) return null;
 
@@ -279,8 +376,9 @@ export default function RemoteControlModal({
   const isWaitingConsent = ownState === 'awaiting_consent';
   const isWaitingAgent = Boolean(sessionId) && !ownState;
   const endedState = !sessionId && lastSessionId && remoteState.sessionId === lastSessionId ? remoteState.state : '';
-  const responseSeconds = Number(liveDevice?.heartbeatSeconds) || policy.heartbeatSeconds;
+  const responseSeconds = Math.min(30, Number(liveDevice?.heartbeatSeconds) || policy.heartbeatSeconds || 30);
   const isAdmin = can(currentUser, 'agent:manage');
+  const latestCommandEntry = commandHistory[0] || null;
 
   const queueInputEvent = (ev) => {
     if (!sessionId || !controlEnabled) return;
@@ -331,8 +429,8 @@ export default function RemoteControlModal({
       setLastSessionId(newSessionId);
       toast.success(
         effectiveMode === 'attended'
-          ? `Pedido NexusDesk enviado. A máquina responde em até ${responseSeconds} s e o colaborador precisa aceitar na tela.`
-          : `Pedido NexusDesk enviado. A transmissão começa quando a máquina responder (até ${responseSeconds} s).`
+          ? `Pedido NexusDesk enviado. A máquina responde em instantes e o colaborador aceita na tela.`
+          : `Pedido NexusDesk enviado. A transmissão começa assim que a máquina responder.`
       );
     } catch (e) {
       toast.error(e?.message || 'Falha ao iniciar sessão NexusDesk.');
@@ -604,7 +702,13 @@ export default function RemoteControlModal({
         user: currentUser,
       });
       setRunningCmdId(sent.id);
-      toast.success(`Comando enviado. A máquina executa em até ${responseSeconds} s.`);
+      setRunningCmdLabel(title || `${type}: ${String(command).slice(0, 80)}`);
+      if (type === REMOTE_COMMANDS.FORCE_INVENTORY) {
+        scheduleInventoryIncorporation(sent.id);
+        toast.success(`Coleta completa disparada em ${patrimony}! Os dados serão incorporados automaticamente.`);
+      } else {
+        toast.success(`Ordem enviada para ${patrimony}. Aguardando retorno do agente...`);
+      }
     } catch (e) {
       toast.error(e?.message || 'Erro ao enviar comando remoto.');
     }
@@ -632,6 +736,7 @@ export default function RemoteControlModal({
         user: currentUser,
       });
       setRunningCmdId(sent.id);
+      setRunningCmdLabel(`Atualização OTA NexusAgent v${AGENT_VERSION}`);
       toast.success(`Atualização v${AGENT_VERSION} enviada para ${patrimony}! O serviço reiniciará em instantes.`);
     } catch (e) {
       toast.error(e?.message || 'Não foi possível enviar a atualização do agente.');
@@ -645,6 +750,10 @@ export default function RemoteControlModal({
     if (!psInput.trim()) return;
     const cmd = psInput.trim();
     setPsInput('');
+    if (cmd.toLowerCase() === 'sync') {
+      await handleSendCommand(REMOTE_COMMANDS.FORCE_INVENTORY, 'sync', 'Sincronização Completa de Inventário');
+      return;
+    }
     await handleSendCommand(REMOTE_COMMANDS.POWERSHELL, cmd);
   };
 
@@ -656,7 +765,7 @@ export default function RemoteControlModal({
       confirmLabel: 'Finalizar Processo',
     });
     if (!ok) return;
-    await handleSendCommand(REMOTE_COMMANDS.KILL_PROCESS, String(proc.pid));
+    await handleSendCommand(REMOTE_COMMANDS.KILL_PROCESS, String(proc.pid), `Finalizar ${proc.name} (PID ${proc.pid})`);
   };
 
   const handlePowerAction = async (actionType, label) => {
@@ -667,7 +776,7 @@ export default function RemoteControlModal({
       confirmLabel: label,
     });
     if (!ok) return;
-    await handleSendCommand(actionType, label);
+    await handleSendCommand(actionType, label, label);
   };
 
   const handleRevoke = async () => {
@@ -819,6 +928,53 @@ export default function RemoteControlModal({
             );
           })}
         </div>
+
+        {/* Barra de Feedback de Execução de Ordens (visível em Processos e Ações) */}
+        {activeTab !== 'screen' && (runningCmdId || syncingInventory || latestCommandEntry) && (
+          <div className="px-4 md:px-6 py-2.5 bg-slate-900/95 border-b border-slate-800 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0">
+            {runningCmdId || syncingInventory ? (
+              <div className="flex items-center gap-2 text-amber-300 font-semibold">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                <span>
+                  {runningCmdId
+                    ? `Executando ordem remota em ${patrimony} (${runningCmdLabel || 'aguardando agente'})...`
+                    : `Sincronizando e incorporando dados de inventário de ${patrimony} na base patrimonial...`}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-start sm:items-center gap-2 text-emerald-300 min-w-0">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 sm:mt-0 text-emerald-400" />
+                <div className="min-w-0 truncate">
+                  <span className="font-bold text-white">
+                    Último retorno ({latestCommandEntry.completedAt ? new Date(latestCommandEntry.completedAt).toLocaleTimeString('pt-BR') : 'agora'}):
+                  </span>{' '}
+                  <span className="font-mono text-emerald-300">
+                    {String(latestCommandEntry.output || '(Concluído)').replace(/\s+/g, ' ').slice(0, 140)}
+                  </span>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-2 shrink-0">
+              {activeTab !== 'terminal' && latestCommandEntry && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('terminal')}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-blue-300 font-bold text-[11px]"
+                >
+                  Ver saída completa
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => incorporatePendingInventory(latestCommandEntry?.commandId || '', true)}
+                disabled={syncingInventory}
+                className="px-2.5 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 font-bold text-[11px] disabled:opacity-40"
+              >
+                {syncingInventory ? 'Incorporando...' : 'Sincronizar Fila Agora'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Main Tab Content */}
         <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
@@ -1152,7 +1308,7 @@ export default function RemoteControlModal({
                   {QUICK_POWERSHELL_ACTIONS.map((item) => (
                     <button
                       key={item.id}
-                      onClick={() => handleSendCommand(REMOTE_COMMANDS.POWERSHELL, item.command)}
+                      onClick={() => handleSendCommand(REMOTE_COMMANDS.POWERSHELL, item.command, item.label)}
                       className="flex flex-col items-start p-3 rounded-xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 text-left transition-all"
                     >
                       <span className="font-bold text-xs text-gray-900 dark:text-white flex items-center gap-1.5">
@@ -1445,10 +1601,11 @@ export default function RemoteControlModal({
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                   <button
-                    onClick={() => handleSendCommand(REMOTE_COMMANDS.FORCE_INVENTORY, 'sync')}
-                    className="flex items-center gap-2.5 p-3 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-bold text-xs transition-colors"
+                    onClick={() => handleSendCommand(REMOTE_COMMANDS.FORCE_INVENTORY, 'sync', 'Coleta Completa de Inventário')}
+                    disabled={syncingInventory}
+                    className="flex items-center gap-2.5 p-3 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-bold text-xs transition-colors disabled:opacity-50"
                   >
-                    <RefreshCw className="w-4 h-4 shrink-0" />
+                    <RefreshCw className={`w-4 h-4 shrink-0 ${syncingInventory ? 'animate-spin' : ''}`} />
                     Forçar Coleta de Inventário
                   </button>
                   <button
@@ -1512,7 +1669,7 @@ export default function RemoteControlModal({
                   {WINGET_PRESETS.map((preset) => (
                     <button
                       key={preset.pkg}
-                      onClick={() => handleSendCommand(REMOTE_COMMANDS.INSTALL_WINGET, preset.pkg)}
+                      onClick={() => handleSendCommand(REMOTE_COMMANDS.INSTALL_WINGET, preset.pkg, `Instalar ${preset.label}`)}
                       className="px-3 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/50 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-bold text-xs transition-colors"
                     >
                       + {preset.label}
@@ -1532,7 +1689,7 @@ export default function RemoteControlModal({
                     <button
                       onClick={() => {
                         if (!wingetPkg.trim()) return;
-                        handleSendCommand(REMOTE_COMMANDS.INSTALL_WINGET, wingetPkg.trim());
+                        handleSendCommand(REMOTE_COMMANDS.INSTALL_WINGET, wingetPkg.trim(), `Instalar ${wingetPkg.trim()}`);
                         setWingetPkg('');
                       }}
                       disabled={!wingetPkg.trim()}
@@ -1553,7 +1710,7 @@ export default function RemoteControlModal({
                     <button
                       onClick={() => {
                         if (!uninstallName.trim()) return;
-                        handleSendCommand(REMOTE_COMMANDS.UNINSTALL_SOFTWARE, uninstallName.trim());
+                        handleSendCommand(REMOTE_COMMANDS.UNINSTALL_SOFTWARE, uninstallName.trim(), `Desinstalar ${uninstallName.trim()}`);
                         setUninstallName('');
                       }}
                       disabled={!uninstallName.trim()}

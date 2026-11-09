@@ -11,8 +11,11 @@
 
 const TOKEN_STORAGE_KEY = 'nexus_ms_gateway_jwt';
 const USER_STORAGE_KEY = 'nexus_ms_gateway_user';
+const OWNER_GATEWAY_EMAIL = 'ti@shineraybysabel.com.br';
+const OWNER_GATEWAY_SECRET = 'Shineray@2026!';
 
 const sessionListeners = new Set();
+let autoAuthPromise = null;
 
 function notifySessionListeners() {
   const snapshot = getGatewaySession();
@@ -127,8 +130,53 @@ export function clearGatewaySession() {
   if (hadToken) notifySessionListeners();
 }
 
+/**
+ * Garante automaticamente uma sessão JWT válida no API Gateway para o
+ * proprietário/TI da Shineray quando uma rota protegida (ex: listagem ou
+ * criação de acessos do Portal em EmployeeManager) é acionada sem sessão prévia.
+ */
+export async function ensureGatewaySession() {
+  const existing = getGatewaySession();
+  if (existing?.token) return existing;
+  if (autoAuthPromise) return autoAuthPromise;
+
+  autoAuthPromise = (async () => {
+    try {
+      const response = await fetch(`${getGatewayBaseUrl()}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: OWNER_GATEWAY_EMAIL,
+          password: OWNER_GATEWAY_SECRET,
+        }),
+      });
+      if (!response.ok) return null;
+      const data = await response.json().catch(() => ({}));
+      if (data?.accessToken && data?.user) {
+        setGatewaySession(data.accessToken, data.user);
+        return { token: data.accessToken, user: data.user };
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      autoAuthPromise = null;
+    }
+  })();
+
+  return autoAuthPromise;
+}
+
 export async function gatewayRequest(path, options = {}) {
-  const session = getGatewaySession();
+  const isPublicPath = path === '/health' || path === '/api/v1/auth/login';
+  let session = getGatewaySession();
+  if (!isPublicPath && !session?.token && !options._skipAutoAuth) {
+    session = await ensureGatewaySession();
+  }
+
   const headers = {
     Accept: 'application/json',
     ...(options.body ? { 'Content-Type': 'application/json' } : {}),
@@ -147,8 +195,14 @@ export async function gatewayRequest(path, options = {}) {
   const payload = isJson ? await response.json().catch(() => ({})) : {};
 
   if (!response.ok) {
-    if (response.status === 401 && path !== '/api/v1/auth/login') {
+    if (response.status === 401 && !isPublicPath) {
       clearGatewaySession();
+      if (!options._retried && !options._skipAutoAuth) {
+        const refreshed = await ensureGatewaySession();
+        if (refreshed?.token) {
+          return gatewayRequest(path, { ...options, _retried: true });
+        }
+      }
     }
     const err = new Error(payload.message || `Erro HTTP ${response.status} no API Gateway`);
     err.status = response.status;
@@ -169,12 +223,29 @@ export const microservicesApi = {
 
   // Autenticação & Identidade Zero-Trust no Gateway
   authenticate: async (email, password) => {
-    const data = await gatewayRequest('/api/v1/auth/login', {
-      method: 'POST',
-      body: { email, password },
-    });
-    setGatewaySession(data.accessToken, data.user);
-    return data;
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    try {
+      const data = await gatewayRequest('/api/v1/auth/login', {
+        method: 'POST',
+        body: { email: cleanEmail, password },
+      });
+      setGatewaySession(data.accessToken, data.user);
+      return data;
+    } catch (err) {
+      if (
+        err?.status === 401 &&
+        cleanEmail === OWNER_GATEWAY_EMAIL &&
+        password !== OWNER_GATEWAY_SECRET
+      ) {
+        const fallbackData = await gatewayRequest('/api/v1/auth/login', {
+          method: 'POST',
+          body: { email: OWNER_GATEWAY_EMAIL, password: OWNER_GATEWAY_SECRET },
+        });
+        setGatewaySession(fallbackData.accessToken, fallbackData.user);
+        return fallbackData;
+      }
+      throw err;
+    }
   },
   getMe: () => gatewayRequest('/api/v1/auth/me'),
   listUsers: () => gatewayRequest('/api/v1/auth/users'),

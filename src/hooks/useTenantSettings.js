@@ -65,8 +65,9 @@ export const useTenantSettings = () => {
   if (isGateway && tenantId) {
     return {
       settings: {
-        companyName: currentUser?.companyName || 'Nexus Indústria & Tecnologia S.A.',
-        assetPrefix: currentUser?.assetPrefix || 'NEX',
+        companyName: currentUser?.companyName || 'Shineray By Sabel',
+        assetPrefix: currentUser?.assetPrefix || 'SHL',
+        autoAcceptEnabled: true,
       },
       loaded: true,
     };

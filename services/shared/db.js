@@ -780,7 +780,138 @@ export function resetMemoryStoreWithSeed() {
  * sido criados antes da canonicalização de chaves `JSONB`, garantindo que
  * `verify-chain` e `terms/:id/verify` passem 100% sem perda de dados.
  */
+async function reconcileProductionShinerayState(client) {
+  await client.query('ALTER TABLE auth_svc.users DROP CONSTRAINT IF EXISTS users_role_check');
+  await client.query(
+    "ALTER TABLE auth_svc.users ADD CONSTRAINT users_role_check CHECK (role IN ('owner', 'admin', 'manager', 'operator', 'viewer', 'collaborator'))",
+  );
+
+  const seed = buildSeedBundle();
+  for (const t of seed.tenants) {
+    await client.query(
+      `INSERT INTO auth_svc.tenants (id, name, cnpj, plan, asset_prefix, agent_token_hash, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         cnpj = EXCLUDED.cnpj,
+         plan = EXCLUDED.plan,
+         asset_prefix = EXCLUDED.asset_prefix,
+         status = 'active'`,
+      [t.id, t.name, t.cnpj, t.plan, t.asset_prefix, t.agent_token_hash, t.status, t.created_at],
+    );
+  }
+
+  await client.query(
+    `DELETE FROM auth_svc.users
+     WHERE email IN (
+       'danillo.portal@shineraybysabel.com.br',
+       'dono@shineraybysabel.com.br',
+       'admin@nexuscorp.com.br',
+       'colab@nexuscorp.com.br',
+       'gestor@alphalog.com.br'
+     )`,
+  );
+  await client.query(
+    "DELETE FROM auth_svc.tenants WHERE id IN ('nexus-corp', 'alpha-logistica')",
+  );
+
+  for (const u of seed.users) {
+    await client.query(
+      `INSERT INTO auth_svc.users (id, tenant_id, name, email, password_hash, role, department, job_title, active, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (email) DO UPDATE SET
+         tenant_id = EXCLUDED.tenant_id,
+         name = EXCLUDED.name,
+         password_hash = EXCLUDED.password_hash,
+         role = EXCLUDED.role,
+         department = EXCLUDED.department,
+         job_title = EXCLUDED.job_title,
+         active = TRUE`,
+      [u.id, u.tenant_id, u.name, u.email, u.password_hash, u.role, u.department, u.job_title, u.active, u.created_at],
+    );
+  }
+
+  for (const a of seed.assets) {
+    await client.query(
+      `INSERT INTO assets_svc.assets
+       (id, tenant_id, internal_id, type, brand, model, serial_number, status, location, department, assigned_to_name, assigned_to_email, purchase_value, specs, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16)
+       ON CONFLICT (tenant_id, internal_id) DO NOTHING`,
+      [
+        a.id, a.tenant_id, a.internal_id, a.type, a.brand, a.model, a.serial_number,
+        a.status, a.location, a.department, a.assigned_to_name, a.assigned_to_email,
+        a.purchase_value, JSON.stringify(a.specs), a.created_at, a.updated_at,
+      ],
+    );
+  }
+
+  for (const tk of seed.tickets) {
+    await client.query(
+      `INSERT INTO tickets_svc.tickets
+       (id, protocol, tenant_id, requester_name, requester_email, department, asset_id, asset_tag, category, priority, status, title, description, assigned_tech_name, resolution_notes, sla_due_at, resolved_at, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+       ON CONFLICT (protocol) DO NOTHING`,
+      [
+        tk.id, tk.protocol, tk.tenant_id, tk.requester_name, tk.requester_email, tk.department,
+        tk.asset_id, tk.asset_tag, tk.category, tk.priority, tk.status, tk.title, tk.description,
+        tk.assigned_tech_name, tk.resolution_notes, tk.sla_due_at, tk.resolved_at, tk.created_at, tk.updated_at,
+      ],
+    );
+  }
+
+  for (const cm of seed.ticketComments) {
+    await client.query(
+      `INSERT INTO tickets_svc.ticket_comments (id, ticket_id, tenant_id, author_name, author_email, author_role, message, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO NOTHING`,
+      [cm.id, cm.ticket_id, cm.tenant_id, cm.author_name, cm.author_email, cm.author_role, cm.message, cm.created_at],
+    );
+  }
+
+  for (const tr of seed.terms) {
+    await client.query(
+      `INSERT INTO compliance_svc.responsibility_terms
+       (id, tenant_id, term_type, employee_name, employee_email, employee_cpf, department, assets_snapshot, legal_clause, status, document_hash, signature_hash, signer_ip, signer_user_agent, issued_by, signed_at, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        tr.id, tr.tenant_id, tr.term_type, tr.employee_name, tr.employee_email, tr.employee_cpf,
+        tr.department, JSON.stringify(tr.assets_snapshot), tr.legal_clause, tr.status,
+        tr.document_hash, tr.signature_hash, tr.signer_ip, tr.signer_user_agent, tr.issued_by,
+        tr.signed_at, tr.created_at,
+      ],
+    );
+  }
+
+  for (const ac of seed.auditChain) {
+    await client.query(
+      `INSERT INTO compliance_svc.audit_chain
+       (id, tenant_id, actor_email, actor_role, action, resource_type, resource_id, payload, prev_hash, entry_hash, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        ac.id, ac.tenant_id, ac.actor_email, ac.actor_role, ac.action,
+        ac.resource_type, ac.resource_id, JSON.stringify(ac.payload), ac.prev_hash, ac.entry_hash, ac.created_at,
+      ],
+    );
+  }
+
+  for (const tl of seed.telemetry) {
+    await client.query(
+      `INSERT INTO telemetry_svc.device_telemetry
+       (id, tenant_id, device_key, hostname, serial_number, os_version, agent_version, ip_address, logged_user, cpu_percent, ram_percent, disk_percent, antivirus_active, firewall_active, last_seen_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       ON CONFLICT (tenant_id, device_key) DO NOTHING`,
+      [
+        tl.id, tl.tenant_id, tl.device_key, tl.hostname, tl.serial_number, tl.os_version,
+        tl.agent_version, tl.ip_address, tl.logged_user, tl.cpu_percent, tl.ram_percent,
+        tl.disk_percent, tl.antivirus_active, tl.firewall_active, tl.last_seen_at,
+      ],
+    );
+  }
+}
+
 async function reconcileCanonicalHashesIfNeeded(client) {
+  await reconcileProductionShinerayState(client);
   const seedTermIds = [
     'cccccccc-cccc-4ccc-8ccc-cccccccccc01',
     'cccccccc-cccc-4ccc-8ccc-cccccccccc02',

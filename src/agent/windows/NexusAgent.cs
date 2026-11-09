@@ -925,7 +925,7 @@ namespace NexusITAM
     {
         public string RemoteAccess = "consent";
         public bool CommandsEnabled = true;
-        public int HeartbeatSeconds = 120;
+        public int HeartbeatSeconds = 30;
 
         public static AgentPolicy From(Dictionary<string, object> fields)
         {
@@ -934,7 +934,7 @@ namespace NexusITAM
             string mode = Json.Str(fields, "remoteAccess");
             if (mode == "disabled" || mode == "consent" || mode == "unattended") p.RemoteAccess = mode;
             p.CommandsEnabled = Json.Bool(fields, "commandsEnabled", true);
-            p.HeartbeatSeconds = (int)Math.Max(30, Math.Min(900, Json.Long(fields, "heartbeatSeconds", 120)));
+            p.HeartbeatSeconds = (int)Math.Max(30, Math.Min(900, Json.Long(fields, "heartbeatSeconds", 30)));
             return p;
         }
     }
@@ -1661,7 +1661,7 @@ namespace NexusITAM
         private const int AwakeHeartbeatSeconds = 10;
         private const int AwakePollMs = 2000;
         private const int SessionPollMs = 700;
-        private const int FallbackPollMinutes = 10;
+        private const int FallbackPollMinutes = 1;
         private const int CommandMaxAgeMinutes = 15;
         private const int InventoryHours = 12;
 
@@ -2161,7 +2161,6 @@ namespace NexusITAM
             else if (_cloud.ToLocalClock(issued.Value) < MachineIdentity.BootTimeUtc.AddSeconds(-60))
                 refusal = "Comando emitido antes do ultimo reinicio desta maquina: ignorado.";
             else if (command.Length > Commands.MaxCommandLength) refusal = "Comando longo demais.";
-            else if (uiCommand && _isService) refusal = "Nenhum colaborador conectado nesta maquina para exibir a mensagem ou bloquear a tela.";
 
             if (refusal != null)
             {
@@ -2181,13 +2180,43 @@ namespace NexusITAM
                     if (type == "msgbox")
                     {
                         string title = Json.Str(cmd, "title");
-                        _ui.ShowMessage(string.IsNullOrEmpty(title) ? "Mensagem da TI - Nexus ITAM" : title, command);
-                        output = "Mensagem exibida na tela do colaborador.";
+                        string cleanTitle = string.IsNullOrEmpty(title) ? "Mensagem da TI - Nexus ITAM" : title;
+                        if (_ui != null)
+                        {
+                            _ui.ShowMessage(cleanTitle, command);
+                            output = "Mensagem exibida na tela do colaborador.";
+                        }
+                        else
+                        {
+                            string msgArgs = "* /TIME:120 \"" + (cleanTitle + " - " + command).Replace("\"", "'") + "\"";
+                            Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "msg.exe"), msgArgs) { CreateNoWindow = true, UseShellExecute = false });
+                            output = "Mensagem enviada para a sessao ativa do colaborador via servico.";
+                        }
                     }
                     else if (type == "lock_screen")
                     {
-                        _ui.LockScreen();
-                        output = "Estacao de trabalho bloqueada.";
+                        if (_ui != null)
+                        {
+                            _ui.LockScreen();
+                            output = "Estacao de trabalho bloqueada.";
+                        }
+                        else
+                        {
+                            Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "tsdiscon.exe")) { CreateNoWindow = true, UseShellExecute = false });
+                            output = "Estacao de trabalho bloqueada pelo servico.";
+                        }
+                    }
+                    else if (type == "force_inventory")
+                    {
+                        _inventoryRunning = true;
+                        try
+                        {
+                            output = RunInventory();
+                        }
+                        finally
+                        {
+                            _inventoryRunning = false;
+                        }
                     }
                     else
                     {
@@ -2446,7 +2475,7 @@ namespace NexusITAM
 
         // ---- inventario ------------------------------------------------------
 
-        private void RunInventory()
+        private string RunInventory()
         {
             if (_ui != null) _ui.SetSyncText("Coletando inventario...");
             Dictionary<string, object> payload = null;
@@ -2488,12 +2517,23 @@ namespace NexusITAM
                 _inventoryDueAt = DateTime.UtcNow.AddHours(InventoryHours);
                 AgentLog.Write("Inventario enviado ({0}).", source);
                 if (_ui != null) _ui.SetSyncText("Inventario enviado as " + DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture));
+                return string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Coleta completa de inventario concluida e sincronizada com a nuvem!\r\nHost: {0} | Patrimonio: {1} | Serial: {2}\r\nIP: {3} | SO: {4} | Fonte: {5}",
+                    Environment.MachineName,
+                    string.IsNullOrEmpty(_cfg.patrimony) ? Environment.MachineName : _cfg.patrimony,
+                    MachineIdentity.SerialNumber,
+                    ip,
+                    MachineIdentity.OsCaption,
+                    source
+                );
             }
             else
             {
                 _inventoryDueAt = DateTime.UtcNow.AddMinutes(30);
                 AgentLog.Write("Falha ao enviar inventario ({0}): {1}", status, _cloud.LastError);
                 if (_ui != null) _ui.SetSyncText("Falha ao enviar inventario; nova tentativa em 30 min.");
+                return string.Format(CultureInfo.InvariantCulture, "Falha ao enviar inventario ({0}): {1}", status, _cloud.LastError);
             }
         }
 

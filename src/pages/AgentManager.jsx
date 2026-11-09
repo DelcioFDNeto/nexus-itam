@@ -24,7 +24,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useAssets } from '../hooks/useAssets';
 import { useTenantSettings } from '../hooks/useTenantSettings';
 import { migrateLegacyAgentToken } from '../services/tenantSecretService';
-import { getAgentSubmissions, processAgentInbox } from '../services/agentService';
+import {
+  getAgentSubmissions,
+  processAgentInbox,
+  subscribeAgentSubmissions,
+} from '../services/agentService';
 import {
   formatAccessId,
   isDeviceOnline,
@@ -74,6 +78,7 @@ const AgentManager = () => {
   const { assets } = useAssets();
   const { settings } = useTenantSettings();
   const policy = resolveAgentPolicy(settings);
+  const autoAcceptEnabled = settings?.autoAcceptEnabled !== false;
   const [params, setParams] = useSearchParams();
   const tab = TABS.some((t) => t.id === params.get('aba')) ? params.get('aba') : 'frota';
   const setTab = (id) => setParams(id === 'frota' ? {} : { aba: id }, { replace: true });
@@ -107,7 +112,15 @@ const AgentManager = () => {
 
   useEffect(() => {
     loadInbox();
-  }, [loadInbox]);
+    if (!tenantId) return undefined;
+    const unsub = subscribeAgentSubmissions(tenantId, (items) => {
+      setSubmissions(items);
+      setLoadingInbox(false);
+    });
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [loadInbox, tenantId]);
 
   useEffect(() => {
     if (!tenantId) return undefined;
@@ -190,13 +203,13 @@ const AgentManager = () => {
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold ${
-              settings.autoAcceptEnabled
+              autoAcceptEnabled
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300'
                 : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
             }`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${settings.autoAcceptEnabled ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-            <span>Aceite automático {settings.autoAcceptEnabled ? 'ligado' : 'desligado'}</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${autoAcceptEnabled ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+            <span>Aceite automático {autoAcceptEnabled ? 'ligado' : 'desligado'}</span>
           </span>
           <button
             type="button"
