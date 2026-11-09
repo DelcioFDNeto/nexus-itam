@@ -802,20 +802,57 @@ async function reconcileProductionShinerayState(client) {
   }
 
   await client.query(
+    "DELETE FROM telemetry_svc.remote_commands WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')",
+  );
+  await client.query(
+    "DELETE FROM telemetry_svc.device_telemetry WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')",
+  );
+  await client.query(
+    `DELETE FROM compliance_svc.audit_chain
+     WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
+        OR actor_email IN ('danillo.portal@shineraybysabel.com.br', 'dono@shineraybysabel.com.br')`,
+  );
+  await client.query(
+    `DELETE FROM compliance_svc.responsibility_terms
+     WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
+        OR employee_email IN ('danillo.portal@shineraybysabel.com.br', 'dono@shineraybysabel.com.br')`,
+  );
+  await client.query(
+    `DELETE FROM tickets_svc.ticket_comments
+     WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
+        OR author_email IN ('danillo.portal@shineraybysabel.com.br', 'dono@shineraybysabel.com.br')`,
+  );
+  await client.query(
+    `DELETE FROM tickets_svc.tickets
+     WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
+        OR requester_email IN ('danillo.portal@shineraybysabel.com.br', 'dono@shineraybysabel.com.br')`,
+  );
+  await client.query(
+    "DELETE FROM assets_svc.asset_history WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')",
+  );
+  await client.query(
+    "DELETE FROM assets_svc.assets WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')",
+  );
+  await client.query(
     `DELETE FROM auth_svc.users
-     WHERE email IN (
-       'danillo.portal@shineraybysabel.com.br',
-       'dono@shineraybysabel.com.br',
-       'admin@nexuscorp.com.br',
-       'colab@nexuscorp.com.br',
-       'gestor@alphalog.com.br'
-     )`,
+     WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
+        OR email IN (
+          'danillo.portal@shineraybysabel.com.br',
+          'dono@shineraybysabel.com.br',
+          'admin@nexuscorp.com.br',
+          'colab@nexuscorp.com.br',
+          'mariana.costa@nexuscorp.com.br',
+          'suporte@nexuscorp.com.br',
+          'ti@alphalogistica.com.br',
+          'gestor@alphalog.com.br'
+        )`,
   );
   await client.query(
     "DELETE FROM auth_svc.tenants WHERE id IN ('nexus-corp', 'alpha-logistica')",
   );
 
   for (const u of seed.users) {
+    await client.query('DELETE FROM auth_svc.users WHERE id = $1 AND email <> $2', [u.id, u.email]);
     await client.query(
       `INSERT INTO auth_svc.users (id, tenant_id, name, email, password_hash, role, department, job_title, active, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -836,7 +873,7 @@ async function reconcileProductionShinerayState(client) {
       `INSERT INTO assets_svc.assets
        (id, tenant_id, internal_id, type, brand, model, serial_number, status, location, department, assigned_to_name, assigned_to_email, purchase_value, specs, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16)
-       ON CONFLICT (tenant_id, internal_id) DO NOTHING`,
+       ON CONFLICT DO NOTHING`,
       [
         a.id, a.tenant_id, a.internal_id, a.type, a.brand, a.model, a.serial_number,
         a.status, a.location, a.department, a.assigned_to_name, a.assigned_to_email,
@@ -845,12 +882,20 @@ async function reconcileProductionShinerayState(client) {
     );
   }
 
+  for (const h of seed.assetHistory) {
+    await client.query(
+      `INSERT INTO assets_svc.asset_history (id, tenant_id, asset_id, action, actor_name, actor_email, details, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
+      [h.id, h.tenant_id, h.asset_id, h.action, h.actor_name, h.actor_email, h.details, h.created_at],
+    );
+  }
+
   for (const tk of seed.tickets) {
     await client.query(
       `INSERT INTO tickets_svc.tickets
        (id, protocol, tenant_id, requester_name, requester_email, department, asset_id, asset_tag, category, priority, status, title, description, assigned_tech_name, resolution_notes, sla_due_at, resolved_at, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-       ON CONFLICT (protocol) DO NOTHING`,
+       ON CONFLICT DO NOTHING`,
       [
         tk.id, tk.protocol, tk.tenant_id, tk.requester_name, tk.requester_email, tk.department,
         tk.asset_id, tk.asset_tag, tk.category, tk.priority, tk.status, tk.title, tk.description,
@@ -862,7 +907,7 @@ async function reconcileProductionShinerayState(client) {
   for (const cm of seed.ticketComments) {
     await client.query(
       `INSERT INTO tickets_svc.ticket_comments (id, ticket_id, tenant_id, author_name, author_email, author_role, message, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO NOTHING`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
       [cm.id, cm.ticket_id, cm.tenant_id, cm.author_name, cm.author_email, cm.author_role, cm.message, cm.created_at],
     );
   }
@@ -872,7 +917,7 @@ async function reconcileProductionShinerayState(client) {
       `INSERT INTO compliance_svc.responsibility_terms
        (id, tenant_id, term_type, employee_name, employee_email, employee_cpf, department, assets_snapshot, legal_clause, status, document_hash, signature_hash, signer_ip, signer_user_agent, issued_by, signed_at, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT DO NOTHING`,
       [
         tr.id, tr.tenant_id, tr.term_type, tr.employee_name, tr.employee_email, tr.employee_cpf,
         tr.department, JSON.stringify(tr.assets_snapshot), tr.legal_clause, tr.status,
@@ -887,7 +932,7 @@ async function reconcileProductionShinerayState(client) {
       `INSERT INTO compliance_svc.audit_chain
        (id, tenant_id, actor_email, actor_role, action, resource_type, resource_id, payload, prev_hash, entry_hash, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11)
-       ON CONFLICT (id) DO NOTHING`,
+       ON CONFLICT DO NOTHING`,
       [
         ac.id, ac.tenant_id, ac.actor_email, ac.actor_role, ac.action,
         ac.resource_type, ac.resource_id, JSON.stringify(ac.payload), ac.prev_hash, ac.entry_hash, ac.created_at,
@@ -900,7 +945,7 @@ async function reconcileProductionShinerayState(client) {
       `INSERT INTO telemetry_svc.device_telemetry
        (id, tenant_id, device_key, hostname, serial_number, os_version, agent_version, ip_address, logged_user, cpu_percent, ram_percent, disk_percent, antivirus_active, firewall_active, last_seen_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-       ON CONFLICT (tenant_id, device_key) DO NOTHING`,
+       ON CONFLICT DO NOTHING`,
       [
         tl.id, tl.tenant_id, tl.device_key, tl.hostname, tl.serial_number, tl.os_version,
         tl.agent_version, tl.ip_address, tl.logged_user, tl.cpu_percent, tl.ram_percent,
