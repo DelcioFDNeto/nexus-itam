@@ -171,7 +171,10 @@ export async function ensureGatewaySession() {
 }
 
 export async function gatewayRequest(path, options = {}) {
-  const isPublicPath = path === '/health' || path === '/api/v1/auth/login';
+  const isPublicPath =
+    path === '/health' ||
+    path === '/api/v1/auth/login' ||
+    path === '/api/v1/telemetry/remote-control';
   let session = getGatewaySession();
   if (!isPublicPath && !session?.token && !options._skipAutoAuth) {
     session = await ensureGatewaySession();
@@ -314,11 +317,33 @@ export const microservicesApi = {
       method: 'POST',
       body: { deviceKey, commandType, payload },
     }),
+  updateRemoteControlRelay: (payload) =>
+    gatewayRequest('/api/v1/telemetry/remote-control', {
+      method: 'POST',
+      body: payload,
+      _skipAutoAuth: true,
+    }),
 
   // API 5 (NÃO-REST) — WebSocket Bidirecional (`ws://.../ws/nexusdesk`)
-  openNexusDeskSocket(token, { onFrame, onStatus, onReconnected } = {}) {
+  openNexusDeskSocket(tokenOrTenantId, secondArg = {}, thirdArg) {
     const wsBase = getGatewayBaseUrl().replace(/^http/i, 'ws');
-    const url = `${wsBase}/ws/nexusdesk?token=${encodeURIComponent(token)}&client=react19-console`;
+    const isViewerSignature = typeof secondArg === 'function';
+    const onFrame = isViewerSignature ? secondArg : secondArg?.onFrame;
+    const onStatus = isViewerSignature ? thirdArg : secondArg?.onStatus;
+    const onReconnected = isViewerSignature ? undefined : secondArg?.onReconnected;
+
+    let url;
+    if (isViewerSignature) {
+      const savedToken = getGatewaySession()?.token || '';
+      const q = new URLSearchParams({
+        tenantId: String(tokenOrTenantId || 'tenant-ap3htf6'),
+        client: 'nexusdesk-viewer',
+      });
+      if (savedToken) q.set('token', savedToken);
+      url = `${wsBase}/ws/nexusdesk?${q.toString()}`;
+    } else {
+      url = `${wsBase}/ws/nexusdesk?token=${encodeURIComponent(tokenOrTenantId)}&client=react19-console`;
+    }
 
     let ws = null;
     let closedByOperator = false;
@@ -403,6 +428,13 @@ export const microservicesApi = {
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ action: 'telemetry.push', data }));
         }
+      },
+      pushRemoteControl(data) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: 'remote.control', data }));
+          return true;
+        }
+        return false;
       },
       ping() {
         if (ws && ws.readyState === WebSocket.OPEN) {

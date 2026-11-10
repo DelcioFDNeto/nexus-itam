@@ -57,8 +57,15 @@ import {
   wakeAgentDevice,
 } from '../../services/rmmService';
 import { processAgentInbox } from '../../services/agentService';
+import { microservicesApi } from '../../services/microservicesClient';
 import { AGENT_VERSION, isAgentOutdated } from '../../utils/agentInventory';
 import { can } from '../../utils/permissions';
+
+const QUALITY_LABELS = {
+  low: 'Rápida',
+  balanced: 'Padrão',
+  high: 'Alta HD',
+};
 
 // Estados finais que o agente publica em remoteState.state.
 const SESSION_END_MESSAGES = {
@@ -100,6 +107,10 @@ export default function RemoteControlModal({
   const [controlEnabled, setControlEnabled] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [textToType, setTextToType] = useState('');
+  const [relayFrame, setRelayFrame] = useState(null);
+  const [displayFrame, setDisplayFrame] = useState(null);
+  const [streamFps, setStreamFps] = useState(0);
+  const [transportMode, setTransportMode] = useState('firestore');
 
   // Controles Mobile & Touch (NexusDesk Mobile)
   const [touchMode, setTouchMode] = useState('direct'); // 'direct' | 'trackpad'
@@ -137,6 +148,10 @@ export default function RemoteControlModal({
   const lastProcessedCmdIdRef = useRef('');
   const lastMouseMoveAtRef = useRef(0);
   const sessionIdRef = useRef('');
+  const qualityRef = useRef(quality);
+  const wsClientRef = useRef(null);
+  const frameTimesRef = useRef([]);
+  const lastDisplaySeqRef = useRef(0);
   const touchStateRef = useRef({
     startX: 0,
     startY: 0,
@@ -256,10 +271,17 @@ export default function RemoteControlModal({
     return () => unsub();
   }, [isOpen, tenantId, deviceKey]);
 
+  useEffect(() => {
+    qualityRef.current = quality;
+  }, [quality]);
+
   // Limpa da fila e do Firestore os eventos de input ja processados pelo agente
   // para evitar retencao de teclas/cliques no documento agentControl.
   useEffect(() => {
-    const ackSeq = Number(liveDevice?.remoteState?.lastInputSeq) || 0;
+    const ackSeq = Number(
+      relayFrame?.remoteState?.lastInputSeq ||
+      liveDevice?.remoteState?.lastInputSeq
+    ) || 0;
     if (!sessionId || ackSeq <= 0) return;
     if (inputQueueRef.current.length > 0) {
       inputQueueRef.current = inputQueueRef.current.filter((ev) => ev.seq > ackSeq);
@@ -271,11 +293,45 @@ export default function RemoteControlModal({
         deviceKey,
         sessionId,
         mode: effectiveMode,
-        quality,
+        quality: qualityRef.current,
         user: currentUser,
       }).catch(() => {});
     }
-  }, [liveDevice?.remoteState?.lastInputSeq, sessionId, tenantId, deviceKey, effectiveMode, quality, currentUser]);
+  }, [
+    liveDevice?.remoteState?.lastInputSeq,
+    relayFrame?.remoteState?.lastInputSeq,
+    sessionId,
+    tenantId,
+    deviceKey,
+    effectiveMode,
+    currentUser,
+  ]);
+
+  // Canal WebSocket de baixa latencia (NexusDesk Relay na VPS)
+  useEffect(() => {
+    if (!isOpen || !tenantId || !deviceKey) return undefined;
+    const wsClient = microservicesApi.openNexusDeskSocket(
+      tenantId,
+      (packet) => {
+        if (!packet || packet.deviceKey !== deviceKey) return;
+        if (packet.event === 'remote.frame' && packet.frame?.data) {
+          if (sessionIdRef.current && (!packet.sessionId || packet.sessionId === sessionIdRef.current)) {
+            setTransportMode('ws-relay');
+            setRelayFrame({
+              ...packet.frame,
+              remoteState: packet.remoteState || null,
+            });
+          }
+        }
+      },
+      () => {},
+    );
+    wsClientRef.current = wsClient;
+    return () => {
+      wsClientRef.current = null;
+      wsClient.close();
+    };
+  }, [isOpen, tenantId, deviceKey]);
 
   useEffect(() => {
     if (!isOpen || !tenantId) return undefined;
@@ -295,7 +351,17 @@ export default function RemoteControlModal({
   // Sem este sinal o agente pausa e limpa a tela em 35 s e encerra a sessao em 90 s.
   useEffect(() => {
     if (!sessionId || !tenantId || !deviceKey) return undefined;
-    const timer = setInterval(() => pingRemoteViewer({ tenantId, deviceKey }).catch(() => {}), 15_000);
+    const ping = () => {
+      pingRemoteViewer({ tenantId, deviceKey }).catch(() => {});
+      wsClientRef.current?.pushRemoteControl({
+        deviceKey,
+        sessionId,
+        status: 'active',
+        quality: qualityRef.current,
+      });
+    };
+    ping();
+    const timer = setInterval(ping, 8_000);
     return () => clearInterval(timer);
   }, [sessionId, tenantId, deviceKey]);
 
@@ -353,6 +419,56 @@ export default function RemoteControlModal({
     };
   }, [sessionId, tenantId, deviceKey, clearSyncTimers]);
 
+  const rawFirestoreFrame = liveDevice?.screenFrame || null;
+  const validFirestoreFrame =
+    rawFirestoreFrame && (!rawFirestoreFrame.sessionId || rawFirestoreFrame.sessionId === sessionId)
+      ? rawFirestoreFrame
+      : null;
+  const validRelayFrame =
+    relayFrame && (!relayFrame.sessionId || relayFrame.sessionId === sessionId)
+      ? relayFrame
+      : null;
+  const latestCandidateFrame =
+    (Number(validRelayFrame?.seq) || 0) >= (Number(validFirestoreFrame?.seq) || 0)
+      ? (validRelayFrame || validFirestoreFrame)
+      : validFirestoreFrame;
+
+  // Pre-decodifica quadros em memoria (Image offscreen) para troca sem flickering e calcula FPS em tempo real
+  useEffect(() => {
+    if (!sessionId || !latestCandidateFrame?.data) {
+      setDisplayFrame(null);
+      setStreamFps(0);
+      frameTimesRef.current = [];
+      lastDisplaySeqRef.current = 0;
+      return;
+    }
+    const seq = Number(latestCandidateFrame.seq) || 0;
+    const width = Number(latestCandidateFrame.width) || 0;
+    const frameKey = `${seq}:${width}:${latestCandidateFrame.quality || ''}`;
+    if (lastDisplaySeqRef.current === frameKey) return;
+    lastDisplaySeqRef.current = frameKey;
+
+    const now = performance.now();
+    const recent = [...frameTimesRef.current.filter((t) => now - t <= 3000), now];
+    frameTimesRef.current = recent;
+    if (recent.length >= 2) {
+      const elapsedSec = Math.max(0.25, (recent[recent.length - 1] - recent[0]) / 1000);
+      setStreamFps(Number(((recent.length - 1) / elapsedSec).toFixed(1)));
+    } else {
+      setStreamFps(1);
+    }
+
+    const dataUri = `data:image/jpeg;base64,${latestCandidateFrame.data}`;
+    const preload = new Image();
+    preload.onload = () => {
+      setDisplayFrame(latestCandidateFrame);
+    };
+    preload.onerror = () => {
+      setDisplayFrame(latestCandidateFrame);
+    };
+    preload.src = dataUri;
+  }, [sessionId, latestCandidateFrame]);
+
   if (!isOpen) return null;
 
   const online = isDeviceOnline(liveDevice);
@@ -366,40 +482,84 @@ export default function RemoteControlModal({
   const agentOutdated = isAgentOutdated(currentAgentVer);
   const metrics = liveDevice?.metrics || {};
   const topProcesses = Array.isArray(liveDevice?.topProcesses) ? liveDevice.topProcesses : [];
-  const rawFrame = liveDevice?.screenFrame || null;
-  // Exibe apenas quadros pertencentes a sessao ativa atual (protecao contra vazamento entre sessoes)
-  const screenFrame =
-    rawFrame && (!rawFrame.sessionId || rawFrame.sessionId === sessionId) ? rawFrame : null;
-  const remoteState = liveDevice?.remoteState || {};
+  // Exibe o quadro ja pre-decodificado (ou o candidato imediato no primeiro frame)
+  const screenFrame = displayFrame || latestCandidateFrame;
+  const remoteState = relayFrame?.remoteState || liveDevice?.remoteState || {};
   const ownState = sessionId && remoteState.sessionId === sessionId ? remoteState.state : '';
-  const isSessionActive = ownState === 'active';
+  const isSessionActive = ownState === 'active' || Boolean(sessionId && screenFrame?.data);
   const isWaitingConsent = ownState === 'awaiting_consent';
-  const isWaitingAgent = Boolean(sessionId) && !ownState;
+  const isWaitingAgent = Boolean(sessionId) && !ownState && !screenFrame?.data;
   const endedState = !sessionId && lastSessionId && remoteState.sessionId === lastSessionId ? remoteState.state : '';
   const responseSeconds = Math.min(30, Number(liveDevice?.heartbeatSeconds) || policy.heartbeatSeconds || 30);
   const isAdmin = can(currentUser, 'agent:manage');
   const latestCommandEntry = commandHistory[0] || null;
 
+  const streamWidth = Number(screenFrame?.width) || Number(screenFrame?.screenWidth) || 0;
+  const streamHeight = Number(screenFrame?.height) || Number(screenFrame?.screenHeight) || 0;
+  const nativeWidth = Number(screenFrame?.screenWidth) || streamWidth;
+  const nativeHeight = Number(screenFrame?.screenHeight) || streamHeight;
+  const inferredFrameQuality =
+    screenFrame?.quality ||
+    remoteState?.quality ||
+    (streamWidth > 0 && streamWidth <= 900
+      ? 'low'
+      : streamWidth > 0 && streamWidth <= 1200
+      ? 'balanced'
+      : streamWidth > 1200
+      ? 'high'
+      : quality);
+  const activeQualityLabel = QUALITY_LABELS[inferredFrameQuality] || QUALITY_LABELS[quality] || 'Padrão';
+  const qualitySwitching = Boolean(screenFrame?.data && inferredFrameQuality !== quality);
+  const frameSizeKb = screenFrame?.byteSize
+    ? Math.round(Number(screenFrame.byteSize) / 1024)
+    : screenFrame?.data
+    ? Math.round((screenFrame.data.length * 0.75) / 1024)
+    : 0;
+
   const queueInputEvent = (ev) => {
     if (!sessionId || !controlEnabled) return;
     const seq = inputSeqRef.current;
     inputSeqRef.current += 1;
-    inputQueueRef.current = [...inputQueueRef.current.slice(-14), { ...ev, seq }];
+    const eventWithSeq = { ...ev, seq };
+    inputQueueRef.current = [...inputQueueRef.current.slice(-15), eventWithSeq];
+
+    const currentQuality = qualityRef.current;
+    wsClientRef.current?.pushRemoteControl({
+      deviceKey,
+      sessionId,
+      status: 'active',
+      mode: effectiveMode,
+      quality: currentQuality,
+      inputEvents: [eventWithSeq],
+    });
 
     if (flushTimerRef.current) return;
+    const delayMs = ev.type === 'mousemove' ? 55 : 16;
     flushTimerRef.current = setTimeout(() => {
       flushTimerRef.current = null;
       const batch = [...inputQueueRef.current];
+      const latestQuality = qualityRef.current;
+      microservicesApi
+        .updateRemoteControlRelay({
+          tenantId,
+          deviceKey,
+          sessionId,
+          status: 'active',
+          mode: effectiveMode,
+          quality: latestQuality,
+          inputEvents: batch,
+        })
+        .catch(() => {});
       sendRemoteInputEvents({
         tenantId,
         deviceKey,
         sessionId,
         mode: effectiveMode,
-        quality,
+        quality: latestQuality,
         user: currentUser,
         events: batch,
       }).catch(() => {});
-    }, 120);
+    }, delayMs);
   };
 
   const handleStartRemote = async () => {
@@ -416,17 +576,40 @@ export default function RemoteControlModal({
       inputSeqRef.current = 1;
       inputQueueRef.current = [];
       lastClearedAckRef.current = 0;
+      setRelayFrame(null);
+      setDisplayFrame(null);
+      setStreamFps(0);
+      frameTimesRef.current = [];
+      lastDisplaySeqRef.current = 0;
+      const currentQuality = qualityRef.current;
       const newSessionId = await startRemoteSession({
         tenantId,
         deviceKey,
         hostname: hostLabel,
         mode: effectiveMode,
-        quality,
+        quality: currentQuality,
         user: currentUser,
       });
       sessionIdRef.current = newSessionId;
       setSessionId(newSessionId);
       setLastSessionId(newSessionId);
+      wsClientRef.current?.pushRemoteControl({
+        deviceKey,
+        sessionId: newSessionId,
+        status: 'active',
+        mode: effectiveMode,
+        quality: currentQuality,
+      });
+      microservicesApi
+        .updateRemoteControlRelay({
+          tenantId,
+          deviceKey,
+          sessionId: newSessionId,
+          status: 'active',
+          mode: effectiveMode,
+          quality: currentQuality,
+        })
+        .catch(() => {});
       toast.success(
         effectiveMode === 'attended'
           ? `Pedido NexusDesk enviado. A máquina responde em instantes e o colaborador aceita na tela.`
@@ -443,10 +626,28 @@ export default function RemoteControlModal({
     const activeId = sessionId;
     sessionIdRef.current = '';
     setSessionId('');
+    setRelayFrame(null);
+    setDisplayFrame(null);
+    setStreamFps(0);
+    frameTimesRef.current = [];
+    lastDisplaySeqRef.current = 0;
     inputQueueRef.current = [];
     setZoom(1);
     setPan({ x: 0, y: 0 });
     if (activeId && tenantId && deviceKey) {
+      wsClientRef.current?.pushRemoteControl({
+        deviceKey,
+        sessionId: activeId,
+        status: 'closed',
+      });
+      microservicesApi
+        .updateRemoteControlRelay({
+          tenantId,
+          deviceKey,
+          sessionId: activeId,
+          status: 'closed',
+        })
+        .catch(() => {});
       try {
         await stopRemoteSession({ tenantId, deviceKey, hostname: hostLabel, user: currentUser });
         toast.info('Sessão NexusDesk encerrada e captura limpa.');
@@ -457,8 +658,26 @@ export default function RemoteControlModal({
   };
 
   const handleQualityChange = async (newQuality) => {
+    qualityRef.current = newQuality;
     setQuality(newQuality);
     if (sessionId && tenantId && deviceKey) {
+      wsClientRef.current?.pushRemoteControl({
+        deviceKey,
+        sessionId,
+        status: 'active',
+        mode: effectiveMode,
+        quality: newQuality,
+      });
+      microservicesApi
+        .updateRemoteControlRelay({
+          tenantId,
+          deviceKey,
+          sessionId,
+          status: 'active',
+          mode: effectiveMode,
+          quality: newQuality,
+        })
+        .catch(() => {});
       await updateRemoteQuality({
         tenantId,
         deviceKey,
@@ -468,6 +687,7 @@ export default function RemoteControlModal({
         user: currentUser,
         inputEvents: inputQueueRef.current,
       }).catch(() => {});
+      toast.info(`Qualidade alterada para ${QUALITY_LABELS[newQuality] || newQuality}.`);
     }
   };
 
@@ -511,7 +731,7 @@ export default function RemoteControlModal({
   const handleScreenMouseMove = (e) => {
     if (!sessionId || !controlEnabled || touchMode === 'trackpad') return;
     const now = Date.now();
-    if (now - lastMouseMoveAtRef.current < 240) return;
+    if (now - lastMouseMoveAtRef.current < 90) return;
     lastMouseMoveAtRef.current = now;
     const coords = getRelativeCoords(e);
     setVirtualCursor(coords);
@@ -1047,13 +1267,28 @@ export default function RemoteControlModal({
                   <select
                     value={quality}
                     onChange={(e) => handleQualityChange(e.target.value)}
-                    className="px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs"
-                    title="Qualidade de Imagem"
+                    className="px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs font-medium"
+                    title="Qualidade de Transmissão (Rápida prioriza maior taxa de quadros por segundo)"
                   >
-                    <option value="low">Rápida (860p)</option>
-                    <option value="balanced">Padrão (1152p)</option>
-                    <option value="high">Alta HD (1366p)</option>
+                    <option value="low">Rápida (Turbo 768p)</option>
+                    <option value="balanced">Padrão (Equilibrada 1088p)</option>
+                    <option value="high">Alta HD (Nativa 1366p+)</option>
                   </select>
+
+                  {agentOutdated && isAdmin && (
+                    <button
+                      type="button"
+                      onClick={handleUpdateAgentRemote}
+                      disabled={updatingAgent}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold text-xs transition-colors disabled:opacity-50"
+                      title={`Agente em v${currentAgentVer || '3.1'}. Atualize via OTA para v${AGENT_VERSION} para ativar o motor de streaming Turbo multi-thread.`}
+                    >
+                      <ArrowUpCircle className={`w-3.5 h-3.5 ${updatingAgent ? 'animate-spin' : ''}`} />
+                      <span className="hidden md:inline">
+                        {updatingAgent ? 'Atualizando...' : `Turbo v${AGENT_VERSION} (OTA)`}
+                      </span>
+                    </button>
+                  )}
 
                   <button
                     onClick={() => setControlEnabled((v) => !v)}
@@ -1204,13 +1439,32 @@ export default function RemoteControlModal({
                         }}
                       />
                     )}
-                    <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur text-[10px] font-mono text-slate-300 flex items-center gap-1.5 pointer-events-none">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                      <span>
-                        {screenFrame.screenWidth || screenFrame.width}×{screenFrame.screenHeight || screenFrame.height}
+                    <div className="absolute top-2 right-2 px-2.5 py-1 rounded-md bg-slate-950/85 backdrop-blur border border-slate-800/80 text-[10px] font-mono text-slate-200 flex items-center gap-1.5 pointer-events-none shadow-lg">
+                      <span className={`w-2 h-2 rounded-full ${transportMode === 'ws-relay' ? 'bg-cyan-400' : 'bg-emerald-400'} animate-ping`} />
+                      <span title={`Transmissão: ${streamWidth}×${streamHeight} (Monitor: ${nativeWidth}×${nativeHeight})`}>
+                        {streamWidth}×{streamHeight}
                       </span>
-                      <span>• #{screenFrame.seq || 1}</span>
-                      <span className="text-emerald-300 font-sans font-bold">• Seguro</span>
+                      <span className={`px-1.5 py-0.2 rounded font-sans font-bold ${
+                        qualitySwitching
+                          ? 'bg-amber-500/25 text-amber-300'
+                          : inferredFrameQuality === 'low'
+                          ? 'bg-cyan-500/20 text-cyan-300'
+                          : inferredFrameQuality === 'high'
+                          ? 'bg-purple-500/20 text-purple-300'
+                          : 'bg-blue-500/20 text-blue-300'
+                      }`}>
+                        {qualitySwitching ? `→ ${QUALITY_LABELS[quality]}` : activeQualityLabel}
+                      </span>
+                      {streamFps > 0 && (
+                        <span className="text-emerald-300 font-bold">• {streamFps} fps</span>
+                      )}
+                      {frameSizeKb > 0 && (
+                        <span className="hidden sm:inline text-slate-400">• {frameSizeKb} KB</span>
+                      )}
+                      <span className="text-slate-400">• #{screenFrame.seq || 1}</span>
+                      <span className={`font-sans font-bold ${transportMode === 'ws-relay' ? 'text-cyan-300' : 'text-emerald-300'}`}>
+                        • {transportMode === 'ws-relay' ? 'Turbo WS' : 'Seguro'}
+                      </span>
                     </div>
                   </div>
                 ) : (

@@ -79,7 +79,7 @@ describe('rmmService', () => {
   });
 
   it('politica: padrao com consentimento e limites do intervalo', () => {
-    expect(resolveRuntimePolicy({})).toEqual({ remoteAccess: 'consent', commandsEnabled: true, heartbeatSeconds: 120 });
+    expect(resolveRuntimePolicy({})).toEqual({ remoteAccess: 'consent', commandsEnabled: true, heartbeatSeconds: 30 });
     expect(resolveRuntimePolicy({ remoteAccess: 'sempre', heartbeatSeconds: 5 })).toMatchObject({ remoteAccess: 'consent', heartbeatSeconds: 30 });
     expect(resolveRuntimePolicy({ remoteAccess: 'disabled', commandsEnabled: false, heartbeatSeconds: 5000 })).toEqual({ remoteAccess: 'disabled', commandsEnabled: false, heartbeatSeconds: 900 });
   });

@@ -46,7 +46,7 @@ export const REMOTE_ACCESS_MODES = {
 export const DEFAULT_RUNTIME_POLICY = {
   remoteAccess: 'consent',
   commandsEnabled: true,
-  heartbeatSeconds: 120,
+  heartbeatSeconds: 30,
 };
 
 export const REMOTE_COMMANDS = {
@@ -438,6 +438,7 @@ const sessionPatch = ({ tenantId, deviceKey, sessionId, mode, quality, user, inp
 export const updateRemoteQuality = async ({ tenantId, deviceKey, sessionId, mode, quality, user, inputEvents = [] }) => {
   if (!tenantId || !deviceKey || !sessionId) return;
   await sessionPatch({ tenantId, deviceKey, sessionId, mode, quality, user, inputEvents: inputEvents.slice(-15) });
+  await wakeAgentDevice({ tenantId, deviceKey }).catch(() => {});
 };
 
 /**
@@ -562,13 +563,14 @@ export const buildAgentSelfUpdateScript = (zipUrl) => {
     '$dir = "C:\\ProgramData\\NexusITAM"',
     '$stageDir = $PSScriptRoot',
     'Stop-Service -Name "NexusITAMAgent" -Force -ErrorAction SilentlyContinue',
-    'Get-Process -Name "NexusAgent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue',
     'Start-Sleep -Seconds 1',
+    'Remove-Item -Path "$dir\\NexusAgent.old.exe" -Force -ErrorAction SilentlyContinue',
     'if (Test-Path "$dir\\NexusAgent.exe") { Move-Item -Path "$dir\\NexusAgent.exe" -Destination "$dir\\NexusAgent.old.exe" -Force -ErrorAction SilentlyContinue }',
     'Copy-Item -Path "$stageDir\\NexusAgent.exe" -Destination "$dir\\NexusAgent.exe" -Force',
     'if (Test-Path "$stageDir\\NexusAgent.ps1") { Copy-Item -Path "$stageDir\\NexusAgent.ps1" -Destination "$dir\\NexusAgent.ps1" -Force }',
-    'Remove-Item -Path "$dir\\NexusAgent.old.exe" -Force -ErrorAction SilentlyContinue',
     'Start-Service -Name "NexusITAMAgent" -ErrorAction SilentlyContinue',
+    'Start-Sleep -Seconds 4',
+    'Remove-Item -Path "$dir\\NexusAgent.old.exe" -Force -ErrorAction SilentlyContinue',
     '& "$dir\\NexusAgent.exe" --once | Out-Null',
     '$logFile = "$dir\\logs\\install.log"',
     'Add-Content -Path $logFile -Value ("[" + (Get-Date -Format "yyyy-MM-dd HH:mm:ss") + "] Atualizacao OTA aplicada com sucesso.") -Encoding UTF8',

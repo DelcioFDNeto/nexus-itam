@@ -8,7 +8,7 @@
 // seguranca, e sugestoes de local (pela rede) e responsavel (pelo login).
 // -----------------------------------------------------------------------------
 
-export const AGENT_VERSION = '3.2.0';
+export const AGENT_VERSION = '3.3.0';
 
 /**
  * Compara duas versoes semver (ex.: '3.1.0' vs '3.2.0').

@@ -10,7 +10,7 @@ import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import { pathToFileURL } from 'node:url';
-import { authRepo, checkDbHealth, initDatabase, telemetryRepo } from '../../shared/db.js';
+import { authRepo, canonicalTenantId, checkDbHealth, initDatabase, telemetryRepo } from '../../shared/db.js';
 import {
   requireRoles,
   sanitizeText,
@@ -57,23 +57,85 @@ export async function buildNexusDeskService(opts = {}) {
   // Salas multi-tenant isoladas em memória para streaming WebSocket em tempo real
   // Map<tenantId, Set<{ socket, userEmail, role, clientType, connectedAt }>>
   const tenantRooms = new Map();
+  // Relay de sessões remotas em memória (zero latência de banco para frames e inputs)
+  // Map<`${canonicalTenantId}_${deviceKey}`, { sessionId, status, mode, quality, viewerSeenAt, inputEvents, updatedAt }>
+  const remoteSessions = new Map();
+
+  function upsertRemoteControlState(tenantId, payload = {}) {
+    const cleanTenant = canonicalTenantId(tenantId);
+    const deviceKey = sanitizeText(payload.deviceKey || '', 120);
+    if (!cleanTenant || !deviceKey) return null;
+    const key = `${cleanTenant}_${deviceKey}`;
+    const existing = remoteSessions.get(key) || {
+      tenantId: cleanTenant,
+      deviceKey,
+      sessionId: '',
+      status: 'active',
+      mode: 'attended',
+      quality: 'balanced',
+      viewerSeenAt: new Date().toISOString(),
+      inputEvents: [],
+      updatedAt: Date.now(),
+    };
+
+    if (payload.sessionId !== undefined) {
+      const nextId = sanitizeText(payload.sessionId, 120);
+      if (nextId !== existing.sessionId) {
+        existing.inputEvents = [];
+      }
+      existing.sessionId = nextId;
+    }
+    if (payload.status) existing.status = sanitizeText(payload.status, 32);
+    if (payload.mode) existing.mode = payload.mode === 'unattended' ? 'unattended' : 'attended';
+    if (['low', 'balanced', 'high'].includes(payload.quality)) {
+      existing.quality = payload.quality;
+    }
+    existing.viewerSeenAt = new Date().toISOString();
+    existing.updatedAt = Date.now();
+
+    if (Array.isArray(payload.inputEvents)) {
+      if (payload.inputEvents.length === 0 && payload.clearInputs) {
+        existing.inputEvents = [];
+      } else {
+        const bySeq = new Map(existing.inputEvents.map((ev) => [Number(ev.seq) || 0, ev]));
+        for (const ev of payload.inputEvents) {
+          if (ev && typeof ev === 'object' && Number(ev.seq) > 0) {
+            bySeq.set(Number(ev.seq), ev);
+          }
+        }
+        existing.inputEvents = Array.from(bySeq.values())
+          .sort((a, b) => Number(a.seq) - Number(b.seq))
+          .slice(-32);
+      }
+    }
+
+    if (existing.status === 'closed' || existing.status === 'ended' || !existing.sessionId) {
+      existing.inputEvents = [];
+    }
+
+    remoteSessions.set(key, existing);
+    return existing;
+  }
 
   function addClientToRoom(tenantId, session) {
-    if (!tenantRooms.has(tenantId)) {
-      tenantRooms.set(tenantId, new Set());
+    const cleanTenant = canonicalTenantId(tenantId);
+    if (!tenantRooms.has(cleanTenant)) {
+      tenantRooms.set(cleanTenant, new Set());
     }
-    tenantRooms.get(tenantId).add(session);
+    tenantRooms.get(cleanTenant).add(session);
   }
 
   function removeClientFromRoom(tenantId, session) {
-    const room = tenantRooms.get(tenantId);
+    const cleanTenant = canonicalTenantId(tenantId);
+    const room = tenantRooms.get(cleanTenant);
     if (!room) return;
     room.delete(session);
-    if (room.size === 0) tenantRooms.delete(tenantId);
+    if (room.size === 0) tenantRooms.delete(cleanTenant);
   }
 
   function broadcastToTenant(tenantId, envelope, excludeSocket = null) {
-    const room = tenantRooms.get(tenantId);
+    const cleanTenant = canonicalTenantId(tenantId);
+    const room = tenantRooms.get(cleanTenant);
     if (!room || room.size === 0) return 0;
     const serialized = JSON.stringify(envelope);
     let delivered = 0;
@@ -310,6 +372,105 @@ export async function buildNexusDeskService(opts = {}) {
     },
   );
 
+  // ---------------------------------------------------------------------------
+  // Relay de Alta Velocidade NexusDesk (Frames + Input/Qualidade em Memória)
+  // ---------------------------------------------------------------------------
+  app.post('/api/v1/telemetry/remote-control', async (request, reply) => {
+    const body = request.body || {};
+    let resolvedTenantId = '';
+    if (request.headers['x-gateway-signature'] || request.headers.authorization) {
+      const user = verifyGatewayOrJwt(request);
+      requireRoles(user, ['owner', 'admin', 'manager', 'operator']);
+      resolvedTenantId = canonicalTenantId(user.tenantId);
+    } else {
+      const claimedTenant = canonicalTenantId(
+        sanitizeText(body.tenantId || request.headers['x-tenant-id'] || '', 64),
+      );
+      const sessionId = sanitizeText(body.sessionId || '', 120);
+      if (!claimedTenant || !sessionId || !/^(rem|ses)-[A-Za-z0-9-]+$/.test(sessionId)) {
+        return reply.code(401).send({
+          error: 'UNAUTHORIZED',
+          message: 'Sessão remota ou token de autenticação obrigatório.',
+        });
+      }
+      resolvedTenantId = claimedTenant;
+    }
+
+    const state = upsertRemoteControlState(resolvedTenantId, body);
+    if (!state) {
+      return reply.code(400).send({
+        error: 'INVALID_REMOTE_CONTROL',
+        message: 'Informe deviceKey válido para atualizar a sessão remota.',
+      });
+    }
+    const delivered = broadcastToTenant(resolvedTenantId, {
+      protocol: 'nexusdesk-ws/3.0',
+      event: 'remote.control',
+      tenantId: resolvedTenantId,
+      timestamp: new Date().toISOString(),
+      data: state,
+    });
+    return { accepted: true, delivered, control: state };
+  });
+
+  app.post('/api/v1/telemetry/remote-frame', async (request, reply) => {
+    const body = request.body || {};
+    const claimedTenant = canonicalTenantId(
+      sanitizeText(body.tenantId || request.headers['x-tenant-id'] || '', 64),
+    );
+    const deviceKey = sanitizeText(body.deviceKey || '', 120);
+    const sessionId = sanitizeText(body.sessionId || body.frame?.sessionId || '', 120);
+
+    if (!claimedTenant || !deviceKey || !sessionId || !/^(rem|ses)-[A-Za-z0-9-]+$/.test(sessionId)) {
+      return reply.code(400).send({
+        error: 'INVALID_FRAME_ENVELOPE',
+        message: 'tenantId, deviceKey e sessionId ativo são obrigatórios.',
+      });
+    }
+
+    const key = `${claimedTenant}_${deviceKey}`;
+    let state = remoteSessions.get(key);
+    if (!state || state.sessionId !== sessionId) {
+      state = upsertRemoteControlState(claimedTenant, {
+        deviceKey,
+        sessionId,
+        status: 'active',
+        quality: body.frame?.quality || body.quality || 'balanced',
+      });
+    }
+
+    const ackSeq = Number(body.ackInputSeq || body.remoteState?.lastInputSeq || 0);
+    if (ackSeq > 0 && Array.isArray(state.inputEvents) && state.inputEvents.length > 0) {
+      state.inputEvents = state.inputEvents.filter((ev) => Number(ev.seq) > ackSeq);
+    }
+
+    const delivered = broadcastToTenant(claimedTenant, {
+      protocol: 'nexusdesk-ws/3.0',
+      event: 'remote.frame',
+      tenantId: claimedTenant,
+      timestamp: new Date().toISOString(),
+      data: {
+        deviceKey,
+        sessionId,
+        frame: body.frame || null,
+        remoteState: body.remoteState || null,
+      },
+    });
+
+    return {
+      accepted: true,
+      delivered,
+      control: {
+        sessionId: state.sessionId,
+        status: state.status,
+        mode: state.mode,
+        quality: state.quality,
+        viewerSeenAt: state.viewerSeenAt,
+        inputEvents: state.inputEvents || [],
+      },
+    };
+  });
+
   // ===========================================================================
   // API 5 (NÃO-REST) — WebSocket Bidirecional Full-Duplex (`/ws/nexusdesk`)
   // ===========================================================================
@@ -341,11 +502,30 @@ export async function buildNexusDeskService(opts = {}) {
           clientType: 'agent',
           connectedAt: new Date().toISOString(),
         };
-      } else {
+      } else if (queryToken || authHeader) {
         const claims = verifyJwt(queryToken || authHeader || '');
         session = {
           socket,
-          tenantId: claims.tenantId,
+          tenantId: canonicalTenantId(claims.tenantId),
+          userEmail: claims.email,
+          role: claims.role,
+          clientType: request.query?.client || 'web-console',
+          connectedAt: new Date().toISOString(),
+        };
+      } else if (claimedTenant && request.query?.client === 'nexusdesk-viewer') {
+        session = {
+          socket,
+          tenantId: canonicalTenantId(String(claimedTenant)),
+          userEmail: 'viewer@nexusdesk',
+          role: 'operator',
+          clientType: 'nexusdesk-viewer',
+          connectedAt: new Date().toISOString(),
+        };
+      } else {
+        const claims = verifyJwt('');
+        session = {
+          socket,
+          tenantId: canonicalTenantId(claims.tenantId),
           userEmail: claims.email,
           role: claims.role,
           clientType: request.query?.client || 'web-console',
@@ -453,6 +633,27 @@ export async function buildNexusDeskService(opts = {}) {
             },
             socket,
           );
+          return;
+        }
+
+        // Controle em tempo real de qualidade e inputs de mouse/teclado via WebSocket
+        if (action === 'remote.control') {
+          if (session.role === 'collaborator') return;
+          const state = upsertRemoteControlState(session.tenantId, msg.data || msg);
+          if (!state) return;
+          broadcastToTenant(
+            session.tenantId,
+            {
+              protocol: 'nexusdesk-ws/3.0',
+              event: 'remote.control',
+              tenantId: canonicalTenantId(session.tenantId),
+              sender: session.userEmail,
+              timestamp: new Date().toISOString(),
+              data: state,
+            },
+            socket,
+          );
+          return;
         }
       } catch {
         socket.send(

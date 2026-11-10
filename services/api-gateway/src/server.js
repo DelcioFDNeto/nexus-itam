@@ -359,8 +359,12 @@ export async function buildApiGateway(opts = {}) {
       forwardHeaders['content-type'] = request.headers['content-type'];
     }
 
-    // Suporte híbrido para M2M X-Agent-Token estritamente no endpoint de heartbeat
-    if (options.allowAgentToken && request.headers['x-agent-token']) {
+    // Suporte híbrido para M2M X-Agent-Token no endpoint de heartbeat e Relay de sessão NexusDesk
+    if (options.allowRelaySession && !request.headers.authorization) {
+      if (request.headers['x-tenant-id']) {
+        forwardHeaders['x-tenant-id'] = String(request.headers['x-tenant-id']);
+      }
+    } else if (options.allowAgentToken && request.headers['x-agent-token']) {
       forwardHeaders['x-agent-token'] = String(request.headers['x-agent-token']);
       if (request.headers['x-tenant-id']) {
         forwardHeaders['x-tenant-id'] = String(request.headers['x-tenant-id']);
@@ -427,6 +431,12 @@ export async function buildApiGateway(opts = {}) {
   // Proxy Rotas — API 4 (Telemetry RMM)
   app.all('/api/v1/telemetry/heartbeat', (req, rep) =>
     forwardToMicroservice(upstreams.nexusdesk, req, rep, { allowAgentToken: true }),
+  );
+  app.all('/api/v1/telemetry/remote-frame', (req, rep) =>
+    forwardToMicroservice(upstreams.nexusdesk, req, rep, { allowRelaySession: true }),
+  );
+  app.all('/api/v1/telemetry/remote-control', (req, rep) =>
+    forwardToMicroservice(upstreams.nexusdesk, req, rep, { allowRelaySession: true }),
   );
   app.all('/api/v1/telemetry/*', (req, rep) =>
     forwardToMicroservice(upstreams.nexusdesk, req, rep),

@@ -1,5 +1,5 @@
 // =============================================================================
-// Nexus ITAM - Agente Windows e NexusDesk (NexusAgent.exe) 3.2
+// Nexus ITAM - Agente Windows e NexusDesk (NexusAgent.exe) 3.3
 // -----------------------------------------------------------------------------
 // Um executavel, dois papeis:
 //  --service  Servico do Windows (SYSTEM): sinal de vida, telemetria, comandos
@@ -61,14 +61,15 @@ using Microsoft.Win32;
 [assembly: AssemblyCompany("Nexus ITAM")]
 [assembly: AssemblyProduct("Nexus ITAM - NexusDesk")]
 [assembly: AssemblyCopyright("Nexus ITAM")]
-[assembly: AssemblyVersion("3.2.0.0")]
-[assembly: AssemblyFileVersion("3.2.0.0")]
+[assembly: AssemblyVersion("3.3.0.0")]
+[assembly: AssemblyFileVersion("3.3.0.0")]
 
 namespace NexusITAM
 {
     internal static class AgentInfo
     {
-        public const string Version = "3.2.0";
+        public const string Version = "3.3.0";
+        public const string DefaultRelayBase = "https://itam-api-164-152-195-199.sslip.io";
         public const string ServiceName = "NexusITAMAgent";
         public const string ServiceDisplayName = "Nexus ITAM Agent";
         public const string RunValueName = "NexusITAMAgent";
@@ -191,6 +192,125 @@ namespace NexusITAM
             public MEMORYSTATUSEX()
             {
                 dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));
+            }
+        }
+
+        [DllImport("kernel32.dll")]
+        public static extern uint WTSGetActiveConsoleSessionId();
+
+        [DllImport("wtsapi32.dll", SetLastError = true)]
+        public static extern bool WTSQueryUserToken(uint sessionId, out IntPtr token);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        public static extern bool DuplicateTokenEx(
+            IntPtr existingToken,
+            uint desiredAccess,
+            IntPtr tokenAttributes,
+            int impersonationLevel,
+            int tokenType,
+            out IntPtr newToken);
+
+        [DllImport("userenv.dll", SetLastError = true)]
+        public static extern bool CreateEnvironmentBlock(out IntPtr environment, IntPtr token, bool inherit);
+
+        [DllImport("userenv.dll", SetLastError = true)]
+        public static extern bool DestroyEnvironmentBlock(IntPtr environment);
+
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        public static extern bool CreateProcessAsUser(
+            IntPtr token,
+            string applicationName,
+            string commandLine,
+            IntPtr processAttributes,
+            IntPtr threadAttributes,
+            bool inheritHandles,
+            uint creationFlags,
+            IntPtr environment,
+            string currentDirectory,
+            ref STARTUPINFO startupInfo,
+            out PROCESS_INFORMATION processInformation);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool CloseHandle(IntPtr handle);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct STARTUPINFO
+        {
+            public int cb;
+            public string lpReserved;
+            public string lpDesktop;
+            public string lpTitle;
+            public int dwX;
+            public int dwY;
+            public int dwXSize;
+            public int dwYSize;
+            public int dwXCountChars;
+            public int dwYCountChars;
+            public int dwFillAttribute;
+            public int dwFlags;
+            public short wShowWindow;
+            public short cbReserved2;
+            public IntPtr lpReserved2;
+            public IntPtr hStdInput;
+            public IntPtr hStdOutput;
+            public IntPtr hStdError;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct PROCESS_INFORMATION
+        {
+            public IntPtr hProcess;
+            public IntPtr hThread;
+            public int dwProcessId;
+            public int dwThreadId;
+        }
+
+        public static bool LaunchTrayInActiveUserSession(string exePath)
+        {
+            IntPtr userToken = IntPtr.Zero;
+            IntPtr primaryToken = IntPtr.Zero;
+            IntPtr envBlock = IntPtr.Zero;
+            try
+            {
+                if (!File.Exists(exePath)) return false;
+                uint sessionId = WTSGetActiveConsoleSessionId();
+                if (sessionId == 0 || sessionId == 0xFFFFFFFF) return false;
+                if (!WTSQueryUserToken(sessionId, out userToken) || userToken == IntPtr.Zero) return false;
+                const uint MAXIMUM_ALLOWED = 0x02000000;
+                const int SecurityIdentification = 2;
+                const int TokenPrimary = 1;
+                if (!DuplicateTokenEx(userToken, MAXIMUM_ALLOWED, IntPtr.Zero, SecurityIdentification, TokenPrimary, out primaryToken) || primaryToken == IntPtr.Zero)
+                    return false;
+
+                uint flags = 0x00000020; // NORMAL_PRIORITY_CLASS
+                if (CreateEnvironmentBlock(out envBlock, primaryToken, false) && envBlock != IntPtr.Zero)
+                {
+                    flags |= 0x00000400; // CREATE_UNICODE_ENVIRONMENT
+                }
+
+                STARTUPINFO si = new STARTUPINFO();
+                si.cb = Marshal.SizeOf(typeof(STARTUPINFO));
+                si.lpDesktop = @"winsta0\default";
+                PROCESS_INFORMATION pi;
+                string cmdLine = "\"" + exePath + "\" --tray";
+                string workDir = Path.GetDirectoryName(exePath);
+                bool ok = CreateProcessAsUser(primaryToken, null, cmdLine, IntPtr.Zero, IntPtr.Zero, false, flags, envBlock, workDir, ref si, out pi);
+                if (ok)
+                {
+                    if (pi.hThread != IntPtr.Zero) CloseHandle(pi.hThread);
+                    if (pi.hProcess != IntPtr.Zero) CloseHandle(pi.hProcess);
+                }
+                return ok;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                if (envBlock != IntPtr.Zero) DestroyEnvironmentBlock(envBlock);
+                if (primaryToken != IntPtr.Zero) CloseHandle(primaryToken);
+                if (userToken != IntPtr.Zero) CloseHandle(userToken);
             }
         }
     }
@@ -474,6 +594,7 @@ namespace NexusITAM
         public string agentToken = "";
         public string patrimony = "";
         public string serverUrl = "https://itam-nexus.web.app";
+        public string relayBase = "";
         public string firestoreBase = "";
         public string authBase = "";
         public string tokenBase = "";
@@ -483,6 +604,7 @@ namespace NexusITAM
 
         public string ProjectId() { return AgentInfo.Filled(projectId, AgentInfo.Filled(AgentInfo.BuildProjectId, "itam-nexus")); }
         public string ApiKey() { return AgentInfo.Filled(apiKey, AgentInfo.Filled(AgentInfo.BuildApiKey, "")); }
+        public string RelayBase() { return string.IsNullOrEmpty(relayBase) ? AgentInfo.DefaultRelayBase : relayBase.TrimEnd('/'); }
         public string FirestoreBase() { return string.IsNullOrEmpty(firestoreBase) ? "https://firestore.googleapis.com/v1" : firestoreBase.TrimEnd('/'); }
         public string AuthBase() { return string.IsNullOrEmpty(authBase) ? "https://identitytoolkit.googleapis.com/v1" : authBase.TrimEnd('/'); }
         public string TokenBase() { return string.IsNullOrEmpty(tokenBase) ? "https://securetoken.googleapis.com/v1" : tokenBase.TrimEnd('/'); }
@@ -646,6 +768,9 @@ namespace NexusITAM
             // Windows antigos negociam TLS 1.0; o Google exige 1.2.
             ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072;
             ServicePointManager.Expect100Continue = false;
+            ServicePointManager.UseNagleAlgorithm = false;
+            ServicePointManager.DefaultConnectionLimit = 24;
+            ServicePointManager.MaxServicePointIdleTime = 60000;
             try { WebRequest.DefaultWebProxy.Credentials = CredentialCache.DefaultNetworkCredentials; } catch { }
         }
 
@@ -658,6 +783,10 @@ namespace NexusITAM
                 req.Method = method;
                 req.Timeout = timeoutMs;
                 req.ReadWriteTimeout = timeoutMs;
+                req.KeepAlive = true;
+                req.Pipelined = true;
+                req.ServicePoint.UseNagleAlgorithm = false;
+                req.ServicePoint.Expect100Continue = false;
                 req.UserAgent = "NexusITAM-Agent/" + AgentInfo.Version;
                 if (!string.IsNullOrEmpty(bearer)) req.Headers["Authorization"] = "Bearer " + bearer;
                 if (body != null)
@@ -1224,23 +1353,51 @@ namespace NexusITAM
     internal static class RemoteDesktop
     {
         private static int _seq;
+        private static readonly object _captureLock = new object();
+        private static Bitmap _fullBmp;
+        private static Bitmap _scaledBmp;
+        private static ImageCodecInfo _jpegCodec;
+        private static bool _codecLoaded;
 
         public static Dictionary<string, object> Capture(string quality, string sessionId, out string signature)
         {
             signature = "";
+            string cleanQuality = (quality == "low" || quality == "high") ? quality : "balanced";
             try
             {
                 Rectangle bounds = Screen.PrimaryScreen.Bounds;
-                int width = 1152;
-                long jpeg = 50L;
-                if (quality == "high") { width = 1366; jpeg = 62L; }
-                else if (quality == "low") { width = 860; jpeg = 36L; }
-                if (width > bounds.Width) width = bounds.Width;
-                int height = (int)Math.Round(bounds.Height * (width / (double)bounds.Width));
-
-                using (Bitmap full = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format24bppRgb))
+                int width = 1088;
+                long jpeg = 48L;
+                InterpolationMode interp = InterpolationMode.Bilinear;
+                if (cleanQuality == "high")
                 {
-                    using (Graphics g = Graphics.FromImage(full))
+                    width = Math.Min(bounds.Width, 1600);
+                    jpeg = 68L;
+                    interp = InterpolationMode.HighQualityBilinear;
+                }
+                else if (cleanQuality == "low")
+                {
+                    width = 768;
+                    jpeg = 32L;
+                    interp = InterpolationMode.Low;
+                }
+                if (width > bounds.Width) width = bounds.Width;
+                int height = Math.Max(1, (int)Math.Round(bounds.Height * (width / (double)bounds.Width)));
+
+                lock (_captureLock)
+                {
+                    if (_fullBmp == null || _fullBmp.Width != bounds.Width || _fullBmp.Height != bounds.Height)
+                    {
+                        if (_fullBmp != null) _fullBmp.Dispose();
+                        _fullBmp = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format24bppRgb);
+                    }
+                    if (_scaledBmp == null || _scaledBmp.Width != width || _scaledBmp.Height != height)
+                    {
+                        if (_scaledBmp != null) _scaledBmp.Dispose();
+                        _scaledBmp = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+                    }
+
+                    using (Graphics g = Graphics.FromImage(_fullBmp))
                     {
                         g.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
                         NativeMethods.POINT pt;
@@ -1258,45 +1415,49 @@ namespace NexusITAM
                             }
                         }
                     }
-                    using (Bitmap scaled = new Bitmap(width, height, PixelFormat.Format24bppRgb))
+
+                    using (Graphics gs = Graphics.FromImage(_scaledBmp))
                     {
-                        using (Graphics gs = Graphics.FromImage(scaled))
+                        gs.InterpolationMode = interp;
+                        gs.CompositingQuality = CompositingQuality.HighSpeed;
+                        gs.PixelOffsetMode = PixelOffsetMode.HighSpeed;
+                        gs.SmoothingMode = SmoothingMode.HighSpeed;
+                        gs.DrawImage(_fullBmp, 0, 0, width, height);
+                    }
+
+                    using (MemoryStream ms = new MemoryStream(65536))
+                    {
+                        ImageCodecInfo codec = JpegCodec();
+                        if (codec != null)
                         {
-                            gs.InterpolationMode = InterpolationMode.Bilinear;
-                            gs.CompositingQuality = CompositingQuality.HighSpeed;
-                            gs.DrawImage(full, 0, 0, width, height);
+                            using (EncoderParameters ep = new EncoderParameters(1))
+                            {
+                                ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, jpeg);
+                                _scaledBmp.Save(ms, codec, ep);
+                            }
                         }
-                        using (MemoryStream ms = new MemoryStream())
+                        else
                         {
-                            ImageCodecInfo codec = JpegCodec();
-                            if (codec != null)
-                            {
-                                using (EncoderParameters ep = new EncoderParameters(1))
-                                {
-                                    ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, jpeg);
-                                    scaled.Save(ms, codec, ep);
-                                }
-                            }
-                            else
-                            {
-                                scaled.Save(ms, ImageFormat.Jpeg);
-                            }
-                            byte[] bytes = ms.ToArray();
-                            using (MD5 md5 = MD5.Create()) signature = Convert.ToBase64String(md5.ComputeHash(bytes));
-                            string encoded = Convert.ToBase64String(bytes);
-                            Array.Clear(bytes, 0, bytes.Length);
-                            _seq++;
-                            Dictionary<string, object> frame = new Dictionary<string, object>();
-                            frame["sessionId"] = sessionId ?? "";
-                            frame["data"] = encoded;
-                            frame["width"] = width;
-                            frame["height"] = height;
-                            frame["screenWidth"] = bounds.Width;
-                            frame["screenHeight"] = bounds.Height;
-                            frame["seq"] = _seq;
-                            frame["capturedAt"] = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
-                            return frame;
+                            _scaledBmp.Save(ms, ImageFormat.Jpeg);
                         }
+                        byte[] bytes = ms.ToArray();
+                        int byteSize = bytes.Length;
+                        using (MD5 md5 = MD5.Create()) signature = cleanQuality + ":" + width + "x" + height + ":" + Convert.ToBase64String(md5.ComputeHash(bytes));
+                        string encoded = Convert.ToBase64String(bytes);
+                        Array.Clear(bytes, 0, bytes.Length);
+                        int nextSeq = Interlocked.Increment(ref _seq);
+                        Dictionary<string, object> frame = new Dictionary<string, object>();
+                        frame["sessionId"] = sessionId ?? "";
+                        frame["quality"] = cleanQuality;
+                        frame["data"] = encoded;
+                        frame["width"] = width;
+                        frame["height"] = height;
+                        frame["screenWidth"] = bounds.Width;
+                        frame["screenHeight"] = bounds.Height;
+                        frame["byteSize"] = byteSize;
+                        frame["seq"] = nextSeq;
+                        frame["capturedAt"] = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
+                        return frame;
                     }
                 }
             }
@@ -1309,11 +1470,17 @@ namespace NexusITAM
 
         private static ImageCodecInfo JpegCodec()
         {
+            if (_codecLoaded) return _jpegCodec;
             foreach (ImageCodecInfo codec in ImageCodecInfo.GetImageEncoders())
             {
-                if (codec.FormatID == ImageFormat.Jpeg.Guid) return codec;
+                if (codec.FormatID == ImageFormat.Jpeg.Guid)
+                {
+                    _jpegCodec = codec;
+                    break;
+                }
             }
-            return null;
+            _codecLoaded = true;
+            return _jpegCodec;
         }
 
         public static void Input(Dictionary<string, object> ev)
@@ -1601,13 +1768,14 @@ namespace NexusITAM
                             "$dir = 'C:\\ProgramData\\NexusITAM'\r\n" +
                             "$stageDir = $PSScriptRoot\r\n" +
                             "Stop-Service -Name 'NexusITAMAgent' -Force -ErrorAction SilentlyContinue\r\n" +
-                            "Get-Process -Name 'NexusAgent' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue\r\n" +
                             "Start-Sleep -Seconds 1\r\n" +
+                            "Remove-Item -Path \"$dir\\NexusAgent.old.exe\" -Force -ErrorAction SilentlyContinue\r\n" +
                             "if (Test-Path \"$dir\\NexusAgent.exe\") { Move-Item -Path \"$dir\\NexusAgent.exe\" -Destination \"$dir\\NexusAgent.old.exe\" -Force -ErrorAction SilentlyContinue }\r\n" +
                             "Copy-Item -Path \"$stageDir\\NexusAgent.exe\" -Destination \"$dir\\NexusAgent.exe\" -Force\r\n" +
                             "if (Test-Path \"$stageDir\\NexusAgent.ps1\") { Copy-Item -Path \"$stageDir\\NexusAgent.ps1\" -Destination \"$dir\\NexusAgent.ps1\" -Force }\r\n" +
-                            "Remove-Item -Path \"$dir\\NexusAgent.old.exe\" -Force -ErrorAction SilentlyContinue\r\n" +
                             "Start-Service -Name 'NexusITAMAgent' -ErrorAction SilentlyContinue\r\n" +
+                            "Start-Sleep -Seconds 4\r\n" +
+                            "Remove-Item -Path \"$dir\\NexusAgent.old.exe\" -Force -ErrorAction SilentlyContinue\r\n" +
                             "& \"$dir\\NexusAgent.exe\" --once | Out-Null\r\n" +
                             "Remove-Item -Path $stageDir -Recurse -Force -ErrorAction SilentlyContinue\r\n" +
                             "'@ | Set-Content -Path $runner -Encoding UTF8 -Force; " +
@@ -1660,7 +1828,7 @@ namespace NexusITAM
         private const int WakeWindowSeconds = 180;
         private const int AwakeHeartbeatSeconds = 10;
         private const int AwakePollMs = 2000;
-        private const int SessionPollMs = 700;
+        private const int SessionPollMs = 250;
         private const int FallbackPollMinutes = 1;
         private const int CommandMaxAgeMinutes = 15;
         private const int InventoryHours = 12;
@@ -1674,12 +1842,17 @@ namespace NexusITAM
         private DateTime _policyAt = DateTime.MinValue;
         private AgentState _state;
         private Thread _thread;
+        private Thread _streamThread;
         private volatile bool _running;
         private readonly AutoResetEvent _kick = new AutoResetEvent(false);
+        private readonly AutoResetEvent _streamKick = new AutoResetEvent(false);
         private EventWaitHandle _syncEvent;
 
         private DateTime _lastHeartbeat = DateTime.MinValue;
         private DateTime _lastControlPoll = DateTime.MinValue;
+        private DateTime _lastFirestoreFrameAt = DateTime.MinValue;
+        private DateTime _relayBackoffUntil = DateTime.MinValue;
+        private DateTime _lastTraySpawnAttempt = DateTime.MinValue;
         private DateTime _awakeUntil = DateTime.MinValue;
         private DateTime _localAwakeUntil = DateTime.MinValue;
         private DateTime _retryAt = DateTime.MinValue;
@@ -1753,12 +1926,22 @@ namespace NexusITAM
             _thread.IsBackground = true;
             _thread.Name = "NexusAgentEngine";
             _thread.Start();
+
+            if (!_isService)
+            {
+                _streamThread = new Thread(StreamLoop);
+                _streamThread.IsBackground = true;
+                _streamThread.Name = "NexusDeskStreamer";
+                _streamThread.Start();
+            }
         }
 
         public void Stop()
         {
             _running = false;
             _kick.Set();
+            _streamKick.Set();
+            if (_streamThread != null) _streamThread.Join(2500);
             if (_thread != null) _thread.Join(5000);
             if (_cloud != null && !_revoked && DoesTelemetry())
             {
@@ -1934,6 +2117,18 @@ namespace NexusITAM
             if (_revoked) return 1000;
             RefreshPolicy(false);
 
+            if (_isService && (now - _lastTraySpawnAttempt).TotalSeconds >= 20)
+            {
+                _lastTraySpawnAttempt = now;
+                if (!TrayRunning())
+                {
+                    if (NativeMethods.LaunchTrayInActiveUserSession(AgentPaths.InstalledExe))
+                    {
+                        AgentLog.Write("Bandeja iniciada automaticamente na sessao interativa do colaborador.");
+                    }
+                }
+            }
+
             bool telemetry = DoesTelemetry();
             if (!telemetry) ReadWakeFile();
             bool awake = now < _awakeUntil || now < _localAwakeUntil || _session.Active;
@@ -1948,7 +2143,7 @@ namespace NexusITAM
             bool fallback = (now - _lastControlPoll).TotalMinutes >= FallbackPollMinutes;
             if ((awake && (now - _lastControlPoll).TotalMilliseconds >= pollMs) || fallback) PollControl();
 
-            if (!_isService) StreamSession();
+            if (!_isService && _session.Active) _streamKick.Set();
             FlushOwnFields();
 
             if (telemetry && (_forceInventory || now >= _inventoryDueAt) && !_inventoryRunning)
@@ -1958,8 +2153,8 @@ namespace NexusITAM
                 ThreadPool.QueueUserWorkItem(delegate { try { RunInventory(); } finally { _inventoryRunning = false; } });
             }
 
-            if (_session.Active) return 150;
-            return awake ? 400 : 1000;
+            if (_session.Active) return 120;
+            return awake ? 350 : 1000;
         }
 
         private void SetStatus(string badge, Color color, string text)
@@ -2321,15 +2516,75 @@ namespace NexusITAM
             rs["state"] = _session.State;
             rs["operatorName"] = _session.Operator;
             rs["mode"] = _session.Mode;
+            rs["quality"] = _session.Quality;
             rs["lastInputSeq"] = _session.LastSeq;
             rs["policy"] = _policy.RemoteAccess;
             rs["updatedAt"] = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
             return rs;
         }
 
+        private void ApplyQualitySetting(string quality)
+        {
+            if (quality != "low" && quality != "balanced" && quality != "high") return;
+            if (quality == _session.Quality) return;
+            string prev = _session.Quality;
+            lock (_sync)
+            {
+                _session.Quality = quality;
+                _session.LastFrameSig = "";
+                _session.LastFrameAt = DateTime.MinValue;
+                _lastFirestoreFrameAt = DateTime.MinValue;
+                _session.Dirty = true;
+            }
+            AgentLog.Write("Qualidade da sessao remota alterada: {0} -> {1}.", prev, quality);
+            _streamKick.Set();
+        }
+
+        private void ProcessInputEvents(List<object> events)
+        {
+            if (events == null || events.Count == 0) return;
+            bool anyProcessed = false;
+            foreach (object item in events)
+            {
+                Dictionary<string, object> ev = item as Dictionary<string, object>;
+                long seq = Json.Long(ev, "seq", 0);
+                if (ev == null || seq <= _session.LastSeq) continue;
+                _session.LastSeq = seq;
+                anyProcessed = true;
+                RemoteDesktop.Input(ev);
+            }
+            if (anyProcessed)
+            {
+                lock (_sync) _session.Dirty = true;
+                _streamKick.Set();
+            }
+        }
+
+        private void ApplyRelayControl(Dictionary<string, object> control)
+        {
+            if (control == null || !_session.Active) return;
+            string status = Json.Str(control, "status");
+            if (status == "closed" || status == "ended")
+            {
+                EndSession("ended", "Sessao encerrada pelo tecnico (Relay).");
+                return;
+            }
+            DateTime? seen = Json.Time(Json.Str(control, "viewerSeenAt"));
+            if (seen.HasValue && seen.Value > _session.ViewerSeenUtc)
+            {
+                _session.ViewerSeenUtc = seen.Value;
+            }
+            ApplyQualitySetting(Json.Str(control, "quality"));
+            object raw;
+            if (control.TryGetValue("inputEvents", out raw))
+            {
+                ProcessInputEvents(raw as List<object>);
+            }
+        }
+
         private void HandleSession(Dictionary<string, object> rs, DateTime? viewerSeen)
         {
-            if (viewerSeen.HasValue) _session.ViewerSeenUtc = viewerSeen.Value;
+            if (viewerSeen.HasValue && viewerSeen.Value > _session.ViewerSeenUtc) _session.ViewerSeenUtc = viewerSeen.Value;
             if (rs == null) return;
             string status = Json.Str(rs, "status");
             string sessionId = Json.Str(rs, "sessionId");
@@ -2350,7 +2605,12 @@ namespace NexusITAM
                 _session.OperatorUid = Json.Str(rs, "requestedByUid");
                 if (string.IsNullOrEmpty(_session.Operator)) _session.Operator = "Equipe de TI";
                 _session.Mode = Json.Str(rs, "mode") == "unattended" ? "unattended" : "attended";
+                string initialQuality = Json.Str(rs, "quality");
+                _session.Quality = (initialQuality == "low" || initialQuality == "high") ? initialQuality : "balanced";
                 _session.LastSeq = 0;
+                _session.LastFrameSig = "";
+                _session.LastFrameAt = DateTime.MinValue;
+                _lastFirestoreFrameAt = DateTime.MinValue;
                 _session.ViewerSeenUtc = viewerSeen.HasValue ? viewerSeen.Value : DateTime.MinValue;
                 _session.Decided.Add(sessionId);
 
@@ -2375,9 +2635,10 @@ namespace NexusITAM
                     _session.StartedUtc = DateTime.UtcNow;
                     _session.Dirty = true;
                 }
-                AgentLog.Write("Sessao remota {0} de {1} ({2}): {3}.", sessionId, _session.Operator, _session.Mode, decision);
+                AgentLog.Write("Sessao remota {0} de {1} ({2}, qualidade {3}): {4}.", sessionId, _session.Operator, _session.Mode, _session.Quality, decision);
                 if (_ui != null) _ui.ShowSession(_session.Active, _session.Operator);
                 _forceHeartbeat = true;
+                if (_session.Active) _streamKick.Set();
             }
 
             if (!_session.Active || sessionId != _session.Id) return;
@@ -2387,21 +2648,11 @@ namespace NexusITAM
                 EndSession("ended", "Operador da sessao alterado sem nova autorizacao.");
                 return;
             }
-            string quality = Json.Str(rs, "quality");
-            if (quality == "low" || quality == "balanced" || quality == "high") _session.Quality = quality;
+            ApplyQualitySetting(Json.Str(rs, "quality"));
 
             object raw;
             if (!rs.TryGetValue("inputEvents", out raw)) return;
-            List<object> events = raw as List<object>;
-            if (events == null) return;
-            foreach (object item in events)
-            {
-                Dictionary<string, object> ev = item as Dictionary<string, object>;
-                long seq = Json.Long(ev, "seq", 0);
-                if (ev == null || seq <= _session.LastSeq) continue;
-                _session.LastSeq = seq;
-                RemoteDesktop.Input(ev);
-            }
+            ProcessInputEvents(raw as List<object>);
         }
 
         private void EndSession(string state, string reason)
@@ -2413,11 +2664,53 @@ namespace NexusITAM
             }
             AgentLog.Write("Sessao remota {0} encerrada: {1}", _session.Id, reason);
             if (_ui != null) _ui.ShowSession(false, "");
+            _kick.Set();
+        }
+
+        private int TargetFrameIntervalMs(bool relayActive)
+        {
+            string q = _session.Quality;
+            if (relayActive)
+            {
+                if (q == "low") return 110;
+                if (q == "high") return 210;
+                return 150;
+            }
+            if (q == "low") return 200;
+            if (q == "high") return 340;
+            return 260;
+        }
+
+        private void StreamLoop()
+        {
+            while (_running)
+            {
+                if (!_session.Active || _cred == null || _revoked)
+                {
+                    _streamKick.WaitOne(250);
+                    continue;
+                }
+                Stopwatch sw = Stopwatch.StartNew();
+                bool relayActive = DateTime.UtcNow >= _relayBackoffUntil;
+                try
+                {
+                    StreamSession(out relayActive);
+                }
+                catch (Exception ex)
+                {
+                    AgentLog.Write("Erro no stream remoto: {0}", ex.Message);
+                }
+                sw.Stop();
+                int targetMs = TargetFrameIntervalMs(relayActive);
+                int waitMs = Math.Max(5, targetMs - (int)sw.ElapsedMilliseconds);
+                _streamKick.WaitOne(waitMs);
+            }
         }
 
         /// <summary>Frames so com sessao ativa, alguem assistindo e tela mudando.</summary>
-        private void StreamSession()
+        private void StreamSession(out bool relayActive)
         {
+            relayActive = DateTime.UtcNow >= _relayBackoffUntil;
             if (!_session.Active) return;
             DateTime now = DateTime.UtcNow;
             DateTime viewer = _session.StartedUtc;
@@ -2449,28 +2742,84 @@ namespace NexusITAM
                 }
                 return;
             }
-            if ((now - _session.LastFrameAt).TotalMilliseconds < SessionPollMs) return;
 
+            string currentQuality = _session.Quality;
+            string currentSessionId = _session.Id;
             string signature;
-            Dictionary<string, object> frame = RemoteDesktop.Capture(_session.Quality, _session.Id, out signature);
-            if (frame == null) return;
-            bool changed = signature != _session.LastFrameSig;
-            if (!changed && (now - _session.LastFrameAt).TotalSeconds < 10 && _session.FrameVisible) return;
+            Dictionary<string, object> frame = RemoteDesktop.Capture(currentQuality, currentSessionId, out signature);
+            if (frame == null || !_session.Active) return;
 
-            Dictionary<string, object> f = Identity();
-            f["screenFrame"] = frame;
-            f["remoteState"] = SessionStateFields();
-            int status;
-            RemoteDoc doc = _cloud.Patch("agentDevices", DocId(), f, new string[] { "tenantId", "deviceKey", "screenFrame", "remoteState" }, new string[] { "consoleWakeAt" }, 15000, out status);
-            _session.LastFrameAt = DateTime.UtcNow;
-            if (doc == null)
+            bool changed = signature != _session.LastFrameSig;
+            bool forceRefresh = (now - _session.LastFrameAt).TotalSeconds >= 4 || !_session.FrameVisible || _session.Dirty;
+            if (!changed && !forceRefresh)
             {
-                NoteFailure(status);
                 return;
             }
+
+            bool relaySent = false;
+            if (DateTime.UtcNow >= _relayBackoffUntil)
+            {
+                try
+                {
+                    Dictionary<string, object> relayPayload = new Dictionary<string, object>();
+                    relayPayload["tenantId"] = _cred.tenantId;
+                    relayPayload["deviceKey"] = _cred.deviceKey;
+                    relayPayload["sessionId"] = currentSessionId;
+                    relayPayload["frame"] = frame;
+                    relayPayload["remoteState"] = SessionStateFields();
+                    HttpResult rr = Http.Send(
+                        "POST",
+                        _cfg.RelayBase() + "/api/v1/telemetry/remote-frame",
+                        Json.Serializer.Serialize(relayPayload),
+                        "application/json; charset=utf-8",
+                        null,
+                        2500
+                    );
+                    if (rr.Status >= 200 && rr.Status < 300)
+                    {
+                        relaySent = true;
+                        relayActive = true;
+                        Dictionary<string, object> resp = Json.ParseObject(rr.Body);
+                        if (resp != null)
+                        {
+                            ApplyRelayControl(Json.Map(resp, "control"));
+                        }
+                    }
+                    else
+                    {
+                        relayActive = false;
+                        _relayBackoffUntil = DateTime.UtcNow.AddSeconds(8);
+                    }
+                }
+                catch
+                {
+                    relayActive = false;
+                    _relayBackoffUntil = DateTime.UtcNow.AddSeconds(8);
+                }
+            }
+
+            _session.LastFrameAt = DateTime.UtcNow;
             _session.LastFrameSig = signature;
-            _session.FrameVisible = true;
-            lock (_sync) _session.Dirty = false;
+
+            bool shouldWriteFirestore = !relaySent || !_session.FrameVisible || _session.Dirty ||
+                (DateTime.UtcNow - _lastFirestoreFrameAt).TotalMilliseconds >= 850;
+
+            if (shouldWriteFirestore && _session.Active)
+            {
+                Dictionary<string, object> f = Identity();
+                f["screenFrame"] = frame;
+                f["remoteState"] = SessionStateFields();
+                int status;
+                RemoteDoc doc = _cloud.Patch("agentDevices", DocId(), f, new string[] { "tenantId", "deviceKey", "screenFrame", "remoteState" }, new string[] { "consoleWakeAt" }, 10000, out status);
+                if (doc == null)
+                {
+                    if (!relaySent) NoteFailure(status);
+                    return;
+                }
+                _lastFirestoreFrameAt = DateTime.UtcNow;
+                _session.FrameVisible = true;
+                lock (_sync) _session.Dirty = false;
+            }
         }
 
         // ---- inventario ------------------------------------------------------
@@ -3313,12 +3662,11 @@ namespace NexusITAM
 
         private void CheckBinaryUpdated()
         {
-            if (_binaryWriteUtc == DateTime.MinValue || _engine.SessionActive) return;
+            if (_binaryWriteUtc == DateTime.MinValue) return;
             try
             {
-                string current = Path.GetFullPath(Application.ExecutablePath);
                 string installed = Path.GetFullPath(AgentPaths.InstalledExe);
-                if (!string.Equals(current, installed, StringComparison.OrdinalIgnoreCase)) return;
+                if (!File.Exists(installed)) return;
                 DateTime latest = File.GetLastWriteTimeUtc(installed);
                 if (latest > _binaryWriteUtc.AddSeconds(2))
                 {
