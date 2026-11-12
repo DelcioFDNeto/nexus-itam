@@ -45,7 +45,19 @@ const CompanySection = ({ config, set, currentUser }) => {
         </div>
       </Card>
 
-      <Card icon={CheckCircle} title="Plano da empresa" subtitle={entitlements?.legacy ? 'Conta sem plano definido (sem limites)' : entitlements?.planName}>
+      <Card
+        icon={CheckCircle}
+        title="Plano da empresa"
+        subtitle={entitlements?.legacy ? 'Conta sem plano definido (sem limites)' : entitlements?.planName}
+        action={(
+          <Link
+            to="/plano"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-[11px] font-black uppercase tracking-wider shadow-sm transition-colors"
+          >
+            Personalizar Plano
+          </Link>
+        )}
+      >
         {[
           ['Ativos', usage.assets, entitlements?.maxAssets],
           ['Usuários', usage.users, entitlements?.maxUsers],

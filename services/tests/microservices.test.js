@@ -604,7 +604,7 @@ describe('Nexus ITAM v3.0 — Malha de Microsserviços, Segurança Zero-Trust e 
     expect(createRes.status).toBe(201);
     const ticket = await createRes.json();
     expect(ticket.protocol).toMatch(/^CHM-2026-/);
-    expect(ticket.requester_name).toBe('TI & Gestão Shineray');
+    expect(ticket.requester_name).toBe('Délcio Farias');
 
     // 2. Dono adiciona comentário
     const commentRes = await fetch(`${cluster.gatewayUrl}/api/v1/tickets/${ticket.id}/comments`, {
@@ -636,5 +636,186 @@ describe('Nexus ITAM v3.0 — Malha de Microsserviços, Segurança Zero-Trust e 
     expect(statusRes.status).toBe(200);
     const resolvedTicket = await statusRes.json();
     expect(resolvedTicket.status).toBe('resolved');
+  });
+
+  it('13. [Contratos Sob Medida] Dono consulta e salva plano personalizado + ciclos via Gateway; colaborador recebe 403', async () => {
+    const deniedRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/contract`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${colabToken}`,
+      },
+      body: JSON.stringify({ plan: 'custom', overrides: { maxAssets: 500 } }),
+    });
+    expect(deniedRes.status).toBe(403);
+
+    const getInitial = await fetch(`${cluster.gatewayUrl}/api/v1/auth/contract`, {
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(getInitial.status).toBe(200);
+
+    const customPayload = {
+      plan: 'custom',
+      overrides: {
+        maxAssets: 350,
+        maxUsers: 25,
+        monthlyPrice: 489.9,
+        billingCycle: 'annual',
+        features: {
+          terms: true,
+          qr_audit: true,
+          whitelabel: true,
+          nexus_agent: true,
+        },
+      },
+      customContract: {
+        enabled: true,
+        mode: 'modular',
+        billingCycle: 'annual',
+        discountPct: 18,
+        notes: 'Contrato anual customizado via teste de integracao.',
+      },
+    };
+
+    const putRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/contract`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${ownerToken}`,
+      },
+      body: JSON.stringify(customPayload),
+    });
+    expect(putRes.status).toBe(200);
+    const saved = await putRes.json();
+    expect(saved.plan).toBe('custom');
+    expect(saved.overrides.maxAssets).toBe(350);
+    expect(saved.customContract.billingCycle).toBe('annual');
+
+    const meRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/me`, {
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(meRes.status).toBe(200);
+    const meData = await meRes.json();
+    const meUser = meData.user || meData;
+    expect(meUser.plan).toBe('custom');
+    expect(meUser.overrides?.maxAssets).toBe(350);
+  });
+
+  it('14. [Gestão Portal Colaboradores] Gestor cria, suspende, reativa/redefine senha e revoga colaborador com proteção ao Dono', async () => {
+    // Cria conta de gestor para validar permissoes do novo perfil no painel dedicado
+    const createMgrRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/users`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${ownerToken}`,
+      },
+      body: JSON.stringify({
+        name: 'Gestor Operacional Teste',
+        email: 'gestor.acesso@shineraybysabel.com.br',
+        password: 'Gestor@2026!',
+        role: 'manager',
+        department: 'Operações TI',
+        jobTitle: 'Coordenador',
+      }),
+    });
+    expect(createMgrRes.status).toBe(201);
+
+    const mgrLoginRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'gestor.acesso@shineraybysabel.com.br',
+        password: 'Gestor@2026!',
+      }),
+    });
+    expect(mgrLoginRes.status).toBe(200);
+    const mgrToken = (await mgrLoginRes.json()).accessToken;
+
+    // Gestor provisiona novo colaborador para o Portal
+    const createColabRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/users`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${mgrToken}`,
+      },
+      body: JSON.stringify({
+        name: 'Colaborador Portal Gerenciado',
+        email: 'portal.gerenciado@shineraybysabel.com.br',
+        password: 'SenhaInicial@2026!',
+        role: 'collaborator',
+        department: 'Atendimento',
+        jobTitle: 'Analista Jr',
+      }),
+    });
+    expect(createColabRes.status).toBe(201);
+    const createdColab = await createColabRes.json();
+    expect(createdColab.user.email).toBe('portal.gerenciado@shineraybysabel.com.br');
+
+    // Gestor suspende colaborador via PATCH
+    const suspendRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/users/${createdColab.user.id}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${mgrToken}`,
+      },
+      body: JSON.stringify({ active: false }),
+    });
+    expect(suspendRes.status).toBe(200);
+    expect((await suspendRes.json()).user.active).toBe(false);
+
+    // Colaborador suspenso nao consegue autenticar
+    const suspendedLoginRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'portal.gerenciado@shineraybysabel.com.br',
+        password: 'SenhaInicial@2026!',
+      }),
+    });
+    expect([401, 403]).toContain(suspendedLoginRes.status);
+
+    // Gestor reativa e redefine a senha provisoria
+    const resetRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/users/${createdColab.user.id}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${mgrToken}`,
+      },
+      body: JSON.stringify({ active: true, password: 'SenhaRedefinida@2026!' }),
+    });
+    expect(resetRes.status).toBe(200);
+    expect((await resetRes.json()).user.active).toBe(true);
+
+    // Login funciona com a senha redefinida
+    const newLoginRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'portal.gerenciado@shineraybysabel.com.br',
+        password: 'SenhaRedefinida@2026!',
+      }),
+    });
+    expect(newLoginRes.status).toBe(200);
+
+    // Gestor NAO pode excluir/revogar o Dono (owner)
+    const listRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/users`, {
+      headers: { authorization: `Bearer ${mgrToken}` },
+    });
+    const listData = await listRes.json();
+    const ownerAccount = (listData.items || []).find((u) => u.role === 'owner');
+    expect(ownerAccount).toBeDefined();
+
+    const forbidDeleteOwnerRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/users/${ownerAccount.id}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${mgrToken}` },
+    });
+    expect(forbidDeleteOwnerRes.status).toBe(403);
+
+    // Gestor revoga colaborador normalmente
+    const revokeRes = await fetch(`${cluster.gatewayUrl}/api/v1/auth/users/${createdColab.user.id}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${mgrToken}` },
+    });
+    expect(revokeRes.status).toBe(200);
   });
 });

@@ -263,6 +263,7 @@ export async function buildComplianceService(opts = {}) {
     return {
       termId: term.id,
       status: term.status,
+      valid: term.status === 'signed' ? Boolean(documentIntact && signatureValid) : Boolean(documentIntact),
       documentIntact,
       signatureValid,
       algorithm: 'HMAC-SHA256 + Canonical SHA-256',
@@ -271,6 +272,29 @@ export async function buildComplianceService(opts = {}) {
       employeeEmail: term.employee_email,
       signedAt: signedAtIso,
       verifiedAt: new Date().toISOString(),
+    };
+  });
+
+  // ---------------------------------------------------------------------------
+  // DELETE /api/v1/compliance/terms/:id — Remoção administrativa de termo
+  // ---------------------------------------------------------------------------
+  app.delete('/api/v1/compliance/terms/:id', async (request, reply) => {
+    const user = verifyGatewayOrJwt(request);
+    requireRoles(user, ['owner', 'admin', 'manager']);
+
+    const removed = await complianceRepo.deleteTerm(user.tenantId, request.params.id);
+    if (!removed) {
+      return reply.code(404).send({ error: 'NOT_FOUND', message: 'Termo não encontrado.' });
+    }
+
+    await publishDomainEvent('term.deleted', user.tenantId, {
+      id: removed.id,
+      employeeName: removed.employee_name,
+    });
+
+    return {
+      message: 'Termo removido com sucesso.',
+      term: removed,
     };
   });
 

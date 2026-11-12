@@ -230,5 +230,24 @@ describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', 
       fireEvent.click(copyCredsBtn);
       expect(navigator.clipboard.writeText).toHaveBeenCalled();
     });
+
+    it('permite revogar acesso de um colaborador da lista do portal', async () => {
+      vi.spyOn(microservicesApi, 'deleteUser').mockResolvedValue({ success: true });
+
+      render(<EmployeeManager />);
+
+      const portalTab = await screen.findByRole('button', {
+        name: /Portal do Colaborador \(Acessos\)/i,
+      });
+      fireEvent.click(portalTab);
+
+      const revokeBtn = await screen.findByTitle(/Revogar acesso deste colaborador/i);
+      expect(revokeBtn).toBeInTheDocument();
+      fireEvent.click(revokeBtn);
+
+      await waitFor(() => {
+        expect(microservicesApi.deleteUser).toHaveBeenCalledWith('u-colab-1');
+      });
+    });
   });
 });

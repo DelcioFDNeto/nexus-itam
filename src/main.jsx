@@ -7,14 +7,12 @@ import App from './App.jsx'
 // hash que nao existe mais. Recarrega uma vez (marca em sessionStorage para
 // nao entrar em loop se o problema for outro).
 window.addEventListener('vite:preloadError', (event) => {
-  const KEY = 'nexus:preload-reload';
-  if (sessionStorage.getItem(KEY)) return;
-  sessionStorage.setItem(KEY, '1');
+  const KEY = 'nexus:preload-reload-ts';
+  const last = Number(sessionStorage.getItem(KEY) || 0);
+  if (Date.now() - last < 10000) return;
+  sessionStorage.setItem(KEY, String(Date.now()));
   event.preventDefault();
   window.location.reload();
-});
-window.addEventListener('load', () => {
-  setTimeout(() => sessionStorage.removeItem('nexus:preload-reload'), 10000);
 });
 
 createRoot(document.getElementById('root')).render(

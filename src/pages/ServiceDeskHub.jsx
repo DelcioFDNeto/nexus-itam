@@ -17,6 +17,7 @@ import {
   Laptop,
   Lock,
   MessageSquare,
+  Monitor,
   Network,
   Play,
   Plus,
@@ -30,6 +31,7 @@ import {
   Tag,
   Terminal,
   Ticket,
+  Trash2,
   TrendingUp,
   User,
   X,
@@ -44,6 +46,9 @@ import {
   onGatewaySessionChange,
   resolvePortalUrl,
 } from '../services/microservicesClient';
+import { useAuth } from '../contexts/AuthContext';
+import RemoteControlModal from '../components/RemoteControlModal';
+import { buildBrandedPortalUrl } from '../utils/portalBranding';
 
 const STATUS_BADGES = {
   open: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
@@ -109,7 +114,9 @@ const formatRelativeTime = (timestamp) => {
 };
 
 const ServiceDeskHub = () => {
+  const { currentUser } = useAuth?.() || {};
   const [gatewaySession, setGatewaySessionState] = useState(() => getGatewaySession());
+  const [remoteModalDevice, setRemoteModalDevice] = useState(null);
   const [clusterHealth, setClusterHealth] = useState(null);
   const [healthError, setHealthError] = useState('');
   const [wsStatus, setWsStatus] = useState('disconnected');
@@ -122,6 +129,8 @@ const ServiceDeskHub = () => {
   const [loading, setLoading] = useState(false);
   const [activeTicketCommentId, setActiveTicketCommentId] = useState(null);
   const [ticketCommentText, setTicketCommentText] = useState('');
+  const [ticketCommentsMap, setTicketCommentsMap] = useState({});
+  const [loadingCommentsId, setLoadingCommentsId] = useState(null);
   const [ticketFilter, setTicketFilter] = useState('all');
   const [ticketSearch, setTicketSearch] = useState('');
   const [showDevDrawer, setShowDevDrawer] = useState(false);
@@ -137,6 +146,18 @@ const ServiceDeskHub = () => {
     department: 'TI Corporativa',
   });
 
+  const [isNewTermModalOpen, setIsNewTermModalOpen] = useState(false);
+  const [submittingTerm, setSubmittingTerm] = useState(false);
+  const [newTermForm, setNewTermForm] = useState({
+    termType: 'entrega',
+    employeeName: '',
+    employeeEmail: '',
+    department: 'TI & Operações',
+    internalId: '',
+    model: '',
+    serialNumber: '',
+  });
+
   const [credentials, setCredentials] = useState(() => ({
     email: 'ti@shineraybysabel.com.br',
     password: 'Shineray@2026!',
@@ -144,7 +165,7 @@ const ServiceDeskHub = () => {
 
   const wsRef = useRef(null);
   const gatewayUrl = getGatewayBaseUrl();
-  const portalUrl = resolvePortalUrl();
+  const portalUrl = buildBrandedPortalUrl(resolvePortalUrl(), currentUser || gatewaySession?.user);
 
   const handleCreateNewTicket = async (e) => {
     e.preventDefault();
@@ -219,6 +240,17 @@ const ServiceDeskHub = () => {
     }
   }, [gatewayUrl]);
 
+  const refreshTimeoutRef = useRef(null);
+
+  const debouncedLoadDomainData = useCallback(() => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+    }
+    refreshTimeoutRef.current = setTimeout(() => {
+      loadDomainData();
+    }, 2000);
+  }, [loadDomainData]);
+
   useEffect(() => {
     let active = true;
     microservicesApi
@@ -260,8 +292,14 @@ const ServiceDeskHub = () => {
         onFrame: (frame) => {
           if (!active) return;
           setWsFeed((prev) => [frame, ...prev].slice(0, 15));
-          if (frame.event && frame.event !== 'welcome' && frame.event !== 'pong') {
-            loadDomainData();
+          const isBusinessEvent =
+            frame?.event &&
+            (frame.event.startsWith('ticket.') ||
+              frame.event.startsWith('term.') ||
+              frame.event.startsWith('audit.') ||
+              frame.event === 'cluster.sync');
+          if (isBusinessEvent) {
+            debouncedLoadDomainData();
           }
         },
       });
@@ -270,9 +308,12 @@ const ServiceDeskHub = () => {
 
     return () => {
       active = false;
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
       wsRef.current?.close();
     };
-  }, [gatewaySession?.token, gatewayUrl, loadDomainData]);
+  }, [debouncedLoadDomainData, gatewaySession?.token, gatewayUrl]);
 
   const handleConnectGateway = async (e) => {
     e.preventDefault();
@@ -311,52 +352,136 @@ const ServiceDeskHub = () => {
     }
   };
 
+  const handleDeleteTicket = async (ticketId, protocol) => {
+    try {
+      await microservicesApi.deleteTicket(ticketId);
+      setTickets((prev) => prev.filter((t) => t.id !== ticketId));
+      toast.success(`Chamado ${protocol || ''} excluído com sucesso.`);
+      loadDomainData();
+    } catch (err) {
+      toast.error(err.message || 'Falha ao excluir chamado.');
+    }
+  };
+
+  const handleToggleTicketComments = async (ticketId) => {
+    if (activeTicketCommentId === ticketId) {
+      setActiveTicketCommentId(null);
+      return;
+    }
+    setActiveTicketCommentId(ticketId);
+    setLoadingCommentsId(ticketId);
+    try {
+      const detail = await microservicesApi.getTicketById(ticketId);
+      if (detail?.comments) {
+        setTicketCommentsMap((prev) => ({ ...prev, [ticketId]: detail.comments }));
+      }
+    } catch {
+      // mantém estado local
+    } finally {
+      setLoadingCommentsId(null);
+    }
+  };
+
   const handleSendTicketComment = async (ticketId) => {
     const text = ticketCommentText.trim();
     if (!text) return;
     try {
-      await microservicesApi.addTicketComment(ticketId, text);
+      const added = await microservicesApi.addTicketComment(ticketId, text);
+      if (added) {
+        setTicketCommentsMap((prev) => ({
+          ...prev,
+          [ticketId]: [...(prev[ticketId] || []), added],
+        }));
+      }
       toast.success('Mensagem enviada e sincronizada instantaneamente com o colaborador.');
       setTicketCommentText('');
-      setActiveTicketCommentId(null);
       loadDomainData();
     } catch (err) {
       toast.error(err.message);
     }
   };
 
-  const handleIssueQuickTerm = async () => {
+  const handleCreateNewTerm = async (e) => {
+    e.preventDefault();
+    if (
+      !newTermForm.employeeName.trim() ||
+      !newTermForm.employeeEmail.trim() ||
+      !newTermForm.internalId.trim() ||
+      !newTermForm.model.trim()
+    ) {
+      toast.error('Preencha os dados do colaborador e do equipamento sob custódia.');
+      return;
+    }
+    setSubmittingTerm(true);
     try {
       await microservicesApi.issueTerm({
-        termType: 'entrega',
-        employeeName: 'João da Silva',
-        employeeEmail: 'joao.silva@shineray.com.br',
-        department: 'Vendas Concessionária',
+        termType: newTermForm.termType || 'entrega',
+        employeeName: newTermForm.employeeName.trim(),
+        employeeEmail: newTermForm.employeeEmail.trim().toLowerCase(),
+        department: newTermForm.department.trim() || 'TI & Operações',
         assetsSnapshot: [
           {
-            internalId: 'SHL-BEL-NTB-002',
-            model: 'Lenovo IdeaPad 3 Core i3',
-            serialNumber: 'PF2K884X',
+            internalId: newTermForm.internalId.trim().toUpperCase(),
+            model: newTermForm.model.trim(),
+            serialNumber: newTermForm.serialNumber.trim() || null,
           },
         ],
       });
-      toast.success('Novo Termo de Custódia CLT emitido e transmitido para assinatura do colaborador.');
+      toast.success('Termo de Custódia CLT emitido com hash SHA-256 canônico.');
+      setIsNewTermModalOpen(false);
+      setNewTermForm({
+        termType: 'entrega',
+        employeeName: '',
+        employeeEmail: '',
+        department: 'TI & Operações',
+        internalId: '',
+        model: '',
+        serialNumber: '',
+      });
       loadDomainData();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(err.message || 'Falha ao emitir termo CLT.');
+    } finally {
+      setSubmittingTerm(false);
+    }
+  };
+
+  const handleSignTerm = async (termId) => {
+    try {
+      await microservicesApi.signTerm(termId, true);
+      toast.success('Termo assinado digitalmente com selo criptográfico HMAC-SHA256!');
+      loadDomainData();
+    } catch (err) {
+      toast.error(err.message || 'Falha ao assinar termo.');
     }
   };
 
   const handleVerifySingleTerm = async (termId) => {
     try {
       const res = await microservicesApi.verifyTerm(termId);
-      if (res.valid) {
-        toast.success(`Termo validado: Selo digital HMAC-SHA256 íntegro e assinado juridicamente.`);
+      const isIntact = Boolean(
+        res.valid ?? (res.documentIntact && (res.status !== 'signed' || res.signatureValid)),
+      );
+      if (isIntact && res.status === 'signed') {
+        toast.success('Termo validado: Selo digital HMAC-SHA256 íntegro e assinado juridicamente.');
+      } else if (isIntact) {
+        toast.success('Documento íntegro (SHA-256 canônico verificado). Aguardando assinatura.');
       } else {
-        toast.error(`Atenção: Hash divergente do registro original.`);
+        toast.error('Atenção: Hash divergente do registro original.');
       }
     } catch (err) {
       toast.error(err.message);
+    }
+  };
+
+  const handleDeleteTerm = async (termId, employeeName) => {
+    try {
+      await microservicesApi.deleteTerm(termId);
+      setTerms((prev) => prev.filter((t) => t.id !== termId));
+      toast.success(`Termo de ${employeeName || 'custódia'} removido com sucesso.`);
+      loadDomainData();
+    } catch (err) {
+      toast.error(err.message || 'Falha ao remover termo.');
     }
   };
 
@@ -378,24 +503,24 @@ const ServiceDeskHub = () => {
     }
   };
 
-  const handleSimulateWsPulse = () => {
-    if (!wsRef.current) {
-      toast.error('Conecte-se primeiro ao API Gateway.');
-      return;
+  const handleVerifyAuditChainNow = async () => {
+    try {
+      wsRef.current?.ping?.();
+      const chRes = await microservicesApi.verifyAuditChain();
+      setChainReport(chRes);
+      if (chRes?.intact) {
+        toast.success(
+          `Hash-Chain SHA-256 verificada: 100% íntegra (${chRes.checkedRecords || 0} blocos auditados).`,
+        );
+      } else {
+        toast.error(`Alerta na Hash-Chain: ${chRes?.reason || 'divergência detectada'}.`);
+      }
+    } catch (err) {
+      toast.error(err.message);
     }
-    const cpu = Number((18 + Math.random() * 55).toFixed(1));
-    const ram = Number((44 + Math.random() * 35).toFixed(1));
-    wsRef.current.pushLiveTelemetry({
-      deviceKey: 'WKS-SHL-NP550XED',
-      hostname: 'SHL-BEL-NTB-001',
-      cpuPercent: cpu,
-      ramPercent: ram,
-      diskPercent: 44.2,
-    });
-    toast.success(`Pulso de telemetria RMM transmitido (CPU ${cpu}% | RAM ${ram}%)`);
   };
 
-  // KPIs calculados
+  // KPIs calculados dinamicamente (sem dados fictícios)
   const activeTickets = useMemo(() => {
     return tickets.filter((t) => t.status === 'open' || t.status === 'in_progress');
   }, [tickets]);
@@ -411,6 +536,29 @@ const ServiceDeskHub = () => {
     const resolved = tickets.filter((t) => t.status === 'resolved' || t.status === 'closed').length;
     return { total, open, inProgress, resolved };
   }, [tickets]);
+
+  const slaMetrics = useMemo(() => {
+    if (tickets.length === 0) {
+      return {
+        rate: '100%',
+        badge: 'Em dia',
+        subtitle: 'Meta contratual ≥ 98% • Sem chamados em atraso',
+      };
+    }
+    const now = Date.now();
+    const withinSla = tickets.filter((t) => {
+      if (!t.sla_due_at) return true;
+      const due = new Date(t.sla_due_at).getTime();
+      const end = t.resolved_at ? new Date(t.resolved_at).getTime() : now;
+      return isNaN(due) || end <= due;
+    }).length;
+    const pct = ((withinSla / tickets.length) * 100).toFixed(1).replace(/\.0$/, '');
+    return {
+      rate: `${pct}%`,
+      badge: `${withinSla}/${tickets.length} no prazo`,
+      subtitle: `Meta contratual ≥ 98% • ${ticketCounts.resolved} concluídos`,
+    };
+  }, [tickets, ticketCounts.resolved]);
 
   const filteredTickets = useMemo(() => {
     return tickets.filter((t) => {
@@ -514,13 +662,15 @@ const ServiceDeskHub = () => {
           </div>
           <div className="mt-2">
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black text-slate-900 dark:text-white">99.4%</span>
+              <span className="text-2xl font-black text-slate-900 dark:text-white">
+                {slaMetrics.rate}
+              </span>
               <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center">
-                <TrendingUp size={12} className="mr-0.5" /> +0.6%
+                <TrendingUp size={12} className="mr-0.5" /> {slaMetrics.badge}
               </span>
             </div>
             <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-              Meta contratual ≥ 98% • Tempo médio: 14 min
+              {slaMetrics.subtitle}
             </p>
           </div>
         </div>
@@ -557,10 +707,12 @@ const ServiceDeskHub = () => {
           <div className="mt-2">
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-black text-slate-900 dark:text-white">
-                {signedTerms.length} / {terms.length || 1}
+                {signedTerms.length} / {terms.length}
               </span>
               <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                100% Selados
+                {terms.length > 0
+                  ? `${Math.round((signedTerms.length / terms.length) * 100)}% Selados`
+                  : 'Sem pendências'}
               </span>
             </div>
             <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
@@ -580,10 +732,11 @@ const ServiceDeskHub = () => {
           <div className="mt-2">
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-black text-slate-900 dark:text-white">
-                {fleet.devices?.length || 1}
+                {fleet.devices?.length || 0}
               </span>
               <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Ativas
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                {(fleet.devices || []).filter((d) => d.online !== false).length} Ativas
               </span>
             </div>
             <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
@@ -675,23 +828,23 @@ const ServiceDeskHub = () => {
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:border-brand shadow-2xs"
             >
               <Tag size={13} className="text-brand" />
-              <span>Gerar Próxima Tag (API 1)</span>
+              <span>Consultar Próxima Tag (API 1)</span>
             </button>
             <button
               type="button"
-              onClick={handleSimulateWsPulse}
+              onClick={handleVerifyAuditChainNow}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:border-brand shadow-2xs"
             >
-              <Play size={13} className="text-emerald-500" />
-              <span>Simular Pulso Telemetria RMM</span>
+              <ShieldCheck size={13} className="text-emerald-500" />
+              <span>Auditar Hash-Chain SHA-256 (API 3)</span>
             </button>
             <button
               type="button"
-              onClick={handleIssueQuickTerm}
+              onClick={() => setIsNewTermModalOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:border-brand shadow-2xs"
             >
               <FileSignature size={13} className="text-indigo-500" />
-              <span>Emitir Termo CLT de Teste</span>
+              <span>Emitir Termo de Custódia CLT</span>
             </button>
           </div>
         </div>
@@ -1121,19 +1274,50 @@ const ServiceDeskHub = () => {
                                 </button>
                               </>
                             )}
+                            {tk.asset_tag && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const dev = fleet.devices?.find(
+                                    (d) =>
+                                      d.internalId === tk.asset_tag ||
+                                      d.hostname === tk.asset_tag ||
+                                      d.device_key === tk.asset_tag
+                                  ) || {
+                                    hostname: tk.asset_tag,
+                                    internalId: tk.asset_tag,
+                                    deviceKey: tk.asset_tag,
+                                    loggedUser: tk.requester_name || tk.requester_email || 'Colaborador',
+                                  };
+                                  setRemoteModalDevice(dev);
+                                }}
+                                className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 rounded-xl border border-indigo-500/40 bg-indigo-50/50 dark:bg-indigo-950/30 px-3 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors active:scale-[0.98]"
+                                title={`Acessar notebook ${tk.asset_tag} remotamente via NexusDesk`}
+                              >
+                                <Monitor size={13} />
+                                <span>NexusDesk ({tk.asset_tag})</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTicket(tk.id, tk.protocol)}
+                              className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-800 px-2.5 py-1.5 text-xs font-semibold text-slate-400 hover:text-rose-600 hover:border-rose-500/40 transition-colors"
+                              title="Excluir chamado"
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </div>
 
                           <button
                             type="button"
-                            onClick={() =>
-                              setActiveTicketCommentId(
-                                activeTicketCommentId === tk.id ? null : tk.id,
-                              )
-                            }
+                            onClick={() => handleToggleTicketComments(tk.id)}
                             className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-brand transition-colors"
                           >
                             <MessageSquare size={13} />
-                            <span>Diálogo Técnico ({tk.comments_count ?? 0})</span>
+                            <span>
+                              Diálogo Técnico (
+                              {ticketCommentsMap[tk.id]?.length ?? tk.comments_count ?? 0})
+                            </span>
                             {activeTicketCommentId === tk.id ? (
                               <ChevronUp size={13} />
                             ) : (
@@ -1144,7 +1328,36 @@ const ServiceDeskHub = () => {
 
                       {/* Technical Dialog Drawer */}
                       {activeTicketCommentId === tk.id && (
-                        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
+                          {loadingCommentsId === tk.id ? (
+                            <p className="text-[11px] text-slate-400 italic py-1">
+                              Carregando histórico de mensagens...
+                            </p>
+                          ) : (ticketCommentsMap[tk.id] || tk.comments || []).length === 0 ? (
+                            <p className="text-[11px] text-slate-400 italic py-1">
+                              Nenhuma mensagem registrada neste chamado até o momento.
+                            </p>
+                          ) : (
+                            <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                              {(ticketCommentsMap[tk.id] || tk.comments || []).map((cm) => (
+                                <div
+                                  key={cm.id}
+                                  className="rounded-lg bg-slate-50 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-800 p-2.5 text-xs"
+                                >
+                                  <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500 mb-1">
+                                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                                      {cm.author_name || cm.author_email}
+                                    </span>
+                                    <span>{formatRelativeTime(cm.created_at)}</span>
+                                  </div>
+                                  <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                                    {cm.message}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
                           <div className="flex gap-2">
                             <input
                               type="text"
@@ -1210,20 +1423,31 @@ const ServiceDeskHub = () => {
                             </p>
                             <p className="text-[11px] text-slate-500">{dev.os_version}</p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleDispatchRemoteCommand(
-                                dev.device_key || 'WKS-ENG-PF4X92K1',
-                                'force_inventory',
-                              )
-                            }
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-200 dark:bg-slate-700 hover:text-brand hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-[10px] font-semibold"
-                            title="Despachar comando de inventário imediato"
-                          >
-                            <Terminal size={11} />
-                            <span>Inventariar</span>
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setRemoteModalDevice(dev)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 transition-colors text-[10px] font-bold"
+                              title="Acessar remotamente via NexusDesk (PWA Mobile / 30+ FPS)"
+                            >
+                              <Monitor size={11} />
+                              <span>NexusDesk</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDispatchRemoteCommand(
+                                  dev.device_key || dev.hostname,
+                                  'force_inventory',
+                                )
+                              }
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-200 dark:bg-slate-700 hover:text-brand hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-[10px] font-semibold"
+                              title="Despachar comando de inventário imediato"
+                            >
+                              <Terminal size={11} />
+                              <span>Inventariar</span>
+                            </button>
+                          </div>
                         </div>
 
                         {/* Resource Meters */}
@@ -1281,7 +1505,7 @@ const ServiceDeskHub = () => {
                   </h3>
                   <button
                     type="button"
-                    onClick={handleIssueQuickTerm}
+                    onClick={() => setIsNewTermModalOpen(true)}
                     className="text-[11px] font-bold text-brand hover:underline"
                   >
                     + Novo Termo
@@ -1289,40 +1513,64 @@ const ServiceDeskHub = () => {
                 </div>
 
                 <div className="space-y-2">
-                  {terms.slice(0, 4).map((tm) => (
-                    <div
-                      key={tm.id}
-                      className="surface-subtle p-2.5 flex items-center justify-between text-xs"
-                    >
-                      <div className="space-y-0.5">
-                        <p className="font-semibold text-slate-800 dark:text-slate-200">
-                          {tm.employee_name}
-                        </p>
-                        <p className="font-mono text-[10px] text-slate-400 truncate max-w-[170px]">
-                          Doc: {tm.document_hash}
-                        </p>
+                  {terms.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic py-2">
+                      Nenhum termo de custódia CLT emitido no momento.
+                    </p>
+                  ) : (
+                    terms.slice(0, 6).map((tm) => (
+                      <div
+                        key={tm.id}
+                        className="surface-subtle p-2.5 flex items-center justify-between text-xs"
+                      >
+                        <div className="space-y-0.5 min-w-0 pr-2">
+                          <p className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                            {tm.employee_name}
+                          </p>
+                          <p className="font-mono text-[10px] text-slate-400 truncate max-w-[170px]">
+                            Doc: {tm.document_hash}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                              tm.status === 'signed'
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                            }`}
+                          >
+                            {tm.status === 'signed' ? 'HMAC Assinado' : 'Pendente'}
+                          </span>
+                          {tm.status === 'pending' && (
+                            <button
+                              type="button"
+                              onClick={() => handleSignTerm(tm.id)}
+                              className="p-1 rounded text-slate-400 hover:text-indigo-500 transition-colors"
+                              title="Assinar termo digitalmente (HMAC-SHA256)"
+                            >
+                              <FileSignature size={14} />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleVerifySingleTerm(tm.id)}
+                            className="p-1 rounded text-slate-400 hover:text-emerald-500 transition-colors"
+                            title="Auditar integridade da assinatura criptográfica"
+                          >
+                            <ShieldCheck size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTerm(tm.id, tm.employee_name)}
+                            className="p-1 rounded text-slate-400 hover:text-rose-500 transition-colors"
+                            title="Remover termo"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                            tm.status === 'signed'
-                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                              : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                          }`}
-                        >
-                          {tm.status === 'signed' ? 'HMAC Assinado' : 'Pendente'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleVerifySingleTerm(tm.id)}
-                          className="p-1 rounded text-slate-400 hover:text-emerald-500 transition-colors"
-                          title="Auditar integridade da assinatura criptográfica"
-                        >
-                          <ShieldCheck size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -1366,6 +1614,186 @@ const ServiceDeskHub = () => {
             </div>
           </div>
         </>
+      )}
+
+      {/* Modal de Emissão de Novo Termo de Custódia CLT */}
+      {isNewTermModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200"
+            onClick={() => setIsNewTermModalOpen(false)}
+          />
+
+          <div className="relative bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-lg p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar animate-in slide-in-from-bottom duration-300 safe-area-pb">
+            <div className="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto -mt-2 mb-2 sm:hidden" />
+
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                  <FileSignature size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Emitir Termo de Custódia CLT
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Art. 462 §1º CLT • Selo Criptográfico SHA-256 + HMAC
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNewTermModalOpen(false)}
+                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+                aria-label="Fechar modal de termo"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateNewTerm} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                    Colaborador Responsável *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newTermForm.employeeName}
+                    onChange={(e) =>
+                      setNewTermForm((p) => ({ ...p, employeeName: e.target.value }))
+                    }
+                    placeholder="Ex: Délcio Farias"
+                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                    E-mail Corporativo *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={newTermForm.employeeEmail}
+                    onChange={(e) =>
+                      setNewTermForm((p) => ({ ...p, employeeEmail: e.target.value }))
+                    }
+                    placeholder="Ex: ti@shineraybysabel.com.br"
+                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                    Tipo de Termo
+                  </label>
+                  <select
+                    value={newTermForm.termType}
+                    onChange={(e) =>
+                      setNewTermForm((p) => ({ ...p, termType: e.target.value }))
+                    }
+                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                  >
+                    <option value="entrega">Termo de Entrega & Guarda</option>
+                    <option value="emprestimo">Termo de Empréstimo Temporário</option>
+                    <option value="devolucao">Termo de Devolução Patrimonial</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                    Departamento / Filial
+                  </label>
+                  <input
+                    type="text"
+                    value={newTermForm.department}
+                    onChange={(e) =>
+                      setNewTermForm((p) => ({ ...p, department: e.target.value }))
+                    }
+                    placeholder="Ex: TI & Operações"
+                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                    Tag Patrimonial *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newTermForm.internalId}
+                    onChange={(e) =>
+                      setNewTermForm((p) => ({ ...p, internalId: e.target.value }))
+                    }
+                    placeholder="SHL-BEL-NTB-001"
+                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono uppercase text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                    Equipamento / Modelo *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newTermForm.model}
+                    onChange={(e) =>
+                      setNewTermForm((p) => ({ ...p, model: e.target.value }))
+                    }
+                    placeholder="Notebook Samsung Book"
+                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                    Número de Série
+                  </label>
+                  <input
+                    type="text"
+                    value={newTermForm.serialNumber}
+                    onChange={(e) =>
+                      setNewTermForm((p) => ({ ...p, serialNumber: e.target.value }))
+                    }
+                    placeholder="Opcional"
+                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsNewTermModalOpen(false)}
+                  className="min-h-[42px] rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingTerm}
+                  className="min-h-[42px] rounded-xl bg-brand hover:bg-brand-dark px-4 py-2 text-xs font-bold text-white shadow-md transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {submittingTerm ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      <span>Emitindo...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileSignature size={15} />
+                      <span>Emitir Termo CLT</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Modal de Abertura de Novo Chamado (Mobile-first Bottom Sheet / Desktop Dialog) */}
@@ -1537,6 +1965,17 @@ const ServiceDeskHub = () => {
             </form>
           </div>
         </div>
+      )}
+      {/* Modal Remoto NexusDesk PWA Mobile */}
+      {remoteModalDevice && (
+        <RemoteControlModal
+          isOpen={Boolean(remoteModalDevice)}
+          onClose={() => setRemoteModalDevice(null)}
+          tenantId={gatewaySession?.user?.tenantId || currentUser?.tenantId || 'tenant-ap3htf6'}
+          initialDevice={remoteModalDevice}
+          currentUser={currentUser || gatewaySession?.user}
+          initialTab="screen"
+        />
       )}
     </div>
   );

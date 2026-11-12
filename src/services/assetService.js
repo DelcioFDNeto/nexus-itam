@@ -115,8 +115,13 @@ export const mapReactAssetToGateway = (assetData) => {
 export const getAllAssets = async (tenantId) => {
   if (!tenantId) return [];
   if (isGatewayActiveSession()) {
-    const res = await microservicesApi.listAssets();
-    return (res.items || []).map(mapGatewayAssetToReact);
+    try {
+      const res = await microservicesApi.listAssets();
+      const items = (res.items || []).map(mapGatewayAssetToReact);
+      if (items.length > 0) return items;
+    } catch (err) {
+      console.warn('[assetService] Falha ao consultar Gateway, recorrendo ao Firestore:', err);
+    }
   }
   const q = query(
     assetsCollection, 
@@ -144,8 +149,12 @@ export const getGlobalAssets = async () => {
 
 export const getAssetById = async (id, tenantId) => {
   if (isGatewayActiveSession()) {
-    const raw = await microservicesApi.getAssetById(id);
-    return mapGatewayAssetToReact(raw);
+    try {
+      const raw = await microservicesApi.getAssetById(id);
+      if (raw) return mapGatewayAssetToReact(raw);
+    } catch {
+      // continua para fallback Firestore
+    }
   }
   const docRef = doc(db, 'assets', id);
   const docSnap = await getDoc(docRef);
@@ -163,11 +172,15 @@ export const getAssetById = async (id, tenantId) => {
 export const getAssetByInternalId = async (internalId, tenantId) => {
   if (!internalId || !tenantId) return null;
   if (isGatewayActiveSession()) {
-    const res = await microservicesApi.listAssets({ search: internalId });
-    const match = (res.items || []).find(
-      (a) => String(a.internal_id).toUpperCase() === String(internalId).trim().toUpperCase(),
-    );
-    return match ? mapGatewayAssetToReact(match) : null;
+    try {
+      const res = await microservicesApi.listAssets({ search: internalId });
+      const match = (res.items || []).find(
+        (a) => String(a.internal_id).toUpperCase() === String(internalId).trim().toUpperCase(),
+      );
+      if (match) return mapGatewayAssetToReact(match);
+    } catch {
+      // continua para fallback Firestore
+    }
   }
   const q = query(
     assetsCollection,

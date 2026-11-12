@@ -254,6 +254,16 @@ export const microservicesApi = {
   listUsers: () => gatewayRequest('/api/v1/auth/users'),
   createUser: (payload) =>
     gatewayRequest('/api/v1/auth/users', { method: 'POST', body: payload }),
+  updateUser: (userId, payload) =>
+    gatewayRequest(`/api/v1/auth/users/${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      body: payload,
+    }),
+  deleteUser: (userId) =>
+    gatewayRequest(`/api/v1/auth/users/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
+  getContract: () => gatewayRequest('/api/v1/auth/contract'),
+  saveContract: (payload) =>
+    gatewayRequest('/api/v1/auth/contract', { method: 'PUT', body: payload }),
 
   // API 1 (REST) — Gestão de Ativos (`service-assets`)
   listAssets: (params = {}) => {
@@ -295,6 +305,10 @@ export const microservicesApi = {
       method: 'POST',
       body: { message },
     }),
+  deleteTicket: (ticketId) =>
+    gatewayRequest(`/api/v1/tickets/${encodeURIComponent(ticketId)}`, {
+      method: 'DELETE',
+    }),
 
   // API 3 (REST) — Compliance CLT & Hash-Chain (`service-compliance`)
   listTerms: () => gatewayRequest('/api/v1/compliance/terms'),
@@ -307,11 +321,21 @@ export const microservicesApi = {
     }),
   verifyTerm: (termId) =>
     gatewayRequest(`/api/v1/compliance/terms/${encodeURIComponent(termId)}/verify`),
+  deleteTerm: (termId) =>
+    gatewayRequest(`/api/v1/compliance/terms/${encodeURIComponent(termId)}`, {
+      method: 'DELETE',
+    }),
   listAuditChain: () => gatewayRequest('/api/v1/compliance/audit'),
   verifyAuditChain: () => gatewayRequest('/api/v1/compliance/audit/verify-chain'),
 
   // API 4 (REST) — Telemetria RMM (`service-nexusdesk`)
   getFleetTelemetry: () => gatewayRequest('/api/v1/telemetry/fleet'),
+  sendTelemetryHeartbeat: (payload, agentToken) =>
+    gatewayRequest('/api/v1/telemetry/heartbeat', {
+      method: 'POST',
+      body: payload,
+      headers: agentToken ? { 'x-agent-token': agentToken } : undefined,
+    }),
   dispatchRemoteCommand: (deviceKey, commandType, payload = '') =>
     gatewayRequest('/api/v1/telemetry/commands', {
       method: 'POST',

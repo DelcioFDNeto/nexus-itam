@@ -24,8 +24,17 @@ CREATE TABLE IF NOT EXISTS auth_svc.tenants (
     asset_prefix VARCHAR(12) NOT NULL DEFAULT 'SHL',
     agent_token_hash VARCHAR(128) NOT NULL,
     status VARCHAR(24) NOT NULL DEFAULT 'active',
+    primary_color VARCHAR(32),
+    logo_url TEXT,
+    overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
+    custom_contract JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE auth_svc.tenants ADD COLUMN IF NOT EXISTS primary_color VARCHAR(32);
+ALTER TABLE auth_svc.tenants ADD COLUMN IF NOT EXISTS logo_url TEXT;
+ALTER TABLE auth_svc.tenants ADD COLUMN IF NOT EXISTS overrides JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE auth_svc.tenants ADD COLUMN IF NOT EXISTS custom_contract JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE TABLE IF NOT EXISTS auth_svc.users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

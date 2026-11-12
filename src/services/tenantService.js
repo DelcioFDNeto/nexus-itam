@@ -9,6 +9,7 @@ import {
   collection,
   doc,
   getCountFromServer,
+  deleteDoc,
   getDoc,
   getDocs,
   query,
@@ -20,7 +21,13 @@ import {
 } from 'firebase/firestore';
 import { connectAuthIfEmulated, db, firebaseConfig } from './firebase';
 import { MASTER_TENANT } from '../utils/permissions';
-import { DEFAULT_PLANS, resolveEntitlements } from '../utils/entitlements';
+import {
+  DEFAULT_PLANS,
+  DEFAULT_PRICING_MATRIX,
+  PRICING_DOC_ID,
+  resolveEntitlements,
+  sanitizePricingMatrix,
+} from '../utils/entitlements';
 
 // -----------------------------------------------------------------------------
 // Identidade de uma empresa nova
@@ -138,7 +145,9 @@ export const assertWithinLimit = async (user, resource, extra = 1) => {
 /** Planos do banco mesclados aos padroes embutidos, indexados por id. */
 export const loadPlans = async () => {
   const snap = await getDocs(collection(db, 'plans'));
-  const stored = Object.fromEntries(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() }]));
+  const stored = Object.fromEntries(
+    snap.docs.filter((d) => d.id !== PRICING_DOC_ID).map((d) => [d.id, { id: d.id, ...d.data() }]),
+  );
   const merged = {};
   Object.keys(DEFAULT_PLANS).forEach((id) => {
     merged[id] = { ...DEFAULT_PLANS[id], ...(stored[id] || {}), id };
@@ -332,6 +341,55 @@ export const provisionTenant = async ({ companyName, adminName, email, password,
     await deleteApp(tempApp).catch(() => {});
   }
 };
+
+/** Carrega a tabela de precos unitarios para contratos sob medida (/plans/_pricing). */
+export const loadPricingMatrix = async () => {
+  try {
+    const snap = await getDoc(doc(db, 'plans', PRICING_DOC_ID));
+    return sanitizePricingMatrix(snap.exists() ? snap.data() : DEFAULT_PRICING_MATRIX);
+  } catch {
+    return sanitizePricingMatrix(DEFAULT_PRICING_MATRIX);
+  }
+};
+
+/** Salva a tabela global de precos unitarios (Master Console). */
+export const savePricingMatrix = (matrix) =>
+  setDoc(
+    doc(db, 'plans', PRICING_DOC_ID),
+    { ...sanitizePricingMatrix(matrix), updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+
+/** Cria ou atualiza um modelo de plano no catalogo (/plans/{planId}). */
+export const savePlanTemplate = (planId, data) => {
+  const cleanId = String(planId || '').toLowerCase().replace(/[^a-z0-9-_]/g, '-').replace(/^-+|-+$/g, '');
+  if (!cleanId || cleanId === PRICING_DOC_ID) {
+    throw new Error('Identificador de plano inválido.');
+  }
+  return setDoc(
+    doc(db, 'plans', cleanId),
+    { ...data, id: cleanId, updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+};
+
+/** Remove um modelo de plano customizado criado pelo Master (preserva starter/pro/enterprise). */
+export const deletePlanTemplate = (planId) => {
+  const cleanId = String(planId || '').toLowerCase();
+  if (['starter', 'pro', 'enterprise', PRICING_DOC_ID].includes(cleanId)) {
+    throw new Error('Planos padrão da plataforma não podem ser removidos.');
+  }
+  return deleteDoc(doc(db, 'plans', cleanId));
+};
+
+/** Salva o plano e contrato personalizado da empresa no Firestore (/tenants/{tenantId}). */
+export const saveTenantCustomContract = (tenantId, { plan, overrides, customContract }) =>
+  updateDoc(doc(db, 'tenants', tenantId), {
+    plan,
+    overrides: overrides || {},
+    customContract: customContract || {},
+    updatedAt: serverTimestamp(),
+  });
 
 /** Mensagens legiveis para os erros mais comuns do Firebase Auth/Firestore. */
 export const describeFirebaseError = (error, fallback = 'Não foi possível concluir a operação.') => {

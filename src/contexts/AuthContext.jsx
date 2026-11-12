@@ -73,14 +73,23 @@ const writeTenantHint = (uid, tenantId) => {
 
 const readPlans = () =>
   getDocs(collection(db, 'plans'))
-    .then((snap) => Object.fromEntries(snap.docs.map((d) => [d.id, d.data()])))
+    .then((snap) =>
+      Object.fromEntries(
+        snap.docs.filter((d) => d.id !== '_pricing').map((d) => [d.id, d.data()]),
+      ),
+    )
     .catch(() => ({}));
 
 const buildGatewayAppUser = (gatewayUser) => {
   if (!gatewayUser) return null;
   const mappedRole = gatewayUser.role === 'technician' ? 'operator' : gatewayUser.role || 'operator';
   const entitlements = resolveEntitlements({
-    tenant: { plan: 'enterprise', status: 'active' },
+    tenant: {
+      plan: gatewayUser.plan || 'enterprise',
+      status: 'active',
+      overrides: gatewayUser.overrides || {},
+      customContract: gatewayUser.customContract || {},
+    },
   });
 
   return {
@@ -254,14 +263,17 @@ export const AuthProvider = ({ children }) => {
       return microservicesApi
         .getMe()
         .then((res) => {
-          if (res?.user) {
-            setGatewaySession(res.token || getGatewaySession()?.token, res.user);
-            setCurrentUser(buildGatewayAppUser(res.user));
+          const meUser = res?.user || (res?.id ? res : null);
+          if (meUser) {
+            setGatewaySession(res?.token || getGatewaySession()?.token, meUser);
+            setCurrentUser(buildGatewayAppUser(meUser));
           }
         })
-        .catch(() => {
-          clearGatewaySession();
-          setCurrentUser(null);
+        .catch((err) => {
+          if (err?.status === 401) {
+            clearGatewaySession();
+            setCurrentUser(null);
+          }
         });
     }
     return applySession(auth.currentUser);
@@ -389,17 +401,20 @@ export const AuthProvider = ({ children }) => {
         .getMe()
         .then((res) => {
           if (!active) return;
-          if (res?.user) {
-            setGatewaySession(gwSession.token, res.user);
-            setCurrentUser(buildGatewayAppUser(res.user));
+          const meUser = res?.user || (res?.id ? res : null);
+          if (meUser) {
+            setGatewaySession(gwSession.token, meUser);
+            setCurrentUser(buildGatewayAppUser(meUser));
           }
         })
-        .catch(() => {
+        .catch((err) => {
           if (!active) return;
-          clearGatewaySession();
-          if (!isFirebaseConfigured) {
-            setCurrentUser(null);
-            setLoading(false);
+          if (err?.status === 401) {
+            clearGatewaySession();
+            if (!isFirebaseConfigured) {
+              setCurrentUser(null);
+              setLoading(false);
+            }
           }
         });
     }

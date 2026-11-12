@@ -253,6 +253,29 @@ export async function buildTicketsService(opts = {}) {
     },
   );
 
+  // ---------------------------------------------------------------------------
+  // DELETE /api/v1/tickets/:id — Exclusão administrativa de chamado (Owner/Admin/Manager)
+  // ---------------------------------------------------------------------------
+  app.delete('/api/v1/tickets/:id', async (request, reply) => {
+    const user = verifyGatewayOrJwt(request);
+    requireRoles(user, ['owner', 'admin', 'manager']);
+
+    const removed = await ticketsRepo.delete(user.tenantId, request.params.id);
+    if (!removed) {
+      return reply.code(404).send({ error: 'NOT_FOUND', message: 'Chamado não encontrado.' });
+    }
+
+    await publishDomainEvent('ticket.deleted', user.tenantId, {
+      id: removed.id,
+      protocol: removed.protocol,
+    });
+
+    return {
+      message: `Chamado ${removed.protocol} removido com sucesso.`,
+      ticket: removed,
+    };
+  });
+
   return app;
 }
 

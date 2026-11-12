@@ -4,28 +4,29 @@
 // individuais (limites, recursos, preco), identidade visual, membros e notas
 // comerciais internas. Antes o master so conseguia trocar nome/plano/status.
 // -----------------------------------------------------------------------------
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import {
-  AlertTriangle, Building2, CheckCircle, Copy, KeyRound, Layers, Lock, NotebookPen, Palette, Pause, Play,
-  RotateCcw, Save, ShieldCheck, Unlock, Users, X, XCircle,
+  AlertTriangle, Building2, CheckCircle, Copy, KeyRound, Layers, NotebookPen, Palette, Pause, Play,
+  Save, ShieldCheck, Users, X, XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '../../services/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  describeFirebaseError, getTenantBranding, getTenantInternal, regularizeLegacyTenant, saveTenantBranding,
+  describeFirebaseError, getTenantBranding, getTenantInternal, loadPricingMatrix, regularizeLegacyTenant, saveTenantBranding,
   saveTenantInternal, updateTenant,
 } from '../../services/tenantService';
-import { FEATURES, UNLIMITED, isUnlimited, isUserBlocked, resolveEntitlements } from '../../utils/entitlements';
+import { DEFAULT_PRICING_MATRIX, FEATURES, isUserBlocked } from '../../utils/entitlements';
 import { ROLE_LABELS } from '../../utils/permissions';
 import { safeCssColor, safeImageUrl } from '../../utils/sanitize';
 import { ALERT_STYLE, brl, relativeDays, tenantAlerts } from '../../utils/consoleMetrics';
 import { PlanBadge, TenantStatusBadge, UsageBar } from './consoleUi';
+import CustomPlanBuilder from '../plans/CustomPlanBuilder';
 
 const TABS = [
   { id: 'overview', label: 'Visão geral', icon: Building2 },
-  { id: 'plan', label: 'Plano', icon: Layers },
+  { id: 'plan', label: 'Plano & Contrato', icon: Layers },
   { id: 'brand', label: 'Identidade', icon: Palette },
   { id: 'members', label: 'Membros', icon: Users },
   { id: 'lgpd', label: 'LGPD & DPA', icon: ShieldCheck },
@@ -38,44 +39,14 @@ const label = 'block text-[10px] font-black text-gray-400 dark:text-gray-500 upp
 
 const toDate = (value) => (value?.toDate ? value.toDate() : null);
 
-// Valor de limite no formulario: '' = segue o plano; UNLIMITED = sem limite.
-const LimitInput = ({ id, labelText, value, planValue, onChange }) => {
-  const unlimited = value !== '' && isUnlimited(value);
-  return (
-    <div>
-      <label htmlFor={id} className={label}>{labelText}</label>
-      <div className="flex items-center gap-2">
-        <input
-          id={id}
-          type="number"
-          min="0"
-          disabled={unlimited}
-          value={unlimited ? '' : value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={isUnlimited(planValue) ? 'Plano: ilimitado' : `Plano: ${planValue}`}
-          className={`${input} disabled:opacity-50`}
-        />
-        <label className="flex items-center gap-1 text-[10px] font-black uppercase text-gray-500 whitespace-nowrap cursor-pointer">
-          <input type="checkbox" checked={unlimited} onChange={(e) => onChange(e.target.checked ? UNLIMITED : '')} className="h-4 w-4 accent-[rgb(var(--color-brand-rgb))]" />
-          Ilimitado
-        </label>
-      </div>
-    </div>
-  );
-};
-
 const TenantDetailDrawer = ({ tenant, plans, initialTab = 'overview', onClose, onChanged }) => {
   const { resetPassword } = useAuth();
   const [tab, setTab] = useState(initialTab);
   const [busy, setBusy] = useState(false);
 
   // --- Plano & limites ---
-  const overrides = tenant.overrides || {};
   const [plan, setPlan] = useState(tenant.plan ? String(tenant.plan).toLowerCase() : 'starter');
-  const [maxAssets, setMaxAssets] = useState(overrides.maxAssets ?? '');
-  const [maxUsers, setMaxUsers] = useState(overrides.maxUsers ?? '');
-  const [price, setPrice] = useState(overrides.monthlyPrice ?? '');
-  const [features, setFeatures] = useState(overrides.features || {});
+  const [pricingMatrix, setPricingMatrix] = useState(DEFAULT_PRICING_MATRIX);
   const [legacyOwner, setLegacyOwner] = useState(tenant.owner?.id || '');
 
   // --- Identidade e notas (carregadas sob demanda) ---
@@ -90,6 +61,9 @@ const TenantDetailDrawer = ({ tenant, plans, initialTab = 'overview', onClose, o
   }, [onClose]);
 
   useEffect(() => {
+    if (tab === 'plan') {
+      loadPricingMatrix().then(setPricingMatrix).catch(() => {});
+    }
     if (tab === 'brand' && brand === null) {
       getTenantBranding(tenant.id)
         .then((data) => setBrand({
@@ -114,19 +88,6 @@ const TenantDetailDrawer = ({ tenant, plans, initialTab = 'overview', onClose, o
     }
   }, [tab, brand, notes, tenant.id, tenant.companyName]);
 
-  const draftOverrides = useMemo(() => {
-    const clean = {};
-    if (maxAssets !== '' && maxAssets !== null) clean.maxAssets = Number(maxAssets);
-    if (maxUsers !== '' && maxUsers !== null) clean.maxUsers = Number(maxUsers);
-    if (price !== '' && price !== null && Number.isFinite(Number(price))) clean.monthlyPrice = Number(price);
-    const featureOverrides = Object.fromEntries(Object.entries(features).filter(([, v]) => typeof v === 'boolean'));
-    if (Object.keys(featureOverrides).length) clean.features = featureOverrides;
-    return clean;
-  }, [maxAssets, maxUsers, price, features]);
-
-  const planDoc = plans[plan];
-  const preview = resolveEntitlements({ tenant: { plan, overrides: draftOverrides }, plan: planDoc });
-  const planDefaults = resolveEntitlements({ tenant: { plan }, plan: planDoc });
   const alerts = tenantAlerts(tenant);
 
   const run = async (fn, success) => {
@@ -142,8 +103,6 @@ const TenantDetailDrawer = ({ tenant, plans, initialTab = 'overview', onClose, o
       setBusy(false);
     }
   };
-
-  const savePlan = () => run(() => updateTenant(tenant.id, { plan, overrides: draftOverrides }), 'Plano e ajustes salvos.');
 
   const regularize = () =>
     run(
@@ -195,15 +154,6 @@ const TenantDetailDrawer = ({ tenant, plans, initialTab = 'overview', onClose, o
       toast.error('Não foi possível copiar.');
     }
   };
-
-  const featureState = (id) => (typeof features[id] === 'boolean' ? (features[id] ? 'on' : 'off') : 'plan');
-  const setFeatureState = (id, state) =>
-    setFeatures((prev) => {
-      const next = { ...prev };
-      if (state === 'plan') delete next[id];
-      else next[id] = state === 'on';
-      return next;
-    });
 
   return (
     <div className="fixed inset-0 z-[60] !mt-0 flex justify-end" role="dialog" aria-modal="true" aria-label={`Empresa ${tenant.companyName || tenant.id}`}>
@@ -376,88 +326,21 @@ const TenantDetailDrawer = ({ tenant, plans, initialTab = 'overview', onClose, o
                   </button>
                 </div>
               ) : (
-                <>
-                  <div className="rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 p-5 space-y-4">
-                    <div>
-                      <label className={label} htmlFor="tenant-plan">Plano comercial</label>
-                      <select id="tenant-plan" value={plan} onChange={(e) => setPlan(e.target.value)} className={input}>
-                        {Object.values(plans).map((p) => (
-                          <option key={p.id} value={p.id}>{p.name} — {brl.format(Number(p.monthlyPrice) || 0)}/mês</option>
-                        ))}
-                      </select>
-                    </div>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                      Campos em branco seguem o plano. Preencha só o que for negociado com esta empresa.
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <LimitInput id="tenant-max-assets" labelText="Limite de ativos" value={maxAssets} planValue={planDoc?.maxAssets} onChange={setMaxAssets} />
-                      <LimitInput id="tenant-max-users" labelText="Limite de usuários" value={maxUsers} planValue={planDoc?.maxUsers} onChange={setMaxUsers} />
-                      <div>
-                        <label className={label} htmlFor="tenant-price">Mensalidade negociada (R$)</label>
-                        <input id="tenant-price" type="number" step="0.01" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder={`Plano: ${brl.format(Number(planDoc?.monthlyPrice) || 0)}`} className={input} />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 p-5">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Recursos desta empresa</p>
-                    <ul className="divide-y divide-gray-100 dark:divide-slate-800">
-                      {FEATURES.map((f) => {
-                        const state = featureState(f.id);
-                        const planOn = planDefaults.features[f.id];
-                        return (
-                          <li key={f.id} className="py-3 flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{f.label}</p>
-                              <p className="text-[11px] text-gray-500 dark:text-gray-400">{f.description}</p>
-                            </div>
-                            <div className="flex rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden shrink-0" role="radiogroup" aria-label={f.label}>
-                              {[
-                                ['plan', `Plano (${planOn ? 'sim' : 'não'})`],
-                                ['on', <Unlock key="on" size={13} />],
-                                ['off', <Lock key="off" size={13} />],
-                              ].map(([value, content]) => (
-                                <button
-                                  key={value}
-                                  role="radio"
-                                  aria-checked={state === value}
-                                  title={value === 'on' ? 'Liberar para esta empresa' : value === 'off' ? 'Bloquear para esta empresa' : 'Seguir o plano'}
-                                  onClick={() => setFeatureState(f.id, value)}
-                                  className={`px-2.5 py-1.5 text-[10px] font-black uppercase transition-colors ${state === value ? (value === 'off' ? 'bg-rose-600 text-white' : value === 'on' ? 'bg-green-600 text-white' : 'bg-slate-800 text-white dark:bg-white dark:text-slate-900') : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
-                                >
-                                  {content}
-                                </button>
-                              ))}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-
-                  <div className="rounded-2xl border border-brand/30 bg-brand/5 p-4 text-xs text-gray-700 dark:text-gray-200 space-y-1">
-                    <p className="font-black uppercase tracking-widest text-[10px] text-brand">Resultado</p>
-                    <p>
-                      {preview.planName}: {preview.maxAssets === null ? 'ativos ilimitados' : `${preview.maxAssets.toLocaleString('pt-BR')} ativos`} ·{' '}
-                      {preview.maxUsers === null ? 'usuários ilimitados' : `${preview.maxUsers} usuários`} · {brl.format(preview.monthlyPrice)}/mês
-                    </p>
-                    <p className="text-gray-500 dark:text-gray-400">
-                      Uso atual: {tenant.assetsCount ?? '—'} ativos e {tenant.usersCount} usuários. A mudança vale no próximo acesso de cada usuário.
-                    </p>
-                  </div>
-
-                  <div className="flex justify-end gap-2">
-                    <button
-                      onClick={() => { setMaxAssets(''); setMaxUsers(''); setPrice(''); setFeatures({}); }}
-                      className="px-4 py-2.5 rounded-xl text-xs font-black uppercase text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800 flex items-center gap-1.5"
-                    >
-                      <RotateCcw size={14} /> Seguir só o plano
-                    </button>
-                    <button disabled={busy} onClick={savePlan} className="px-5 py-2.5 rounded-xl bg-brand text-white text-xs font-black uppercase flex items-center gap-2 disabled:opacity-60">
-                      <Save size={14} /> Salvar plano
-                    </button>
-                  </div>
-                </>
+                <CustomPlanBuilder
+                  key={`${tenant.id}-${tenant.plan || 'starter'}-${JSON.stringify(tenant.overrides || {})}`}
+                  mode="master"
+                  compact
+                  plans={plans}
+                  pricing={pricingMatrix}
+                  initialPlanId={tenant.plan || 'starter'}
+                  initialOverrides={tenant.overrides || {}}
+                  initialCustomContract={tenant.customContract || {}}
+                  currentEntitlements={tenant.entitlements}
+                  usage={{ assets: tenant.assetsCount ?? 0, users: tenant.usersCount ?? 0 }}
+                  saving={busy}
+                  onApplyContract={(payload) => run(() => updateTenant(tenant.id, payload), 'Contrato e ajustes salvos.')}
+                  onResetToPlan={() => run(() => updateTenant(tenant.id, { plan: tenant.plan || 'starter', overrides: {}, customContract: {} }), 'Empresa restaurada para o plano padrão.')}
+                />
               )}
             </>
           )}

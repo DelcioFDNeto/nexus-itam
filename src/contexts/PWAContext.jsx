@@ -145,13 +145,21 @@ export const PWAProvider = ({ children }) => {
     };
   }, []);
 
-  // Recarrega na transicao de Service Worker para garantir atomicidade de assets
+  // Recarrega na transição de Service Worker apenas quando um NOVO worker substitui um worker EXISTENTE
+  // Protege contra loop infinito de reload em Ctrl+F5 (onde navigator.serviceWorker.controller começa null e é assumido via clients.claim())
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return undefined;
+    // Se a página iniciou sem controller (ex: Ctrl+F5, hard reload ou primeira visita),
+    // NÃO recarrega quando o SW chamar clients.claim()!
+    if (!navigator.serviceWorker.controller) return undefined;
+
     let refreshing = false;
     const handleControllerChange = () => {
       if (refreshing) return;
+      const lastReload = Number(sessionStorage.getItem('nexus_sw_last_reload') || 0);
+      if (Date.now() - lastReload < 6000) return;
       refreshing = true;
+      sessionStorage.setItem('nexus_sw_last_reload', String(Date.now()));
       window.location.reload();
     };
     navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);

@@ -312,10 +312,14 @@ service cloud.firestore {
         request.resource.data.status == 'active'
       );
 
-      // O owner so renomeia a empresa. Plano, status, limites e ajustes: master.
+      // O owner altera nome da empresa e personaliza seu plano/contrato;
+      // status, ownerUid e id sao imutaveis para o cliente (bloqueio e so do master).
       allow update: if isMaster() || (
         isTenantOwner(tenantId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['companyName', 'updatedAt'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['companyName', 'plan', 'overrides', 'customContract', 'updatedAt']) &&
+        request.resource.data.get('status', 'active') == resource.data.get('status', 'active') &&
+        request.resource.data.get('id', tenantId) == resource.data.get('id', tenantId) &&
+        request.resource.data.get('ownerUid', '') == resource.data.get('ownerUid', '')
       );
 
       allow delete: if isMaster();

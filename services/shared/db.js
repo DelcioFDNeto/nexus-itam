@@ -212,7 +212,7 @@ function buildSeedBundle() {
     {
       id: '33333333-3333-4333-8333-333333333301',
       tenant_id: 'tenant-ap3htf6',
-      name: 'TI & Gestão Shineray',
+      name: 'Délcio Farias',
       email: 'ti@shineraybysabel.com.br',
       password_hash: hashPassword('Shineray@2026!'),
       role: 'owner',
@@ -221,10 +221,28 @@ function buildSeedBundle() {
       active: true,
       created_at: yesterdayIso,
     },
+  ];
+
+  // Apenas para ambiente de testes de microsserviços (validação de papéis e suíte automatizada)
+  if (process.env.NODE_ENV !== 'test') {
+    return {
+      tenants,
+      users,
+      assets: [],
+      assetHistory: [],
+      tickets: [],
+      ticketComments: [],
+      terms: [],
+      auditChain: [],
+      telemetry: [],
+    };
+  }
+
+  users.push(
     {
       id: '33333333-3333-4333-8333-333333333302',
       tenant_id: 'tenant-ap3htf6',
-      name: 'João da Silva',
+      name: 'João da Silva (Teste)',
       email: 'joao.silva@shineray.com.br',
       password_hash: hashPassword('Colab@2026!'),
       role: 'collaborator',
@@ -234,21 +252,9 @@ function buildSeedBundle() {
       created_at: yesterdayIso,
     },
     {
-      id: '33333333-3333-4333-8333-333333333303',
-      tenant_id: 'tenant-ap3htf6',
-      name: 'Délcio Farias',
-      email: 'delcio.farias@shineraybysabel.com.br',
-      password_hash: hashPassword('Nexus@2026!'),
-      role: 'manager',
-      department: 'TI & Operações',
-      job_title: 'Gestor de TI & Sistemas',
-      active: true,
-      created_at: yesterdayIso,
-    },
-    {
       id: '33333333-3333-4333-8333-333333333304',
       tenant_id: 'tenant-ap3htf6',
-      name: 'Karen Matos',
+      name: 'Karen Matos (Teste)',
       email: 'karen.matos@shineraybysabel.com.br',
       password_hash: hashPassword('Colab@2026!'),
       role: 'collaborator',
@@ -257,7 +263,7 @@ function buildSeedBundle() {
       active: true,
       created_at: yesterdayIso,
     },
-  ];
+  );
 
   const assets = [
     {
@@ -802,41 +808,164 @@ async function reconcileProductionShinerayState(client) {
   }
 
   await client.query(
-    "DELETE FROM telemetry_svc.remote_commands WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')",
+    `DELETE FROM telemetry_svc.remote_commands
+     WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
+        OR device_key IN ('WKS-SHL-PF3Z881K', 'WKS-SHL-NP550XED', 'SRV-SHL-CORE-01', 'WKS-SHL-LAB-009', 'HACK-01')`,
   );
   await client.query(
-    "DELETE FROM telemetry_svc.device_telemetry WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')",
+    `DELETE FROM telemetry_svc.device_telemetry
+     WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
+        OR id IN (
+          'eeeeeeee-eeee-4eee-8eee-eeeeeeeeee01',
+          'eeeeeeee-eeee-4eee-8eee-eeeeeeeeee02',
+          'f078eed6-78ad-45d0-9f09-f52c6c24c00b'
+        )
+        OR device_key IN ('WKS-SHL-PF3Z881K', 'WKS-SHL-NP550XED', 'SRV-SHL-CORE-01', 'WKS-SHL-LAB-009', 'HACK-01')
+        OR ip_address IN ('10.50.12.16', '10.50.12.10', '179.183.250.73')`,
   );
   await client.query(
     `DELETE FROM compliance_svc.audit_chain
      WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
-        OR actor_email IN ('danillo.portal@shineraybysabel.com.br', 'dono@shineraybysabel.com.br')`,
+        OR id = 'ffffffff-ffff-4fff-8fff-ffffffffff01'
+        OR resource_id IN (
+          'cccccccc-cccc-4ccc-8ccc-cccccccccc01',
+          'cccccccc-cccc-4ccc-8ccc-cccccccccc02',
+          '16fe4faf-9300-4915-b460-e9f383f227f2',
+          '71800026-c9b8-4733-b050-bf094b32a61e',
+          'b1448b0f-b52e-40ee-8f73-3f0572e6df1e',
+          '0f47fa42-c432-472e-8563-27cc468d8222'
+        )
+        OR actor_email IN (
+          'karen.matos@shineraybysabel.com.br',
+          'joao.silva@shineray.com.br',
+          'delcio.farias@shineraybysabel.com.br',
+          'danillo.portal@shineraybysabel.com.br',
+          'dono@shineraybysabel.com.br'
+        )`,
   );
   await client.query(
     `DELETE FROM compliance_svc.responsibility_terms
      WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
-        OR employee_email IN ('danillo.portal@shineraybysabel.com.br', 'dono@shineraybysabel.com.br')`,
+        OR id IN (
+          'cccccccc-cccc-4ccc-8ccc-cccccccccc01',
+          'cccccccc-cccc-4ccc-8ccc-cccccccccc02',
+          '16fe4faf-9300-4915-b460-e9f383f227f2',
+          '71800026-c9b8-4733-b050-bf094b32a61e',
+          'b1448b0f-b52e-40ee-8f73-3f0572e6df1e',
+          '0f47fa42-c432-472e-8563-27cc468d8222'
+        )
+        OR employee_email IN (
+          'karen.matos@shineraybysabel.com.br',
+          'joao.silva@shineray.com.br',
+          'delcio.farias@shineraybysabel.com.br',
+          'danillo.portal@shineraybysabel.com.br',
+          'dono@shineraybysabel.com.br'
+        )
+        OR assets_snapshot::text ILIKE '%SHL-BEL-NTB-016%'
+        OR assets_snapshot::text ILIKE '%SHL-BEL-NTB-007%'
+        OR assets_snapshot::text ILIKE '%SHL-BEL-NTB-002%'`,
   );
   await client.query(
     `DELETE FROM tickets_svc.ticket_comments
      WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
-        OR author_email IN ('danillo.portal@shineraybysabel.com.br', 'dono@shineraybysabel.com.br')`,
+        OR id IN (
+          'dddddddd-dddd-4ddd-8ddd-dddddddddd01',
+          'dddddddd-dddd-4ddd-8ddd-dddddddddd02',
+          'dddddddd-dddd-4ddd-8ddd-dddddddddd03'
+        )
+        OR ticket_id IN (
+          'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01',
+          'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb02',
+          'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb03',
+          'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb04',
+          'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb05',
+          '37f4abed-5c65-4750-86d6-ad3aa40a4d16',
+          'f9d2d01c-19d5-4cc4-a705-05b9e1869f3c'
+        )
+        OR author_email IN (
+          'karen.matos@shineraybysabel.com.br',
+          'joao.silva@shineray.com.br',
+          'delcio.farias@shineraybysabel.com.br',
+          'danillo.portal@shineraybysabel.com.br',
+          'dono@shineraybysabel.com.br'
+        )`,
   );
   await client.query(
     `DELETE FROM tickets_svc.tickets
      WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
-        OR requester_email IN ('danillo.portal@shineraybysabel.com.br', 'dono@shineraybysabel.com.br')`,
+        OR id IN (
+          'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb01',
+          'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb02',
+          'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb03',
+          'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb04',
+          'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb05',
+          '37f4abed-5c65-4750-86d6-ad3aa40a4d16',
+          'f9d2d01c-19d5-4cc4-a705-05b9e1869f3c'
+        )
+        OR protocol IN (
+          'CHM-2026-0500',
+          'CHM-2026-0501',
+          'CHM-2026-0502',
+          'CHM-2026-0503',
+          'CHM-2026-0504',
+          'CHM-2026-9040',
+          'CHM-2026-1732'
+        )
+        OR title ILIKE '%Auditoria de SLA%'
+        OR requester_email IN (
+          'karen.matos@shineraybysabel.com.br',
+          'joao.silva@shineray.com.br',
+          'delcio.farias@shineraybysabel.com.br',
+          'danillo.portal@shineraybysabel.com.br',
+          'dono@shineraybysabel.com.br'
+        )`,
   );
   await client.query(
-    "DELETE FROM assets_svc.asset_history WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')",
+    `DELETE FROM assets_svc.asset_history
+     WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
+        OR id = '99999999-9999-4999-8999-999999999901'
+        OR asset_id IN (
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa05',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa06',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa07',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa08',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa09',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa11',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa12',
+          'e2bf2636-981c-463f-8375-0b2c1c61aec5',
+          'b213216c-cee8-4ace-9d29-1b9742465e7c'
+        )`,
   );
   await client.query(
-    "DELETE FROM assets_svc.assets WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')",
+    `DELETE FROM assets_svc.assets
+     WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
+        OR id IN (
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa05',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa06',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa07',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa08',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa09',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa11',
+          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa12',
+          'e2bf2636-981c-463f-8375-0b2c1c61aec5',
+          'b213216c-cee8-4ace-9d29-1b9742465e7c'
+        )
+        OR model ILIKE '%Auditoria v3%'
+        OR assigned_to_email IN (
+          'karen.matos@shineraybysabel.com.br',
+          'joao.silva@shineray.com.br',
+          'delcio.farias@shineraybysabel.com.br'
+        )`,
   );
   await client.query(
     `DELETE FROM auth_svc.users
      WHERE tenant_id IN ('nexus-corp', 'alpha-logistica')
         OR email IN (
+          'karen.matos@shineraybysabel.com.br',
+          'joao.silva@shineray.com.br',
+          'delcio.farias@shineraybysabel.com.br',
           'danillo.portal@shineraybysabel.com.br',
           'dono@shineraybysabel.com.br',
           'admin@nexuscorp.com.br',
@@ -867,177 +996,36 @@ async function reconcileProductionShinerayState(client) {
       [u.id, u.tenant_id, u.name, u.email, u.password_hash, u.role, u.department, u.job_title, u.active, u.created_at],
     );
   }
-
-  for (const a of seed.assets) {
-    await client.query(
-      `INSERT INTO assets_svc.assets
-       (id, tenant_id, internal_id, type, brand, model, serial_number, status, location, department, assigned_to_name, assigned_to_email, purchase_value, specs, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16)
-       ON CONFLICT DO NOTHING`,
-      [
-        a.id, a.tenant_id, a.internal_id, a.type, a.brand, a.model, a.serial_number,
-        a.status, a.location, a.department, a.assigned_to_name, a.assigned_to_email,
-        a.purchase_value, JSON.stringify(a.specs), a.created_at, a.updated_at,
-      ],
-    );
-  }
-
-  for (const h of seed.assetHistory) {
-    await client.query(
-      `INSERT INTO assets_svc.asset_history (id, tenant_id, asset_id, action, actor_name, actor_email, details, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
-      [h.id, h.tenant_id, h.asset_id, h.action, h.actor_name, h.actor_email, h.details, h.created_at],
-    );
-  }
-
-  for (const tk of seed.tickets) {
-    await client.query(
-      `INSERT INTO tickets_svc.tickets
-       (id, protocol, tenant_id, requester_name, requester_email, department, asset_id, asset_tag, category, priority, status, title, description, assigned_tech_name, resolution_notes, sla_due_at, resolved_at, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-       ON CONFLICT DO NOTHING`,
-      [
-        tk.id, tk.protocol, tk.tenant_id, tk.requester_name, tk.requester_email, tk.department,
-        tk.asset_id, tk.asset_tag, tk.category, tk.priority, tk.status, tk.title, tk.description,
-        tk.assigned_tech_name, tk.resolution_notes, tk.sla_due_at, tk.resolved_at, tk.created_at, tk.updated_at,
-      ],
-    );
-  }
-
-  for (const cm of seed.ticketComments) {
-    await client.query(
-      `INSERT INTO tickets_svc.ticket_comments (id, ticket_id, tenant_id, author_name, author_email, author_role, message, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,
-      [cm.id, cm.ticket_id, cm.tenant_id, cm.author_name, cm.author_email, cm.author_role, cm.message, cm.created_at],
-    );
-  }
-
-  for (const tr of seed.terms) {
-    await client.query(
-      `INSERT INTO compliance_svc.responsibility_terms
-       (id, tenant_id, term_type, employee_name, employee_email, employee_cpf, department, assets_snapshot, legal_clause, status, document_hash, signature_hash, signer_ip, signer_user_agent, issued_by, signed_at, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-       ON CONFLICT DO NOTHING`,
-      [
-        tr.id, tr.tenant_id, tr.term_type, tr.employee_name, tr.employee_email, tr.employee_cpf,
-        tr.department, JSON.stringify(tr.assets_snapshot), tr.legal_clause, tr.status,
-        tr.document_hash, tr.signature_hash, tr.signer_ip, tr.signer_user_agent, tr.issued_by,
-        tr.signed_at, tr.created_at,
-      ],
-    );
-  }
-
-  for (const ac of seed.auditChain) {
-    await client.query(
-      `INSERT INTO compliance_svc.audit_chain
-       (id, tenant_id, actor_email, actor_role, action, resource_type, resource_id, payload, prev_hash, entry_hash, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11)
-       ON CONFLICT DO NOTHING`,
-      [
-        ac.id, ac.tenant_id, ac.actor_email, ac.actor_role, ac.action,
-        ac.resource_type, ac.resource_id, JSON.stringify(ac.payload), ac.prev_hash, ac.entry_hash, ac.created_at,
-      ],
-    );
-  }
-
-  for (const tl of seed.telemetry) {
-    await client.query(
-      `INSERT INTO telemetry_svc.device_telemetry
-       (id, tenant_id, device_key, hostname, serial_number, os_version, agent_version, ip_address, logged_user, cpu_percent, ram_percent, disk_percent, antivirus_active, firewall_active, last_seen_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-       ON CONFLICT DO NOTHING`,
-      [
-        tl.id, tl.tenant_id, tl.device_key, tl.hostname, tl.serial_number, tl.os_version,
-        tl.agent_version, tl.ip_address, tl.logged_user, tl.cpu_percent, tl.ram_percent,
-        tl.disk_percent, tl.antivirus_active, tl.firewall_active, tl.last_seen_at,
-      ],
-    );
-  }
 }
 
 async function reconcileCanonicalHashesIfNeeded(client) {
   await reconcileProductionShinerayState(client);
-  const seedTermIds = [
-    'cccccccc-cccc-4ccc-8ccc-cccccccccc01',
-    'cccccccc-cccc-4ccc-8ccc-cccccccccc02',
-  ];
-  const { rows: seedTerms } = await client.query(
-    'SELECT * FROM compliance_svc.responsibility_terms WHERE id = ANY($1::uuid[])',
-    [seedTermIds],
-  );
-  for (const tr of seedTerms) {
-    const canonicalDocHash = computeTermDocumentHash({
-      tenantId: tr.tenant_id,
-      termType: tr.term_type,
-      employeeEmail: tr.employee_email,
-      assetsSnapshot: tr.assets_snapshot,
-      legalClause: tr.legal_clause,
-    });
-    if (canonicalDocHash !== tr.document_hash) {
-      const signedIso = toIso(tr.signed_at);
-      const canonicalSig =
-        tr.status === 'signed' && signedIso
-          ? signResponsibilityTerm({
-              termId: tr.id,
-              tenantId: tr.tenant_id,
-              employeeEmail: tr.employee_email,
-              documentHash: canonicalDocHash,
-              signedAt: signedIso,
-            })
-          : tr.signature_hash;
-      await client.query(
-        `UPDATE compliance_svc.responsibility_terms
-         SET document_hash = $2, signature_hash = $3
-         WHERE id = $1`,
-        [tr.id, canonicalDocHash, canonicalSig],
-      );
-    }
-  }
 
-  // Reconcilia elos de auditoria cujo hash pré-canonicalização divergia após JSONB
-  const { rows: genesisCheck } = await client.query(
+  // Reconcilia elos de auditoria garantindo encadeamento SHA-256 íntegro desde GENESIS_HASH
+  const { rows: chainRows } = await client.query(
     `SELECT * FROM compliance_svc.audit_chain
-     WHERE id = 'ffffffff-ffff-4fff-8fff-ffffffffff01' LIMIT 1`,
+     ORDER BY seq ASC FOR UPDATE`,
   );
-  if (genesisCheck[0]) {
-    const g = genesisCheck[0];
-    const expectedGenesisEntry = computeAuditChainHash({
-      prevHash: g.prev_hash,
-      tenantId: g.tenant_id,
-      actorEmail: g.actor_email,
-      actorRole: g.actor_role,
-      action: g.action,
-      resourceType: g.resource_type,
-      resourceId: g.resource_id,
-      payload: g.payload,
-      createdAtIso: toIso(g.created_at),
+  let prev = GENESIS_HASH;
+  for (const row of chainRows) {
+    const nextHash = computeAuditChainHash({
+      prevHash: prev,
+      tenantId: row.tenant_id,
+      actorEmail: row.actor_email,
+      actorRole: row.actor_role,
+      action: row.action,
+      resourceType: row.resource_type,
+      resourceId: row.resource_id,
+      payload: row.payload,
+      createdAtIso: toIso(row.created_at),
     });
-    if (expectedGenesisEntry !== g.entry_hash) {
-      const { rows: chainRows } = await client.query(
-        `SELECT * FROM compliance_svc.audit_chain
-         WHERE tenant_id = $1 ORDER BY seq ASC FOR UPDATE`,
-        [g.tenant_id],
+    if (row.prev_hash !== prev || row.entry_hash !== nextHash) {
+      await client.query(
+        'UPDATE compliance_svc.audit_chain SET prev_hash = $2, entry_hash = $3 WHERE seq = $1',
+        [row.seq, prev, nextHash],
       );
-      let prev = GENESIS_HASH;
-      for (const row of chainRows) {
-        const nextHash = computeAuditChainHash({
-          prevHash: prev,
-          tenantId: row.tenant_id,
-          actorEmail: row.actor_email,
-          actorRole: row.actor_role,
-          action: row.action,
-          resourceType: row.resource_type,
-          resourceId: row.resource_id,
-          payload: row.payload,
-          createdAtIso: toIso(row.created_at),
-        });
-        await client.query(
-          'UPDATE compliance_svc.audit_chain SET prev_hash = $2, entry_hash = $3 WHERE seq = $1',
-          [row.seq, prev, nextHash],
-        );
-        prev = nextHash;
-      }
     }
+    prev = nextHash;
   }
 }
 
@@ -1248,11 +1236,19 @@ export const authRepo = {
         ...u,
         tenant_name: t?.name || u.tenant_id,
         tenant_status: t?.status || 'active',
+        tenant_plan: t?.plan || 'enterprise',
+        tenant_overrides: t?.overrides || {},
+        tenant_custom_contract: t?.custom_contract || {},
         asset_prefix: t?.asset_prefix || 'NEX',
+        primary_color: t?.primary_color || u.primary_color || '#4F46E5',
+        logo_url: t?.logo_url || u.logo_url || null,
       };
     }
     const { rows } = await pool.query(
-      `SELECT u.*, t.name AS tenant_name, t.status AS tenant_status, t.asset_prefix
+      `SELECT u.*, t.name AS tenant_name, t.status AS tenant_status, t.plan AS tenant_plan,
+              t.asset_prefix, t.primary_color, t.logo_url,
+              COALESCE(t.overrides, '{}'::jsonb) AS tenant_overrides,
+              COALESCE(t.custom_contract, '{}'::jsonb) AS tenant_custom_contract
        FROM auth_svc.users u
        JOIN auth_svc.tenants t ON t.id = u.tenant_id
        WHERE LOWER(u.email) = $1 LIMIT 1`,
@@ -1270,12 +1266,20 @@ export const authRepo = {
         ...u,
         tenant_name: t?.name || u.tenant_id,
         tenant_status: t?.status || 'active',
+        tenant_plan: t?.plan || 'enterprise',
+        tenant_overrides: t?.overrides || {},
+        tenant_custom_contract: t?.custom_contract || {},
         asset_prefix: t?.asset_prefix || 'NEX',
+        primary_color: t?.primary_color || u.primary_color || '#4F46E5',
+        logo_url: t?.logo_url || u.logo_url || null,
       };
     }
     if (!isUuid(userId)) return null;
     const { rows } = await pool.query(
-      `SELECT u.*, t.name AS tenant_name, t.status AS tenant_status, t.asset_prefix
+      `SELECT u.*, t.name AS tenant_name, t.status AS tenant_status, t.plan AS tenant_plan,
+              t.asset_prefix, t.primary_color, t.logo_url,
+              COALESCE(t.overrides, '{}'::jsonb) AS tenant_overrides,
+              COALESCE(t.custom_contract, '{}'::jsonb) AS tenant_custom_contract
        FROM auth_svc.users u
        JOIN auth_svc.tenants t ON t.id = u.tenant_id
        WHERE u.id = $1 LIMIT 1`,
@@ -1391,6 +1395,184 @@ export const authRepo = {
       }
       throw pgErr;
     }
+  },
+
+  async deleteUser(userId, tenantId) {
+    if (!USE_PG) {
+      const idx = mem.users.findIndex((u) => u.id === userId && matchTenant(u.tenant_id, tenantId));
+      if (idx === -1) {
+        const err = new Error('Usuário não encontrado.');
+        err.statusCode = 404;
+        throw err;
+      }
+      if (mem.users[idx].role === 'owner') {
+        const err = new Error('O perfil de proprietário (owner) não pode ser excluído.');
+        err.statusCode = 403;
+        throw err;
+      }
+      const [deleted] = mem.users.splice(idx, 1);
+      const { password_hash: _ph, ...safe } = deleted;
+      return safe;
+    }
+    const cleanTenantId = canonicalTenantId(tenantId) || 'tenant-ap3htf6';
+    const { rows: existing } = await pool.query(
+      `SELECT * FROM auth_svc.users WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3)`,
+      [userId, tenantId, cleanTenantId],
+    );
+    if (!existing.length) {
+      const err = new Error('Usuário não encontrado.');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (existing[0].role === 'owner') {
+      const err = new Error('O perfil de proprietário (owner) não pode ser excluído.');
+      err.statusCode = 403;
+      throw err;
+    }
+    const { rows } = await pool.query(
+      `DELETE FROM auth_svc.users WHERE id = $1 RETURNING id, tenant_id, name, email, role, department, job_title, active, created_at`,
+      [userId],
+    );
+    return normalizeUserRow(rows[0]);
+  },
+
+  async findTenantUserById(userId, tenantId) {
+    if (!USE_PG) {
+      const u = mem.users.find((x) => x.id === userId && matchTenant(x.tenant_id, tenantId));
+      if (!u) return null;
+      const { password_hash: _ph, ...safe } = u;
+      return safe;
+    }
+    if (!isUuid(userId)) return null;
+    const cleanTenantId = canonicalTenantId(tenantId) || 'tenant-ap3htf6';
+    const { rows } = await pool.query(
+      `SELECT id, tenant_id, name, email, role, department, job_title, active, created_at
+       FROM auth_svc.users WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3) LIMIT 1`,
+      [userId, tenantId, cleanTenantId],
+    );
+    return normalizeUserRow(rows[0]);
+  },
+
+  async updateUser(userId, tenantId, { name, department, jobTitle, active, password } = {}) {
+    if (!USE_PG) {
+      const idx = mem.users.findIndex((u) => u.id === userId && matchTenant(u.tenant_id, tenantId));
+      if (idx === -1) {
+        const err = new Error('Usuário não encontrado.');
+        err.statusCode = 404;
+        throw err;
+      }
+      const target = mem.users[idx];
+      if (name !== undefined) target.name = String(name).trim() || target.name;
+      if (department !== undefined) target.department = String(department).trim() || 'Geral';
+      if (jobTitle !== undefined) target.job_title = String(jobTitle).trim() || 'Colaborador';
+      if (active !== undefined) target.active = Boolean(active);
+      if (password) target.password_hash = hashPassword(password);
+      const { password_hash: _ph, ...safe } = target;
+      return safe;
+    }
+    if (!isUuid(userId)) {
+      const err = new Error('Identificador de usuário inválido.');
+      err.statusCode = 400;
+      throw err;
+    }
+    const existing = await this.findTenantUserById(userId, tenantId);
+    if (!existing) {
+      const err = new Error('Usuário não encontrado.');
+      err.statusCode = 404;
+      throw err;
+    }
+    const sets = [];
+    const params = [];
+    if (name !== undefined) {
+      params.push(String(name).trim() || existing.name);
+      sets.push(`name = $${params.length}`);
+    }
+    if (department !== undefined) {
+      params.push(String(department).trim() || 'Geral');
+      sets.push(`department = $${params.length}`);
+    }
+    if (jobTitle !== undefined) {
+      params.push(String(jobTitle).trim() || 'Colaborador');
+      sets.push(`job_title = $${params.length}`);
+    }
+    if (active !== undefined) {
+      params.push(Boolean(active));
+      sets.push(`active = $${params.length}`);
+    }
+    if (password) {
+      params.push(hashPassword(password));
+      sets.push(`password_hash = $${params.length}`);
+    }
+    if (sets.length === 0) return existing;
+    params.push(userId);
+    const { rows } = await pool.query(
+      `UPDATE auth_svc.users SET ${sets.join(', ')} WHERE id = $${params.length}
+       RETURNING id, tenant_id, name, email, role, department, job_title, active, created_at`,
+      params,
+    );
+    return normalizeUserRow(rows[0]);
+  },
+
+  async getTenantContract(tenantId) {
+    const tenant = await this.findTenantById(tenantId);
+    if (!tenant) return null;
+    return {
+      tenantId: tenant.id,
+      companyName: tenant.name,
+      plan: tenant.plan || 'enterprise',
+      overrides: tenant.overrides && typeof tenant.overrides === 'object' ? tenant.overrides : {},
+      customContract: tenant.custom_contract && typeof tenant.custom_contract === 'object' ? tenant.custom_contract : {},
+    };
+  },
+
+  async updateTenantContract(tenantId, { plan, overrides, customContract } = {}) {
+    if (!USE_PG) {
+      const target = mem.tenants.find((t) => matchTenant(t.id, tenantId));
+      if (!target) {
+        const err = new Error('Empresa não encontrada.');
+        err.statusCode = 404;
+        throw err;
+      }
+      if (plan) target.plan = String(plan).toLowerCase();
+      if (overrides !== undefined) target.overrides = overrides || {};
+      if (customContract !== undefined) target.custom_contract = customContract || {};
+      return {
+        tenantId: target.id,
+        companyName: target.name,
+        plan: target.plan,
+        overrides: target.overrides,
+        customContract: target.custom_contract,
+      };
+    }
+    const cleanTenantId = canonicalTenantId(tenantId) || tenantId;
+    const { rows } = await pool.query(
+      `UPDATE auth_svc.tenants
+       SET plan = COALESCE($2, plan),
+           overrides = COALESCE($3::jsonb, overrides),
+           custom_contract = COALESCE($4::jsonb, custom_contract)
+       WHERE id = $1 OR id = $5
+       RETURNING id, name, plan, overrides, custom_contract`,
+      [
+        tenantId,
+        plan ? String(plan).toLowerCase() : null,
+        overrides !== undefined ? JSON.stringify(overrides || {}) : null,
+        customContract !== undefined ? JSON.stringify(customContract || {}) : null,
+        cleanTenantId,
+      ],
+    );
+    if (!rows.length) {
+      const err = new Error('Empresa não encontrada.');
+      err.statusCode = 404;
+      throw err;
+    }
+    const row = rows[0];
+    return {
+      tenantId: row.id,
+      companyName: row.name,
+      plan: row.plan,
+      overrides: row.overrides || {},
+      customContract: row.custom_contract || {},
+    };
   },
 };
 
@@ -1938,6 +2120,26 @@ export const ticketsRepo = {
     }
     return counts;
   },
+
+  async delete(tenantId, ticketId) {
+    if (!USE_PG) {
+      const idx = mem.tickets.findIndex(
+        (t) => t.id === ticketId && matchTenant(t.tenant_id, tenantId),
+      );
+      if (idx === -1) return null;
+      const [removed] = mem.tickets.splice(idx, 1);
+      mem.ticketComments = mem.ticketComments.filter((c) => c.ticket_id !== ticketId);
+      return removed;
+    }
+
+    if (!isUuid(ticketId)) return null;
+    const clean = canonicalTenantId(tenantId);
+    const { rows } = await pool.query(
+      'DELETE FROM tickets_svc.tickets WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3) RETURNING *',
+      [ticketId, tenantId, clean],
+    );
+    return normalizeTicketRow(rows[0]);
+  },
 };
 
 // =============================================================================
@@ -2104,6 +2306,92 @@ export const complianceRepo = {
       throw err;
     }
     return normalizeTermRow(rows[0]);
+  },
+
+  async deleteTerm(tenantId, termId) {
+    const clean = canonicalTenantId(tenantId);
+    if (!USE_PG) {
+      const idx = mem.terms.findIndex(
+        (t) => t.id === termId && matchTenant(t.tenant_id, tenantId),
+      );
+      if (idx === -1) return null;
+      const [removed] = mem.terms.splice(idx, 1);
+      mem.auditChain = mem.auditChain.filter(
+        (e) => !(matchTenant(e.tenant_id, tenantId) && String(e.resource_id) === String(termId)),
+      );
+      let expectedPrev = GENESIS_HASH;
+      const tenantChain = mem.auditChain
+        .filter((e) => matchTenant(e.tenant_id, tenantId))
+        .sort((a, b) => a.seq - b.seq);
+      for (const row of tenantChain) {
+        row.prev_hash = expectedPrev;
+        row.entry_hash = computeAuditChainHash({
+          prevHash: expectedPrev,
+          tenantId: row.tenant_id,
+          actorEmail: row.actor_email,
+          actorRole: row.actor_role,
+          action: row.action,
+          resourceType: row.resource_type,
+          resourceId: row.resource_id,
+          payload: row.payload || {},
+          createdAtIso: toIso(row.created_at),
+        });
+        expectedPrev = row.entry_hash;
+      }
+      return removed;
+    }
+
+    if (!isUuid(termId)) return null;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(202603, hashtext($1))', [clean]);
+      const { rows } = await client.query(
+        'DELETE FROM compliance_svc.responsibility_terms WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3) RETURNING *',
+        [termId, tenantId, clean],
+      );
+      if (!rows[0]) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+      await client.query(
+        'DELETE FROM compliance_svc.audit_chain WHERE resource_id = $1 AND (tenant_id = $2 OR tenant_id = $3)',
+        [String(termId), tenantId, clean],
+      );
+      const chainRes = await client.query(
+        'SELECT * FROM compliance_svc.audit_chain WHERE (tenant_id = $1 OR tenant_id = $2) ORDER BY seq ASC',
+        [tenantId, clean],
+      );
+      let expectedPrev = GENESIS_HASH;
+      for (const row of chainRes.rows) {
+        const createdIso = toIso(row.created_at);
+        const recomputed = computeAuditChainHash({
+          prevHash: expectedPrev,
+          tenantId: row.tenant_id,
+          actorEmail: row.actor_email,
+          actorRole: row.actor_role,
+          action: row.action,
+          resourceType: row.resource_type,
+          resourceId: row.resource_id,
+          payload: row.payload || {},
+          createdAtIso: createdIso,
+        });
+        if (row.prev_hash !== expectedPrev || row.entry_hash !== recomputed) {
+          await client.query(
+            'UPDATE compliance_svc.audit_chain SET prev_hash = $2, entry_hash = $3 WHERE seq = $1',
+            [row.seq, expectedPrev, recomputed],
+          );
+        }
+        expectedPrev = recomputed;
+      }
+      await client.query('COMMIT');
+      return normalizeTermRow(rows[0]);
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   },
 
   async appendAuditLog(tenantId, { actorEmail, actorRole, action, resourceType, resourceId, payload }) {

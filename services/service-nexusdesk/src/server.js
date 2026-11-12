@@ -90,6 +90,12 @@ export async function buildNexusDeskService(opts = {}) {
     if (['low', 'balanced', 'high'].includes(payload.quality)) {
       existing.quality = payload.quality;
     }
+    if (payload.targetFps) {
+      existing.targetFps = Math.max(10, Math.min(60, Number(payload.targetFps) || 30));
+    }
+    if (payload.touchMode) {
+      existing.touchMode = sanitizeText(payload.touchMode, 32);
+    }
     existing.viewerSeenAt = new Date().toISOString();
     existing.updatedAt = Date.now();
 
@@ -611,6 +617,46 @@ export async function buildNexusDeskService(opts = {}) {
             timestamp: new Date().toISOString(),
             data: saved,
           });
+          return;
+        }
+
+        // Streaming direto de frames de tela de alta velocidade via WebSocket (30+ FPS sem overhead HTTP)
+        if (action === 'remote.frame' || action === 'remote.push_frame') {
+          if (session.role === 'collaborator') return;
+          const payload = msg.data || msg;
+          const deviceKey = sanitizeText(payload.deviceKey || '', 120);
+          const sessionId = sanitizeText(payload.sessionId || payload.frame?.sessionId || '', 120);
+          if (!deviceKey || !sessionId) return;
+
+          const key = `${session.tenantId}_${deviceKey}`;
+          let state = remoteSessions.get(key);
+          if (!state || state.sessionId !== sessionId) {
+            state = upsertRemoteControlState(session.tenantId, {
+              deviceKey,
+              sessionId,
+              status: 'active',
+              quality: payload.frame?.quality || payload.quality || 'balanced',
+              targetFps: payload.frame?.targetFps || payload.targetFps || 30,
+            });
+          }
+
+          broadcastToTenant(
+            session.tenantId,
+            {
+              protocol: 'nexusdesk-ws/3.0',
+              event: 'remote.frame',
+              tenantId: canonicalTenantId(session.tenantId),
+              sender: session.userEmail,
+              timestamp: new Date().toISOString(),
+              data: {
+                deviceKey,
+                sessionId,
+                frame: payload.frame || payload,
+                remoteState: payload.remoteState || state || null,
+              },
+            },
+            socket,
+          );
           return;
         }
 

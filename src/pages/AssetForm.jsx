@@ -24,6 +24,7 @@ import QRScanner from '../components/QRScanner';
 import AssetIcon from '../components/AssetIcon';
 import { buildAssetCatalog, SPEC_FIELDS, isRootSpec } from '../utils/assetTypes';
 import { generateNextAssetTag } from '../utils/assetTagGenerator';
+import { AGENT_VERSION } from '../utils/agentInventory';
 import LocationSelect from '../components/LocationSelect';
 import StatusBadge from '../components/StatusBadge';
 import {
@@ -36,12 +37,12 @@ import {
 } from '../utils/assetStatus';
 
 /**
- * Módulo de Cadastro & Edição de Ativos — Nexus ITAM v2.2.
+ * Módulo de Cadastro & Edição de Ativos — Nexus ITAM v3.0.
  * - Organização executiva por blocos temáticos de alta definição.
  * - Auto-gerador de Tag/Patrimônio e validação de duplicidade em tempo real.
  * - Atalhos rápidos para cálculo de garantia (+1A, +2A, +3A, +5A).
  * - Modo Lote ("Salvar e Adicionar Outro") para cadastro ágil de remessas.
- * - Integração e preservação total de telemetria do Agente v3.1 / NexusDesk.
+ * - Integração e preservação total de telemetria do Agente / NexusDesk.
  * - Barra de ações fixa responsiva para desktop e dispositivos móveis.
  */
 const AssetForm = () => {
@@ -616,7 +617,7 @@ const AssetForm = () => {
               </span>
             </div>
 
-            {/* Painel do Agente ITAM v3.1 / NexusDesk (se aplicável) */}
+            {/* Painel do Agente ITAM / NexusDesk (se aplicável) */}
             {isAgentCompatible && (
               <div className="p-3.5 rounded-xl border border-brand/20 bg-brand/5 dark:bg-brand/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -626,18 +627,18 @@ const AssetForm = () => {
                   </span>
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                      Telemetria NexusDesk v3.1
+                      Telemetria NexusDesk v{AGENT_VERSION.slice(0, 3)}
                     </p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                       {formData.agent?.machineId
                         ? `Máquina vinculada: ${formData.agent.machineId}`
-                        : 'Pronto para sincronização automática via Agente Nexus 3.1'}
+                        : `Pronto para sincronização automática via Agente Nexus (v${AGENT_VERSION})`}
                     </p>
                   </div>
                 </div>
 
                 <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-white dark:bg-slate-900 border border-brand/30 text-brand shrink-0">
-                  RMM TLS v3.1
+                  RMM TLS v{AGENT_VERSION.slice(0, 3)}
                 </span>
               </div>
             )}

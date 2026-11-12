@@ -66,6 +66,8 @@ const NexusPlansManager = lazy(() => import('./pages/NexusPlansManager'));
 const TermsPage = lazy(() => import('./pages/TermsPage'));
 const ServiceDeskHub = lazy(() => import('./pages/ServiceDeskHub'));
 const CollaboratorAssetsPage = lazy(() => import('./pages/CollaboratorAssetsPage'));
+const CollaboratorAccessManager = lazy(() => import('./pages/CollaboratorAccessManager'));
+const PlanContractPage = lazy(() => import('./pages/PlanContractPage'));
 
 /**
  * Rota autenticada. `capability` e `masterOnly` sao a mesma linguagem usada em
@@ -124,6 +126,7 @@ function App() {
               <Route path="/licenses" element={<AppRoute element={<LicenseManager />} capability="licenses:write" feature="licenses" />} />
               <Route path="/services" element={<AppRoute element={<ServiceManager />} capability="contracts:write" feature="contracts" />} />
               <Route path="/employees" element={<AppRoute element={<EmployeeManager />} capability="employees:write" />} />
+              <Route path="/portal-colaboradores" element={<AppRoute element={<CollaboratorAccessManager />} capability="portal:manage" />} />
               <Route path="/audit" element={<AppRoute element={<AuditPage />} capability="audit:run" feature="audit" />} />
               {/* Termos: responsabilidade, devolucao e transferencia (o QR impresso abre /termos/:id) */}
               <Route path="/termos" element={<AppRoute element={<TermsPage />} capability="terms:read" />} />
@@ -136,6 +139,7 @@ function App() {
               <Route path="/service-desk" element={<AppRoute element={<ServiceDeskHub />} capability="assets:read" />} />
               <Route path="/import" element={<AppRoute element={<ImportData />} capability="assets:import" feature="import" />} />
               <Route path="/settings" element={<AppRoute element={<SettingsPage />} capability="settings:read" />} />
+              <Route path="/plano" element={<AppRoute element={<PlanContractPage />} capability="settings:read" />} />
               <Route path="/users" element={<AppRoute element={<UserManager />} capability="users:manage" />} />
 
               {/* --- Console Nexus Master --- */}

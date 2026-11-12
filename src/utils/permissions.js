@@ -71,6 +71,7 @@ export const CAPABILITIES = {
   'terms:read': 'viewer',
   'terms:issue': 'operator',
   'terms:cancel': 'manager',
+  'portal:manage': 'manager',
   'agent:read': 'manager',
   'agent:remote': 'manager',
   'agent:manage': 'admin',

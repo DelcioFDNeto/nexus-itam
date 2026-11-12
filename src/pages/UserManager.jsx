@@ -27,7 +27,9 @@ import {
   UserMinus,
   UserPlus,
   Users,
+  KeyRound,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -510,6 +512,21 @@ const UserManager = () => {
                 </li>
               ))}
             </ul>
+          </section>
+
+          <section className="bg-brand/5 dark:bg-brand/10 border border-brand/20 rounded-xl p-5 space-y-2.5">
+            <h2 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+              <KeyRound size={14} className="text-brand" /> Portal do Colaborador (Vue 3)
+            </h2>
+            <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+              Logins de colaboradores finais para assinatura de termos e Service Desk são cadastrados na central dedicada do Portal.
+            </p>
+            <Link
+              to="/portal-colaboradores"
+              className="inline-flex items-center gap-1.5 text-xs font-black text-brand hover:underline"
+            >
+              Gerenciar Acessos do Portal →
+            </Link>
           </section>
         </div>
       </div>

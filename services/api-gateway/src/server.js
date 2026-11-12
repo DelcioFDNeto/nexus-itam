@@ -84,8 +84,12 @@ export async function buildApiGateway(opts = {}) {
   });
 
   await app.register(rateLimit, {
-    max: Number(process.env.RATE_LIMIT_MAX || 240),
+    max: Number(process.env.RATE_LIMIT_MAX || 600),
     timeWindow: '1 minute',
+    allowList: (req) => {
+      const u = (req.url || '').split('?')[0];
+      return u === '/health' || u === '/docs' || u === '/openapi.json' || u.startsWith('/ws/');
+    },
   });
 
   await app.register(websocket, {
@@ -184,7 +188,7 @@ export async function buildApiGateway(opts = {}) {
     {
       config: {
         rateLimit: {
-          max: Number(process.env.LOGIN_RATE_LIMIT_MAX || 20),
+          max: Number(process.env.LOGIN_RATE_LIMIT_MAX || 60),
           timeWindow: '1 minute',
         },
       },
@@ -244,6 +248,11 @@ export async function buildApiGateway(opts = {}) {
           tenantId: user.tenant_id,
           tenantName: user.tenant_name,
           assetPrefix: user.asset_prefix,
+          primaryColor: user.primary_color || null,
+          logoUrl: user.logo_url || null,
+          plan: user.tenant_plan || 'enterprise',
+          overrides: user.tenant_overrides || {},
+          customContract: user.tenant_custom_contract || {},
         },
       };
     },
@@ -270,8 +279,56 @@ export async function buildApiGateway(opts = {}) {
       tenantId: user.tenant_id,
       tenantName: user.tenant_name,
       assetPrefix: user.asset_prefix,
+      primaryColor: user.primary_color || null,
+      logoUrl: user.logo_url || null,
+      plan: user.tenant_plan || 'enterprise',
+      overrides: user.tenant_overrides || {},
+      customContract: user.tenant_custom_contract || {},
     };
   });
+
+  app.get('/api/v1/auth/contract', async (request, reply) => {
+    let claims;
+    try {
+      claims = verifyJwt(request.headers.authorization || '');
+    } catch (err) {
+      return reply.code(401).send({ error: 'UNAUTHORIZED', message: err.message });
+    }
+    requireRoles(claims, ['owner', 'admin', 'manager']);
+    const contract = await authRepo.getTenantContract(claims.tenantId);
+    if (!contract) {
+      return reply.code(404).send({ error: 'TENANT_NOT_FOUND', message: 'Empresa não encontrada.' });
+    }
+    return contract;
+  });
+
+  app.put(
+    '/api/v1/auth/contract',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            plan: { type: 'string', minLength: 2, maxLength: 32 },
+            overrides: { type: 'object' },
+            customContract: { type: 'object' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      let claims;
+      try {
+        claims = verifyJwt(request.headers.authorization || '');
+      } catch (err) {
+        return reply.code(401).send({ error: 'UNAUTHORIZED', message: err.message });
+      }
+      requireRoles(claims, ['owner']);
+      const updated = await authRepo.updateTenantContract(claims.tenantId, request.body || {});
+      return updated;
+    },
+  );
 
   app.get('/api/v1/auth/users', async (request, reply) => {
     let claims;
@@ -340,6 +397,79 @@ export async function buildApiGateway(opts = {}) {
       }
     },
   );
+
+  app.patch(
+    '/api/v1/auth/users/:id',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', minLength: 2, maxLength: 160 },
+            department: { type: 'string', maxLength: 120 },
+            jobTitle: { type: 'string', maxLength: 120 },
+            active: { type: 'boolean' },
+            password: { type: 'string', minLength: 8, maxLength: 128 },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      let claims;
+      try {
+        claims = verifyJwt(request.headers.authorization || '');
+      } catch (err) {
+        return reply.code(401).send({ error: 'UNAUTHORIZED', message: err.message });
+      }
+      requireRoles(claims, ['owner', 'admin', 'manager']);
+      const { id } = request.params;
+      const target = await authRepo.findTenantUserById(id, claims.tenantId);
+      if (!target) {
+        return reply.code(404).send({ error: 'USER_NOT_FOUND', message: 'Usuário não encontrado.' });
+      }
+      if (target.role === 'owner' && claims.role !== 'owner') {
+        return reply.code(403).send({ error: 'FORBIDDEN', message: 'Apenas o proprietário pode alterar o acesso principal.' });
+      }
+      if (claims.role === 'manager' && target.role !== 'collaborator') {
+        return reply.code(403).send({ error: 'FORBIDDEN', message: 'Gestores só podem gerenciar acessos do Portal do Colaborador.' });
+      }
+      const body = request.body || {};
+      const updated = await authRepo.updateUser(id, claims.tenantId, {
+        name: body.name !== undefined ? sanitizeText(body.name, 160) : undefined,
+        department: body.department !== undefined ? sanitizeText(body.department, 120) : undefined,
+        jobTitle: body.jobTitle !== undefined ? sanitizeText(body.jobTitle, 120) : undefined,
+        active: body.active,
+        password: body.password,
+      });
+      return { user: updated };
+    },
+  );
+
+  app.delete('/api/v1/auth/users/:id', async (request, reply) => {
+    let claims;
+    try {
+      claims = verifyJwt(request.headers.authorization || '');
+    } catch (err) {
+      return reply.code(401).send({ error: 'UNAUTHORIZED', message: err.message });
+    }
+    requireRoles(claims, ['owner', 'admin', 'manager']);
+    const { id } = request.params;
+    const target = await authRepo.findTenantUserById(id, claims.tenantId);
+    if (claims.role === 'manager' && target && target.role !== 'collaborator') {
+      return reply.code(403).send({
+        error: 'FORBIDDEN',
+        message: 'Gestores só podem revogar contas do Portal do Colaborador.',
+      });
+    }
+    try {
+      const deleted = await authRepo.deleteUser(id, claims.tenantId);
+      return { success: true, deletedUser: deleted };
+    } catch (err) {
+      const status = err.statusCode || 400;
+      return reply.code(status).send({ error: 'USER_DELETION_FAILED', message: err.message });
+    }
+  });
 
   // ---------------------------------------------------------------------------
   // Reverse Proxy Zero-Trust HTTP para os 4 Microsserviços

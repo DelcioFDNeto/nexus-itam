@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Server, Plus, FileInput,
   Users, LogOut, ClipboardCheck, X, ShieldCheck, Layers, Globe,
   FolderGit2, Settings, ChevronLeft, ChevronRight, ChevronDown,
-  Search, Activity, UserCog, Building2, Moon, Sun, FileSignature,
+  Search, Activity, UserCog, Building2, Moon, Sun, FileSignature, KeyRound, CreditCard,
   RefreshCw, Shield, Boxes, Network, Smartphone,
 } from 'lucide-react';
 import Logo from './Logo';
@@ -14,6 +14,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { usePWA } from '../contexts/PWAContext';
 import { can, isSuperadmin, ROLE_LABELS } from '../utils/permissions';
 import { hasFeature, isModuleEnabled } from '../utils/entitlements';
+import { AGENT_VERSION } from '../utils/agentInventory';
 
 const CASCADE_STORAGE_KEY = 'nexus_sidebar_cascade_v2';
 
@@ -126,7 +127,7 @@ const Sidebar = ({
         title: 'Telemetria & RMM',
         icon: Activity,
         items: [
-          { path: '/agent', icon: Activity, label: 'NexusDesk & RMM', badge: 'v3.1', cap: 'agent:manage', feature: 'agent' },
+          { path: '/agent', icon: Activity, label: 'NexusDesk & RMM', badge: `v${AGENT_VERSION.slice(0, 3)}`, cap: 'agent:manage', feature: 'agent' },
           { path: '/service-desk', icon: Network, label: 'Service Desk & APIs', badge: '5 APIs', cap: 'assets:read' },
           { path: '/audit', icon: ClipboardCheck, label: 'Auditoria QR Code', cap: 'audit:run', feature: 'audit' },
         ],
@@ -148,6 +149,7 @@ const Sidebar = ({
           { path: '/meus-ativos', icon: Smartphone, label: 'Meus Ativos (Custódia)', cap: 'assets:read' },
           { path: '/termos', icon: FileSignature, label: 'Termos de Custódia', cap: 'terms:read' },
           { path: '/employees', icon: Users, label: 'Equipe & Posse', cap: 'employees:write' },
+          { path: '/portal-colaboradores', icon: KeyRound, label: 'Portal Colaboradores', cap: 'portal:manage' },
           { path: '/licenses', icon: ShieldCheck, label: 'Softwares & Licenças', cap: 'licenses:write', feature: 'licenses' },
           { path: '/services', icon: Globe, label: 'Contratos & SLAs', cap: 'contracts:write', feature: 'contracts' },
         ],
@@ -158,6 +160,7 @@ const Sidebar = ({
         icon: Settings,
         items: [
           { path: '/users', icon: UserCog, label: 'Acessos & Usuários', cap: 'users:manage' },
+          { path: '/plano', icon: CreditCard, label: 'Plano & Contrato', cap: 'settings:read' },
           { path: '/settings', icon: Settings, label: 'Ajustes da Empresa', cap: 'settings:read' },
         ],
       },
