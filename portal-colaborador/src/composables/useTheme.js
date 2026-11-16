@@ -6,10 +6,11 @@
 import { computed, onMounted, ref } from 'vue';
 
 const THEME_KEY = 'nexus_portal_theme';
+const WHITELABEL_STORAGE_KEY = 'nexus_portal_whitelabel_v3';
 const DEFAULT_BRAND = '#0C5CAB';
 const DEFAULT_BRAND_DARK = '#0A4A8A';
 const DEFAULT_TEXT_DARK = '#60a5fa';
-const DARK_TEXT_SURFACE = '#27272a';
+const DARK_TEXT_SURFACE = '#111113';
 const LIGHT_SURFACE = '#ffffff';
 
 const clamp = (n) => Math.max(0, Math.min(255, Math.round(n)));
@@ -21,23 +22,6 @@ const hslToRgb = (h, s, l) => {
   const a = sat * Math.min(light, 1 - light);
   const f = (n) => light - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
   return { r: clamp(f(0) * 255), g: clamp(f(8) * 255), b: clamp(f(4) * 255) };
-};
-
-const rgbToHsl = ({ r, g, b }) => {
-  const rn = r / 255;
-  const gn = g / 255;
-  const bn = b / 255;
-  const max = Math.max(rn, gn, bn);
-  const min = Math.min(rn, gn, bn);
-  const l = (max + min) / 2;
-  if (max === min) return { h: 0, s: 0, l: l * 100 };
-  const d = max - min;
-  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  let h = 0;
-  if (max === rn) h = (gn - bn) / d + (gn < bn ? 6 : 0);
-  else if (max === gn) h = (bn - rn) / d + 2;
-  else h = (rn - gn) / d + 4;
-  return { h: (h / 6) * 360, s: s * 100, l: l * 100 };
 };
 
 export const parseColor = (value) => {
@@ -75,7 +59,7 @@ export const rgbChannels = (value) => {
   return c ? `${clamp(c.r)} ${clamp(c.g)} ${clamp(c.b)}` : null;
 };
 
-export const darken = (value, amount = 0.19) => {
+export const darken = (value, amount = 0.14) => {
   const c = parseColor(value);
   if (!c) return null;
   const scale = (v) => v * (1 - amount);
@@ -102,7 +86,7 @@ export const luminance = (value) => {
 export const hoverShade = (value) => {
   const lum = luminance(value);
   if (lum === null) return DEFAULT_BRAND_DARK;
-  return lum < 0.03 ? lighten(value, 0.18) : darken(value, 0.19);
+  return lum < 0.03 ? lighten(value, 0.18) : darken(value, 0.14);
 };
 
 export const contrastRatio = (a, b) => {
@@ -119,53 +103,76 @@ export const pickContrastFg = (bgColor) => {
   const darkFg = '#09090b';
   const crLight = contrastRatio(bgColor, lightFg) ?? 0;
   const crDark = contrastRatio(bgColor, darkFg) ?? 0;
-  return crLight >= crDark ? lightFg : darkFg;
+  return crDark > crLight ? darkFg : lightFg;
 };
 
+/**
+ * Mesmo algoritmo linear de `src/utils/color.js` do Console React:
+ * garante fidelidade 1:1 dos tons derivados (`--color-brand-text-light`,
+ * `--color-brand-text-dark` e `--color-brand-ring`) entre Console e Portal.
+ */
 export const ensureContrastOnSurface = (brandColor, surfaceHex, minRatio = 4.5) => {
-  const c = parseColor(brandColor);
-  const s = parseColor(surfaceHex);
-  if (!c || !s) return DEFAULT_BRAND;
+  const base = parseColor(brandColor);
+  if (!base) return DEFAULT_BRAND;
 
-  const hex = toHex(c);
-  if ((contrastRatio(c, s) ?? 0) >= minRatio) return hex;
+  const baseHex = toHex(base);
+  const surface = parseColor(surfaceHex);
+  if (!surface) return baseHex;
 
-  const surfaceIsDark = (luminance(s) ?? 0) < 0.179;
-  const targetRatio = Math.min(21, minRatio + 0.45);
-  const { h, s: sat, l: baseL } = rgbToHsl(c);
+  const surfaceNorm = toHex(surface);
+  const targetRatio = Number.isFinite(minRatio) && minRatio > 1 ? minRatio : 4.5;
+  if ((contrastRatio(baseHex, surfaceNorm) || 0) >= targetRatio) return baseHex;
 
-  let lo = surfaceIsDark ? baseL : 2;
-  let hi = surfaceIsDark ? 96 : baseL;
-  let best = null;
-
-  for (let i = 0; i < 20; i += 1) {
-    const mid = (lo + hi) / 2;
-    const candidate = hslToRgb(h, sat, mid);
-    const ratio = contrastRatio(candidate, s) ?? 0;
-    if (ratio >= targetRatio) {
-      best = candidate;
-      if (surfaceIsDark) hi = mid;
-      else lo = mid;
-    } else if (surfaceIsDark) {
-      lo = mid;
-    } else {
-      hi = mid;
+  const targetInk = parseColor(pickContrastFg(surfaceNorm));
+  const steps = 200;
+  for (let i = 1; i <= steps; i += 1) {
+    const t = i / steps;
+    const candidateHex = toHex({
+      r: base.r + (targetInk.r - base.r) * t,
+      g: base.g + (targetInk.g - base.g) * t,
+      b: base.b + (targetInk.b - base.b) * t,
+    });
+    if ((contrastRatio(candidateHex, surfaceNorm) || 0) >= targetRatio) {
+      return candidateHex;
     }
   }
 
-  if (best && (contrastRatio(best, s) ?? 0) >= minRatio) {
-    return toHex(best);
-  }
-
-  return surfaceIsDark ? '#fafafa' : '#09090b';
+  return toHex(targetInk);
 };
 
 const prefersDark = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-const theme = ref(
-  (typeof window !== 'undefined' && localStorage.getItem(THEME_KEY)) || 'system',
-);
+function readInitialTheme() {
+  if (typeof window === 'undefined') return 'system';
+  try {
+    const paramTema = new URLSearchParams(window.location.search).get('tema');
+    if (paramTema === 'dark' || paramTema === 'light') {
+      localStorage.setItem(THEME_KEY, paramTema);
+      return paramTema;
+    }
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored === 'dark' || stored === 'light' || stored === 'system') return stored;
+  } catch {
+    // ignore storage errors
+  }
+  return 'system';
+}
+
+function readInitialBrandCandidate() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const paramCor = new URLSearchParams(window.location.search).get('cor');
+    if (paramCor && parseColor(paramCor)) return paramCor;
+    const cached = JSON.parse(localStorage.getItem(WHITELABEL_STORAGE_KEY) || '{}') || {};
+    if (cached.primaryColor && parseColor(cached.primaryColor)) return cached.primaryColor;
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+const theme = ref(readInitialTheme());
 
 function resolveEffective(mode) {
   if (mode === 'system') return prefersDark() ? 'dark' : 'light';
@@ -226,7 +233,7 @@ export function applyBranding(colorCandidate) {
 // Inicialização imediata sem esperar onMounted para evitar FOUC
 if (typeof window !== 'undefined') {
   updateTheme();
-  applyBranding();
+  applyBranding(readInitialBrandCandidate());
   try {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     media.addEventListener('change', () => {

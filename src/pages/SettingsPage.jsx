@@ -19,6 +19,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { can } from '../utils/permissions';
 import { hasFeature } from '../utils/entitlements';
 import { safeCssColor, safeImageUrl } from '../utils/sanitize';
+import { isGatewayActiveSession, microservicesApi } from '../services/microservicesClient';
 import { invalidateTenantSettings } from '../hooks/useTenantSettings';
 import LocationManager from '../components/settings/LocationManager';
 import CompanySection from '../components/settings/CompanySection';
@@ -274,6 +275,18 @@ const SettingsPage = () => {
         await updateDoc(doc(db, 'tenants', tenantId), { companyName: payload.companyName, updatedAt: serverTimestamp() }).catch(() => {
           /* empresa legada sem cadastro em /tenants */
         });
+      }
+
+      if (isGatewayActiveSession()) {
+        await microservicesApi
+          .saveContract({
+            companyName: payload.companyName || null,
+            primaryColor: color || null,
+            logoUrl: config.logoUrl ? safeImageUrl(config.logoUrl) || null : null,
+          })
+          .catch(() => {
+            /* gateway offline ou sem permissao de owner */
+          });
       }
 
       const next = {

@@ -310,6 +310,9 @@ export async function buildApiGateway(opts = {}) {
           type: 'object',
           properties: {
             plan: { type: 'string', minLength: 2, maxLength: 32 },
+            companyName: { type: ['string', 'null'], maxLength: 160 },
+            primaryColor: { type: ['string', 'null'], maxLength: 32 },
+            logoUrl: { type: ['string', 'null'], maxLength: 600000 },
             overrides: { type: 'object' },
             customContract: { type: 'object' },
           },

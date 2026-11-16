@@ -49,6 +49,7 @@ export const PWAProvider = ({ children }) => {
   });
 
   const checkingLockRef = useRef(false);
+  const userRequestedUpdateRef = useRef(false);
   const isIOS = useMemo(() => checkIsIOSDevice(), []);
 
   // Registra e monitora o Service Worker via vite-plugin-pwa
@@ -155,7 +156,7 @@ export const PWAProvider = ({ children }) => {
 
     let refreshing = false;
     const handleControllerChange = () => {
-      if (refreshing) return;
+      if (refreshing || !userRequestedUpdateRef.current) return;
       const lastReload = Number(sessionStorage.getItem('nexus_sw_last_reload') || 0);
       if (Date.now() - lastReload < 6000) return;
       refreshing = true;
@@ -255,12 +256,16 @@ export const PWAProvider = ({ children }) => {
    */
   const applyUpdate = useCallback(async () => {
     try {
+      userRequestedUpdateRef.current = true;
       toast.info('Atualizando o sistema…');
       if (swRegistration?.waiting) {
         swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
       }
       await updateServiceWorker(true);
       setTimeout(() => {
+        const lastReload = Number(sessionStorage.getItem('nexus_sw_last_reload') || 0);
+        if (Date.now() - lastReload < 6000) return;
+        sessionStorage.setItem('nexus_sw_last_reload', String(Date.now()));
         window.location.reload();
       }, 1500);
     } catch (err) {

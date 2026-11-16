@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import Logo from '../components/Logo';
 import { resolvePortalUrl } from '../services/microservicesClient';
+import { buildBrandedPortalUrl } from '../utils/portalBranding';
 import { captureFocusTarget, restoreFocusSafely, trapFocusWithin } from '../utils/focusTrap';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -83,7 +84,8 @@ const Login = () => {
   const location = useLocation();
   const destination = location.state?.from && location.state.from !== '/' ? location.state.from : '/dashboard';
 
-  const portalUrl = resolvePortalUrl();
+  const rawPortalUrl = resolvePortalUrl();
+  const portalUrl = buildBrandedPortalUrl(rawPortalUrl, currentUser || {}) || rawPortalUrl;
 
   useEffect(() => {
     if (currentUser && !authLoading) navigate(destination, { replace: true });

@@ -63,6 +63,24 @@ describe('buildBrandedPortalUrl', () => {
     expect(parsed.searchParams.get('wl')).toBeNull();
   });
 
+  it('herda cor ativa do console (--color-brand) e tema claro/escuro na URL do portal', () => {
+    document.documentElement.style.setProperty('--color-brand', '#ed0202');
+    document.documentElement.classList.add('dark');
+
+    const result = buildBrandedPortalUrl('https://portal-itam-nexus.web.app', {
+      companyName: 'Shineray By Sabel',
+      primaryColor: null,
+      whitelabel: true,
+    });
+
+    const parsed = new URL(result);
+    expect(parsed.searchParams.get('cor')).toBe('#ed0202');
+    expect(parsed.searchParams.get('tema')).toBe('dark');
+
+    document.documentElement.style.removeProperty('--color-brand');
+    document.documentElement.classList.remove('dark');
+  });
+
   it('retorna vazio se baseUrl estiver ausente ou usar protocolo inseguro', () => {
     expect(buildBrandedPortalUrl('')).toBe('');
     expect(buildBrandedPortalUrl('javascript:alert(1)', { companyName: 'Acme' })).toBe('');

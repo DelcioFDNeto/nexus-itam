@@ -101,10 +101,10 @@ const buildGatewayAppUser = (gatewayUser) => {
     role: mappedRole,
     gatewayRole: gatewayUser.role,
     department: gatewayUser.department || 'TI Corporativa',
-    companyName: gatewayUser.tenantName || 'Shineray By Sabel',
-    assetPrefix: gatewayUser.assetPrefix || 'SHL',
-    logoUrl: '',
-    primaryColor: null,
+    companyName: gatewayUser.companyName || gatewayUser.tenantName || gatewayUser.tenant_name || 'Shineray By Sabel',
+    assetPrefix: gatewayUser.assetPrefix || gatewayUser.asset_prefix || 'SHL',
+    logoUrl: safeImageUrl(gatewayUser.logoUrl || gatewayUser.logo_url),
+    primaryColor: safeCssColor(gatewayUser.primaryColor || gatewayUser.primary_color),
     hiddenModules: [],
     tenantStatus: 'active',
     entitlements,
@@ -207,6 +207,11 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState(null);
   const resolveSeq = useRef(0);
+  const currentUserRef = useRef(null);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
 
   const applySession = useCallback(async (user) => {
     const seq = ++resolveSeq.current;
@@ -259,7 +264,10 @@ export const AuthProvider = ({ children }) => {
   }, [currentUser?.authSource]);
 
   const refreshProfile = useCallback(() => {
-    if (currentUser?.authSource === 'gateway' || (!isFirebaseConfigured && getGatewaySession()?.token)) {
+    if (isFirebaseConfigured && auth.currentUser) {
+      return applySession(auth.currentUser);
+    }
+    if (currentUserRef.current?.authSource === 'gateway' || (!isFirebaseConfigured && getGatewaySession()?.token)) {
       return microservicesApi
         .getMe()
         .then((res) => {
@@ -277,7 +285,7 @@ export const AuthProvider = ({ children }) => {
         });
     }
     return applySession(auth.currentUser);
-  }, [applySession, currentUser?.authSource]);
+  }, [applySession]);
 
   const resetPassword = useCallback((email) => {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://itam-nexus.web.app';
@@ -387,12 +395,13 @@ export const AuthProvider = ({ children }) => {
   );
 
   // Inicialização de sessão híbrida (Gateway Fastify ou Firebase Auth)
+  // Executa apenas uma vez no mount (sem depender de currentUser?.authSource)
+  // para impedir loop infinito quando o operador possui sessão Firebase e Gateway simultaneamente.
   useEffect(() => {
     let active = true;
 
-    // 1. Tenta restaurar sessão ativa do API Gateway
-    const gwSession = getGatewaySession();
-    if (gwSession?.token && gwSession?.user?.role !== 'collaborator') {
+    const hydrateFromGateway = (gwSession) => {
+      if (!gwSession?.token || gwSession?.user?.role === 'collaborator') return false;
       const appUser = buildGatewayAppUser(gwSession.user);
       setCurrentUser(appUser);
       setLoading(false);
@@ -401,6 +410,7 @@ export const AuthProvider = ({ children }) => {
         .getMe()
         .then((res) => {
           if (!active) return;
+          if (isFirebaseConfigured && auth.currentUser) return;
           const meUser = res?.user || (res?.id ? res : null);
           if (meUser) {
             setGatewaySession(gwSession.token, meUser);
@@ -411,48 +421,50 @@ export const AuthProvider = ({ children }) => {
           if (!active) return;
           if (err?.status === 401) {
             clearGatewaySession();
-            if (!isFirebaseConfigured) {
+            if (!isFirebaseConfigured || !auth.currentUser) {
               setCurrentUser(null);
               setLoading(false);
             }
           }
         });
-    }
+      return true;
+    };
 
-    // 2. Se Firebase estiver configurado, escuta alterações de estado
+    const unsubGateway = onGatewaySessionChange((session) => {
+      if (!active) return;
+      if (!session?.token) {
+        setCurrentUser((prev) => (prev?.authSource === 'gateway' ? null : prev));
+      }
+    });
+
     if (isFirebaseConfigured) {
       const unsubscribe = onAuthStateChanged(auth, (user) => {
         if (!active) return;
         if (user) {
-          setLoading(true);
+          if (currentUserRef.current?.uid !== user.uid) {
+            setLoading(true);
+          }
           applySession(user);
-        } else if (!getGatewaySession()?.token) {
+        } else if (!hydrateFromGateway(getGatewaySession())) {
           applySession(null);
         }
       });
       return () => {
         active = false;
         unsubscribe();
+        unsubGateway();
       };
     }
 
-    // 3. Se Firebase NÃO estiver configurado e não houver sessão Gateway, encerra loading
-    if (!gwSession?.token) {
+    if (!hydrateFromGateway(getGatewaySession())) {
       setLoading(false);
     }
-
-    const unsubGateway = onGatewaySessionChange((session) => {
-      if (!active) return;
-      if (!session?.token && currentUser?.authSource === 'gateway') {
-        setCurrentUser(null);
-      }
-    });
 
     return () => {
       active = false;
       unsubGateway();
     };
-  }, [applySession, currentUser?.authSource]);
+  }, [applySession]);
 
   const value = useMemo(
     () => ({

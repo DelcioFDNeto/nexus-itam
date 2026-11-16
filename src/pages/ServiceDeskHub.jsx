@@ -388,7 +388,22 @@ const ServiceDeskHub = () => {
     try {
       setLoading(true);
       const auth = await microservicesApi.authenticate(credentials.email, credentials.password);
-      setGatewaySessionState({ token: auth.accessToken, user: auth.user });
+      const mergedUser = {
+        ...auth.user,
+        companyName: currentUser?.companyName || auth.user?.tenantName || auth.user?.companyName,
+        primaryColor: currentUser?.primaryColor || auth.user?.primaryColor || null,
+        logoUrl: currentUser?.logoUrl || auth.user?.logoUrl || '',
+      };
+      setGatewaySessionState({ token: auth.accessToken, user: mergedUser });
+      if (auth.user?.role === 'owner' && (currentUser?.primaryColor || currentUser?.companyName)) {
+        microservicesApi
+          .saveContract({
+            companyName: currentUser?.companyName || null,
+            primaryColor: currentUser?.primaryColor || null,
+            logoUrl: currentUser?.logoUrl || null,
+          })
+          .catch(() => {});
+      }
       toast.success(`Autenticado no API Gateway como ${auth.user.name}`);
     } catch (err) {
       toast.error(err.message);

@@ -293,7 +293,7 @@ const priorityLabel = {
               class="min-h-[44px] py-2 px-2.5 rounded-xl border text-center active:scale-[0.98] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
               :class="
                 form.priority === p.id
-                  ? 'bg-slate-900 dark:bg-[#fafafa] text-white dark:text-[#09090b] font-semibold border-slate-900 dark:border-[#fafafa] shadow-sm'
+                  ? 'bg-brand text-brand-fg font-semibold border-brand shadow-sm'
                   : 'bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-zinc-600'
               "
               @click="form.priority = p.id"

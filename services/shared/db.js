@@ -194,6 +194,7 @@ function buildSeedBundle() {
       asset_prefix: 'SHL',
       agent_token_hash: hashAgentToken('agt_shineray_2026_v3_secure_token'),
       status: 'active',
+      primary_color: '#ed0202',
       created_at: yesterdayIso,
     },
     {
@@ -204,6 +205,7 @@ function buildSeedBundle() {
       asset_prefix: 'SHL',
       agent_token_hash: hashAgentToken('agt_shineray_2026_v3_secure_token'),
       status: 'active',
+      primary_color: '#ed0202',
       created_at: yesterdayIso,
     },
   ];
@@ -795,15 +797,16 @@ async function reconcileProductionShinerayState(client) {
   const seed = buildSeedBundle();
   for (const t of seed.tenants) {
     await client.query(
-      `INSERT INTO auth_svc.tenants (id, name, cnpj, plan, asset_prefix, agent_token_hash, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO auth_svc.tenants (id, name, cnpj, plan, asset_prefix, agent_token_hash, status, primary_color, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          cnpj = EXCLUDED.cnpj,
          plan = EXCLUDED.plan,
          asset_prefix = EXCLUDED.asset_prefix,
+         primary_color = COALESCE(NULLIF(auth_svc.tenants.primary_color, ''), EXCLUDED.primary_color),
          status = 'active'`,
-      [t.id, t.name, t.cnpj, t.plan, t.asset_prefix, t.agent_token_hash, t.status, t.created_at],
+      [t.id, t.name, t.cnpj, t.plan, t.asset_prefix, t.agent_token_hash, t.status, t.primary_color || '#ed0202', t.created_at],
     );
   }
 
@@ -1081,9 +1084,9 @@ export async function initDatabase() {
         const seed = buildSeedBundle();
         for (const t of seed.tenants) {
           await bootClient.query(
-            `INSERT INTO auth_svc.tenants (id, name, cnpj, plan, asset_prefix, agent_token_hash, status, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (id) DO NOTHING`,
-            [t.id, t.name, t.cnpj, t.plan, t.asset_prefix, t.agent_token_hash, t.status, t.created_at],
+            `INSERT INTO auth_svc.tenants (id, name, cnpj, plan, asset_prefix, agent_token_hash, status, primary_color, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO NOTHING`,
+            [t.id, t.name, t.cnpj, t.plan, t.asset_prefix, t.agent_token_hash, t.status, t.primary_color || '#ed0202', t.created_at],
           );
         }
         for (const u of seed.users) {
@@ -1240,7 +1243,7 @@ export const authRepo = {
         tenant_overrides: t?.overrides || {},
         tenant_custom_contract: t?.custom_contract || {},
         asset_prefix: t?.asset_prefix || 'NEX',
-        primary_color: t?.primary_color || u.primary_color || '#4F46E5',
+        primary_color: t?.primary_color || u.primary_color || '#ed0202',
         logo_url: t?.logo_url || u.logo_url || null,
       };
     }
@@ -1270,7 +1273,7 @@ export const authRepo = {
         tenant_overrides: t?.overrides || {},
         tenant_custom_contract: t?.custom_contract || {},
         asset_prefix: t?.asset_prefix || 'NEX',
-        primary_color: t?.primary_color || u.primary_color || '#4F46E5',
+        primary_color: t?.primary_color || u.primary_color || '#ed0202',
         logo_url: t?.logo_url || u.logo_url || null,
       };
     }
@@ -1520,12 +1523,14 @@ export const authRepo = {
       tenantId: tenant.id,
       companyName: tenant.name,
       plan: tenant.plan || 'enterprise',
+      primaryColor: tenant.primary_color || null,
+      logoUrl: tenant.logo_url || null,
       overrides: tenant.overrides && typeof tenant.overrides === 'object' ? tenant.overrides : {},
       customContract: tenant.custom_contract && typeof tenant.custom_contract === 'object' ? tenant.custom_contract : {},
     };
   },
 
-  async updateTenantContract(tenantId, { plan, overrides, customContract } = {}) {
+  async updateTenantContract(tenantId, { plan, overrides, customContract, companyName, primaryColor, logoUrl } = {}) {
     if (!USE_PG) {
       const target = mem.tenants.find((t) => matchTenant(t.id, tenantId));
       if (!target) {
@@ -1534,12 +1539,17 @@ export const authRepo = {
         throw err;
       }
       if (plan) target.plan = String(plan).toLowerCase();
+      if (companyName && String(companyName).trim()) target.name = String(companyName).trim();
+      if (primaryColor !== undefined) target.primary_color = primaryColor || null;
+      if (logoUrl !== undefined) target.logo_url = logoUrl || null;
       if (overrides !== undefined) target.overrides = overrides || {};
       if (customContract !== undefined) target.custom_contract = customContract || {};
       return {
         tenantId: target.id,
         companyName: target.name,
         plan: target.plan,
+        primaryColor: target.primary_color || null,
+        logoUrl: target.logo_url || null,
         overrides: target.overrides,
         customContract: target.custom_contract,
       };
@@ -1549,15 +1559,23 @@ export const authRepo = {
       `UPDATE auth_svc.tenants
        SET plan = COALESCE($2, plan),
            overrides = COALESCE($3::jsonb, overrides),
-           custom_contract = COALESCE($4::jsonb, custom_contract)
+           custom_contract = COALESCE($4::jsonb, custom_contract),
+           name = COALESCE(NULLIF($6, ''), name),
+           primary_color = CASE WHEN $7::boolean THEN $8 ELSE primary_color END,
+           logo_url = CASE WHEN $9::boolean THEN $10 ELSE logo_url END
        WHERE id = $1 OR id = $5
-       RETURNING id, name, plan, overrides, custom_contract`,
+       RETURNING id, name, plan, primary_color, logo_url, overrides, custom_contract`,
       [
         tenantId,
         plan ? String(plan).toLowerCase() : null,
         overrides !== undefined ? JSON.stringify(overrides || {}) : null,
         customContract !== undefined ? JSON.stringify(customContract || {}) : null,
         cleanTenantId,
+        companyName ? String(companyName).trim() : null,
+        primaryColor !== undefined,
+        primaryColor || null,
+        logoUrl !== undefined,
+        logoUrl || null,
       ],
     );
     if (!rows.length) {
@@ -1570,6 +1588,8 @@ export const authRepo = {
       tenantId: row.id,
       companyName: row.name,
       plan: row.plan,
+      primaryColor: row.primary_color || null,
+      logoUrl: row.logo_url || null,
       overrides: row.overrides || {},
       customContract: row.custom_contract || {},
     };

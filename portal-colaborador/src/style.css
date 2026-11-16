@@ -107,14 +107,24 @@
 }
 
 @layer components {
-  .station-panel {
+  .station-panel,
+  .surface-card {
     @apply bg-white dark:bg-[#111113] border border-slate-200/90 dark:border-zinc-800 rounded-2xl shadow-sm transition-[background-color,border-color,box-shadow] duration-200;
+  }
+  .surface-subtle {
+    @apply bg-slate-50 dark:bg-zinc-900/70 border border-slate-200/70 dark:border-zinc-800/80 rounded-xl;
   }
   .station-panel-hover {
     @apply hover:border-brand-ring/50 dark:hover:border-brand-ring/50 hover:shadow-lg dark:hover:shadow-black/50;
   }
   .mono-tag {
     @apply font-mono text-xs font-semibold tracking-tight px-2.5 py-0.5 rounded-lg border border-slate-200 dark:border-zinc-700/80 bg-slate-100 dark:bg-zinc-800/90 text-slate-700 dark:text-zinc-200;
+  }
+  .text-brand-aa {
+    color: var(--color-brand-text-light, #0C5CAB);
+  }
+  .dark .text-brand-aa {
+    color: var(--color-brand-text-dark, #60a5fa);
   }
 }
 

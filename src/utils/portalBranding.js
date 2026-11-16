@@ -30,18 +30,36 @@ export const getNonShareableLogoNotice = (logoUrl) => {
   return 'Logotipos em Base64 (Data URI) ou URLs longas funcionam no console, etiquetas e termos, mas não são enviados no link do Portal do Colaborador para evitar erro HTTP 414 (URI Too Long). Para exibir no login do Portal, use uma URL https:// pública.';
 };
 
+const readActiveDomBrandColor = () => {
+  if (typeof document === 'undefined' || !document.documentElement?.style) return '';
+  return safeCssColor(document.documentElement.style.getPropertyValue('--color-brand').trim()) || '';
+};
+
+const readActiveDomTheme = (explicitTheme) => {
+  if (explicitTheme === 'dark' || explicitTheme === 'light') return explicitTheme;
+  if (typeof document === 'undefined' || !document.documentElement?.classList) return '';
+  if (document.documentElement.classList.contains('dark')) return 'dark';
+  if (document.documentElement.classList.contains('light')) return 'light';
+  return '';
+};
+
 /**
  * Monta a URL do Portal do Colaborador preservando parametros de Whitelabel
- * (empresa, cor da marca, logotipo publico curto e flag whitelabel) para que
- * a tela de login em Vue 3 carregue a identidade antes mesmo da autenticacao.
+ * (empresa, cor da marca, logotipo publico curto, tema e flag whitelabel) para que
+ * a tela de login em Vue 3 carregue a mesma paleta do console antes da autenticacao.
  */
 export const buildBrandedPortalUrl = (baseUrl, branding = {}) => {
   const cleanBase = String(baseUrl || '').trim().replace(/\/$/, '');
   if (!cleanBase) return '';
 
   const companyName = safeText(branding?.companyName || branding?.tenantName || branding?.tenant_name || '', 120).trim();
-  const primaryColor = safeCssColor(branding?.primaryColor || branding?.primary_color);
+  const rawColor = branding?.primaryColor ?? branding?.primary_color;
+  const primaryColor =
+    rawColor != null && String(rawColor).trim() !== ''
+      ? safeCssColor(rawColor)
+      : readActiveDomBrandColor();
   const logoUrl = resolveShareableLogoUrl(branding?.logoUrl || branding?.logo_url);
+  const themeMode = readActiveDomTheme(branding?.theme);
   const whitelabel = Boolean(
     branding?.whitelabel ?? branding?.entitlements?.features?.whitelabel,
   );
@@ -55,6 +73,9 @@ export const buildBrandedPortalUrl = (baseUrl, branding = {}) => {
     }
     if (primaryColor) {
       url.searchParams.set('cor', primaryColor);
+    }
+    if (themeMode) {
+      url.searchParams.set('tema', themeMode);
     }
     if (whitelabel) {
       url.searchParams.set('wl', '1');

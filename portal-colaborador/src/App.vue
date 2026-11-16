@@ -4,7 +4,7 @@ import CustodyAssetsPanel from './components/CustodyAssetsPanel.vue';
 import PortalIcon from './components/PortalIcon.vue';
 import ResponsibilityTerms from './components/ResponsibilityTerms.vue';
 import SupportTicketDesk from './components/SupportTicketDesk.vue';
-import { useTheme } from './composables/useTheme';
+import { parseColor, toHex, useTheme } from './composables/useTheme';
 import {
   GATEWAY_BASE_URL,
   clearStoredSession,
@@ -39,8 +39,12 @@ function syncTabQuery(tabId) {
 }
 
 function sanitizeHexColor(value) {
-  const raw = String(value || '').trim();
-  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw) ? raw : '';
+  const parsed = parseColor(value);
+  if (!parsed) return '';
+  const hex = toHex(parsed);
+  // Ignora o roxo antigo (#4f46e5) herdado de seeds legados do backend
+  if (hex.toLowerCase() === '#4f46e5') return '';
+  return hex;
 }
 
 const DATA_IMAGE_URI_RE =
@@ -121,6 +125,7 @@ function readInitialWhitelabel() {
         if (paramLogo) next.logoUrl = paramLogo;
         if (params.get('wl') === '1' || paramCor || paramLogo) next.whitelabel = true;
       }
+      if (paramCor) next.fromQueryCor = true;
       if (paramEmpresa) next.companyName = paramEmpresa;
       localStorage.setItem(WHITELABEL_STORAGE_KEY, JSON.stringify(next));
     }
@@ -165,6 +170,7 @@ const tickets = ref([]);
 
 let streamHandle = null;
 let bannerTimer = null;
+let wsRefreshTimer = null;
 
 const currentYear = new Date().getFullYear();
 
@@ -176,12 +182,18 @@ function persistWhitelabelFromUser(user) {
   const color = sanitizeHexColor(user.primaryColor || user.primary_color);
   const logo = sanitizeLogoUrl(user.logoUrl || user.logo_url, { allowDataUri: true });
   if (!company && !color && !logo) return;
+  const effectiveColor =
+    preLoginBranding.value.fromQueryCor && preLoginBranding.value.primaryColor
+      ? preLoginBranding.value.primaryColor
+      : color || preLoginBranding.value.primaryColor;
   const merged = {
     companyName: company || preLoginBranding.value.companyName,
-    primaryColor: color || preLoginBranding.value.primaryColor,
+    primaryColor: effectiveColor,
     logoUrl: logo || preLoginBranding.value.logoUrl,
+    fromQueryCor: Boolean(preLoginBranding.value.fromQueryCor),
     whitelabel: Boolean(
-      user.whitelabel ?? (Boolean(color) || Boolean(logo) || preLoginBranding.value.whitelabel),
+      user.whitelabel ??
+        (Boolean(effectiveColor) || Boolean(logo) || preLoginBranding.value.whitelabel),
     ),
   };
   preLoginBranding.value = merged;
@@ -223,6 +235,9 @@ const userLogoUrl = computed(() => {
 });
 
 const brandColor = computed(() => {
+  if (preLoginBranding.value.fromQueryCor && preLoginBranding.value.primaryColor) {
+    return preLoginBranding.value.primaryColor;
+  }
   return (
     sanitizeHexColor(session.value?.user?.primaryColor || session.value?.user?.primary_color) ||
     preLoginBranding.value.primaryColor ||
@@ -334,9 +349,13 @@ function onTabKeydown(event) {
   tabButtonRefs.value[nextIndex]?.focus();
 }
 
-async function loadWorkspaceData() {
+async function loadWorkspaceData({ background = false } = {}) {
   if (!session.value?.token) return;
-  loading.value = true;
+  const hasExistingData =
+    assets.value.length > 0 || terms.value.length > 0 || tickets.value.length > 0;
+  if (!background || !hasExistingData) {
+    loading.value = true;
+  }
   loadError.value = '';
   try {
     const [aRes, tRes, kRes] = await Promise.all([
@@ -348,10 +367,19 @@ async function loadWorkspaceData() {
     terms.value = tRes.items || [];
     tickets.value = kRes.items || [];
   } catch (err) {
-    loadError.value = err.message || 'Não foi possível carregar os dados do portal.';
+    if (!background || !hasExistingData) {
+      loadError.value = err.message || 'Não foi possível carregar os dados do portal.';
+    }
   } finally {
     loading.value = false;
   }
+}
+
+function scheduleBackgroundRefresh() {
+  clearTimeout(wsRefreshTimer);
+  wsRefreshTimer = setTimeout(() => {
+    loadWorkspaceData({ background: true });
+  }, 1500);
 }
 
 function startWebSocket() {
@@ -361,9 +389,18 @@ function startWebSocket() {
   streamHandle = portalApi.connectRealtimeStream(
     session.value.token,
     (frame) => {
-      if (frame.event === 'welcome' || frame.event === 'pong') return;
-      liveBanner.value = `Atualização recebida em tempo real (${frame.event}) via NexusDesk`;
-      loadWorkspaceData();
+      const evt = String(frame?.event || '');
+      if (!evt || evt === 'welcome' || evt === 'pong') return;
+      const isBusinessEvent =
+        evt.startsWith('ticket.') ||
+        evt.startsWith('term.') ||
+        evt.startsWith('asset.') ||
+        evt.startsWith('audit.') ||
+        evt === 'cluster.sync';
+      if (!isBusinessEvent) return;
+
+      liveBanner.value = `Atualização recebida em tempo real (${evt}) via NexusDesk`;
+      scheduleBackgroundRefresh();
       clearTimeout(bannerTimer);
       bannerTimer = setTimeout(() => {
         liveBanner.value = '';
@@ -373,7 +410,7 @@ function startWebSocket() {
       wsState.value = status;
     },
     () => {
-      loadWorkspaceData();
+      scheduleBackgroundRefresh();
     },
   );
 }
@@ -416,10 +453,7 @@ async function handleLogin() {
     const res = await portalApi.login(loginForm.email.trim(), loginForm.password);
     session.value = { token: res.accessToken, user: res.user };
     persistWhitelabelFromUser(res.user);
-    const brand = res.user?.primaryColor || res.user?.primary_color;
-    if (brand) {
-      applyBranding(brand);
-    }
+    applyBranding(brandColor.value || null);
     syncTabQuery(activeTab.value);
     await loadWorkspaceData();
     startWebSocket();
@@ -438,6 +472,7 @@ function handleLogout(reason = '') {
     streamHandle = null;
   }
   clearTimeout(bannerTimer);
+  clearTimeout(wsRefreshTimer);
   clearStoredSession();
   session.value = null;
   assets.value = [];
@@ -474,10 +509,7 @@ onMounted(async () => {
       saveStoredSession(session.value.token, profile);
       session.value = { token: session.value.token, user: profile };
       persistWhitelabelFromUser(profile);
-      const brand = profile.primaryColor || profile.primary_color;
-      if (brand) {
-        applyBranding(brand);
-      }
+      applyBranding(brandColor.value || null);
       syncTabQuery(activeTab.value);
       await loadWorkspaceData();
       if (session.value?.token) {
@@ -501,6 +533,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   setUnauthorizedHandler(null);
   clearTimeout(bannerTimer);
+  clearTimeout(wsRefreshTimer);
   if (streamHandle) streamHandle.disconnect();
 });
 </script>
@@ -547,9 +580,9 @@ onBeforeUnmount(() => {
                 {{ companyName }}
               </span>
               <span
-                class="hidden sm:inline-flex text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 items-center gap-1.5 shrink-0"
+                class="hidden sm:inline-flex text-xs font-semibold px-2.5 py-0.5 rounded-full bg-brand/10 text-brand-text-light dark:text-brand-text-dark border border-brand-ring/30 items-center gap-1.5 shrink-0"
               >
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400" />
+                <span class="w-1.5 h-1.5 rounded-full bg-brand" />
                 Portal do Colaborador
               </span>
             </div>
@@ -689,7 +722,7 @@ onBeforeUnmount(() => {
               class="p-4 rounded-xl bg-slate-50/90 dark:bg-zinc-900/70 border border-slate-200/80 dark:border-zinc-800 space-y-2"
             >
               <div
-                class="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 flex items-center justify-center"
+                class="w-9 h-9 rounded-lg bg-brand/10 text-brand-text-light dark:text-brand-text-dark flex items-center justify-center"
               >
                 <PortalIcon name="shield-check" :size="18" />
               </div>
@@ -705,7 +738,7 @@ onBeforeUnmount(() => {
               class="p-4 rounded-xl bg-slate-50/90 dark:bg-zinc-900/70 border border-slate-200/80 dark:border-zinc-800 space-y-2"
             >
               <div
-                class="w-9 h-9 rounded-lg bg-sky-500/10 text-sky-700 dark:text-sky-300 flex items-center justify-center"
+                class="w-9 h-9 rounded-lg bg-brand/10 text-brand-text-light dark:text-brand-text-dark flex items-center justify-center"
               >
                 <PortalIcon name="message-square" :size="18" />
               </div>
@@ -723,7 +756,7 @@ onBeforeUnmount(() => {
             class="pt-4 border-t border-slate-200/70 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-300"
           >
             <span class="inline-flex items-center gap-1.5 font-medium">
-              <PortalIcon name="shield-check" :size="16" class="text-emerald-700 dark:text-emerald-400" />
+              <PortalIcon name="shield-check" :size="16" class="text-brand-text-light dark:text-brand-text-dark" />
               <span>Privacidade LGPD (Lei 13.709/2018) • Acesso exclusivo do colaborador</span>
             </span>
           </div>
@@ -1032,7 +1065,7 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Atendimento de TI -->
-        <div class="station-panel p-4 flex items-center justify-between gap-3 border-l-4 border-l-sky-600 dark:border-l-sky-400">
+        <div class="station-panel p-4 flex items-center justify-between gap-3 border-l-4 border-l-brand-ring">
           <div class="min-w-0">
             <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">
               Atendimento de TI
@@ -1045,7 +1078,7 @@ onBeforeUnmount(() => {
             </p>
           </div>
           <div
-            class="w-11 h-11 rounded-2xl bg-sky-500/10 text-sky-700 dark:text-sky-300 flex items-center justify-center shrink-0"
+            class="w-11 h-11 rounded-2xl bg-brand/10 text-brand-text-light dark:text-brand-text-dark flex items-center justify-center shrink-0"
           >
             <PortalIcon name="headphones" :size="20" />
           </div>
@@ -1076,7 +1109,7 @@ onBeforeUnmount(() => {
             class="min-h-[44px] px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold active:scale-[0.98] transition-colors shadow-sm inline-flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
             :class="
               activeTab === tab.id
-                ? 'bg-slate-900 dark:bg-[#fafafa] text-white dark:text-[#09090b]'
+                ? 'bg-brand text-brand-fg border border-black/10 dark:border-white/15'
                 : 'station-panel text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-zinc-700'
             "
             @click="selectTab(tab.id)"

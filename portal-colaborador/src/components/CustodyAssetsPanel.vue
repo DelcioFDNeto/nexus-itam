@@ -233,7 +233,7 @@ function parseCpuLabel(rawSpecs) {
     >
       <div class="min-w-0">
         <div class="flex items-center gap-2.5">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-600 dark:bg-emerald-400 shrink-0" />
+          <span class="w-2.5 h-2.5 rounded-full bg-brand shrink-0" />
           <h2
             ref="custodyHeadingRef"
             tabindex="-1"
@@ -252,7 +252,7 @@ function parseCpuLabel(rawSpecs) {
         <span
           class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 dark:bg-zinc-900 text-[#fafafa] text-xs font-mono font-semibold shadow-sm border border-slate-800 dark:border-zinc-700"
         >
-          <span class="w-2 h-2 rounded-full bg-emerald-400" />
+          <span class="w-2 h-2 rounded-full bg-brand" />
           <span class="tabular-nums">{{ assets.length }}</span>
           <span class="text-slate-200 font-sans font-normal">
             {{ assets.length === 1 ? 'dispositivo ativo' : 'dispositivos ativos' }}
@@ -336,13 +336,13 @@ function parseCpuLabel(rawSpecs) {
       </div>
 
       <!-- Categorias -->
-      <div class="station-panel p-4 flex flex-col justify-between border-l-4 border-l-sky-600 dark:border-l-sky-400">
+      <div class="station-panel p-4 flex flex-col justify-between border-l-4 border-l-brand-ring">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">
             Diversidade de frota
           </span>
           <div
-            class="w-8 h-8 rounded-xl bg-sky-500/10 text-sky-700 dark:text-sky-300 flex items-center justify-center shrink-0"
+            class="w-8 h-8 rounded-xl bg-brand/10 text-brand-text-light dark:text-brand-text-dark flex items-center justify-center shrink-0"
           >
             <PortalIcon name="tag" :size="16" />
           </div>
@@ -358,13 +358,13 @@ function parseCpuLabel(rawSpecs) {
       </div>
 
       <!-- Vistorias Concluídas -->
-      <div class="station-panel p-4 flex flex-col justify-between border-l-4 border-l-cyan-600 dark:border-l-cyan-400">
+      <div class="station-panel p-4 flex flex-col justify-between border-l-4 border-l-brand-ring">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">
             Integridade validada
           </span>
           <div
-            class="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 flex items-center justify-center shrink-0"
+            class="w-8 h-8 rounded-xl bg-brand/10 text-brand-text-light dark:text-brand-text-dark flex items-center justify-center shrink-0"
           >
             <PortalIcon name="shield-check" :size="16" />
           </div>
@@ -380,7 +380,7 @@ function parseCpuLabel(rawSpecs) {
           </div>
           <div class="w-full bg-slate-200 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden mt-2">
             <div
-              class="bg-cyan-600 dark:bg-cyan-400 h-full rounded-full transition-[width] duration-500"
+              class="bg-brand h-full rounded-full transition-[width] duration-500"
               :style="{ width: assets.length ? `${(verifiedAssets.size / assets.length) * 100}%` : '0%' }"
             />
           </div>
@@ -427,7 +427,7 @@ function parseCpuLabel(rawSpecs) {
           class="min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold active:scale-[0.98] transition-colors shrink-0 cursor-pointer tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
           :class="
             selectedCategory === 'all'
-              ? 'bg-slate-900 dark:bg-[#fafafa] text-white dark:text-[#09090b] shadow-sm'
+              ? 'bg-brand text-brand-fg border border-black/10 dark:border-white/15 shadow-sm'
               : 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-zinc-700'
           "
           @click="selectedCategory = 'all'"
@@ -442,7 +442,7 @@ function parseCpuLabel(rawSpecs) {
           class="min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold active:scale-[0.98] transition-colors shrink-0 inline-flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
           :class="
             selectedCategory === cat
-              ? 'bg-slate-900 dark:bg-[#fafafa] text-white dark:text-[#09090b] shadow-sm'
+              ? 'bg-brand text-brand-fg border border-black/10 dark:border-white/15 shadow-sm'
               : 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-zinc-700'
           "
           @click="selectedCategory = cat"
@@ -528,7 +528,7 @@ function parseCpuLabel(rawSpecs) {
         <button
           v-if="searchQuery.trim() || selectedCategory !== 'all'"
           type="button"
-          class="mt-4 min-h-[44px] px-4 py-2 rounded-xl bg-slate-900 dark:bg-[#fafafa] text-white dark:text-[#09090b] text-xs font-semibold hover:bg-brand hover:text-brand-fg dark:hover:bg-brand dark:hover:text-brand-fg active:scale-[0.98] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+          class="mt-4 min-h-[44px] px-4 py-2 rounded-xl bg-brand hover:bg-brand-dark border border-black/10 dark:border-white/15 text-brand-fg text-xs font-semibold active:scale-[0.98] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
           @click="
             searchQuery = '';
             selectedCategory = 'all';
@@ -819,7 +819,7 @@ function parseCpuLabel(rawSpecs) {
 
           <button
             type="button"
-            class="min-h-[44px] inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl bg-slate-900 dark:bg-[#fafafa] text-white dark:text-[#09090b] hover:bg-brand hover:text-brand-fg dark:hover:bg-brand dark:hover:text-brand-fg active:scale-[0.98] transition-colors shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+            class="min-h-[44px] inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl bg-brand hover:bg-brand-dark border border-black/10 dark:border-white/15 text-brand-fg active:scale-[0.98] transition-colors shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
             @click="emit('report-issue', asset)"
           >
             <span>Abrir chamado</span>
