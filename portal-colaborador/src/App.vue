@@ -43,9 +43,20 @@ function sanitizeHexColor(value) {
   return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw) ? raw : '';
 }
 
-function sanitizeLogoUrl(value) {
+const DATA_IMAGE_URI_RE =
+  /^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/i;
+const MAX_QUERY_LOGO_LENGTH = 1024;
+const MAX_DATA_LOGO_LENGTH = 512 * 1024;
+
+function sanitizeLogoUrl(value, { allowDataUri = false } = {}) {
   const raw = String(value || '').trim();
   if (!raw) return '';
+  if (allowDataUri && raw.length <= MAX_DATA_LOGO_LENGTH && DATA_IMAGE_URI_RE.test(raw)) {
+    return raw;
+  }
+  if (!allowDataUri && (raw.length > MAX_QUERY_LOGO_LENGTH || /^data:/i.test(raw))) {
+    return '';
+  }
   try {
     const parsed = new URL(raw, window.location.origin);
     if (
@@ -71,23 +82,46 @@ function readInitialWhitelabel() {
   const next = {
     companyName: String(cached.companyName || '').trim().slice(0, 80),
     primaryColor: sanitizeHexColor(cached.primaryColor),
-    logoUrl: sanitizeLogoUrl(cached.logoUrl),
+    logoUrl: sanitizeLogoUrl(cached.logoUrl, { allowDataUri: true }),
     whitelabel: Boolean(cached.whitelabel),
   };
 
   try {
-    const params = new URLSearchParams(window.location.search);
-    const paramEmpresa = params.get('empresa');
+    const url = new URL(window.location.href);
+    const params = url.searchParams;
+    const paramEmpresa = params.get('empresa')?.trim().slice(0, 80) || '';
     const paramCor = sanitizeHexColor(params.get('cor'));
-    const paramLogo = params.has('logo') ? sanitizeLogoUrl(params.get('logo')) : '';
+    const paramLogo = params.has('logo')
+      ? sanitizeLogoUrl(params.get('logo'), { allowDataUri: false })
+      : '';
     const hasParam =
       Boolean(paramEmpresa) || Boolean(paramCor) || Boolean(paramLogo) || params.get('wl') === '1';
 
+    if (params.has('logo') && !paramLogo) {
+      params.delete('logo');
+      try {
+        window.history.replaceState(null, '', url.toString());
+      } catch {
+        // history API indisponível
+      }
+    }
+
     if (hasParam) {
-      if (paramEmpresa) next.companyName = paramEmpresa.trim().slice(0, 80);
-      if (paramCor) next.primaryColor = paramCor;
-      if (paramLogo) next.logoUrl = paramLogo;
-      if (params.get('wl') === '1' || paramCor || paramLogo) next.whitelabel = true;
+      const switchedCompany =
+        Boolean(paramEmpresa) &&
+        Boolean(next.companyName) &&
+        paramEmpresa.toLowerCase() !== next.companyName.toLowerCase();
+
+      if (switchedCompany) {
+        next.logoUrl = paramLogo;
+        next.primaryColor = paramCor;
+        next.whitelabel = params.get('wl') === '1' || Boolean(paramCor) || Boolean(paramLogo);
+      } else {
+        if (paramCor) next.primaryColor = paramCor;
+        if (paramLogo) next.logoUrl = paramLogo;
+        if (params.get('wl') === '1' || paramCor || paramLogo) next.whitelabel = true;
+      }
+      if (paramEmpresa) next.companyName = paramEmpresa;
       localStorage.setItem(WHITELABEL_STORAGE_KEY, JSON.stringify(next));
     }
   } catch {
@@ -140,7 +174,7 @@ function persistWhitelabelFromUser(user) {
     .trim()
     .slice(0, 80);
   const color = sanitizeHexColor(user.primaryColor || user.primary_color);
-  const logo = sanitizeLogoUrl(user.logoUrl || user.logo_url);
+  const logo = sanitizeLogoUrl(user.logoUrl || user.logo_url, { allowDataUri: true });
   if (!company && !color && !logo) return;
   const merged = {
     companyName: company || preLoginBranding.value.companyName,
@@ -154,7 +188,11 @@ function persistWhitelabelFromUser(user) {
   try {
     localStorage.setItem(WHITELABEL_STORAGE_KEY, JSON.stringify(merged));
   } catch {
-    // ignore storage quota errors
+    try {
+      localStorage.setItem(WHITELABEL_STORAGE_KEY, JSON.stringify({ ...merged, logoUrl: '' }));
+    } catch {
+      // ignore storage quota errors
+    }
   }
 }
 
@@ -176,7 +214,9 @@ const companyInitial = computed(() => {
 const userLogoUrl = computed(() => {
   if (logoLoadError.value) return '';
   return (
-    sanitizeLogoUrl(session.value?.user?.logoUrl || session.value?.user?.logo_url) ||
+    sanitizeLogoUrl(session.value?.user?.logoUrl || session.value?.user?.logo_url, {
+      allowDataUri: true,
+    }) ||
     preLoginBranding.value.logoUrl ||
     ''
   );

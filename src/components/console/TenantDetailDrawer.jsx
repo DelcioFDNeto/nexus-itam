@@ -7,7 +7,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import {
-  AlertTriangle, Building2, CheckCircle, Copy, KeyRound, Layers, Lock, NotebookPen, Palette, Pause, Play,
+  AlertTriangle, Building2, CheckCircle, Copy, Info, KeyRound, Layers, Lock, NotebookPen, Palette, Pause, Play,
   Save, ShieldCheck, Users, X, XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -19,6 +19,7 @@ import {
 } from '../../services/tenantService';
 import { DEFAULT_PRICING_MATRIX, FEATURES, isUserBlocked } from '../../utils/entitlements';
 import { ROLE_LABELS } from '../../utils/permissions';
+import { getNonShareableLogoNotice } from '../../utils/portalBranding';
 import { safeCssColor, safeImageUrl } from '../../utils/sanitize';
 import { captureFocusTarget, restoreFocusSafely, trapFocusWithin } from '../../utils/focusTrap';
 import { isTopmostModal } from '../../utils/modalStack';
@@ -504,6 +505,12 @@ const TenantDetailDrawer = ({ tenant, plans, initialTab = 'overview', onClose, o
                 <div>
                   <label className={label} htmlFor="brand-logo">URL do logotipo</label>
                   <input id="brand-logo" name="logoUrl" value={brand.logoUrl} onChange={(e) => setBrand({ ...brand, logoUrl: e.target.value })} placeholder="https://…" className={input} />
+                  {getNonShareableLogoNotice(brand.logoUrl) && (
+                    <p className="mt-1.5 flex items-start gap-1.5 text-xs text-slate-600 dark:text-zinc-400">
+                      <Info size={14} className="shrink-0 mt-0.5 text-brand-aa" aria-hidden="true" />
+                      <span>{getNonShareableLogoNotice(brand.logoUrl)}</span>
+                    </p>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>

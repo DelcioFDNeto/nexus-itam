@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { AlertTriangle, Image as ImageIcon, Info, Palette, RotateCcw } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { contrastRatio, ensureContrastOnSurface, pickContrastFg, rgbChannels } from '../../utils/color';
+import { getNonShareableLogoNotice } from '../../utils/portalBranding';
 import { safeCssColor, safeImageUrl } from '../../utils/sanitize';
 import { Card, Field, SectionHeader } from './settingsUi';
 import { inputClass, NEXUS_DEFAULT_COLOR } from './settingsStyles';
@@ -59,6 +60,7 @@ const BrandingSection = ({ config, set, whitelabel }) => {
   const effectiveColor = safeCssColor(config.primaryColor) || NEXUS_DEFAULT_COLOR;
   const contrast = contrastRatio(effectiveColor, '#ffffff');
   const lowContrast = contrast !== null && contrast < 4.5;
+  const logoNotice = getNonShareableLogoNotice(config.logoUrl);
 
   return (
     <div className="space-y-6">
@@ -83,6 +85,12 @@ const BrandingSection = ({ config, set, whitelabel }) => {
               placeholder="https://…"
             />
           </div>
+          {logoNotice && (
+            <p className="mt-2 flex items-start gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+              <Info size={14} className="shrink-0 mt-0.5 text-brand-aa" aria-hidden="true" />
+              <span>{logoNotice}</span>
+            </p>
+          )}
         </Field>
 
         <Field label="Cor da marca" hint="Botões, destaques e itens ativos do menu de toda a equipe.">
