@@ -1,5 +1,5 @@
 // src/components/terms/SignedCopiesModal.jsx
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileText, Loader2, ScanLine, Trash2, UploadCloud, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
@@ -32,15 +32,28 @@ const SignedCopiesModal = ({ terms, onClose, onDone }) => {
   const [finished, setFinished] = useState(false);
   const extraTerms = useRef({}); // termos fora da lista carregada, achados pelo QR
   const rowSeq = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const candidates = terms.filter(canAttachSignedCopy);
-  const patch = (key, values) => setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...values } : r)));
+  const patch = (key, values) => {
+    if (!mountedRef.current) return;
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...values } : r)));
+  };
 
   const identify = async (row) => {
     const qrText = await readTermQr(row.file);
+    if (!mountedRef.current) return;
     let match = matchSignedCopy({ qrText, fileName: row.file.name }, candidates);
     if (match && !match.term) {
       const known = terms.find((t) => t.id === match.termId) || (await getTerm(match.termId).catch(() => null));
+      if (!mountedRef.current) return;
       if (!known || known.tenantId !== currentUser?.tenantId) {
         patch(row.key, { state: 'sem-termo', message: 'O QR é de um termo que não existe nesta empresa. Escolha o termo.' });
         return;
@@ -91,17 +104,22 @@ const SignedCopiesModal = ({ terms, onClose, onDone }) => {
     setRunning(true);
     let ok = 0;
     for (const row of ready) {
+      if (!mountedRef.current) break;
       patch(row.key, { state: 'enviando' });
       try {
         const signedCopy = await prepareSignedCopy(row.file);
+        if (!mountedRef.current) break;
         await concludeTerm({ term: row.term, user: currentUser, signedCopy, options });
+        if (!mountedRef.current) break;
         patch(row.key, { state: 'feito', message: '' });
         ok += 1;
       } catch (error) {
+        if (!mountedRef.current) break;
         console.error(error);
         patch(row.key, { state: 'erro', message: error?.code === 'permission-denied' ? 'sem permissão' : error.message || 'falhou' });
       }
     }
+    if (!mountedRef.current) return;
     setRunning(false);
     setFinished(true);
     if (ok) toast.success(`${ok} termo(s) concluído(s) com o assinado anexado.`);
@@ -115,10 +133,11 @@ const SignedCopiesModal = ({ terms, onClose, onDone }) => {
       wide
       title="Anexar termos assinados"
       subtitle="Solte todos os termos que voltaram assinados. O QR impresso identifica cada um e o processo é concluído sozinho."
-      onClose={running ? () => {} : onClose}
+      busy={running}
+      onClose={running ? undefined : onClose}
       footer={
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <p className="text-xs font-bold text-gray-500 dark:text-gray-400">
+          <p className="text-xs font-bold text-slate-600 dark:text-zinc-400 tabular-nums">
             {reading
               ? 'Lendo os QR codes…'
               : finished && !ready.length
@@ -126,7 +145,11 @@ const SignedCopiesModal = ({ terms, onClose, onDone }) => {
                 : `${ready.length} pronto(s) para concluir${rows.length - ready.length - done ? ` · ${rows.length - ready.length - done} sem ação` : ''}`}
           </p>
           {finished && !ready.length ? (
-            <button type="button" onClick={onClose} className="px-5 py-3 rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-xs font-black uppercase tracking-wider">
+            <button
+              type="button"
+              onClick={onClose}
+              className="min-h-[44px] px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 text-xs font-black uppercase tracking-wider transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
               Fechar
             </button>
           ) : (
@@ -134,9 +157,9 @@ const SignedCopiesModal = ({ terms, onClose, onDone }) => {
               type="button"
               onClick={run}
               disabled={!ready.length || running || reading}
-              className="px-5 py-3 rounded-xl bg-brand text-white text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-brand/30 disabled:opacity-40 disabled:shadow-none"
+              className="min-h-[44px] px-5 py-3 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed tabular-nums"
             >
-              {running ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+              {running ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <CheckCircle2 size={15} aria-hidden="true" />}
               {running ? 'Concluindo…' : `Concluir ${ready.length || ''} termo(s)`}
             </button>
           )}
@@ -153,36 +176,58 @@ const SignedCopiesModal = ({ terms, onClose, onDone }) => {
       />
 
       {rows.length > 0 && (
-        <ul className="divide-y divide-gray-100 dark:divide-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+        <ul className="divide-y divide-slate-100 dark:divide-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
           {rows.map((row) => {
             const duplicate = isDuplicate(row);
             return (
-              <li key={row.key} className="p-3 bg-white dark:bg-slate-900 flex flex-col md:flex-row md:items-center gap-3" data-file={row.file.name}>
+              <li
+                key={row.key}
+                className="[content-visibility:auto] [contain-intrinsic-size:auto_64px] p-3 bg-white dark:bg-[#111113] flex flex-col md:flex-row md:items-center gap-3"
+                data-file={row.file.name}
+              >
                 <div className="flex items-center gap-3 min-w-0 md:w-64 shrink-0">
-                  <span className="p-2 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-500"><FileText size={16} /></span>
+                  <span className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-900 text-slate-500 dark:text-zinc-400" aria-hidden="true">
+                    <FileText size={16} aria-hidden="true" />
+                  </span>
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-gray-900 dark:text-white truncate" title={row.file.name}>{row.file.name}</p>
-                    <p className="text-[10px] text-gray-400">{Math.max(1, Math.round(row.file.size / 1024))} KB</p>
+                    <p className="text-xs font-bold text-slate-900 dark:text-[#fafafa] truncate" title={row.file.name}>{row.file.name}</p>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 tabular-nums">{Math.max(1, Math.round(row.file.size / 1024))} KB</p>
                   </div>
                 </div>
 
                 <div className="min-w-0 flex-1 text-xs">
-                  {row.state === 'lendo' && <p className="flex items-center gap-2 font-bold text-gray-500"><Loader2 size={13} className="animate-spin" /> Lendo o QR…</p>}
+                  {row.state === 'lendo' && (
+                    <p role="status" className="flex items-center gap-2 font-bold text-slate-500 dark:text-zinc-400">
+                      <Loader2 size={13} className="animate-spin" aria-hidden="true" /> Lendo o QR…
+                    </p>
+                  )}
                   {['pronto', 'enviando', 'feito', 'erro'].includes(row.state) && row.term && (
                     <>
-                      <p className="font-black text-gray-900 dark:text-white">
-                        <span className="font-mono">{row.term.number}</span> · {TERM_KINDS[row.term.kind]?.short} · {counterpart(row.term)}
+                      <p className="font-black text-slate-900 dark:text-[#fafafa]">
+                        <span className="font-mono tabular-nums">{row.term.number}</span> · {TERM_KINDS[row.term.kind]?.short} · {counterpart(row.term)}
                       </p>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                        {row.via === 'qr' && <ScanLine size={11} className="text-green-600" />}
+                      <p className="text-xs text-slate-500 dark:text-zinc-400 flex items-center gap-1">
+                        {row.via === 'qr' && <ScanLine size={12} className="text-emerald-600 dark:text-emerald-400" aria-hidden="true" />}
                         {VIA_LABEL[row.via]} · {row.state === 'feito' ? 'concluído' : 'ao concluir'}: <strong>{attachOutcome(row.term)}</strong>
                       </p>
                     </>
                   )}
                   {row.state === 'sem-termo' && (
-                    <div className="space-y-1">
-                      <p className="font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1"><AlertTriangle size={12} /> {row.message}</p>
-                      <select aria-label={`Termo de ${row.file.name}`} value="" onChange={(e) => chooseTerm(row.key, e.target.value)} className={`${fieldClass} text-xs py-2`}>
+                    <div className="space-y-1.5">
+                      <p className="font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                        <AlertTriangle size={12} aria-hidden="true" /> {row.message}
+                      </p>
+                      <label htmlFor={`signed-copy-term-${row.key}`} className="sr-only">
+                        Termo de {row.file.name}
+                      </label>
+                      <select
+                        id={`signed-copy-term-${row.key}`}
+                        name={`term-${row.key}`}
+                        aria-label={`Termo de ${row.file.name}`}
+                        value=""
+                        onChange={(e) => chooseTerm(row.key, e.target.value)}
+                        className={fieldClass}
+                      >
                         <option value="">Escolha o termo…</option>
                         {candidates.map((t) => (
                           <option key={t.id} value={t.id}>{t.number} — {counterpart(t)}</option>
@@ -191,19 +236,28 @@ const SignedCopiesModal = ({ terms, onClose, onDone }) => {
                     </div>
                   )}
                   {row.state === 'ignorado' && (
-                    <p className="font-bold text-gray-500">{row.term?.number}: {row.message}. Nada a fazer.</p>
+                    <p className="font-bold text-slate-500 dark:text-zinc-400">{row.term?.number}: {row.message}. Nada a fazer.</p>
                   )}
                   {duplicate && <p className="font-bold text-amber-700 dark:text-amber-300">Mesmo termo de outro arquivo da lista — este será ignorado.</p>}
                   {row.state === 'erro' && <p className="font-bold text-rose-600 dark:text-rose-400">{row.message}</p>}
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  {row.state === 'enviando' && <Loader2 size={16} className="animate-spin text-brand" />}
-                  {row.state === 'feito' && <span className="flex items-center gap-1 text-[10px] font-black uppercase text-green-600"><CheckCircle2 size={14} /> Concluído</span>}
-                  {row.state === 'erro' && <XCircle size={16} className="text-rose-600" />}
+                  {row.state === 'enviando' && <Loader2 size={16} className="animate-spin text-brand-aa" aria-label="Enviando" />}
+                  {row.state === 'feito' && (
+                    <span className="flex items-center gap-1 text-xs font-bold uppercase text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 size={14} aria-hidden="true" /> Concluído
+                    </span>
+                  )}
+                  {row.state === 'erro' && <XCircle size={16} className="text-rose-600 dark:text-rose-400" aria-label="Erro" />}
                   {!running && !['feito', 'enviando'].includes(row.state) && (
-                    <button type="button" onClick={() => setRows((prev) => prev.filter((r) => r.key !== row.key))} aria-label={`Remover ${row.file.name}`} className="p-2 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40">
-                      <Trash2 size={14} />
+                    <button
+                      type="button"
+                      onClick={() => setRows((prev) => prev.filter((r) => r.key !== row.key))}
+                      aria-label={`Remover ${row.file.name}`}
+                      className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                    >
+                      <Trash2 size={15} aria-hidden="true" />
                     </button>
                   )}
                 </div>
@@ -214,7 +268,7 @@ const SignedCopiesModal = ({ terms, onClose, onDone }) => {
       )}
 
       {candidates.length === 0 && rows.length === 0 && (
-        <p className="text-center text-xs text-gray-500 dark:text-gray-400">Nenhum termo aguardando o assinado no momento.</p>
+        <p className="text-center text-xs text-slate-500 dark:text-zinc-400">Nenhum termo aguardando o assinado no momento.</p>
       )}
     </TermModalFrame>
   );

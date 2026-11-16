@@ -68,8 +68,8 @@ describe('TaskManager Page', () => {
   ];
 
   const mockEmployees = [
-    { id: 'emp-1', name: 'Délcio Farias', email: 'delcio.farias@shineraybysabel.com.br' },
-    { id: 'emp-2', name: 'Karen Matos', email: 'karen.matos@shineraybysabel.com.br' },
+    { id: 'emp-1', name: 'Délcio Farias', email: 'delcio.farias@empresa-exemplo.com.br' },
+    { id: 'emp-2', name: 'Karen Matos', email: 'karen.matos@empresa-exemplo.com.br' },
   ];
 
   beforeEach(() => {
@@ -78,8 +78,8 @@ describe('TaskManager Page', () => {
     vi.spyOn(authContext, 'useAuth').mockReturnValue({
       currentUser: {
         id: 'user-1',
-        name: 'TI Shineray',
-        email: 'ti@shineraybysabel.com.br',
+        name: 'TI Corporativo',
+        email: 'ti@empresa-exemplo.com.br',
         role: 'owner',
         tenantId: 'tenant-ap3htf6',
       },
@@ -176,13 +176,26 @@ describe('TaskManager Page', () => {
     expect(screen.getByLabelText(/título da tarefa \*/i)).toBeInTheDocument();
   });
 
-  it('abre o drawer lateral de detalhes ao clicar na tarefa', async () => {
+  it('abre o drawer lateral de detalhes ao clicar na tarefa e fecha com Escape', async () => {
     render(<TaskManager />);
 
     const card = await screen.findByText('Configurar Switch Core L3');
     fireEvent.click(card);
 
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('Subtarefas / Checklist')).toBeInTheDocument();
     expect(screen.getAllByText('Migração Data Center').length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('exibe erro e botão de tentar novamente quando falha ao carregar tarefas', async () => {
+    vi.spyOn(taskService, 'getTasks').mockRejectedValueOnce(new Error('Falha de rede'));
+    render(<TaskManager />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/não foi possível sincronizar/i);
+    fireEvent.click(screen.getByRole('button', { name: /tentar novamente/i }));
+    expect(await screen.findByText('Configurar Switch Core L3')).toBeInTheDocument();
   });
 });

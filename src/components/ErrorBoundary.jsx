@@ -37,27 +37,33 @@ class ErrorBoundary extends React.Component {
     if (!this.state.error) return this.props.children;
 
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center px-6 text-center">
-        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-red-500">Erro inesperado</p>
-        <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+      <div
+        role="alert"
+        className="min-h-[60vh] flex flex-col items-center justify-center px-6 text-center bg-slate-50 dark:bg-[#09090b]"
+      >
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-rose-600 dark:text-rose-400">
+          Erro inesperado
+        </p>
+        <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-900 dark:text-[#fafafa]">
           Algo quebrou nesta tela
         </h1>
-        <p className="mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">
+        <p className="mt-2 max-w-md text-sm text-slate-600 dark:text-zinc-400">
           O restante do sistema continua funcionando. Tente novamente ou volte ao painel.
         </p>
-        <pre className="mt-5 max-w-full overflow-x-auto rounded-xl bg-slate-100 dark:bg-slate-800/70 px-4 py-3 text-left text-[11px] text-slate-600 dark:text-slate-300">
+        <pre className="mt-5 max-w-full overflow-x-auto rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] px-4 py-3 text-left font-mono text-xs text-slate-700 dark:text-zinc-300">
           {String(this.state.error?.message || this.state.error)}
         </pre>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <button
+            type="button"
             onClick={this.handleReset}
-            className="rounded-xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-widest text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-brand px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-brand-fg shadow-sm transition-colors hover:bg-brand-dark active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#09090b]"
           >
             Tentar novamente
           </button>
           <a
             href="/dashboard"
-            className="rounded-xl border border-slate-200 dark:border-slate-700 px-5 py-3 text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-zinc-200 transition-colors hover:bg-slate-50 dark:hover:bg-[#18181b] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#09090b]"
           >
             Ir para o painel
           </a>

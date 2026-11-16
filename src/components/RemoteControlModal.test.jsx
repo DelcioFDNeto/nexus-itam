@@ -1,8 +1,10 @@
 // src/components/RemoteControlModal.test.jsx
 import React, { act } from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import RemoteControlModal from './RemoteControlModal';
+import { getFocusableElements } from '../utils/focusTrap';
+import { sendRemoteInputEvents } from '../services/rmmService';
 import { 
   QUALITY_LABELS, 
   SESSION_END_MESSAGES, 
@@ -87,6 +89,14 @@ describe('RemoteControlModal (NexusDesk PWA Mobile & Desktop)', () => {
     registeredWsCallback = null;
   });
 
+  afterEach(() => {
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      value: null,
+    });
+    vi.restoreAllMocks();
+  });
+
   const defaultProps = {
     isOpen: true,
     onClose: vi.fn(),
@@ -94,11 +104,11 @@ describe('RemoteControlModal (NexusDesk PWA Mobile & Desktop)', () => {
     initialDevice: {
       deviceKey: 'dev-001',
       hostname: 'NTB-GESTOR-01',
-      internalId: 'SHL-NTB-01',
-      loggedUser: 'gestor@shineray.com.br',
+      internalId: 'ENT-NTB-01',
+      loggedUser: 'gestor@empresa.com.br',
       agentVersion: '3.2.0',
     },
-    currentUser: { name: 'Admin TI', email: 'admin@shineray.com.br', role: 'admin' },
+    currentUser: { name: 'Admin TI', email: 'admin@empresa.com.br', role: 'admin' },
   };
 
   it('renders correctly when open and displays accessId and patrimony', async () => {
@@ -136,26 +146,41 @@ describe('RemoteControlModal (NexusDesk PWA Mobile & Desktop)', () => {
       render(<RemoteControlModal {...defaultProps} />);
     });
     
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    const screenTab = screen.getByRole('tab', { name: /Tela Remota/i });
+    expect(screenTab).toHaveAttribute('aria-selected', 'true');
+
     // Alterna para Terminal PowerShell
-    const termBtn = screen.getByRole('button', { name: /PowerShell/i });
+    const termBtn = screen.getByRole('tab', { name: /PowerShell/i });
     await act(async () => {
       fireEvent.click(termBtn);
     });
+    expect(termBtn).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText(/Ações Rápidas PowerShell/i)).toBeInTheDocument();
 
     // Alterna para Processos
-    const procBtn = screen.getByRole('button', { name: /Processos/i });
+    const procBtn = screen.getByRole('tab', { name: /Processos/i });
     await act(async () => {
       fireEvent.click(procBtn);
     });
+    expect(procBtn).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText(/USO DE CPU/i)).toBeInTheDocument();
 
     // Alterna para Ações
-    const actBtn = screen.getByRole('button', { name: /Ações/i });
+    const actBtn = screen.getByRole('tab', { name: /Ações/i });
     await act(async () => {
       fireEvent.click(actBtn);
     });
+    expect(actBtn).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText(/Atualização Remota OTA/i)).toBeInTheDocument();
+
+    // Navegação por teclado entre abas
+    actBtn.focus();
+    await act(async () => {
+      fireEvent.keyDown(actBtn, { key: 'ArrowRight' });
+    });
+    expect(screenTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(screenTab);
   });
 
   it('allows toggling between Trackpad Virtual and Direct Touch mode', async () => {
@@ -258,5 +283,175 @@ describe('RemoteControlModal (NexusDesk PWA Mobile & Desktop)', () => {
     await act(async () => {
       document.dispatchEvent(new Event('fullscreenchange'));
     });
+  });
+
+  it('exposes dialog ARIA semantics and allows text selection outside remote viewport', async () => {
+    await act(async () => {
+      render(<RemoteControlModal {...defaultProps} />);
+    });
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog).toHaveAttribute('aria-labelledby', 'remote-control-modal-title');
+    expect(dialog.className).not.toContain('select-none');
+    expect(dialog.parentElement?.className).not.toContain('select-none');
+
+    const viewport = screen.getByLabelText('Tela remota interativa');
+    expect(viewport.className).toContain('select-none');
+  });
+
+  it('closes safely on Escape and restores focus to the triggering element', async () => {
+    const onCloseSpy = vi.fn();
+    function Harness() {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <div>
+          <button type="button" onClick={() => setOpen(true)}>
+            Abrir Acesso Remoto
+          </button>
+          <RemoteControlModal
+            {...defaultProps}
+            isOpen={open}
+            onClose={() => {
+              onCloseSpy();
+              setOpen(false);
+            }}
+          />
+        </div>
+      );
+    }
+
+    render(<Harness />);
+    const opener = screen.getByRole('button', { name: /Abrir Acesso Remoto/i });
+    opener.focus();
+    expect(document.activeElement).toBe(opener);
+
+    await act(async () => {
+      fireEvent.click(opener);
+    });
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' });
+    });
+
+    expect(onCloseSpy).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('keeps modal open on Escape inside an active remote canvas and traps Tab focus', async () => {
+    const onCloseSpy = vi.fn();
+    await act(async () => {
+      render(<RemoteControlModal {...defaultProps} onClose={onCloseSpy} />);
+    });
+
+    const dialog = screen.getByRole('dialog');
+    const focusables = getFocusableElements(dialog).filter((el) => !el.classList.contains('sr-only'));
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+
+    last.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
+
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+
+    const connectBtn = screen.getByRole('button', { name: /Conectar NexusDesk/i });
+    await act(async () => {
+      fireEvent.click(connectBtn);
+    });
+
+    const viewport = screen.getByLabelText('Tela remota interativa');
+    viewport.focus();
+    await act(async () => {
+      fireEvent.keyDown(viewport, { key: 'Escape' });
+    });
+    expect(onCloseSpy).not.toHaveBeenCalled();
+
+    const closeBtn = screen.getByRole('button', { name: /Fechar NexusDesk/i });
+    closeBtn.focus();
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' });
+    });
+    expect(onCloseSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not close on Escape or steal Tab focus when a ConfirmDialog is stacked above it', async () => {
+    const onCloseSpy = vi.fn();
+    render(
+      <>
+        <RemoteControlModal {...defaultProps} onClose={onCloseSpy} />
+        <div role="alertdialog" aria-modal="true">
+          <button type="button">Cancelar</button>
+          <button type="button">Confirmar</button>
+        </div>
+      </>,
+    );
+
+    const stackedConfirm = screen.getByRole('button', { name: 'Confirmar' });
+    stackedConfirm.focus();
+    expect(document.activeElement).toBe(stackedConfirm);
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' });
+      fireEvent.keyDown(document, { key: 'Tab' });
+    });
+
+    expect(onCloseSpy).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(stackedConfirm);
+  });
+
+  it('allows Tab out of viewport when not fullscreen and lets dock buttons work via keyboard', async () => {
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        render(<RemoteControlModal {...defaultProps} />);
+      });
+
+      const connectBtn = screen.getByRole('button', { name: /Conectar NexusDesk/i });
+      await act(async () => {
+        fireEvent.click(connectBtn);
+      });
+
+      const viewport = screen.getByLabelText('Tela remota interativa');
+      viewport.focus();
+      await act(async () => {
+        fireEvent.keyDown(viewport, { key: 'Tab' });
+        vi.advanceTimersByTime(50);
+      });
+      expect(sendRemoteInputEvents).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          events: expect.arrayContaining([expect.objectContaining({ key: 'Tab' })]),
+        }),
+      );
+
+      const dockToggle = screen.getByTitle(/Recolher dock mobile/i);
+      dockToggle.focus();
+      const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+      const stopSpy = vi.spyOn(enterEvent, 'stopPropagation');
+      await act(async () => {
+        dockToggle.dispatchEvent(enterEvent);
+        vi.advanceTimersByTime(50);
+      });
+      expect(stopSpy).toHaveBeenCalled();
+      expect(sendRemoteInputEvents).not.toHaveBeenCalled();
+
+      await act(async () => {
+        fireEvent.click(dockToggle);
+      });
+      expect(dockToggle).toHaveAttribute('aria-expanded', 'false');
+
+      dockToggle.focus();
+      await act(async () => {
+        fireEvent.keyDown(dockToggle, { key: 'Escape', bubbles: true });
+      });
+      expect(defaultProps.onClose).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

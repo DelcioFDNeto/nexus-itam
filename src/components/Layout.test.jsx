@@ -1,7 +1,7 @@
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import Layout from './Layout';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -9,7 +9,7 @@ const mockUsePWA = vi.fn();
 
 vi.mock('../contexts/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('../contexts/ThemeContext', () => ({
-  useTheme: () => ({ theme: 'light', setTheme: vi.fn() }),
+  useTheme: () => ({ theme: 'light', resolvedTheme: 'light', setTheme: vi.fn() }),
 }));
 vi.mock('../contexts/PWAContext', () => ({
   usePWA: () => mockUsePWA(),
@@ -58,7 +58,36 @@ describe('Layout', () => {
     // estatico sem efeitos nem busca de dados. O conteudo e a barra inferior
     // sao os que precisam ser unicos.
     renderLayout({ uid: 'u1', name: 'Ana Souza', role: 'owner', tenantId: 'acme-1234' });
-    expect(screen.getAllByRole('navigation', { name: 'Navegacao rapida' })).toHaveLength(1);
+    expect(screen.getAllByRole('navigation', { name: 'Navegação rápida' })).toHaveLength(1);
+  });
+
+  it('expoe skip link funcional apontando para #main-content', () => {
+    renderLayout({ uid: 'u1', name: 'Ana Souza', role: 'owner', tenantId: 'acme-1234' });
+    const skipLink = screen.getByRole('link', { name: 'Pular para o conteúdo' });
+    expect(skipLink).toHaveAttribute('href', '#main-content');
+    const main = screen.getByRole('main');
+    expect(main).toHaveAttribute('id', 'main-content');
+    expect(main).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('aplica inert no drawer mobile fechado e gerencia foco ao abrir e fechar', async () => {
+    renderLayout({ uid: 'u1', name: 'Ana Souza', role: 'owner', tenantId: 'acme-1234' });
+    const menuBtn = screen.getByRole('button', { name: 'Abrir menu' });
+    const asides = screen.getAllByLabelText('Navegação corporativa', { hidden: true });
+    // Segundo aside pertence ao drawer mobile
+    const mobileDrawer = asides[1];
+    expect(mobileDrawer).toHaveAttribute('inert');
+
+    fireEvent.click(menuBtn);
+    expect(mobileDrawer).not.toHaveAttribute('inert');
+    const closeBtn = screen.getByRole('button', { name: 'Fechar menu' });
+    expect(document.activeElement).toBe(closeBtn);
+
+    fireEvent.click(closeBtn);
+    expect(mobileDrawer).toHaveAttribute('inert');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(menuBtn);
+    });
   });
 
   it('esconde o atalho de criar ativo de quem so tem leitura', () => {
@@ -161,5 +190,95 @@ describe('Layout', () => {
     const installBtns = screen.getAllByRole('button', { name: /instalar aplicativo/i });
     fireEvent.click(installBtns[0]);
     expect(setIsInstallModalOpen).toHaveBeenCalledWith(true);
+  });
+
+  it('ignora atalhos globais Escape e Alt+N quando isInstallModalOpen ou [aria-modal="true"] estiver aberto', () => {
+    useAuth.mockReturnValue({
+      currentUser: { uid: 'u1', name: 'Ana Souza', role: 'owner', tenantId: 'acme-1234' },
+      logout: vi.fn(),
+      loading: false,
+    });
+    mockUsePWA.mockReturnValue({
+      isStandalone: false,
+      canInstall: true,
+      isInstallModalOpen: true,
+      setIsInstallModalOpen: vi.fn(),
+      installProgress: { isInstalling: false, progress: 0, statusText: '' },
+      storageDiagnostics: { quota: 0, usage: 0, percentage: 0, isPersisted: false },
+      appVersion: '3.0.0',
+    });
+
+    const { rerender } = render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <Routes>
+          <Route
+            path="/dashboard"
+            element={
+              <Layout>
+                <div data-testid="pagina-dashboard">Dashboard</div>
+              </Layout>
+            }
+          />
+          <Route
+            path="/assets/new"
+            element={
+              <Layout>
+                <div data-testid="pagina-novo-ativo">Novo Ativo</div>
+              </Layout>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const menuBtn = screen.getByRole('button', { name: 'Abrir menu' });
+    fireEvent.click(menuBtn);
+    const mobileDrawer = screen.getAllByLabelText('Navegação corporativa', { hidden: true })[1];
+    expect(mobileDrawer).not.toHaveAttribute('inert');
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(mobileDrawer).not.toHaveAttribute('inert');
+
+    fireEvent.keyDown(window, { key: 'n', altKey: true });
+    expect(screen.queryByTestId('pagina-novo-ativo')).toBeNull();
+
+    // Também bloqueia quando isInstallModalOpen=false mas há um diálogo [aria-modal="true"] na DOM
+    mockUsePWA.mockReturnValue({
+      isStandalone: false,
+      canInstall: true,
+      isInstallModalOpen: false,
+      setIsInstallModalOpen: vi.fn(),
+      installProgress: { isInstalling: false, progress: 0, statusText: '' },
+      storageDiagnostics: { quota: 0, usage: 0, percentage: 0, isPersisted: false },
+      appVersion: '3.0.0',
+    });
+    rerender(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <Routes>
+          <Route
+            path="/dashboard"
+            element={
+              <Layout>
+                <div role="dialog" aria-modal="true">Dialogo ativo</div>
+              </Layout>
+            }
+          />
+          <Route
+            path="/assets/new"
+            element={
+              <Layout>
+                <div data-testid="pagina-novo-ativo">Novo Ativo</div>
+              </Layout>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(mobileDrawer).not.toHaveAttribute('inert');
+
+    fireEvent.keyDown(window, { key: 'n', altKey: true });
+    expect(screen.queryByTestId('pagina-novo-ativo')).toBeNull();
   });
 });

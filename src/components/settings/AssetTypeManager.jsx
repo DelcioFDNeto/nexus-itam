@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Boxes, Plus, Trash2 } from 'lucide-react';
 import { ASSET_TYPES, SPEC_FIELDS } from '../../utils/assetTypes';
+import { buttonPrimaryClass, inputClass } from './settingsStyles';
 
 /**
  * Tipos de equipamento proprios da empresa, somados ao catalogo base.
@@ -39,16 +40,16 @@ const AssetTypeManager = ({ types = [], onChange }) => {
   const duplicado = draft.trim() && (baseIds.has(draft.trim().toLowerCase()) || customIds.has(draft.trim().toLowerCase()));
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 p-4 space-y-3">
+    <div className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/60 p-4 space-y-3">
       <div className="flex items-center gap-2">
-        <Boxes size={16} className="text-brand" />
-        <h3 className="text-xs font-black text-gray-700 dark:text-gray-200 uppercase">Tipos de Equipamento</h3>
-        <span className="ml-auto text-[10px] font-bold text-gray-400 tabular-nums">
+        <Boxes size={16} className="text-brand-aa" aria-hidden="true" />
+        <h3 className="text-xs font-black text-slate-800 dark:text-[#fafafa] uppercase">Tipos de Equipamento</h3>
+        <span className="ml-auto text-xs font-bold text-slate-500 dark:text-zinc-400 tabular-nums">
           {ASSET_TYPES.length} base + {types.length}
         </span>
       </div>
 
-      <p className="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+      <p className="text-xs leading-relaxed text-slate-600 dark:text-zinc-400">
         O catálogo base já cobre computadores, mobilidade, impressão, infraestrutura e apoio. Use este espaço para
         tipos específicos do seu negócio.
       </p>
@@ -57,16 +58,19 @@ const AssetTypeManager = ({ types = [], onChange }) => {
         {ASSET_TYPES.map((t) => (
           <span
             key={t.id}
-            className="inline-flex items-center gap-1 rounded-full border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-gray-500 dark:text-gray-400"
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] px-2.5 py-1 text-xs font-bold text-slate-600 dark:text-zinc-300"
           >
-            <t.icon size={11} className={t.tone} />
+            <t.icon size={12} className={t.tone} aria-hidden="true" />
             {t.label}
           </span>
         ))}
       </div>
 
       <div className="flex flex-wrap gap-2 pt-1">
+        <label htmlFor="custom-asset-type-draft" className="sr-only">Novo tipo de equipamento</label>
         <input
+          id="custom-asset-type-draft"
+          name="custom-asset-type-draft"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -76,20 +80,20 @@ const AssetTypeManager = ({ types = [], onChange }) => {
             }
           }}
           placeholder="Novo tipo (ex: Coletor de dados)"
-          className="flex-1 min-w-[170px] p-2 border dark:border-slate-700 dark:bg-slate-800 rounded-lg text-xs font-bold text-gray-800 dark:text-gray-100 focus:border-brand focus:outline-none"
+          className={`${inputClass} flex-1 min-w-[180px]`}
         />
         <button
           type="button"
           onClick={add}
           disabled={!draft.trim() || duplicado}
-          className="flex items-center gap-1 bg-brand text-white px-3 py-2 rounded-lg text-[10px] font-black uppercase disabled:opacity-50"
+          className={`${buttonPrimaryClass} min-h-[44px] text-xs uppercase`}
         >
-          <Plus size={12} /> Adicionar
+          <Plus size={14} aria-hidden="true" /> Adicionar
         </button>
       </div>
 
       {duplicado && (
-        <p className="text-[11px] font-bold text-amber-600 dark:text-amber-500">Este tipo já existe.</p>
+        <p className="text-xs font-bold text-amber-600 dark:text-amber-400">Este tipo já existe.</p>
       )}
 
       {types.length > 0 && (
@@ -97,32 +101,33 @@ const AssetTypeManager = ({ types = [], onChange }) => {
           {types.map((t, idx) => (
             <div
               key={t.id}
-              className="rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 p-2.5 shadow-sm"
+              className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] p-3 shadow-sm"
             >
               <div className="flex items-center gap-2">
-                <span className="flex-1 text-xs font-bold text-gray-800 dark:text-gray-100">{t.label}</span>
+                <span className="flex-1 text-sm font-bold text-slate-900 dark:text-[#fafafa]">{t.label}</span>
                 <button
                   type="button"
                   onClick={() => remove(idx)}
-                  className="rounded p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40"
+                  className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-xl text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                   aria-label={`Remover ${t.label}`}
                 >
-                  <Trash2 size={14} />
+                  <Trash2 size={16} aria-hidden="true" />
                 </button>
               </div>
 
-              <div className="mt-2 flex flex-wrap gap-1">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {Object.entries(SPEC_FIELDS).map(([field, def]) => {
                   const on = (t.specs || []).includes(field);
                   return (
                     <button
                       key={field}
                       type="button"
+                      aria-pressed={on}
                       onClick={() => toggleSpec(idx, field)}
-                      className={`rounded-full border px-2 py-0.5 text-[10px] font-bold transition-colors ${
+                      className={`min-h-[44px] rounded-full border px-3.5 text-xs font-bold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                         on
-                          ? 'border-brand bg-brand text-white'
-                          : 'border-gray-200 dark:border-slate-600 text-gray-500 dark:text-gray-400 hover:border-brand/50'
+                          ? 'border-brand bg-brand text-brand-fg'
+                          : 'border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:border-brand/50'
                       }`}
                     >
                       {def.label}

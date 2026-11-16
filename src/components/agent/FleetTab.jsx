@@ -316,50 +316,55 @@ const FleetTab = ({
       {/* Barra de Conexao Rapida NexusDesk */}
       <form
         onSubmit={handleQuickConnect}
-        className="bg-slate-900 text-white rounded-xl p-4 border border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3"
+        className="bg-[#111113] text-[#fafafa] rounded-xl p-4 border border-zinc-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3"
       >
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
-            <Monitor size={18} />
+          <div className="w-9 h-9 rounded-lg bg-brand/20 border border-brand/30 flex items-center justify-center text-brand-aa shrink-0">
+            <Monitor size={18} aria-hidden="true" />
           </div>
           <div>
-            <h3 className="font-bold text-xs sm:text-sm tracking-tight text-white">
+            <h2 className="font-bold text-xs sm:text-sm tracking-tight text-[#fafafa]">
               NexusDesk — Acesso Remoto Direto (Desktop & Mobile)
-            </h3>
-            <p className="text-xs text-slate-400">
+            </h2>
+            <p className="text-xs text-zinc-400">
               Digite o <strong>ID NexusDesk de 9 dígitos</strong>, patrimônio ou IP da máquina para assumir o controle remoto.
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <label htmlFor="fleet-quick-connect" className="sr-only">
+            ID NexusDesk, patrimônio ou IP da máquina
+          </label>
           <input
+            id="fleet-quick-connect"
+            name="quickConnect"
             type="text"
             value={quickConnectInput}
             onChange={(e) => setQuickConnectInput(e.target.value)}
-            placeholder="Ex: 842 910 305 ou SHL-BEL-NTB-001"
-            className="w-full md:w-72 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 font-mono text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+            placeholder="Ex: 842 910 305 ou NTB-001"
+            className="w-full md:w-72 min-h-[44px] px-3 py-2 rounded-lg bg-[#09090b] border border-zinc-800 font-mono text-xs text-[#fafafa] placeholder-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           />
           <button
             type="submit"
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs whitespace-nowrap transition-colors shadow-sm"
+            className="inline-flex min-h-[44px] items-center gap-1.5 px-4 py-2 rounded-lg bg-brand hover:bg-brand-dark text-brand-fg font-semibold text-xs whitespace-nowrap transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand shadow-sm"
           >
-            <Play size={13} /> Conectar
+            <Play size={13} aria-hidden="true" /> Conectar
           </button>
         </div>
       </form>
 
       {/* Banner de Atualizacao OTA em Lote quando ha agentes desatualizados */}
       {outdatedItems.length > 0 && (
-        <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-3.5 rounded-xl bg-brand/5 dark:bg-[#111113] border border-brand/25 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start sm:items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
-              <ArrowUpCircle size={16} />
+            <div className="w-9 h-9 rounded-lg bg-brand text-brand-fg flex items-center justify-center shrink-0">
+              <ArrowUpCircle size={17} />
             </div>
             <div>
-              <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+              <h3 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-[#fafafa]">
                 Nova versão do Agente & NexusDesk disponível (v{AGENT_VERSION})
-              </h4>
-              <p className="text-xs text-slate-600 dark:text-slate-300">
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-zinc-300 tabular-nums">
                 <strong>{outdatedItems.length}</strong> máquina(s) da frota estão em versão anterior e podem ser atualizadas remotamente em 1 clique pela nuvem.
               </p>
             </div>
@@ -368,7 +373,7 @@ const FleetTab = ({
             <button
               type="button"
               onClick={() => setFilter(filter === 'desatualizados' ? 'todas' : 'desatualizados')}
-              className="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 font-bold text-xs"
+              className="min-h-[44px] px-3.5 py-2 rounded-xl bg-white dark:bg-[#18181b] border border-slate-200 dark:border-zinc-700 text-brand-aa font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
               {filter === 'desatualizados' ? 'Ver todas' : 'Filtrar desatualizadas'}
             </button>
@@ -376,10 +381,10 @@ const FleetTab = ({
               type="button"
               onClick={handleBatchUpdate}
               disabled={batchUpdating}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-black text-xs shadow-sm transition-colors"
+              className="inline-flex min-h-[44px] items-center gap-1.5 px-4 py-2 rounded-xl bg-brand hover:bg-brand-dark disabled:opacity-50 text-brand-fg font-black text-xs shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand tabular-nums"
             >
-              <ArrowUpCircle size={14} className={batchUpdating ? 'animate-bounce' : ''} />
-              {batchUpdating ? 'Enviando OTA...' : `Atualizar ${outdatedItems.length} máquina(s)`}
+              <ArrowUpCircle size={14} className={batchUpdating ? 'animate-spin' : ''} />
+              {batchUpdating ? 'Enviando OTA…' : `Atualizar ${outdatedItems.length} máquina(s)`}
             </button>
           </div>
         </div>
@@ -393,19 +398,19 @@ const FleetTab = ({
               type="button"
               onClick={() => setAlertCode(alertCode === code ? '' : code)}
               aria-pressed={alertCode === code}
-              className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold transition-colors ${
+              className={`min-h-[44px] px-3.5 py-2 rounded-xl border text-xs font-bold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                 alertCode === code
-                  ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900'
-                  : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300 hover:border-brand/50'
+                  ? 'bg-slate-900 text-white border-slate-900 dark:bg-[#fafafa] dark:text-[#09090b]'
+                  : 'bg-white dark:bg-[#111113] border-gray-200 dark:border-zinc-800 text-gray-700 dark:text-zinc-300 hover:border-brand/50'
               }`}
             >
-              {ALERT_LABELS[code] || code} <span className="ml-1 tabular-nums opacity-70">{count}</span>
+              {ALERT_LABELS[code] || code} <span className="ml-1 tabular-nums opacity-75">{count}</span>
             </button>
           ))}
         </div>
       )}
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-800 p-2.5 flex flex-col md:flex-row gap-3 md:items-center shadow-sm">
+      <div className="bg-white dark:bg-[#111113] rounded-xl border border-slate-200/90 dark:border-zinc-800 p-2.5 flex flex-col md:flex-row gap-3 md:items-center shadow-sm">
         <div className="flex gap-1 overflow-x-auto no-scrollbar">
           {FILTERS.map((f) => (
             <button
@@ -413,10 +418,10 @@ const FleetTab = ({
               type="button"
               onClick={() => setFilter(f.id)}
               aria-pressed={filter === f.id}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+              className={`min-h-[44px] px-3.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand tabular-nums ${
                 filter === f.id
-                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  ? 'bg-slate-900 text-white dark:bg-[#fafafa] dark:text-[#09090b] shadow-sm'
+                  : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-[#18181b]'
               }`}
             >
               {f.label}
@@ -426,30 +431,35 @@ const FleetTab = ({
         </div>
         <div className="flex items-center gap-2 md:ml-auto">
           <div className="relative flex-1 md:w-72">
-            <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+            <label htmlFor="fleet-search" className="sr-only">
+              Buscar na frota por ID NexusDesk, patrimônio, usuário ou IP
+            </label>
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500" aria-hidden="true" />
             <input
+              id="fleet-search"
+              name="fleetSearch"
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="ID NexusDesk, patrimônio, usuário, IP…"
               aria-label="Buscar na frota"
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-brand"
+              className="w-full min-h-[44px] pl-9 pr-3 py-2 rounded-lg bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-zinc-800 text-xs text-slate-800 dark:text-[#fafafa] placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             />
           </div>
           <button
             type="button"
             onClick={exportCsv}
             disabled={!managed.length}
-            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5 disabled:opacity-40 shrink-0 transition-colors"
+            className="min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-200 dark:border-zinc-800 text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-[#18181b] flex items-center gap-1.5 disabled:opacity-40 shrink-0 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
-            <Download size={13} /> <span>CSV</span>
+            <Download size={14} /> <span>CSV</span>
           </button>
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-[#111113] rounded-xl border border-slate-200/90 dark:border-zinc-800 shadow-sm overflow-hidden">
         {rows.length === 0 ? (
-          <p className="p-10 text-center text-sm text-gray-400">
+          <p className="p-10 text-center text-sm text-gray-500 dark:text-zinc-400">
             {filter === 'sem-agente'
               ? 'Todos os computadores ativos têm o agente.'
               : managed.length
@@ -457,14 +467,14 @@ const FleetTab = ({
               : 'Nenhuma máquina com o agente ainda. Instale pela aba "Instalar".'}
           </p>
         ) : filter === 'sem-agente' ? (
-          <ul className="divide-y divide-gray-100 dark:divide-slate-700/60">
+          <ul className="divide-y divide-gray-100 dark:divide-zinc-800">
             {rows.map((a) => (
               <li key={a.id} className="px-4 py-3 flex items-center gap-3 text-sm">
-                <Link to={`/assets/${a.id}`} className="font-mono font-black text-gray-900 dark:text-white hover:text-brand">
+                <Link to={`/assets/${a.id}`} className="min-h-[44px] inline-flex items-center font-mono font-black text-gray-900 dark:text-[#fafafa] hover:text-brand-aa focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded">
                   {a.internalId || '—'}
                 </Link>
-                <span className="truncate text-gray-600 dark:text-gray-300">{a.model}</span>
-                <span className="ml-auto text-xs text-gray-400 truncate">
+                <span className="truncate text-gray-600 dark:text-zinc-300">{a.model}</span>
+                <span className="ml-auto text-xs text-gray-500 dark:text-zinc-400 truncate">
                   {[a.location, a.assignedTo].filter(Boolean).join(' · ')}
                 </span>
               </li>
@@ -473,7 +483,7 @@ const FleetTab = ({
         ) : (
           <>
             {/* Visao Mobile em Cards (Otimizada para Celular) */}
-            <div className="md:hidden divide-y divide-gray-100 dark:divide-slate-700/60">
+            <div className="md:hidden divide-y divide-gray-100 dark:divide-zinc-800">
               {rows.map((a) => {
                 const metrics = a.liveDevice?.metrics;
                 const devKey = a.liveDevice?.deviceKey || a.agent?.deviceKey;
@@ -495,46 +505,46 @@ const FleetTab = ({
                         <div className="flex items-center gap-2 flex-wrap">
                           <span
                             className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                              a.onlineNow ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300 dark:bg-slate-600'
+                              a.onlineNow ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-zinc-600'
                             }`}
                           />
                           {a.isStandaloneLive ? (
-                            <span className="font-mono font-black text-sm text-gray-900 dark:text-white truncate">
+                            <span className="font-mono font-black text-sm text-gray-900 dark:text-[#fafafa] truncate">
                               {a.agent?.hostname || a.internalId}
                             </span>
                           ) : (
                             <Link
                               to={`/assets/${a.id}`}
-                              className="font-mono font-black text-sm text-gray-900 dark:text-white hover:text-brand truncate"
+                              className="min-h-[44px] inline-flex items-center font-mono font-black text-sm text-gray-900 dark:text-[#fafafa] hover:text-brand-aa truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded"
                             >
                               {a.agent?.hostname || a.internalId}
                             </Link>
                           )}
-                          <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-mono text-[11px] font-bold">
+                          <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-mono text-xs font-bold tabular-nums">
                             {a.accessId}
                           </span>
                         </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
+                        <p className="text-xs text-gray-500 dark:text-zinc-400 mt-1 truncate">
                           {a.liveDevice?.loggedUser || a.agent?.loggedUser || a.assignedTo || 'Sem usuário'} ·{' '}
                           {a.liveDevice?.ipAddress || a.agent?.ip || 'sem IP'}
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         {a.onlineNow ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-[10px]">
-                            <Wifi size={10} /> Ao Vivo
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs">
+                            <Wifi size={11} /> Ao Vivo
                           </span>
                         ) : (
-                          <span className="text-[11px] text-gray-400">
+                          <span className="text-xs text-gray-500 dark:text-zinc-400 tabular-nums">
                             {a.health.days === 0 ? 'hoje' : `${a.health.days}d`}
                           </span>
                         )}
                         {a.agentVersion && (
                           <span
-                            className={`px-1.5 py-0.5 rounded font-mono text-[10px] font-bold ${
+                            className={`px-1.5 py-0.5 rounded font-mono text-xs font-bold tabular-nums ${
                               a.outdated
                                 ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
-                                : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300'
+                                : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-300'
                             }`}
                           >
                             v{a.agentVersion}
@@ -545,13 +555,13 @@ const FleetTab = ({
 
                     {metrics && (
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-slate-900 border border-blue-200 dark:border-slate-700 text-blue-700 dark:text-blue-300 font-mono text-[10px] font-bold">
+                        <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-[#18181b] border border-blue-200 dark:border-zinc-700 text-blue-700 dark:text-blue-300 font-mono text-xs font-bold tabular-nums">
                           CPU {metrics.cpuPercent ?? 0}%
                         </span>
-                        <span className="px-2 py-0.5 rounded bg-emerald-50 dark:bg-slate-900 border border-emerald-200 dark:border-slate-700 text-emerald-700 dark:text-emerald-300 font-mono text-[10px] font-bold">
+                        <span className="px-2 py-0.5 rounded bg-emerald-50 dark:bg-[#18181b] border border-emerald-200 dark:border-zinc-700 text-emerald-700 dark:text-emerald-300 font-mono text-xs font-bold tabular-nums">
                           RAM {metrics.ramPercent ?? 0}%
                         </span>
-                        <span className="px-2 py-0.5 rounded bg-amber-50 dark:bg-slate-900 border border-amber-200 dark:border-slate-700 text-amber-700 dark:text-amber-300 font-mono text-[10px] font-bold">
+                        <span className="px-2 py-0.5 rounded bg-amber-50 dark:bg-[#18181b] border border-amber-200 dark:border-zinc-700 text-amber-700 dark:text-amber-300 font-mono text-xs font-bold tabular-nums">
                           Disco {metrics.diskPercent ?? 0}%
                         </span>
                       </div>
@@ -561,7 +571,7 @@ const FleetTab = ({
                       <button
                         type="button"
                         onClick={() => onOpenRemote?.(devicePayload, a, 'screen')}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-sm"
+                        className="flex-1 min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg font-bold text-xs shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                       >
                         <Monitor size={14} />
                         NexusDesk
@@ -569,8 +579,9 @@ const FleetTab = ({
                       <button
                         type="button"
                         onClick={() => onOpenRemote?.(devicePayload, a, 'terminal')}
-                        className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-200 font-bold text-xs"
+                        className="min-h-[44px] inline-flex items-center justify-center gap-1 px-3.5 py-2 rounded-xl bg-gray-100 dark:bg-[#18181b] border border-transparent dark:border-zinc-700 text-gray-700 dark:text-zinc-200 font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                         title="Terminal PowerShell"
+                        aria-label={`Abrir Terminal PowerShell em ${a.agent?.hostname || a.internalId}`}
                       >
                         <Terminal size={14} />
                         PS
@@ -580,7 +591,7 @@ const FleetTab = ({
                           type="button"
                           onClick={() => handleSingleUpdate(a)}
                           disabled={updatingKey === devKey}
-                          className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs"
+                          className="min-h-[44px] inline-flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-brand hover:bg-brand-dark disabled:opacity-50 text-brand-fg font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                           title={`Atualizar para v${AGENT_VERSION}`}
                         >
                           <ArrowUpCircle size={14} />
@@ -596,7 +607,7 @@ const FleetTab = ({
             {/* Visao Desktop em Tabela */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-slate-900 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                <thead className="bg-gray-50 dark:bg-[#18181b] text-xs font-black uppercase tracking-wider text-gray-500 dark:text-zinc-400">
                   <tr>
                     <th className="text-left px-4 py-3">Máquina / ID NexusDesk</th>
                     <th className="text-left px-4 py-3">Usuário / Local</th>
@@ -606,7 +617,7 @@ const FleetTab = ({
                     <th className="text-right px-4 py-3">NexusDesk & RMM</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                <tbody className="divide-y divide-gray-100 dark:divide-zinc-800">
                   {rows.map((a) => {
                     const alerts = a.agent?.alerts || [];
                     const top = alerts[0];
@@ -624,58 +635,58 @@ const FleetTab = ({
                     };
 
                     return (
-                      <tr key={a.id} className="hover:bg-gray-50/70 dark:hover:bg-slate-900/40">
+                      <tr key={a.id} className="hover:bg-gray-50/70 dark:hover:bg-[#18181b]/60">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <span
                               className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                                a.onlineNow ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300 dark:bg-slate-600'
+                                a.onlineNow ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-zinc-600'
                               }`}
                               title={a.onlineNow ? 'Online Ao Vivo' : 'Sem sinal em tempo real'}
                             />
                             {a.isStandaloneLive ? (
-                              <span className="font-mono font-black text-gray-900 dark:text-white">
+                              <span className="font-mono font-black text-gray-900 dark:text-[#fafafa]">
                                 {a.agent?.hostname || a.internalId}
                               </span>
                             ) : (
                               <Link
                                 to={`/assets/${a.id}`}
-                                className="font-mono font-black text-gray-900 dark:text-white hover:text-brand"
+                                className="min-h-[44px] inline-flex items-center font-mono font-black text-gray-900 dark:text-[#fafafa] hover:text-brand-aa focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded"
                               >
                                 {a.agent?.hostname || a.internalId}
                               </Link>
                             )}
-                            <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-mono text-[11px] font-bold">
+                            <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-mono text-xs font-bold tabular-nums">
                               {a.accessId}
                             </span>
                           </div>
-                          <p className="text-[11px] text-gray-400 font-mono mt-0.5 pl-4">
+                          <p className="text-xs text-gray-500 dark:text-zinc-400 font-mono mt-0.5 pl-4">
                             {a.internalId} · {a.liveDevice?.ipAddress || a.agent?.ip || 'sem IP'}
                           </p>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-gray-800 dark:text-gray-100 truncate max-w-[200px] font-semibold">
+                          <p className="text-gray-800 dark:text-[#fafafa] truncate max-w-[200px] font-semibold">
                             {a.liveDevice?.loggedUser || a.agent?.loggedUser || a.assignedTo || '—'}
                           </p>
-                          <p className="text-[11px] text-gray-400 truncate max-w-[200px]">
+                          <p className="text-xs text-gray-500 dark:text-zinc-400 truncate max-w-[200px]">
                             {a.location || 'Local não definido'}
                           </p>
                         </td>
                         <td className="px-4 py-3 text-xs">
                           {metrics ? (
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-slate-900 border border-blue-200 dark:border-slate-700 text-blue-700 dark:text-blue-300 font-mono text-[11px] font-bold">
+                              <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-[#18181b] border border-blue-200 dark:border-zinc-700 text-blue-700 dark:text-blue-300 font-mono text-xs font-bold tabular-nums">
                                 CPU {metrics.cpuPercent ?? 0}%
                               </span>
-                              <span className="px-2 py-0.5 rounded bg-emerald-50 dark:bg-slate-900 border border-emerald-200 dark:border-slate-700 text-emerald-700 dark:text-emerald-300 font-mono text-[11px] font-bold">
+                              <span className="px-2 py-0.5 rounded bg-emerald-50 dark:bg-[#18181b] border border-emerald-200 dark:border-zinc-700 text-emerald-700 dark:text-emerald-300 font-mono text-xs font-bold tabular-nums">
                                 RAM {metrics.ramPercent ?? 0}%
                               </span>
-                              <span className="px-2 py-0.5 rounded bg-amber-50 dark:bg-slate-900 border border-amber-200 dark:border-slate-700 text-amber-700 dark:text-amber-300 font-mono text-[11px] font-bold">
+                              <span className="px-2 py-0.5 rounded bg-amber-50 dark:bg-[#18181b] border border-amber-200 dark:border-zinc-700 text-amber-700 dark:text-amber-300 font-mono text-xs font-bold tabular-nums">
                                 Disco {metrics.diskPercent ?? 0}%
                               </span>
                             </div>
                           ) : (
-                            <span className="text-gray-600 dark:text-gray-300 truncate block max-w-[200px]">
+                            <span className="text-gray-600 dark:text-zinc-300 truncate block max-w-[200px]">
                               {a.agent?.os || '—'}
                             </span>
                           )}
@@ -683,24 +694,24 @@ const FleetTab = ({
                         <td className="px-4 py-3 text-xs whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
                             {a.onlineNow ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-[11px]">
-                                <Wifi size={11} /> Ao Vivo
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs">
+                                <Wifi size={12} /> Ao Vivo
                               </span>
                             ) : a.health.state === 'stale' ? (
-                              <span className="inline-flex items-center gap-1 font-bold text-rose-600 dark:text-rose-400">
+                              <span className="inline-flex items-center gap-1 font-bold text-rose-600 dark:text-rose-400 tabular-nums">
                                 <WifiOff size={12} /> há {a.health.days} dias
                               </span>
                             ) : (
-                              <span className="text-gray-600 dark:text-gray-300">
+                              <span className="text-gray-600 dark:text-zinc-300 tabular-nums">
                                 {a.health.days === 0 ? 'hoje' : `há ${a.health.days} dia(s)`}
                               </span>
                             )}
                             {a.agentVersion && (
                               <span
-                                className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-bold ${
+                                className={`px-2 py-0.5 rounded-full font-mono text-xs font-bold tabular-nums ${
                                   a.outdated
                                     ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
-                                    : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300'
+                                    : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-300'
                                 }`}
                                 title={a.outdated ? `Desatualizado (última: v${AGENT_VERSION})` : 'Agente atualizado'}
                               >
@@ -711,7 +722,7 @@ const FleetTab = ({
                         </td>
                         <td className="px-4 py-3 text-xs">
                           {a.liveDevice?.supportRequest?.status === 'open' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 font-bold text-[11px]">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 font-bold text-xs">
                               <AlertTriangle size={12} /> Pedindo Suporte!
                             </span>
                           ) : top ? (
@@ -721,7 +732,7 @@ const FleetTab = ({
                                   ? 'text-rose-600 dark:text-rose-400'
                                   : top.level === 'medium'
                                   ? 'text-amber-700 dark:text-amber-300'
-                                  : 'text-gray-500'
+                                  : 'text-gray-500 dark:text-zinc-400'
                               }`}
                             >
                               {top.level === 'high' ? (
@@ -735,7 +746,7 @@ const FleetTab = ({
                               </span>
                             </span>
                           ) : (
-                            <span className="text-green-600 font-bold">OK</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">OK</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -745,17 +756,17 @@ const FleetTab = ({
                                 type="button"
                                 onClick={() => handleSingleUpdate(a)}
                                 disabled={updatingKey === devKey}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold text-xs transition-colors"
+                                className="min-h-[44px] inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-brand/10 hover:bg-brand/20 text-brand-aa font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
                                 title={`Atualizar remotamente para v${AGENT_VERSION}`}
                               >
-                                <ArrowUpCircle size={13} className={updatingKey === devKey ? 'animate-bounce' : ''} />
+                                <ArrowUpCircle size={13} className={updatingKey === devKey ? 'animate-spin' : ''} />
                                 v{AGENT_VERSION}
                               </button>
                             )}
                             <button
                               type="button"
                               onClick={() => onOpenRemote?.(devicePayload, a, 'screen')}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-sm transition-colors"
+                              className="min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg font-bold text-xs shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                               title="Abrir NexusDesk (Tela Remota Interativa)"
                             >
                               <Monitor size={13} />
@@ -764,10 +775,11 @@ const FleetTab = ({
                             <button
                               type="button"
                               onClick={() => onOpenRemote?.(devicePayload, a, 'terminal')}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 font-bold text-xs transition-colors"
+                              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-[#18181b] dark:hover:bg-zinc-800 border border-transparent dark:border-zinc-700 text-gray-700 dark:text-zinc-200 font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                               title="Abrir Terminal PowerShell Remoto"
+                              aria-label={`Abrir Terminal PowerShell Remoto em ${a.agent?.hostname || a.internalId}`}
                             >
-                              <Terminal size={13} />
+                              <Terminal size={14} />
                             </button>
                           </div>
                         </td>

@@ -1,5 +1,5 @@
 // src/components/agent/InstallTab.jsx
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowUpCircle,
@@ -76,6 +76,16 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
   const [os, setOs] = useState('windows');
   const [mode, setMode] = useState('service');
   const [updatingFleet, setUpdatingFleet] = useState(false);
+  const configDownloadTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (configDownloadTimerRef.current) {
+        clearTimeout(configDownloadTimerRef.current);
+        configDownloadTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'itam-nexus';
   const apiKey = import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyDummy';
@@ -144,9 +154,17 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
       zipLink.click();
 
       if (tenantId && agentToken) {
-        setTimeout(() => {
-          const cfg = buildAgentConfigJson({ projectId, apiKey, tenantId, agentToken });
-          triggerBlobDownload(cfg.content, cfg.filename, cfg.mime);
+        if (configDownloadTimerRef.current) {
+          clearTimeout(configDownloadTimerRef.current);
+        }
+        configDownloadTimerRef.current = setTimeout(() => {
+          configDownloadTimerRef.current = null;
+          try {
+            const cfg = buildAgentConfigJson({ projectId, apiKey, tenantId, agentToken });
+            triggerBlobDownload(cfg.content, cfg.filename, cfg.mime);
+          } catch (err) {
+            toast.error(err?.message || 'Erro ao gerar config.json.');
+          }
         }, 400);
         toast.success('NexusAgent.zip e config.json baixados. Extraia, ponha o config.json na mesma pasta e abra o NexusAgent.exe.');
       } else {
@@ -198,15 +216,15 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
   return (
     <div className="space-y-6">
       {/* Card de destaque do Executavel Windows (NexusDesk + RMM) */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-6 border border-indigo-500/30 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+      <div className="bg-[#111113] text-[#fafafa] rounded-2xl p-6 border border-zinc-800 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div className="space-y-2 max-w-2xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-400/15 border border-cyan-400/30 text-cyan-300 text-xs font-black uppercase tracking-wider">
             <Monitor size={14} /> NexusDesk • Acesso Remoto Seguro & RMM
           </div>
-          <h2 className="text-xl md:text-2xl font-black tracking-tight">
+          <h2 className="text-xl md:text-2xl font-black tracking-tight text-[#fafafa]">
             Executável Windows <span className="text-cyan-400 font-mono">NexusAgent.exe</span> (v{AGENT_VERSION})
           </h2>
-          <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
+          <p className="text-xs md:text-sm text-zinc-300 leading-relaxed">
             Serviço do Windows com inventário, monitoramento e comandos remotos, mais o ícone na bandeja com <strong>ID NexusDesk de 9 dígitos</strong>, pedido de suporte e acesso remoto à tela pelo computador ou celular, com aceite do colaborador.
           </p>
         </div>
@@ -216,7 +234,7 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
             type="button"
             onClick={downloadWindowsCmd}
             disabled={blocked}
-            className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-cyan-400 hover:bg-cyan-300 disabled:opacity-40 text-slate-950 font-black text-xs md:text-sm shadow-lg shadow-cyan-400/20 transition-all"
+            className="inline-flex min-h-[44px] items-center gap-2 px-5 py-3 rounded-xl bg-cyan-400 hover:bg-cyan-300 disabled:opacity-40 text-slate-950 font-black text-xs md:text-sm shadow-lg shadow-cyan-400/20 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
           >
             <Download size={17} />
             Instalador 1-Clique (.CMD)
@@ -224,7 +242,7 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
           <button
             type="button"
             onClick={downloadExecutableAndConfig}
-            className="inline-flex items-center gap-2 px-4 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs md:text-sm transition-all"
+            className="inline-flex min-h-[44px] items-center gap-2 px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-[#fafafa] font-bold text-xs md:text-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
             <Cpu size={17} className="text-cyan-300" />
             Baixar NexusAgent (.ZIP) + config.json
@@ -233,21 +251,21 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
       </div>
 
       {/* Card de Atualizacao Remota OTA pelo Painel */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+      <div className="bg-white dark:bg-[#111113] rounded-2xl border border-brand/25 dark:border-zinc-800 p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
         <div className="flex items-start gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+          <div className="w-11 h-11 rounded-xl bg-brand text-brand-fg flex items-center justify-center shrink-0">
             <ArrowUpCircle size={22} />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-black text-sm md:text-base text-gray-900 dark:text-white">
+              <h3 className="font-black text-sm md:text-base text-gray-900 dark:text-[#fafafa]">
                 Atualização Remota de Versão pelo Painel (OTA 1-Clique)
               </h3>
-              <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-mono text-xs font-bold">
+              <span className="px-2.5 py-0.5 rounded-full bg-brand/10 text-brand-aa font-mono text-xs font-bold">
                 Versão atual do sistema: v{AGENT_VERSION}
               </span>
             </div>
-            <p className="text-xs text-gray-600 dark:text-slate-300 mt-1">
+            <p className="text-xs text-gray-600 dark:text-zinc-300 mt-1 tabular-nums">
               {activeDevices.length === 0
                 ? 'Assim que a primeira máquina for instalada (v3.1+), você poderá atualizar sua versão diretamente por este botão.'
                 : outdatedDevices.length > 0
@@ -263,37 +281,37 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
               type="button"
               onClick={() => handleUpdateAllDevices(outdatedDevices)}
               disabled={updatingFleet}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-black text-xs shadow-md shadow-indigo-600/20 transition-colors"
+              className="inline-flex min-h-[44px] items-center gap-2 px-4 py-2.5 rounded-xl bg-brand hover:bg-brand-dark disabled:opacity-50 text-brand-fg font-black text-xs shadow-md shadow-brand/20 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand tabular-nums"
             >
-              <ArrowUpCircle size={15} className={updatingFleet ? 'animate-bounce' : ''} />
-              {updatingFleet ? 'Enviando atualização...' : `Atualizar ${outdatedDevices.length} desatualizada(s)`}
+              <ArrowUpCircle size={15} className={updatingFleet ? 'animate-spin' : ''} />
+              {updatingFleet ? 'Enviando atualização…' : `Atualizar ${outdatedDevices.length} desatualizada(s)`}
             </button>
           ) : activeDevices.length > 0 ? (
             <button
               type="button"
               onClick={() => handleUpdateAllDevices(activeDevices)}
               disabled={updatingFleet}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-50 text-gray-800 dark:text-white font-bold text-xs transition-colors"
+              className="inline-flex min-h-[44px] items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-[#18181b] dark:hover:bg-zinc-800 border border-transparent dark:border-zinc-700 disabled:opacity-50 text-gray-800 dark:text-[#fafafa] font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand tabular-nums"
             >
               <CheckCircle2 size={15} className="text-emerald-500" />
-              {updatingFleet ? 'Reinstalando...' : `Forçar reinstalação OTA (${activeDevices.length})`}
+              {updatingFleet ? 'Reinstalando…' : `Forçar reinstalação OTA (${activeDevices.length})`}
             </button>
           ) : null}
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-        <section className="xl:col-span-3 bg-slate-900 text-white rounded-2xl p-6 space-y-5">
+        <section className="xl:col-span-3 bg-[#111113] text-[#fafafa] border border-zinc-800 rounded-2xl p-6 space-y-5">
           <div>
-            <h2 className="font-black text-xl flex items-center gap-2">
+            <h2 className="font-black text-xl flex items-center gap-2 text-[#fafafa]">
               <Terminal size={20} className="text-cyan-400" /> Scripts de Implantação (GPO, Intune, Linux e macOS)
             </h2>
-            <p className="text-sm text-slate-300 mt-1">
+            <p className="text-sm text-zinc-300 mt-1">
               Scripts com o token da sua empresa para distribuição em massa. Versão {AGENT_VERSION}.
             </p>
           </div>
 
-          <div className="flex bg-slate-800/60 p-1 rounded-xl border border-white/10 gap-1" role="radiogroup" aria-label="Sistema operacional">
+          <div className="flex bg-[#18181b] p-1 rounded-xl border border-zinc-800 gap-1" role="radiogroup" aria-label="Sistema operacional">
             {Object.entries(AGENT_TARGETS).map(([id, target]) => (
               <button
                 key={id}
@@ -301,13 +319,15 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
                 role="radio"
                 aria-checked={os === id}
                 onClick={() => setOs(id)}
-                className={`flex-1 py-2 text-sm font-bold rounded-lg ${os === id ? 'bg-cyan-400 text-slate-900' : 'text-slate-300 hover:text-white'}`}
+                className={`flex-1 min-h-[44px] py-2 text-sm font-bold rounded-lg transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
+                  os === id ? 'bg-cyan-400 text-slate-950' : 'text-zinc-300 hover:text-[#fafafa]'
+                }`}
               >
                 {target.label}
               </button>
             ))}
           </div>
-          <div className="flex flex-col sm:flex-row bg-slate-800/60 p-1 rounded-xl border border-white/10 gap-1" role="radiogroup" aria-label="Modo">
+          <div className="flex flex-col sm:flex-row bg-[#18181b] p-1 rounded-xl border border-zinc-800 gap-1" role="radiogroup" aria-label="Modo">
             {Object.entries(AGENT_MODES).map(([id, label]) => (
               <button
                 key={id}
@@ -315,14 +335,16 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
                 role="radio"
                 aria-checked={mode === id}
                 onClick={() => setMode(id)}
-                className={`flex-1 py-2 px-2 text-xs sm:text-sm font-bold rounded-lg ${mode === id ? 'bg-white text-slate-900' : 'text-slate-300 hover:text-white'}`}
+                className={`flex-1 min-h-[44px] py-2 px-2 text-xs sm:text-sm font-bold rounded-lg transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                  mode === id ? 'bg-[#fafafa] text-[#09090b]' : 'text-zinc-300 hover:text-[#fafafa]'
+                }`}
               >
                 {label}
               </button>
             ))}
           </div>
 
-          <ol className="list-decimal pl-5 space-y-2 text-sm text-slate-200">
+          <ol className="list-decimal pl-5 space-y-2 text-sm text-zinc-200">
             {GUIDES[os][mode].map((step) => (
               <li key={step} className="break-words">
                 {step}
@@ -341,7 +363,7 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
               type="button"
               onClick={download}
               disabled={blocked}
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-cyan-400 text-slate-900 font-black text-sm hover:bg-cyan-300 disabled:opacity-40"
+              className="inline-flex min-h-[44px] items-center gap-2 px-5 py-3 rounded-xl bg-cyan-400 text-slate-950 font-black text-sm hover:bg-cyan-300 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:opacity-40"
             >
               <Download size={17} /> Baixar script
             </button>
@@ -349,7 +371,7 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
               type="button"
               onClick={copy}
               disabled={blocked}
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/10 border border-white/20 font-bold text-sm hover:bg-white/20 disabled:opacity-40"
+              className="inline-flex min-h-[44px] items-center gap-2 px-5 py-3 rounded-xl bg-white/10 border border-white/20 text-[#fafafa] font-bold text-sm hover:bg-white/20 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40"
             >
               <Clipboard size={17} /> Copiar
             </button>
@@ -358,7 +380,7 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
                 type="button"
                 onClick={downloadWindowsCmd}
                 disabled={blocked}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-sm disabled:opacity-40"
+                className="inline-flex min-h-[44px] items-center gap-2 px-5 py-3 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg font-bold text-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40"
               >
                 <FileCode size={17} /> Baixar .CMD (Duplo Clique)
               </button>
@@ -366,17 +388,17 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
           </div>
         </section>
 
-        <aside className="xl:col-span-2 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5 space-y-4 self-start">
-          <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2">
-            <Info size={16} className="text-brand" /> Recursos do Agente RMM & NexusDesk
+        <aside className="xl:col-span-2 bg-white dark:bg-[#111113] rounded-2xl border border-gray-100 dark:border-zinc-800 p-5 space-y-4 self-start">
+          <h3 className="font-black text-gray-900 dark:text-[#fafafa] flex items-center gap-2">
+            <Info size={16} className="text-brand-aa" /> Recursos do Agente RMM & NexusDesk
           </h3>
-          <ul className="space-y-2 text-xs text-gray-600 dark:text-gray-300 list-disc pl-4">
+          <ul className="space-y-2 text-xs text-gray-600 dark:text-zinc-300 list-disc pl-4">
             {COLLECTS.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
-          <div className="text-xs text-gray-500 dark:text-gray-400 rounded-xl bg-gray-50 dark:bg-slate-900 p-3 space-y-1.5">
-            <p className="font-bold text-gray-700 dark:text-slate-200 flex items-center gap-1.5">
+          <div className="text-xs text-gray-600 dark:text-zinc-300 rounded-xl bg-gray-50 dark:bg-[#18181b] border border-gray-100 dark:border-zinc-800 p-3.5 space-y-1.5">
+            <p className="font-bold text-gray-800 dark:text-[#fafafa] flex items-center gap-1.5">
               <ShieldCheck size={14} className="text-emerald-500" /> Segurança e privacidade
             </p>
             <p>

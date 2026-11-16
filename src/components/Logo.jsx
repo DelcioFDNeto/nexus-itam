@@ -71,12 +71,12 @@ const Logo = ({ className = '', size = 'md', showText = true, textColor = '', ma
       {showText && (
         <span
           title={showCompany ? companyName : 'Nexus ITAM'}
-          className={`${text} ${textColor || 'text-gray-900 dark:text-white'} leading-none truncate`}
+          className={`${text} ${textColor || 'text-slate-900 dark:text-[#fafafa]'} leading-none truncate`}
         >
           {showCompany ? (
             formattedCompanyName
           ) : (
-            <>Nexus<span className="text-brand">ITAM</span></>
+            <>Nexus<span className="text-brand-aa">ITAM</span></>
           )}
         </span>
       )}

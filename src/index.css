@@ -4,16 +4,37 @@
 
 @layer base {
   :root {
-    --color-brand: #4F46E5;
+    --color-brand: #0C5CAB;
+    --color-brand-dark: #0A4A8A;
     /* Canais usados pelo Tailwind (tailwind.config.js); o ThemeContext
-       reescreve os tres a partir da cor da empresa ou do acento pessoal. */
-    --color-brand-rgb: 79 70 229;
-    --color-brand-dark-rgb: 67 56 202;
+       reescreve a partir da cor da empresa ou do acento pessoal. */
+    --color-brand-rgb: 12 92 171;
+    --color-brand-dark-rgb: 10 74 138;
+    --color-brand-fg: #fafafa;
+    --color-brand-fg-rgb: 250 250 250;
+    --color-brand-text-light: #0C5CAB;
+    --color-brand-text-dark: #60a5fa;
   }
 
   html {
     -webkit-tap-highlight-color: transparent;
     scroll-behavior: smooth;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  html.dark select,
+  html.dark select option {
+    background-color: #111113;
+    color: #fafafa;
+  }
+
+  @media (pointer: fine) {
+    html {
+      overscroll-behavior-y: none;
+    }
   }
 
   *,
@@ -22,12 +43,30 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  [id],
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    scroll-margin-top: 5rem;
+  }
+
+  button,
+  a,
+  [role='button'],
+  [role='tab'],
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+
   body {
     /* O fundo responde ao tema com contraste rigoroso de engenharia. */
-    @apply antialiased text-slate-900 bg-slate-50 dark:text-slate-100 dark:bg-slate-950 selection:bg-brand selection:text-white;
+    @apply antialiased font-sans text-slate-900 bg-slate-50 dark:text-[#fafafa] dark:bg-[#09090b] selection:bg-brand selection:text-brand-fg;
     font-feature-settings: "cv11", "ss01", "tnum";
-    /* Evita pull-to-refresh acidental no body em PWA standalone */
-    overscroll-behavior-y: none;
   }
 
   /* Respeita quem pediu menos animacao no sistema operacional. */
@@ -46,8 +85,16 @@
   @media (pointer: coarse) {
     button,
     a[role='button'],
-    [role='tab'] {
+    [role='tab'],
+    [role='switch'],
+    input:not([type='checkbox']):not([type='radio']):not([type='range']),
+    select {
       min-height: 44px;
+    }
+
+    button[data-icon-button='true'],
+    a[data-icon-button='true'] {
+      min-width: 44px;
     }
   }
 
@@ -92,15 +139,22 @@
 @layer components {
   /* UTILITIES DE SUPERFÍCIE OPERACIONAL */
   .surface-card {
-    @apply bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl shadow-sm transition-colors;
+    @apply bg-white dark:bg-[#111113] border border-slate-200/90 dark:border-zinc-800 rounded-xl shadow-sm transition-colors;
   }
 
   .surface-subtle {
-    @apply bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800/80 rounded-lg;
+    @apply bg-slate-50 dark:bg-zinc-900/70 border border-slate-200/70 dark:border-zinc-800/80 rounded-lg;
   }
 
   .badge-mono {
-    @apply font-mono text-[11px] font-semibold tracking-tight px-2 py-0.5 rounded border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300;
+    @apply font-mono text-xs font-semibold tracking-tight px-2 py-0.5 rounded border border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300;
+  }
+
+  .text-brand-aa {
+    color: var(--color-brand-text-light, #0C5CAB);
+  }
+  .dark .text-brand-aa {
+    color: var(--color-brand-text-dark, #60a5fa);
   }
 
   /* -----------------------------------------------------------------
@@ -165,11 +219,13 @@
     nao devem mostrar barra. A classe era usada em 3 telas mas nunca existiu:
     vinha do plugin tailwind-scrollbar-hide, que nao esta instalado.
   */
-  .scrollbar-hide {
+  .scrollbar-hide,
+  .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-  .scrollbar-hide::-webkit-scrollbar {
+  .scrollbar-hide::-webkit-scrollbar,
+  .no-scrollbar::-webkit-scrollbar {
     width: 0;
     height: 0;
     display: none;

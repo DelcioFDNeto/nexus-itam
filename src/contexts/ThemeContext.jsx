@@ -1,7 +1,7 @@
 // src/contexts/ThemeContext.jsx
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { safeCssColor } from '../utils/sanitize';
-import { darken, rgbChannels } from '../utils/color';
+import { darken, ensureContrastOnSurface, pickContrastFg, rgbChannels } from '../utils/color';
 import { useAuth } from './AuthContext';
 
 const ThemeContext = createContext();
@@ -12,16 +12,22 @@ export const useTheme = () => useContext(ThemeContext);
 const THEME_KEY = 'nexus_theme';
 const ACCENT_KEY = 'nexus_accent';
 
-const DEFAULT_BRAND = '#4F46E5';
+const DEFAULT_BRAND = '#0C5CAB';
 
-// Acentos pessoais oferecidos na tela de configuracoes.
+// Acentos pessoais oferecidos na tela de configuracoes (todos WCAG AA >= 4.5:1).
 // eslint-disable-next-line react-refresh/only-export-components
 export const ACCENTS = {
-  blue: '#4F46E5',
-  green: '#10B981',
-  purple: '#8B5CF6',
-  orange: '#F97316',
-  cyan: '#06B6D4',
+  blue: '#0C5CAB',
+  green: '#047857',
+  teal: '#0F766E',
+  orange: '#C2410C',
+  cyan: '#0E7490',
+};
+
+const resolveAccentKey = (value) => {
+  if (!value) return null;
+  if (value === 'purple') return 'teal';
+  return Object.prototype.hasOwnProperty.call(ACCENTS, value) ? value : null;
 };
 
 const readStorage = (key) => {
@@ -50,10 +56,7 @@ export const ThemeProvider = ({ children }) => {
   const [theme, setThemeState] = useState(() => readStorage(THEME_KEY) || 'system');
 
   // Acento pessoal. `null` = "automatico": herda a cor da empresa (whitelabel).
-  const [accentColor, setAccentState] = useState(() => {
-    const stored = readStorage(ACCENT_KEY);
-    return stored && stored in ACCENTS ? stored : null;
-  });
+  const [accentColor, setAccentState] = useState(() => resolveAccentKey(readStorage(ACCENT_KEY)));
 
   // Cor da marca do inquilino (whitelabel). Fonte unica: o perfil resolvido
   // pelo AuthContext. O ThemeContext e o unico lugar que escreve --color-brand.
@@ -74,7 +77,7 @@ export const ThemeProvider = ({ children }) => {
   }, []);
 
   const setAccentColor = useCallback((next) => {
-    const valid = next && next in ACCENTS ? next : null;
+    const valid = resolveAccentKey(next);
     setAccentState(valid);
     writeStorage(ACCENT_KEY, valid);
   }, []);
@@ -118,12 +121,19 @@ export const ThemeProvider = ({ children }) => {
     // Cor que passa no sanitizador mas nao e interpretavel cai no padrao.
     const brand = rgbChannels(candidate) ? candidate : DEFAULT_BRAND;
     const brandDark = darken(brand);
+    const brandFg = pickContrastFg(brand);
+    const brandTextLight = ensureContrastOnSurface(brand, '#ffffff', 4.5) || DEFAULT_BRAND;
+    const brandTextDark = ensureContrastOnSurface(brand, '#111113', 4.5) || '#60a5fa';
 
     root.style.setProperty('--color-brand', brand);
     root.style.setProperty('--color-brand-dark', brandDark);
     // Canais consumidos pelo Tailwind (bg-brand, bg-brand/10, shadow-brand/30...).
     root.style.setProperty('--color-brand-rgb', rgbChannels(brand));
     root.style.setProperty('--color-brand-dark-rgb', rgbChannels(brandDark));
+    root.style.setProperty('--color-brand-fg', brandFg);
+    root.style.setProperty('--color-brand-fg-rgb', rgbChannels(brandFg));
+    root.style.setProperty('--color-brand-text-light', brandTextLight);
+    root.style.setProperty('--color-brand-text-dark', brandTextDark);
   }, [accentColor, tenantBrand]);
 
   const value = useMemo(

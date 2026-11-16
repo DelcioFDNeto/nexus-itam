@@ -67,6 +67,23 @@ import {
   SESSION_END_MESSAGES,
   WINGET_PRESETS,
 } from '../utils/remoteControlConstants';
+import {
+  captureFocusTarget,
+  getFocusableElements,
+  restoreFocusSafely,
+  trapFocusWithin,
+} from '../utils/focusTrap';
+import { isTopmostModal } from '../utils/modalStack';
+
+const closeBitmapSafely = (bmp) => {
+  if (bmp && typeof bmp.close === 'function') {
+    try {
+      bmp.close();
+    } catch {
+      /* noop */
+    }
+  }
+};
 
 export default function RemoteControlModal({
   isOpen,
@@ -125,7 +142,11 @@ export default function RemoteControlModal({
   const [wingetPkg, setWingetPkg] = useState('');
   const [uninstallName, setUninstallName] = useState('');
 
-  // Refs de Pipeline Canvas e Touch
+  // Refs de Diálogo, Pipeline Canvas e Touch
+  const dialogRef = useRef(null);
+  const returnFocusRef = useRef(null);
+  const wasOpenRef = useRef(false);
+  const closeModalRef = useRef(null);
   const viewportRef = useRef(null);
   const canvasRef = useRef(null);
   const latestBitmapRef = useRef(null);
@@ -170,6 +191,32 @@ export default function RemoteControlModal({
   const operatorName = currentUser?.name || currentUser?.email || 'Gestor de TI';
   const hostLabel = liveDevice?.hostname || asset?.internalId || '';
   const effectiveMode = policy.remoteAccess === 'unattended' ? sessionMode : 'attended';
+
+  const tenantIdRef = useRef(tenantId);
+  const deviceKeyRef = useRef(deviceKey);
+  const isOpenRef = useRef(isOpen);
+
+  useEffect(() => {
+    tenantIdRef.current = tenantId;
+    deviceKeyRef.current = deviceKey;
+    isOpenRef.current = isOpen;
+  }, [tenantId, deviceKey, isOpen]);
+
+  const setLatestBitmap = useCallback((nextBitmap = null) => {
+    if (latestBitmapRef.current && latestBitmapRef.current !== nextBitmap) {
+      closeBitmapSafely(latestBitmapRef.current);
+    }
+    latestBitmapRef.current = nextBitmap;
+  }, []);
+
+  const stopActiveSessionIfNeeded = useCallback(() => {
+    const activeId = sessionIdRef.current;
+    const activeTenantId = tenantIdRef.current;
+    const activeDeviceKey = deviceKeyRef.current;
+    if (!activeId || !activeTenantId || !activeDeviceKey) return;
+    sessionIdRef.current = '';
+    stopRemoteSession({ tenantId: activeTenantId, deviceKey: activeDeviceKey }).catch(() => {});
+  }, []);
 
   // Detecção de orientação em smartphones
   useEffect(() => {
@@ -267,6 +314,66 @@ export default function RemoteControlModal({
     setActiveTab(initialTab || 'screen');
   }, [initialTab, isOpen]);
 
+  // Captura/restauração de foco, Escape seguro e focus trap dentro do diálogo
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const dialogEl = dialogRef.current;
+    if (!wasOpenRef.current) {
+      wasOpenRef.current = true;
+      returnFocusRef.current = captureFocusTarget(dialogEl);
+    }
+
+    if (dialogEl && !dialogEl.contains(document.activeElement)) {
+      const focusables = getFocusableElements(dialogEl).filter((el) => el !== viewportRef.current);
+      if (focusables.length > 0) {
+        focusables[0].focus();
+      } else {
+        dialogEl.focus();
+      }
+    }
+
+    return () => {
+      if (wasOpenRef.current) {
+        wasOpenRef.current = false;
+        const target = returnFocusRef.current;
+        returnFocusRef.current = null;
+        restoreFocusSafely(target, null, dialogEl);
+      }
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handleDialogKeyDown = (e) => {
+      const dialogEl = dialogRef.current;
+      if (!dialogEl || !isTopmostModal(dialogEl)) return;
+
+      const isLiveCanvasTarget =
+        activeTab === 'screen' &&
+        Boolean(sessionIdRef.current) &&
+        controlEnabled &&
+        (e.target === viewportRef.current ||
+          e.target === canvasRef.current ||
+          e.target === mobileKeyboardInputRef.current);
+
+      if (e.key === 'Escape') {
+        if (document.fullscreenElement || isLiveCanvasTarget) return;
+        e.preventDefault();
+        closeModalRef.current?.();
+        return;
+      }
+
+      if (e.key === 'Tab') {
+        if (isLiveCanvasTarget && document.fullscreenElement) return;
+        trapFocusWithin(e, dialogEl);
+      }
+    };
+
+    document.addEventListener('keydown', handleDialogKeyDown);
+    return () => document.removeEventListener('keydown', handleDialogKeyDown);
+  }, [isOpen, activeTab, controlEnabled]);
+
   useEffect(() => {
     setLiveDevice(initialDevice || null);
   }, [initialDevice]);
@@ -287,12 +394,14 @@ export default function RemoteControlModal({
         toast.info(SESSION_END_MESSAGES[state]);
         sessionIdRef.current = '';
         setSessionId('');
+        setLatestBitmap(null);
+        lastDecodedSeqRef.current = 0;
         inputQueueRef.current = [];
         stopRemoteSession({ tenantId, deviceKey }).catch(() => {});
       }
     });
     return () => unsub();
-  }, [isOpen, tenantId, deviceKey]);
+  }, [isOpen, tenantId, deviceKey, setLatestBitmap]);
 
   useEffect(() => {
     qualityRef.current = quality;
@@ -426,31 +535,56 @@ export default function RemoteControlModal({
       } else {
         toast.success(
           res.type === REMOTE_COMMANDS.FORCE_INVENTORY || res.command === 'sync'
-            ? 'Coleta recebida pelo agente! Incorporando dados no inventário...'
+            ? 'Coleta recebida pelo agente! Incorporando dados no inventário…'
             : 'Ordem executada com sucesso pelo computador remoto!',
         );
       }
     }
   }, [liveDevice?.lastCommandResult, runningCmdId, scheduleInventoryIncorporation]);
 
+  // Limpa sessão ativa e timers apenas no fechamento do modal / unload / unmount
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const touchState = touchStateRef.current;
+    return () => {
+      stopActiveSessionIfNeeded();
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      if (touchState.longPressTimer) {
+        clearTimeout(touchState.longPressTimer);
+        touchState.longPressTimer = null;
+      }
+      clearSyncTimers();
+      setLatestBitmap(null);
+      setSessionId('');
+    };
+  }, [isOpen, stopActiveSessionIfNeeded, clearSyncTimers, setLatestBitmap]);
+
   useEffect(() => {
     const handleUnload = () => {
-      if (sessionIdRef.current && tenantId && deviceKey) {
-        stopRemoteSession({ tenantId, deviceKey }).catch(() => {});
-      }
+      stopActiveSessionIfNeeded();
     };
+    const touchState = touchStateRef.current;
     window.addEventListener('beforeunload', handleUnload);
     window.addEventListener('pagehide', handleUnload);
     return () => {
       window.removeEventListener('beforeunload', handleUnload);
       window.removeEventListener('pagehide', handleUnload);
-      if (sessionId && tenantId && deviceKey) {
-        stopRemoteSession({ tenantId, deviceKey }).catch(() => {});
+      stopActiveSessionIfNeeded();
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
       }
-      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      if (touchState.longPressTimer) {
+        clearTimeout(touchState.longPressTimer);
+        touchState.longPressTimer = null;
+      }
       clearSyncTimers();
+      setLatestBitmap(null);
     };
-  }, [sessionId, tenantId, deviceKey, clearSyncTimers]);
+  }, [stopActiveSessionIfNeeded, clearSyncTimers, setLatestBitmap]);
 
   const rawFirestoreFrame = liveDevice?.screenFrame || null;
   const validFirestoreFrame =
@@ -465,19 +599,22 @@ export default function RemoteControlModal({
     (Number(validRelayFrame?.seq) || 0) >= (Number(validFirestoreFrame?.seq) || 0)
       ? (validRelayFrame || validFirestoreFrame)
       : validFirestoreFrame;
+  const candidateFrameSeq = Number(latestCandidateFrame?.seq) || 0;
+  const candidateFrameData = latestCandidateFrame?.data || '';
 
   // PIPELINE DE DECODIFICAÇÃO E RENDERIZAÇÃO EM CANVAS (30+ FPS com requestAnimationFrame e buffer duplo)
   useEffect(() => {
-    if (!sessionId || !latestCandidateFrame?.data) {
-      latestBitmapRef.current = null;
+    if (!isOpen || !sessionId || !candidateFrameData) {
+      setLatestBitmap(null);
       setStreamFps(0);
       frameTimestampsRef.current = [];
       lastFrameSeqRef.current = 0;
-      return;
+      lastDecodedSeqRef.current = 0;
+      return undefined;
     }
 
-    const seq = Number(latestCandidateFrame.seq) || 0;
-    if (seq > 0 && lastFrameSeqRef.current === seq) return;
+    const seq = candidateFrameSeq;
+    if (seq > 0 && lastFrameSeqRef.current === seq) return undefined;
     lastFrameSeqRef.current = seq;
 
     // Cálculo instantâneo e contínuo de FPS
@@ -494,54 +631,69 @@ export default function RemoteControlModal({
       setStreamFps(30);
     }
 
-    const rawData = String(latestCandidateFrame.data || '');
+    const rawData = String(candidateFrameData || '');
     let dataUri = rawData;
     if (!rawData.startsWith('data:')) {
       const isPng = rawData.startsWith('iVBORw0KGgo');
       dataUri = `data:${isPng ? 'image/png' : 'image/jpeg'};base64,${rawData}`;
     }
 
+    let cancelled = false;
+    const activeSessionId = sessionId;
     const currentSeq = seq;
+
+    const loadFallbackImage = () => {
+      if (cancelled || sessionIdRef.current !== activeSessionId) return;
+      const img = new Image();
+      img.onload = () => {
+        if (cancelled || sessionIdRef.current !== activeSessionId) return;
+        if (currentSeq === 0 || currentSeq >= lastDecodedSeqRef.current) {
+          lastDecodedSeqRef.current = Math.max(lastDecodedSeqRef.current, currentSeq);
+          setLatestBitmap(img);
+        }
+      };
+      img.src = dataUri;
+    };
+
     // Decodificação rápida via ImageBitmap ou fallback Image com controle estrito de ordem (anti-jitter)
     if (typeof createImageBitmap !== 'undefined' && typeof fetch !== 'undefined') {
       fetch(dataUri)
         .then((res) => res.blob())
         .then((blob) => createImageBitmap(blob))
         .then((bmp) => {
-          if (currentSeq > 0 && currentSeq < lastDecodedSeqRef.current) {
-            try { bmp.close(); } catch { /* noop */ }
+          if (
+            cancelled ||
+            sessionIdRef.current !== activeSessionId ||
+            (currentSeq > 0 && currentSeq < lastDecodedSeqRef.current)
+          ) {
+            closeBitmapSafely(bmp);
             return;
           }
           lastDecodedSeqRef.current = Math.max(lastDecodedSeqRef.current, currentSeq);
-          if (latestBitmapRef.current && typeof latestBitmapRef.current.close === 'function') {
-            try { latestBitmapRef.current.close(); } catch { /* noop */ }
-          }
-          latestBitmapRef.current = bmp;
+          setLatestBitmap(bmp);
         })
         .catch(() => {
-          const img = new Image();
-          img.onload = () => {
-            if (currentSeq === 0 || currentSeq >= lastDecodedSeqRef.current) {
-              lastDecodedSeqRef.current = Math.max(lastDecodedSeqRef.current, currentSeq);
-              latestBitmapRef.current = img;
-            }
-          };
-          img.src = dataUri;
+          loadFallbackImage();
         });
     } else {
-      const img = new Image();
-      img.onload = () => {
-        if (currentSeq === 0 || currentSeq >= lastDecodedSeqRef.current) {
-          lastDecodedSeqRef.current = Math.max(lastDecodedSeqRef.current, currentSeq);
-          latestBitmapRef.current = img;
-        }
-      };
-      img.src = dataUri;
+      loadFallbackImage();
     }
-  }, [sessionId, latestCandidateFrame]);
 
-  // Loop requestAnimationFrame Contínuo no Canvas (Double-Buffer)
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, sessionId, candidateFrameSeq, candidateFrameData, setLatestBitmap]);
+
+  // Loop requestAnimationFrame Contínuo no Canvas (Double-Buffer) apenas enquanto o modal está aberto
   useEffect(() => {
+    if (!isOpen) {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      return undefined;
+    }
+
     let running = true;
 
     const renderLoop = () => {
@@ -569,9 +721,12 @@ export default function RemoteControlModal({
     rafIdRef.current = requestAnimationFrame(renderLoop);
     return () => {
       running = false;
-      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
     };
-  }, []);
+  }, [isOpen]);
 
   const queueInputEvent = useCallback((ev) => {
     if (!sessionId || !controlEnabled) return;
@@ -636,10 +791,11 @@ export default function RemoteControlModal({
       inputQueueRef.current = [];
       lastClearedAckRef.current = 0;
       setRelayFrame(null);
-      latestBitmapRef.current = null;
+      setLatestBitmap(null);
       setStreamFps(0);
       frameTimestampsRef.current = [];
       lastFrameSeqRef.current = 0;
+      lastDecodedSeqRef.current = 0;
       const currentQuality = qualityRef.current;
       const newSessionId = await startRemoteSession({
         tenantId,
@@ -649,6 +805,10 @@ export default function RemoteControlModal({
         quality: currentQuality,
         user: currentUser,
       });
+      if (!isOpenRef.current) {
+        stopRemoteSession({ tenantId, deviceKey, hostname: hostLabel, user: currentUser }).catch(() => {});
+        return;
+      }
       sessionIdRef.current = newSessionId;
       setSessionId(newSessionId);
       setLastSessionId(newSessionId);
@@ -673,8 +833,8 @@ export default function RemoteControlModal({
         .catch(() => {});
       toast.success(
         effectiveMode === 'attended'
-          ? `Solicitação NexusDesk enviada! Aguardando o colaborador aceitar na tela...`
-          : `Sessão NexusDesk iniciada! Streaming a 30+ FPS conectando...`
+          ? `Solicitação NexusDesk enviada! Aguardando o colaborador aceitar na tela…`
+          : `Sessão NexusDesk iniciada! Streaming a 30+ FPS conectando…`
       );
     } catch (e) {
       toast.error(e?.message || 'Falha ao iniciar sessão NexusDesk.');
@@ -684,14 +844,15 @@ export default function RemoteControlModal({
   };
 
   const handleStopRemote = async () => {
-    const activeId = sessionId;
+    const activeId = sessionIdRef.current || sessionId;
     sessionIdRef.current = '';
     setSessionId('');
     setRelayFrame(null);
-    latestBitmapRef.current = null;
+    setLatestBitmap(null);
     setStreamFps(0);
     frameTimestampsRef.current = [];
     lastFrameSeqRef.current = 0;
+    lastDecodedSeqRef.current = 0;
     inputQueueRef.current = [];
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -716,6 +877,11 @@ export default function RemoteControlModal({
         // Ignora erro ao fechar
       }
     }
+  };
+
+  closeModalRef.current = async () => {
+    await handleStopRemote();
+    onClose();
   };
 
   const handleQualityChange = async (newQuality) => {
@@ -986,7 +1152,19 @@ export default function RemoteControlModal({
 
   const handleScreenKeyDown = (e) => {
     if (!sessionId || !controlEnabled) return;
-    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) return;
+    const target = e.target;
+    if (
+      target &&
+      target !== viewportRef.current &&
+      target !== canvasRef.current
+    ) {
+      if (['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      const interactiveAncestor = target.closest?.(
+        'button, a[href], input, textarea, select, [role="button"], [tabindex]:not([tabindex="-1"])',
+      );
+      if (interactiveAncestor && interactiveAncestor !== viewportRef.current) return;
+    }
+    if (e.key === 'Tab' && !document.fullscreenElement) return;
     e.preventDefault();
     queueInputEvent({ type: 'key', key: e.key });
   };
@@ -1199,41 +1377,51 @@ export default function RemoteControlModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-0 md:p-3 overflow-hidden select-none">
+    <div className="dark fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-0 md:p-3 overflow-hidden overscroll-contain">
       
-      {/* Container Principal V3 Glassmorphism */}
-      <div className="bg-slate-900 border-0 md:border border-slate-800 rounded-none md:rounded-2xl shadow-2xl w-full max-w-7xl h-[100dvh] md:h-[94vh] flex flex-col overflow-hidden text-slate-100">
+      {/* Container Principal */}
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="remote-control-modal-title"
+        tabIndex={-1}
+        className="bg-[#111113] border-0 md:border border-zinc-800 rounded-none md:rounded-2xl shadow-2xl w-full max-w-7xl h-[100dvh] md:h-[94vh] flex flex-col overflow-hidden text-[#fafafa] overscroll-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+      >
         
-        {/* Top Bar Responsiva com Status AnyDesk */}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 md:px-5 py-2.5 bg-slate-950/90 border-b border-slate-800/80 shrink-0">
+        {/* Top Bar Responsiva */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 md:px-5 py-2.5 bg-[#09090b] border-b border-zinc-800 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className={`w-9 h-9 md:w-10 md:h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${
-              online ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
+              online ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
             }`}>
               <Monitor className="w-4 h-4 md:w-5 md:h-5" />
             </div>
             
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
-                <h2 className="font-black text-sm md:text-base tracking-tight truncate text-white">
+                <h2
+                  id="remote-control-modal-title"
+                  className="font-black text-sm md:text-base tracking-tight truncate text-[#fafafa]"
+                >
                   {patrimony}
                 </h2>
-                <span className="px-2 py-0.5 rounded-md bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 font-mono text-[10px] md:text-[11px] font-bold">
+                <span className="px-2 py-0.5 rounded-md bg-brand/15 border border-brand/30 text-brand-aa font-mono text-xs font-bold tabular-nums">
                   ID {accessId}
                 </span>
                 {agentOutdated && (
-                  <span className="px-2 py-0.5 rounded-md font-mono text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  <span className="px-2 py-0.5 rounded-md font-mono text-xs font-bold tabular-nums bg-amber-500/20 text-amber-300 border border-amber-500/30">
                     OTA v{AGENT_VERSION}
                   </span>
                 )}
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
                   online ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
                 }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                   {online ? 'Online' : 'Standby'}
                 </span>
                 {streamFps > 0 && isSessionActive && (
-                  <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-bold border ${
+                  <span className={`px-2 py-0.5 rounded-full font-mono text-xs font-bold tabular-nums border ${
                     streamFps >= 28
                       ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
                       : streamFps >= 18
@@ -1244,9 +1432,9 @@ export default function RemoteControlModal({
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-slate-400 truncate">
-                Colaborador: <span className="text-slate-200 font-semibold">{loggedUser}</span> • Host:{' '}
-                <span className="font-mono text-slate-300">{hostname}</span>
+              <p className="text-xs text-zinc-400 truncate">
+                Colaborador: <span className="text-zinc-200 font-semibold">{loggedUser}</span> • Host:{' '}
+                <span className="font-mono text-zinc-300">{hostname}</span>
               </p>
             </div>
           </div>
@@ -1254,20 +1442,20 @@ export default function RemoteControlModal({
           <div className="flex items-center gap-1.5 md:gap-2 ml-auto">
             {liveDevice?.supportRequest?.status === 'open' && (
               <button
+                type="button"
                 onClick={handleResolveSupport}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[11px] transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
                 <AlertTriangle className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Resolver Chamado</span>
               </button>
             )}
             <button
-              onClick={async () => {
-                await handleStopRemote();
-                onClose();
-              }}
-              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              type="button"
+              onClick={() => closeModalRef.current?.()}
+              aria-label="Fechar NexusDesk"
               title="Fechar NexusDesk"
+              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-xl text-zinc-400 hover:text-[#fafafa] hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1276,48 +1464,74 @@ export default function RemoteControlModal({
 
         {/* Banner de Rotação Automática / Dica Mobile Landscape */}
         {isPortraitMobile && !dismissLandscapeTip && isSessionActive && (
-          <div className="px-3 py-1.5 bg-gradient-to-r from-indigo-950/90 to-blue-950/90 border-b border-indigo-500/30 text-xs flex items-center justify-between gap-2 shrink-0 animate-in slide-in-from-top-2">
-            <div className="flex items-center gap-2 text-indigo-200 text-[11px]">
-              <Smartphone className="w-4 h-4 text-indigo-400 rotate-90 shrink-0" />
+          <div className="px-3 py-2 bg-brand/10 border-b border-brand/30 text-xs flex items-center justify-between gap-2 shrink-0 animate-slide-down">
+            <div className="flex items-center gap-2 text-zinc-200 text-xs">
+              <Smartphone className="w-4 h-4 text-brand-aa rotate-90 shrink-0" />
               <span>
                 <strong>Dica:</strong> Gire o smartphone na <strong>horizontal</strong> para tela cheia fluída a 30+ FPS.
               </span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               <button
+                type="button"
                 onClick={toggleFullscreen}
-                className="px-2 py-0.5 rounded bg-indigo-600 text-white font-bold text-[10px]"
+                className="px-3 py-2 min-h-[44px] rounded-lg bg-brand hover:bg-brand-dark text-brand-fg font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
                 Tela Cheia
               </button>
               <button
+                type="button"
                 onClick={() => setDismissLandscapeTip(true)}
-                className="p-1 text-slate-400 hover:text-white"
+                aria-label="Dispensar dica de orientação"
+                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-zinc-400 hover:text-[#fafafa] transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
-                <X size={13} />
+                <X size={16} />
               </button>
             </div>
           </div>
         )}
 
         {/* Abas de Navegação */}
-        <div className="flex items-center gap-1 px-3 md:px-5 pt-1.5 bg-slate-950/60 border-b border-slate-800 overflow-x-auto no-scrollbar shrink-0">
+        <div
+          role="tablist"
+          aria-label="Seções do NexusDesk"
+          className="flex items-center gap-1 px-3 md:px-5 pt-1.5 bg-[#09090b] border-b border-zinc-800 overflow-x-auto no-scrollbar shrink-0"
+        >
           {[
             { id: 'screen', label: 'NexusDesk Mobile (Tela 30+ FPS)', shortLabel: 'Tela Remota', icon: Monitor },
             { id: 'terminal', label: 'Terminal PowerShell', shortLabel: 'PowerShell', icon: Terminal },
             { id: 'processes', label: `Processos (${topProcesses.length})`, shortLabel: `Processos`, icon: Activity },
             { id: 'actions', label: 'Ações, OTA & Energia', shortLabel: 'Ações', icon: Zap },
-          ].map((tab) => {
+          ].map((tab, idx, allTabs) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
+                id={`remote-tab-${tab.id}`}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                aria-controls={`remote-tabpanel-${tab.id}`}
+                tabIndex={active ? 0 : -1}
                 onClick={() => setActiveTab(tab.id)}
-                className={`inline-flex items-center gap-1.5 px-3 md:px-4 py-2 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
+                onKeyDown={(e) => {
+                  const keyMap = {
+                    ArrowRight: (idx + 1) % allTabs.length,
+                    ArrowLeft: (idx - 1 + allTabs.length) % allTabs.length,
+                    Home: 0,
+                    End: allTabs.length - 1,
+                  };
+                  if (keyMap[e.key] === undefined) return;
+                  e.preventDefault();
+                  const nextTab = allTabs[keyMap[e.key]];
+                  setActiveTab(nextTab.id);
+                  document.getElementById(`remote-tab-${nextTab.id}`)?.focus();
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 md:px-4 py-2 min-h-[44px] text-xs font-bold border-b-2 transition-colors whitespace-nowrap active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                   active
-                    ? 'border-indigo-500 text-indigo-400 bg-slate-800/80 rounded-t-xl'
-                    : 'border-transparent text-slate-400 hover:text-white'
+                    ? 'border-brand text-brand-aa bg-zinc-900/90 rounded-t-xl'
+                    : 'border-transparent text-zinc-400 hover:text-[#fafafa]'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5 md:w-4 md:h-4" />
@@ -1329,16 +1543,22 @@ export default function RemoteControlModal({
         </div>
 
         {/* Conteúdo da Aba */}
-        <div className="flex-1 overflow-y-auto flex flex-col min-h-0 relative">
+        <div className="flex-1 overflow-y-auto overscroll-contain flex flex-col min-h-0 relative bg-[#09090b]">
           
           {/* TAB 1: TELA REMOTA INTERATIVA NEXUSDESK COM RENDERIZAÇÃO EM CANVAS (30+ FPS) */}
           {activeTab === 'screen' && (
-            <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden min-h-0 relative">
+            <div
+              id="remote-tabpanel-screen"
+              role="tabpanel"
+              aria-labelledby="remote-tab-screen"
+              className="flex-1 flex flex-col bg-[#09090b] overflow-hidden min-h-0 relative"
+            >
               
               {/* Input Invisível para o Teclado Nativo do Smartphone */}
               <input
                 ref={mobileKeyboardInputRef}
                 type="text"
+                tabIndex={-1}
                 inputMode="text"
                 autoComplete="off"
                 autoCorrect="off"
@@ -1364,14 +1584,19 @@ export default function RemoteControlModal({
               />
 
               {/* Barra de Ferramentas Superior do NexusDesk (Desktop & Mobile) */}
-              <div className="flex flex-wrap items-center justify-between gap-1.5 px-3 py-2 bg-slate-900 border-b border-slate-800 text-xs shrink-0 z-20">
+              <div className="flex flex-wrap items-center justify-between gap-1.5 px-3 py-2 bg-[#111113] border-b border-zinc-800 text-xs shrink-0 z-20">
                 <div className="flex flex-wrap items-center gap-1.5">
                   {!sessionId ? (
                     <>
+                      <label htmlFor="remote-session-mode" className="sr-only">
+                        Modo da sessão remota
+                      </label>
                       <select
+                        id="remote-session-mode"
+                        name="sessionMode"
                         value={effectiveMode}
                         onChange={(e) => setSessionMode(e.target.value)}
-                        className="px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs"
+                        className="px-2.5 py-2 min-h-[44px] rounded-lg bg-zinc-800 border border-zinc-700 text-[#fafafa] font-semibold text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                       >
                         <option value="attended">Com permissão (30 s)</option>
                         <option value="unattended" disabled={policy.remoteAccess !== 'unattended'}>
@@ -1380,18 +1605,20 @@ export default function RemoteControlModal({
                       </select>
                       
                       <button
+                        type="button"
                         onClick={handleStartRemote}
                         disabled={connecting}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold shadow-md shadow-indigo-600/30 transition-all"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 min-h-[44px] rounded-lg bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-brand-fg font-bold shadow-md shadow-brand/25 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                       >
                         <Play className="w-3.5 h-3.5 fill-current" />
-                        {connecting ? 'Conectando...' : 'Conectar NexusDesk'}
+                        {connecting ? 'Conectando…' : 'Conectar NexusDesk'}
                       </button>
                     </>
                   ) : (
                     <button
+                      type="button"
                       onClick={handleStopRemote}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                     >
                       <Square className="w-3.5 h-3.5 fill-current" />
                       Encerrar
@@ -1399,10 +1626,15 @@ export default function RemoteControlModal({
                   )}
 
                   {/* Seletor de Qualidade / FPS Turbo */}
+                  <label htmlFor="remote-stream-quality" className="sr-only">
+                    Modo de Transmissão
+                  </label>
                   <select
+                    id="remote-stream-quality"
+                    name="quality"
                     value={quality}
                     onChange={(e) => handleQualityChange(e.target.value)}
-                    className="px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold"
+                    className="px-2.5 py-2 min-h-[44px] rounded-lg bg-zinc-800 border border-zinc-700 text-[#fafafa] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     title="Modo de Transmissão"
                   >
                     <option value="low">Turbo 30+ FPS (Fluído)</option>
@@ -1412,11 +1644,13 @@ export default function RemoteControlModal({
 
                   {/* Alternador de Controle Ativo */}
                   <button
+                    type="button"
+                    aria-pressed={controlEnabled}
                     onClick={() => setControlEnabled(v => !v)}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg border text-xs font-semibold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                       controlEnabled
                         ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                        : 'bg-slate-800 border-slate-700 text-slate-400'
+                        : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-[#fafafa]'
                     }`}
                     title="Ativar/Desativar controle"
                   >
@@ -1426,11 +1660,13 @@ export default function RemoteControlModal({
 
                   {/* Alternador de Modo Touch: Trackpad Virtual vs Toque Direto */}
                   <button
+                    type="button"
+                    aria-pressed={touchMode === 'trackpad'}
                     onClick={() => setTouchMode(m => (m === 'trackpad' ? 'direct' : 'trackpad'))}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg border text-xs font-semibold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                       touchMode === 'trackpad'
-                        ? 'bg-purple-500/25 border-purple-400/50 text-purple-200'
-                        : 'bg-slate-800 border-slate-700 text-slate-300'
+                        ? 'bg-sky-500/20 border-sky-400/50 text-sky-200'
+                        : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-[#fafafa]'
                     }`}
                     title="Alternar entre Trackpad Virtual e Toque Direto"
                   >
@@ -1445,11 +1681,13 @@ export default function RemoteControlModal({
 
                   {/* Armar Clique Direito */}
                   <button
+                    type="button"
+                    aria-pressed={rightClickArmed}
                     onClick={() => setRightClickArmed(v => !v)}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                    className={`inline-flex items-center gap-1 px-3 py-2 min-h-[44px] rounded-lg border text-xs font-semibold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                       rightClickArmed
                         ? 'bg-amber-500/25 border-amber-400/50 text-amber-200'
-                        : 'bg-slate-800 border-slate-700 text-slate-300'
+                        : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-[#fafafa]'
                     }`}
                     title="Armar Clique Direito para o próximo toque"
                   >
@@ -1458,22 +1696,25 @@ export default function RemoteControlModal({
 
                   {/* Zoom Rápido */}
                   <button
+                    type="button"
                     onClick={handleCycleZoom}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-mono"
+                    className="inline-flex items-center gap-1 px-3 py-2 min-h-[44px] rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-xs font-mono tabular-nums transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     title="Zoom na tela remota (ou use pinça de 2 dedos no celular)"
                   >
-                    {zoom > 1 ? <ZoomOut className="w-3.5 h-3.5 text-indigo-400" /> : <ZoomIn className="w-3.5 h-3.5" />}
+                    {zoom > 1 ? <ZoomOut className="w-3.5 h-3.5 text-brand-aa" /> : <ZoomIn className="w-3.5 h-3.5" />}
                     {zoom}x
                   </button>
 
                   {/* Teclado Mobile */}
                   <button
+                    type="button"
+                    aria-pressed={mobileKbOpen}
                     onClick={toggleMobileKeyboard}
                     disabled={!sessionId}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg border text-xs font-semibold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed ${
                       mobileKbOpen
-                        ? 'bg-indigo-600 border-indigo-400 text-white'
-                        : 'bg-slate-800 border-slate-700 text-slate-200 disabled:opacity-40'
+                        ? 'bg-brand border-brand text-brand-fg'
+                        : 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700'
                     }`}
                     title="Abrir teclado do celular"
                   >
@@ -1496,8 +1737,9 @@ export default function RemoteControlModal({
                   ].map((item) => (
                     <button
                       key={item.key}
+                      type="button"
                       onClick={() => handleSendSpecialKey(item.key)}
-                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px] shrink-0"
+                      className="px-2.5 py-2 min-h-[44px] rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono text-xs shrink-0 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     >
                       {item.label}
                     </button>
@@ -1505,20 +1747,24 @@ export default function RemoteControlModal({
 
                   {isSessionActive && (
                     <button
+                      type="button"
                       onClick={handleDownloadScreenshot}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] shrink-0"
+                      aria-label="Captura de Tela"
+                      className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] px-2.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs shrink-0 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                       title="Captura de Tela"
                     >
-                      <Camera className="w-3.5 h-3.5" />
+                      <Camera className="w-4 h-4" aria-hidden="true" />
                     </button>
                   )}
 
                   <button
+                    type="button"
                     onClick={toggleFullscreen}
-                    className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 shrink-0"
+                    aria-label={isFullscreen ? 'Sair da tela cheia' : 'Alternar Tela Cheia'}
+                    className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 shrink-0 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     title="Alternar Tela Cheia"
                   >
-                    {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                    {isFullscreen ? <Minimize2 className="w-4 h-4" aria-hidden="true" /> : <Maximize2 className="w-4 h-4" aria-hidden="true" />}
                   </button>
                 </div>
               </div>
@@ -1527,15 +1773,16 @@ export default function RemoteControlModal({
               <div
                 ref={viewportRef}
                 tabIndex={0}
+                aria-label="Tela remota interativa"
                 onKeyDown={handleScreenKeyDown}
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
-                className="flex-1 flex items-center justify-center relative bg-slate-950 overflow-hidden select-none outline-none p-1 md:p-2 touch-none"
+                className="flex-1 flex items-center justify-center relative bg-[#09090b] overflow-hidden select-none outline-none p-1 md:p-2 touch-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
               >
                 {isSessionActive ? (
                   <div
-                    className="relative inline-block max-w-full max-h-full shadow-2xl border border-slate-800/80 rounded-xl overflow-hidden transition-transform duration-75"
+                    className="relative inline-block max-w-full max-h-full shadow-2xl border border-zinc-800 rounded-xl overflow-hidden transition-transform duration-75"
                     style={{
                       transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                       transformOrigin: 'center center',
@@ -1556,10 +1803,10 @@ export default function RemoteControlModal({
                       }`}
                     />
 
-                    {/* Cursor Virtual AnyDesk para Modo Trackpad Mobile */}
+                    {/* Cursor Virtual NexusDesk para Modo Trackpad Mobile */}
                     {touchMode === 'trackpad' && controlEnabled && (
                       <div
-                        className="absolute w-5 h-5 -ml-2.5 -mt-2.5 rounded-full border-2 border-white bg-purple-500/90 shadow-2xl pointer-events-none flex items-center justify-center animate-pulse"
+                        className="absolute w-5 h-5 -ml-2.5 -mt-2.5 rounded-full border-2 border-white bg-brand/90 shadow-2xl pointer-events-none flex items-center justify-center"
                         style={{
                           left: `${virtualCursor.x * 100}%`,
                           top: `${virtualCursor.y * 100}%`,
@@ -1570,9 +1817,9 @@ export default function RemoteControlModal({
                     )}
 
                     {/* HUD de Desempenho e Telemetria em Tempo Real */}
-                    <div className="absolute top-2 right-2 px-2.5 py-1 rounded-lg bg-slate-950/85 backdrop-blur-md border border-slate-800 text-[10px] font-mono text-slate-200 flex items-center gap-2 pointer-events-none shadow-xl">
-                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                      <span className="font-bold text-white">
+                    <div className="absolute top-2 right-2 px-2.5 py-1 rounded-lg bg-[#09090b]/90 backdrop-blur-md border border-zinc-800 text-xs font-mono tabular-nums text-zinc-200 flex items-center gap-2 pointer-events-none shadow-xl">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                      <span className="font-bold text-[#fafafa]">
                         {canvasRef.current ? `${canvasRef.current.width}×${canvasRef.current.height}` : '1280×720'}
                       </span>
                       <span className="text-emerald-300 font-bold">
@@ -1581,7 +1828,7 @@ export default function RemoteControlModal({
                       <span className="text-cyan-300">
                         {latencyMs}ms
                       </span>
-                      <span className="px-1.5 py-0.2 rounded font-sans font-bold bg-indigo-500/20 text-indigo-300">
+                      <span className="px-1.5 py-0.5 rounded font-sans font-bold bg-brand/20 text-brand-aa">
                         {transportMode === 'ws-relay' ? 'Turbo WS' : 'Seguro'}
                       </span>
                     </div>
@@ -1589,53 +1836,54 @@ export default function RemoteControlModal({
                 ) : (
                   
                   /* Tela de Espera / Início da Sessão Remota */
-                  <div className="max-w-md text-center p-6 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl mx-3">
-                    <div className="w-16 h-16 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mx-auto mb-4">
+                  <div className="max-w-md text-center p-6 rounded-2xl bg-[#111113] border border-zinc-800 shadow-2xl mx-3">
+                    <div className="w-16 h-16 rounded-2xl bg-brand/15 border border-brand/30 text-brand-aa flex items-center justify-center mx-auto mb-4">
                       <Monitor className="w-8 h-8" />
                     </div>
 
                     {SESSION_END_MESSAGES[endedState] ? (
                       <>
                         <h3 className={`font-bold text-base mb-1 ${
-                          endedState === 'rejected' ? 'text-rose-400' : 'text-slate-200'
+                          endedState === 'rejected' ? 'text-rose-400' : 'text-zinc-200'
                         }`}>
                           {endedState === 'rejected' ? 'Acesso Recusado' : 'Sessão Encerrada'}
                         </h3>
-                        <p className="text-xs text-slate-400 mb-4">{SESSION_END_MESSAGES[endedState]}</p>
+                        <p className="text-xs text-zinc-400 mb-4">{SESSION_END_MESSAGES[endedState]}</p>
                       </>
                     ) : isWaitingAgent ? (
                       <>
-                        <RefreshCw className="w-6 h-6 text-indigo-400 animate-spin mx-auto mb-2" />
-                        <h3 className="font-bold text-base text-white mb-1">Conectando via NexusDesk Relay...</h3>
-                        <p className="text-xs text-slate-400">
-                          Sinalizando o notebook de {loggedUser} via WebSocket de baixa latência...
+                        <RefreshCw className="w-6 h-6 text-brand-aa animate-spin mx-auto mb-2" />
+                        <h3 className="font-bold text-base text-[#fafafa] mb-1">Conectando via NexusDesk Relay…</h3>
+                        <p className="text-xs text-zinc-400">
+                          Sinalizando o notebook de {loggedUser} via WebSocket de baixa latência…
                         </p>
                       </>
                     ) : isWaitingConsent ? (
                       <>
                         <div className="inline-flex p-2 rounded-xl bg-amber-500/20 text-amber-300 mb-2">
-                          <AlertTriangle className="w-6 h-6 animate-bounce" />
+                          <AlertTriangle className="w-6 h-6" />
                         </div>
                         <h3 className="font-bold text-base text-amber-300 mb-1">
-                          Aguardando Autorização na Tela do Colaborador...
+                          Aguardando Autorização na Tela do Colaborador…
                         </h3>
-                        <p className="text-xs text-slate-400 mb-4">
+                        <p className="text-xs text-zinc-400 mb-4">
                           Uma janela de consentimento do <strong>NexusDesk</strong> foi exibida na tela de <strong>{loggedUser}</strong> com contagem regressiva de 30 segundos.
                         </p>
                       </>
                     ) : (
                       <>
-                        <h3 className="font-bold text-lg text-white mb-1">
+                        <h3 className="font-bold text-lg text-[#fafafa] mb-1 tabular-nums">
                           NexusDesk Pronto ({accessId})
                         </h3>
-                        <p className="text-xs text-slate-400 mb-5 leading-relaxed">
-                          Controle remoto corporativo tipo AnyDesk a <strong>30+ FPS</strong> otimizado para celulares e computadores com buffer duplo e aceleração gráfica.
+                        <p className="text-xs text-zinc-400 mb-5 leading-relaxed">
+                          Controle remoto corporativo a <strong>30+ FPS</strong> otimizado para celulares e computadores com buffer duplo e aceleração gráfica.
                         </p>
                         
                         <button
+                          type="button"
                           onClick={handleStartRemote}
                           disabled={connecting}
-                          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50"
+                          className="inline-flex items-center gap-2 px-6 py-3 min-h-[44px] rounded-xl bg-brand hover:bg-brand-dark text-brand-fg font-bold text-xs shadow-lg shadow-brand/25 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Play className="w-4 h-4 fill-current" />
                           Iniciar Controle Remoto Agora
@@ -1647,85 +1895,104 @@ export default function RemoteControlModal({
 
                 {/* DOCK FLUTUANTE DE CONTROLES TOUCH MOBILE (Para uso ágil em smartphones) */}
                 {isSessionActive && (
-                  <div 
+                  <div
                     onTouchStart={(e) => e.stopPropagation()}
                     onTouchMove={(e) => e.stopPropagation()}
                     onTouchEnd={(e) => e.stopPropagation()}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
-                    className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-900/90 backdrop-blur-md border border-slate-800 shadow-2xl"
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Escape' && e.key !== 'Tab') {
+                        e.stopPropagation();
+                      }
+                    }}
+                    className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 p-1.5 rounded-2xl bg-[#111113]/95 backdrop-blur-md border border-zinc-800 shadow-2xl"
                   >
                     <button
+                      type="button"
+                      aria-expanded={floatingToolbarOpen}
+                      aria-label={floatingToolbarOpen ? 'Recolher dock mobile' : 'Expandir dock mobile'}
                       onClick={() => setFloatingToolbarOpen((v) => !v)}
-                      className="p-1.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white"
+                      className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-xl bg-zinc-800 text-zinc-300 hover:text-[#fafafa] transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                       title={floatingToolbarOpen ? 'Recolher dock mobile' : 'Expandir dock mobile'}
                     >
-                      {floatingToolbarOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                      {floatingToolbarOpen ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronUp size={16} aria-hidden="true" />}
                     </button>
 
                     {floatingToolbarOpen && (
                       <>
                         <button
+                          type="button"
+                          aria-pressed={touchMode === 'trackpad'}
                           onClick={() => setTouchMode((m) => (m === 'trackpad' ? 'direct' : 'trackpad'))}
-                          className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition-all flex items-center gap-1 ${
-                            touchMode === 'trackpad' ? 'bg-purple-600 text-white shadow-md' : 'bg-slate-800 text-slate-300'
+                          className={`px-3 py-2 min-h-[44px] rounded-xl font-bold text-xs transition-colors flex items-center gap-1 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                            touchMode === 'trackpad' ? 'bg-sky-600 text-white shadow-md' : 'bg-zinc-800 text-zinc-300 hover:text-[#fafafa]'
                           }`}
                           title="Modo Trackpad / Modo Toque Direto"
                         >
-                          <Hand size={13} />
+                          <Hand size={14} aria-hidden="true" />
                           <span>{touchMode === 'trackpad' ? 'Trackpad' : 'Toque Direto'}</span>
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => {
                             queueInputEvent({ type: 'click', ...virtualCursor });
                             try { navigator?.vibrate?.(25); } catch { /* noop */ }
                           }}
-                          className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px]"
+                          className="px-3 py-2 min-h-[44px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                           title="Clique Esquerdo"
                         >
                           Esq.
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => {
                             queueInputEvent({ type: 'rightclick', ...virtualCursor });
                             try { navigator?.vibrate?.(35); } catch { /* noop */ }
                           }}
-                          className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px]"
+                          className="px-3 py-2 min-h-[44px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                           title="Clique Direito"
                         >
                           Dir.
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => {
                             queueInputEvent({ type: 'dblclick', ...virtualCursor });
                           }}
-                          className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px]"
+                          className="px-3 py-2 min-h-[44px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                           title="Duplo Clique"
                         >
                           2x
                         </button>
 
                         <button
+                          type="button"
+                          aria-pressed={dragLock}
+                          aria-label="Trava de Arraste"
                           onClick={() => setDragLock((v) => !v)}
-                          className={`px-2.5 py-1.5 rounded-xl font-bold text-[11px] transition-all ${
-                            dragLock ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-300'
+                          className={`min-h-[44px] min-w-[44px] inline-flex items-center justify-center px-3 py-2 rounded-xl font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                            dragLock ? 'bg-amber-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:text-[#fafafa]'
                           }`}
                           title="Trava de Arraste (Arrastar Janelas / Selecionar Texto)"
                         >
-                          <Move size={13} />
+                          <Move size={15} aria-hidden="true" />
                         </button>
 
                         <button
+                          type="button"
+                          aria-pressed={mobileKbOpen}
+                          aria-label="Teclado Virtual"
                           onClick={toggleMobileKeyboard}
-                          className={`p-1.5 rounded-xl transition-all ${
-                            mobileKbOpen ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'
+                          className={`min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-xl transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                            mobileKbOpen ? 'bg-brand text-brand-fg' : 'bg-zinc-800 text-zinc-300 hover:text-[#fafafa]'
                           }`}
                           title="Teclado Virtual"
                         >
-                          <Keyboard size={15} />
+                          <Keyboard size={16} aria-hidden="true" />
                         </button>
                       </>
                     )}
@@ -1736,20 +2003,25 @@ export default function RemoteControlModal({
               {/* Barra de Digitação Rápida */}
               <form
                 onSubmit={handleSendTextToRemote}
-                className="flex items-center gap-2 px-3 md:px-4 py-2 bg-slate-900 border-t border-slate-800 shrink-0"
+                className="flex items-center gap-2 px-3 md:px-4 py-2 bg-[#111113] border-t border-zinc-800 shrink-0"
               >
-                <Keyboard className="w-4 h-4 text-slate-400 shrink-0" />
+                <Keyboard className="w-4 h-4 text-zinc-400 shrink-0" aria-hidden="true" />
+                <label htmlFor="remote-quick-type" className="sr-only">
+                  Digitar texto no notebook remoto
+                </label>
                 <input
+                  id="remote-quick-type"
+                  name="textToType"
                   type="text"
                   value={textToType}
                   onChange={(e) => setTextToType(e.target.value)}
-                  placeholder="Digitar texto no notebook remoto..."
-                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  placeholder="Digitar texto no notebook remoto…"
+                  className="flex-1 min-h-[44px] bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-[#fafafa] placeholder-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 />
                 <button
                   type="submit"
                   disabled={!sessionId || !textToType.trim()}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold text-xs shrink-0"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 min-h-[44px] rounded-xl bg-brand hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed text-brand-fg font-bold text-xs shrink-0 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Enviar</span>
@@ -1760,23 +2032,29 @@ export default function RemoteControlModal({
 
           {/* TAB 2: TERMINAL POWERSHELL REMOTO */}
           {activeTab === 'terminal' && (
-            <div className="flex-1 flex flex-col p-4 md:p-6 gap-4 bg-slate-950">
+            <div
+              id="remote-tabpanel-terminal"
+              role="tabpanel"
+              aria-labelledby="remote-tab-terminal"
+              className="flex-1 flex flex-col p-4 md:p-6 gap-4 bg-[#09090b]"
+            >
               <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-2">
                   Ações Rápidas PowerShell (1 Clique)
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {QUICK_POWERSHELL_ACTIONS.map((item) => (
                     <button
                       key={item.id}
+                      type="button"
                       onClick={() => handleSendCommand(REMOTE_COMMANDS.POWERSHELL, item.command, item.label)}
-                      className="flex flex-col items-start p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-indigo-500 text-left transition-all"
+                      className="flex flex-col items-start p-3 min-h-[44px] rounded-xl bg-[#111113] border border-zinc-800 hover:border-brand text-left transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     >
-                      <span className="font-bold text-xs text-white flex items-center gap-1.5">
-                        <Terminal className="w-3.5 h-3.5 text-indigo-400" />
+                      <span className="font-bold text-xs text-[#fafafa] flex items-center gap-1.5">
+                        <Terminal className="w-3.5 h-3.5 text-brand-aa" />
                         {item.label}
                       </span>
-                      <span className="text-[11px] text-slate-400 mt-0.5">
+                      <span className="text-xs text-zinc-400 mt-0.5">
                         {item.description}
                       </span>
                     </button>
@@ -1785,28 +2063,28 @@ export default function RemoteControlModal({
               </div>
 
               {/* Console Output */}
-              <div className="flex-1 bg-slate-900/90 border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-200 overflow-y-auto min-h-[240px] space-y-4">
+              <div className="flex-1 bg-[#111113] border border-zinc-800 rounded-xl p-4 font-mono text-xs text-zinc-200 overflow-y-auto overscroll-contain min-h-[240px] space-y-4">
                 {runningCmdId && (
-                  <div className="flex items-center gap-2 text-amber-300 animate-pulse">
+                  <div role="status" className="flex items-center gap-2 text-amber-300">
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Executando comando no notebook ({patrimony}) {runningCmdLabel ? `[${runningCmdLabel}]` : ''}...</span>
+                    <span>Executando comando no notebook ({patrimony}) {runningCmdLabel ? `[${runningCmdLabel}]` : ''}…</span>
                   </div>
                 )}
 
                 {commandHistory.length === 0 ? (
-                  <div className="text-slate-500">
+                  <div className="text-zinc-500">
                     PS C:\Windows\system32&gt; Pronto para receber comandos PowerShell remotos.
                   </div>
                 ) : (
                   commandHistory.map((entry) => (
-                    <div key={entry.commandId} className="border-b border-slate-800 pb-3 last:border-none">
-                      <div className="flex items-center justify-between text-[11px] text-indigo-400 mb-1">
+                    <div key={entry.commandId} className="border-b border-zinc-800 pb-3 last:border-none">
+                      <div className="flex items-center justify-between text-xs text-brand-aa mb-1">
                         <span className="truncate max-w-[75%]">PS {hostname}&gt; {entry.command}</span>
-                        <span className="text-slate-500 shrink-0">
+                        <span className="text-zinc-500 shrink-0 tabular-nums">
                           {entry.completedAt ? new Date(entry.completedAt).toLocaleTimeString('pt-BR') : ''}
                         </span>
                       </div>
-                      <pre className="whitespace-pre-wrap text-emerald-300 bg-slate-950 p-3 rounded-lg overflow-x-auto">
+                      <pre className="whitespace-pre-wrap text-emerald-300 bg-[#09090b] p-3 rounded-lg overflow-x-auto select-text">
                         {entry.output || '(Sem saída)'}
                       </pre>
                     </div>
@@ -1816,21 +2094,26 @@ export default function RemoteControlModal({
 
               {/* Input PowerShell */}
               <form onSubmit={handleRunPowerShell} className="flex items-center gap-2">
-                <div className="flex-1 flex items-center bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2">
-                  <span className="font-mono text-xs text-indigo-400 mr-2">PS&gt;</span>
+                <div className="flex-1 flex items-center bg-[#111113] border border-zinc-700 rounded-xl px-3.5 py-1.5 min-h-[44px] focus-within:ring-2 focus-within:ring-brand">
+                  <span className="font-mono text-xs text-brand-aa mr-2">PS&gt;</span>
+                  <label htmlFor="remote-ps-input" className="sr-only">
+                    Comando PowerShell remoto
+                  </label>
                   <input
+                    id="remote-ps-input"
+                    name="psInput"
                     type="text"
                     value={psInput}
                     maxLength={MAX_COMMAND_LENGTH}
                     onChange={(e) => setPsInput(e.target.value)}
-                    placeholder="Comando PowerShell remoto..."
-                    className="flex-1 bg-transparent font-mono text-xs text-white placeholder-slate-500 focus:outline-none"
+                    placeholder="Comando PowerShell remoto…"
+                    className="flex-1 bg-transparent font-mono text-xs text-[#fafafa] placeholder-zinc-500 focus:outline-none min-h-[36px]"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={!psInput.trim()}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold text-xs shrink-0"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 min-h-[44px] rounded-xl bg-brand hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed text-brand-fg font-bold text-xs shrink-0 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   <Play className="w-4 h-4 fill-current" />
                   Executar
@@ -1841,54 +2124,59 @@ export default function RemoteControlModal({
 
           {/* TAB 3: PROCESSOS E RECURSOS */}
           {activeTab === 'processes' && (
-            <div className="flex-1 p-4 md:p-6 space-y-5 bg-slate-950">
+            <div
+              id="remote-tabpanel-processes"
+              role="tabpanel"
+              aria-labelledby="remote-tab-processes"
+              className="flex-1 p-4 md:p-6 space-y-5 bg-[#09090b]"
+            >
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-400 mb-2">
+                <div className="p-4 rounded-xl bg-[#111113] border border-zinc-800">
+                  <div className="flex items-center justify-between text-xs font-bold text-zinc-400 mb-2">
                     <span className="flex items-center gap-1.5">
-                      <Cpu className="w-4 h-4 text-indigo-400" /> USO DE CPU
+                      <Cpu className="w-4 h-4 text-brand-aa" /> USO DE CPU
                     </span>
-                    <span className="text-base font-black text-white">
+                    <span className="text-base font-black text-[#fafafa] tabular-nums">
                       {metrics.cpuPercent ?? '—'}%
                     </span>
                   </div>
-                  <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="w-full h-2.5 bg-zinc-800 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-indigo-500 rounded-full transition-all"
+                      className="h-full bg-brand rounded-full transition-[width] duration-200"
                       style={{ width: `${Math.min(100, metrics.cpuPercent || 0)}%` }}
                     />
                   </div>
                 </div>
 
-                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-400 mb-2">
+                <div className="p-4 rounded-xl bg-[#111113] border border-zinc-800">
+                  <div className="flex items-center justify-between text-xs font-bold text-zinc-400 mb-2">
                     <span className="flex items-center gap-1.5">
                       <Activity className="w-4 h-4 text-emerald-400" /> MEMÓRIA RAM
                     </span>
-                    <span className="text-base font-black text-white">
+                    <span className="text-base font-black text-[#fafafa] tabular-nums">
                       {metrics.ramPercent ?? '—'}%
                     </span>
                   </div>
-                  <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="w-full h-2.5 bg-zinc-800 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-emerald-500 rounded-full transition-all"
+                      className="h-full bg-emerald-500 rounded-full transition-[width] duration-200"
                       style={{ width: `${Math.min(100, metrics.ramPercent || 0)}%` }}
                     />
                   </div>
                 </div>
 
-                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-400 mb-2">
+                <div className="p-4 rounded-xl bg-[#111113] border border-zinc-800">
+                  <div className="flex items-center justify-between text-xs font-bold text-zinc-400 mb-2">
                     <span className="flex items-center gap-1.5">
                       <HardDrive className="w-4 h-4 text-amber-400" /> DISCO (C:)
                     </span>
-                    <span className="text-base font-black text-white">
+                    <span className="text-base font-black text-[#fafafa] tabular-nums">
                       {metrics.diskPercent ?? '—'}%
                     </span>
                   </div>
-                  <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="w-full h-2.5 bg-zinc-800 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-amber-500 rounded-full transition-all"
+                      className="h-full bg-amber-500 rounded-full transition-[width] duration-200"
                       style={{ width: `${Math.min(100, metrics.diskPercent || 0)}%` }}
                     />
                   </div>
@@ -1896,22 +2184,27 @@ export default function RemoteControlModal({
               </div>
 
               {/* Tabela de Processos */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-slate-800">
-                  <h4 className="font-bold text-xs uppercase tracking-wider text-slate-300">
+              <div className="bg-[#111113] border border-zinc-800 rounded-xl overflow-hidden">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-zinc-800">
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-300">
                     Processos Ativos na Estação
                   </h4>
+                  <label htmlFor="remote-proc-filter" className="sr-only">
+                    Filtrar processos por nome ou PID
+                  </label>
                   <input
+                    id="remote-proc-filter"
+                    name="procFilter"
                     type="text"
                     value={procFilter}
                     onChange={(e) => setProcFilter(e.target.value)}
-                    placeholder="Filtrar por nome ou PID..."
-                    className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white"
+                    placeholder="Filtrar por nome ou PID…"
+                    className="px-3 py-2 min-h-[44px] rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-[#fafafa] placeholder-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   />
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-800/60 text-slate-400 uppercase text-[11px]">
+                    <thead className="bg-zinc-900/90 text-zinc-400 uppercase text-xs">
                       <tr>
                         <th className="px-4 py-2.5">PID</th>
                         <th className="px-4 py-2.5">Processo</th>
@@ -1919,25 +2212,26 @@ export default function RemoteControlModal({
                         <th className="px-4 py-2.5 text-right">Ação</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800">
+                    <tbody className="divide-y divide-zinc-800">
                       {filteredProcesses.length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
+                          <td colSpan={4} className="px-4 py-8 text-center text-zinc-500">
                             Nenhum processo listado no momento.
                           </td>
                         </tr>
                       ) : (
                         filteredProcesses.map((proc) => (
-                          <tr key={proc.pid} className="hover:bg-slate-800/40">
-                            <td className="px-4 py-2.5 font-mono text-slate-400">{proc.pid}</td>
-                            <td className="px-4 py-2.5 font-bold text-white">{proc.name}.exe</td>
-                            <td className="px-4 py-2.5 font-mono text-slate-300">{proc.memoryMb} MB</td>
+                          <tr key={proc.pid} className="hover:bg-zinc-900/60">
+                            <td className="px-4 py-2.5 font-mono text-zinc-400 tabular-nums">{proc.pid}</td>
+                            <td className="px-4 py-2.5 font-bold text-[#fafafa]">{proc.name}.exe</td>
+                            <td className="px-4 py-2.5 font-mono text-zinc-300 tabular-nums">{proc.memoryMb} MB</td>
                             <td className="px-4 py-2.5 text-right">
                               <button
+                                type="button"
                                 onClick={() => handleKillProcess(proc)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-950/50 hover:bg-rose-900/60 text-rose-300 font-bold text-[11px] transition-colors"
+                                className="inline-flex items-center gap-1 px-3 py-2 min-h-[44px] rounded-lg bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                               >
-                                <Trash2 className="w-3 h-3" />
+                                <Trash2 className="w-3.5 h-3.5" />
                                 Finalizar
                               </button>
                             </td>
@@ -1953,124 +2247,146 @@ export default function RemoteControlModal({
 
           {/* TAB 4: AÇÕES, ATUALIZAÇÃO OTA E ENERGIA */}
           {activeTab === 'actions' && (
-            <div className="flex-1 p-4 md:p-6 grid grid-cols-1 lg:grid-cols-2 gap-5 bg-slate-950">
+            <div
+              id="remote-tabpanel-actions"
+              role="tabpanel"
+              aria-labelledby="remote-tab-actions"
+              className="flex-1 p-4 md:p-6 grid grid-cols-1 lg:grid-cols-2 gap-5 bg-[#09090b]"
+            >
               
               {/* Atualização OTA */}
-              <div className="lg:col-span-2 p-5 rounded-xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="lg:col-span-2 p-5 rounded-xl bg-[#111113] border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-brand text-brand-fg flex items-center justify-center shrink-0">
                     <ArrowUpCircle className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-sm text-white">
-                      Atualização Remota OTA do NexusAgent & NexusDesk
+                    <h3 className="font-bold text-sm text-[#fafafa]">
+                      Atualização Remota OTA do NexusAgent &amp; NexusDesk
                     </h3>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-zinc-400 mt-1 tabular-nums">
                       Versão instalada: <strong>{currentAgentVer ? `v${currentAgentVer}` : 'v3.1'}</strong> • Versão mais recente disponível: <strong>v{AGENT_VERSION}</strong>
                     </p>
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={handleUpdateAgentRemote}
                   disabled={updatingAgent}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs transition-colors shrink-0"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-brand-fg font-bold text-xs transition-colors shrink-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
-                  <ArrowUpCircle className={`w-4 h-4 ${updatingAgent ? 'animate-bounce' : ''}`} />
+                  {updatingAgent ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowUpCircle className="w-4 h-4" />}
                   Atualizar para v{AGENT_VERSION}
                 </button>
               </div>
 
               {/* Controles de Energia e Bloqueio */}
-              <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
+              <div className="p-5 rounded-xl bg-[#111113] border border-zinc-800 space-y-3">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                  <h3 className="font-bold text-sm text-white">
+                  <h3 className="font-bold text-sm text-[#fafafa]">
                     Energia e Bloqueio Remoto
                   </h3>
                 </div>
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <button
+                    type="button"
                     onClick={() => handlePowerAction(REMOTE_COMMANDS.LOCK_SCREEN, 'Bloquear Tela')}
-                    className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-2"
+                    className="p-3 min-h-[44px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-[#fafafa] font-bold text-xs flex items-center gap-2 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   >
                     <Lock size={14} className="text-amber-400" /> Bloquear Estação
                   </button>
                   <button
+                    type="button"
                     onClick={() => handlePowerAction(REMOTE_COMMANDS.RESTART, 'Reiniciar Computador')}
-                    className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-2"
+                    className="p-3 min-h-[44px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-[#fafafa] font-bold text-xs flex items-center gap-2 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   >
                     <RotateCcw size={14} className="text-orange-400" /> Reiniciar (30s)
                   </button>
                   <button
+                    type="button"
                     onClick={() => handlePowerAction(REMOTE_COMMANDS.SHUTDOWN, 'Desligar Computador')}
-                    className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-2"
+                    className="p-3 min-h-[44px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-[#fafafa] font-bold text-xs flex items-center gap-2 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   >
                     <Power size={14} className="text-rose-400" /> Desligar (30s)
                   </button>
                   <button
+                    type="button"
                     onClick={() => handleSendCommand(REMOTE_COMMANDS.FORCE_INVENTORY, 'sync', 'Forçar Inventário')}
                     disabled={syncingInventory}
-                    className="p-3 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 font-bold text-xs flex items-center gap-2 disabled:opacity-50"
+                    className="p-3 min-h-[44px] rounded-xl bg-brand/15 hover:bg-brand/25 border border-brand/30 text-brand-aa font-bold text-xs flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   >
-                    <RefreshCw size={14} className={`text-indigo-400 ${syncingInventory ? 'animate-spin' : ''}`} />
-                    <span>{syncingInventory ? 'Sincronizando...' : 'Forçar Coleta'}</span>
+                    <RefreshCw size={14} className={`text-brand-aa ${syncingInventory ? 'animate-spin' : ''}`} />
+                    <span>{syncingInventory ? 'Sincronizando…' : 'Forçar Coleta'}</span>
                   </button>
                 </div>
               </div>
 
               {/* Mensagem na Tela do Usuário */}
-              <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
+              <div className="p-5 rounded-xl bg-[#111113] border border-zinc-800 space-y-3">
                 <div className="flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-indigo-400" />
-                  <h3 className="font-bold text-sm text-white">
+                  <MessageSquare className="w-5 h-5 text-brand-aa" />
+                  <h3 className="font-bold text-sm text-[#fafafa]">
                     Mensagem Pop-up na Tela
                   </h3>
                 </div>
+                <label htmlFor="remote-msg-title" className="sr-only">
+                  Título do aviso
+                </label>
                 <input
+                  id="remote-msg-title"
+                  name="msgTitle"
                   type="text"
                   value={msgTitle}
                   onChange={(e) => setMsgTitle(e.target.value)}
                   placeholder="Título do aviso"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white"
+                  className="w-full px-3 py-2 min-h-[44px] rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-[#fafafa] placeholder-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 />
+                <label htmlFor="remote-msg-body" className="sr-only">
+                  Mensagem para o colaborador
+                </label>
                 <textarea
+                  id="remote-msg-body"
+                  name="msgBody"
                   rows={2}
                   value={msgBody}
                   onChange={(e) => setMsgBody(e.target.value)}
-                  placeholder="Mensagem para o colaborador..."
-                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white"
+                  placeholder="Mensagem para o colaborador…"
+                  className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-[#fafafa] placeholder-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 />
                 <button
+                  type="button"
                   onClick={() => {
                     if (!msgBody.trim()) return;
                     handleSendCommand(REMOTE_COMMANDS.MSGBOX, msgBody.trim(), msgTitle.trim());
                     setMsgBody('');
                   }}
                   disabled={!msgBody.trim()}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold text-xs"
+                  className="px-4 py-2 min-h-[44px] rounded-xl bg-brand hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed text-brand-fg font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   Exibir Pop-up
                 </button>
               </div>
 
               {/* Gerenciamento de Softwares Winget */}
-              <div className="lg:col-span-2 p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4">
+              <div className="lg:col-span-2 p-5 rounded-xl bg-[#111113] border border-zinc-800 space-y-4">
                 <div className="flex items-center gap-2">
-                  <Package className="w-5 h-5 text-indigo-400" />
-                  <h3 className="font-bold text-sm text-white">
+                  <Package className="w-5 h-5 text-brand-aa" />
+                  <h3 className="font-bold text-sm text-[#fafafa]">
                     Instalação e Remoção Remota de Softwares (Winget)
                   </h3>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-slate-400 font-semibold">
+                  <span className="text-xs text-zinc-400 font-semibold">
                     Instalar pacote padrão em 1 clique:
                   </span>
                   {WINGET_PRESETS.map((preset) => (
                     <button
                       key={preset.pkg}
+                      type="button"
                       onClick={() => handleSendCommand(REMOTE_COMMANDS.INSTALL_WINGET, preset.pkg, `Instalar ${preset.label}`)}
-                      className="px-3 py-1.5 rounded-lg bg-indigo-950/50 hover:bg-indigo-900/60 text-indigo-300 font-bold text-xs transition-colors"
+                      className="px-3 py-2 min-h-[44px] rounded-lg bg-brand/15 hover:bg-brand/25 border border-brand/30 text-brand-aa font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     >
                       + {preset.label}
                     </button>
@@ -2079,42 +2395,54 @@ export default function RemoteControlModal({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="flex items-center gap-2">
+                    <label htmlFor="remote-winget-pkg" className="sr-only">
+                      ID Winget para instalar
+                    </label>
                     <input
+                      id="remote-winget-pkg"
+                      name="wingetPkg"
                       type="text"
                       value={wingetPkg}
                       onChange={(e) => setWingetPkg(e.target.value)}
                       placeholder="ID Winget para instalar (ex: Google.Chrome)"
-                      className="flex-1 px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white"
+                      className="flex-1 px-3 py-2 min-h-[44px] rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-[#fafafa] placeholder-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     />
                     <button
+                      type="button"
                       onClick={() => {
                         if (!wingetPkg.trim()) return;
                         handleSendCommand(REMOTE_COMMANDS.INSTALL_WINGET, wingetPkg.trim(), `Instalar ${wingetPkg.trim()}`);
                         setWingetPkg('');
                       }}
                       disabled={!wingetPkg.trim()}
-                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold text-xs shrink-0"
+                      className="px-4 py-2 min-h-[44px] rounded-xl bg-brand hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed text-brand-fg font-bold text-xs shrink-0 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     >
                       Instalar
                     </button>
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <label htmlFor="remote-uninstall-name" className="sr-only">
+                      Nome do software para remover
+                    </label>
                     <input
+                      id="remote-uninstall-name"
+                      name="uninstallName"
                       type="text"
                       value={uninstallName}
                       onChange={(e) => setUninstallName(e.target.value)}
                       placeholder="Nome do software para remover (ex: TeamViewer)"
-                      className="flex-1 px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white"
+                      className="flex-1 px-3 py-2 min-h-[44px] rounded-xl bg-zinc-900 border border-zinc-700 text-xs text-[#fafafa] placeholder-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     />
                     <button
+                      type="button"
                       onClick={() => {
                         if (!uninstallName.trim()) return;
                         handleSendCommand(REMOTE_COMMANDS.UNINSTALL_SOFTWARE, uninstallName.trim(), `Desinstalar ${uninstallName.trim()}`);
                         setUninstallName('');
                       }}
                       disabled={!uninstallName.trim()}
-                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white font-bold text-xs shrink-0"
+                      className="px-4 py-2 min-h-[44px] rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs shrink-0 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                     >
                       Desinstalar
                     </button>
@@ -2130,8 +2458,9 @@ export default function RemoteControlModal({
                     <span>Revogar acesso e matrícula desta estação remotamente.</span>
                   </div>
                   <button
+                    type="button"
                     onClick={handleRevoke}
-                    className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs"
+                    className="px-4 py-2 min-h-[44px] rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                   >
                     Revogar Agente
                   </button>

@@ -22,6 +22,7 @@ import {
 import { usePWA } from '../../contexts/PWAContext';
 import { useConfirm } from '../ConfirmDialog';
 import { Card, SectionHeader } from './settingsUi';
+import { buttonPrimaryClass, buttonSecondaryClass } from './settingsStyles';
 
 const AppSettingsSection = () => {
   const {
@@ -61,27 +62,27 @@ const AppSettingsSection = () => {
     : '—';
 
   return (
-    <Card>
+    <div className="space-y-6">
       <SectionHeader
         icon={Smartphone}
         title="Aplicativo & Atualizações (PWA)"
-        subtitle="Gerencie o funcionamento no seu dispositivo, verifique novas versões e limpe caches locais."
+        description="Gerencie o funcionamento no seu dispositivo, verifique novas versões e limpe caches locais."
       />
 
-      <div className="space-y-6 pt-2">
+      <Card icon={Smartphone} title="Diagnóstico do dispositivo" subtitle="Versão instalada e estado da conexão">
         {/* Banner de Atualização Disponível (se houver) */}
         {needRefresh && (
-          <div className="rounded-2xl border border-indigo-500/40 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-indigo-500/10 p-4 sm:p-5">
+          <div className="rounded-2xl border border-brand/40 bg-brand/5 p-4 sm:p-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/30">
-                  <Sparkles size={20} />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand text-brand-fg shadow-sm">
+                  <Sparkles size={20} aria-hidden="true" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-gray-900 dark:text-white">
+                  <h4 className="text-sm font-black text-slate-900 dark:text-[#fafafa]">
                     Nova versão pronta para ser aplicada!
                   </h4>
-                  <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">
+                  <p className="mt-0.5 text-xs text-slate-600 dark:text-zinc-300">
                     O download das melhorias já foi concluído em segundo plano. Toque no botão para recarregar o app.
                   </p>
                 </div>
@@ -89,9 +90,9 @@ const AppSettingsSection = () => {
               <button
                 type="button"
                 onClick={applyUpdate}
-                className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-indigo-600/30 hover:bg-indigo-700 active:scale-95"
+                className={`${buttonPrimaryClass} shrink-0 min-h-[44px] text-xs font-black uppercase tracking-wider`}
               >
-                <RefreshCw size={14} /> Atualizar Agora
+                <RefreshCw size={14} aria-hidden="true" /> Atualizar Agora
               </button>
             </div>
           </div>
@@ -99,107 +100,103 @@ const AppSettingsSection = () => {
 
         {/* Diagnóstico do Dispositivo */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <div className="rounded-2xl border border-gray-100 bg-gray-50/80 dark:border-slate-800 dark:bg-slate-900/60 p-4">
-            <div className="flex items-center gap-2 text-gray-400 dark:text-gray-500 text-[10px] font-black uppercase tracking-wider mb-1">
-              <ShieldCheck size={14} className="text-brand" /> Versão da Plataforma
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 dark:border-zinc-800 dark:bg-zinc-900/60 p-4">
+            <div className="flex items-center gap-2 text-slate-500 dark:text-zinc-400 text-xs font-bold uppercase tracking-wider mb-1">
+              <ShieldCheck size={14} className="text-brand-aa" aria-hidden="true" /> Versão da Plataforma
             </div>
-            <p className="text-lg font-black text-gray-900 dark:text-white font-mono">
+            <p className="text-lg font-black text-slate-900 dark:text-[#fafafa] font-mono tabular-nums">
               v{appVersion}
             </p>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
               Build de produção otimizada
             </p>
           </div>
 
-          <div className="rounded-2xl border border-gray-100 bg-gray-50/80 dark:border-slate-800 dark:bg-slate-900/60 p-4">
-            <div className="flex items-center gap-2 text-gray-400 dark:text-gray-500 text-[10px] font-black uppercase tracking-wider mb-1">
-              <Smartphone size={14} className="text-cyan-500" /> Modo de Execução
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 dark:border-zinc-800 dark:bg-zinc-900/60 p-4">
+            <div className="flex items-center gap-2 text-slate-500 dark:text-zinc-400 text-xs font-bold uppercase tracking-wider mb-1">
+              <Smartphone size={14} className="text-sky-600 dark:text-sky-400" aria-hidden="true" /> Modo de Execução
             </div>
             <div className="flex items-center gap-2">
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${
                 isStandalone
                   ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                  : 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                  : 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300'
               }`}>
-                <CheckCircle size={12} />
+                <CheckCircle size={12} aria-hidden="true" />
                 {isStandalone ? 'PWA Instalado (App)' : 'Navegador Web'}
               </span>
             </div>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
               {isStandalone ? 'Tela cheia nativa sem barra de navegação' : 'Acessado via aba do navegador'}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-gray-100 bg-gray-50/80 dark:border-slate-800 dark:bg-slate-900/60 p-4 sm:col-span-2 lg:col-span-1">
-            <div className="flex items-center gap-2 text-gray-400 dark:text-gray-500 text-[10px] font-black uppercase tracking-wider mb-1">
-              <Clock size={14} className="text-amber-500" /> Última Verificação
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 dark:border-zinc-800 dark:bg-zinc-900/60 p-4 sm:col-span-2 lg:col-span-1">
+            <div className="flex items-center gap-2 text-slate-500 dark:text-zinc-400 text-xs font-bold uppercase tracking-wider mb-1">
+              <Clock size={14} className="text-amber-500" aria-hidden="true" /> Última Verificação
             </div>
-            <p className="text-lg font-black text-gray-900 dark:text-white font-mono">
+            <p className="text-lg font-black text-slate-900 dark:text-[#fafafa] font-mono tabular-nums">
               {formattedLastChecked}
             </p>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
-              <Wifi size={11} className="text-emerald-500" /> Conectado ao servidor
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5 flex items-center gap-1">
+              <Wifi size={12} className="text-emerald-500" aria-hidden="true" /> Conectado ao servidor
             </p>
           </div>
         </div>
+      </Card>
 
-        {/* Ações de Atualização e Resgate */}
-        <div className="rounded-2xl border border-gray-100 dark:border-slate-800 p-5 space-y-4">
-          <h4 className="text-xs font-black uppercase tracking-wider text-gray-700 dark:text-gray-200">
-            Ações de Atualização
-          </h4>
+      {/* Ações de Atualização e Resgate */}
+      <Card icon={RefreshCw} title="Ações de atualização" subtitle="Verificação manual, instalação e recuperação de cache">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleManualCheck}
+            disabled={isChecking}
+            className={`${buttonSecondaryClass} min-h-[44px]`}
+          >
+            <RefreshCw size={14} className={isChecking ? 'animate-spin text-brand-aa' : ''} aria-hidden="true" />
+            {isChecking ? 'Verificando…' : 'Verificar Atualizações Agora'}
+          </button>
 
-          <div className="flex flex-wrap items-center gap-3">
+          {canInstall && !isStandalone && (
             <button
               type="button"
-              onClick={handleManualCheck}
-              disabled={isChecking}
-              className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 shadow-sm transition-all hover:border-brand/40 hover:text-brand dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200 dark:hover:border-slate-600 disabled:opacity-50"
+              onClick={installApp}
+              className={`${buttonPrimaryClass} min-h-[44px] text-xs font-black uppercase tracking-wider`}
             >
-              <RefreshCw size={14} className={isChecking ? 'animate-spin text-brand' : ''} />
-              {isChecking ? 'Verificando…' : 'Verificar Atualizações Agora'}
+              <Download size={14} aria-hidden="true" /> Instalar Aplicativo no Dispositivo
             </button>
+          )}
 
-            {canInstall && !isStandalone && (
-              <button
-                type="button"
-                onClick={installApp}
-                className="flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-brand/20 transition-all hover:bg-brand-dark active:scale-95"
-              >
-                <Download size={14} /> Instalar Aplicativo no Dispositivo
-              </button>
-            )}
-
-            {isStandalone && (
-              <button
-                type="button"
-                onClick={() => setIsInstallModalOpen(true)}
-                className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 transition-all hover:bg-emerald-500/20 active:scale-95"
-              >
-                <Smartphone size={14} /> Diagnóstico & Cache do App
-              </button>
-            )}
-
+          {isStandalone && (
             <button
               type="button"
-              onClick={handleHardReset}
-              className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50/50 px-4 py-2.5 text-xs font-bold text-rose-700 transition-all hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300 dark:hover:bg-rose-950/40"
-              title="Limpa caches residuais e força recarregamento do servidor sem precisar desinstalar o PWA"
+              onClick={() => setIsInstallModalOpen(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 min-h-[44px] text-xs font-bold text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-500/20 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
-              <Trash2 size={14} /> Forçar Atualização e Limpar Cache
+              <Smartphone size={14} aria-hidden="true" /> Diagnóstico & Cache do App
             </button>
-          </div>
+          )}
 
-          <div className="rounded-xl bg-gray-50 dark:bg-slate-900/50 p-3.5 flex items-start gap-2.5 text-xs text-gray-500 dark:text-gray-400">
-            <Info size={16} className="text-brand shrink-0 mt-0.5" />
-            <p>
-              O <strong>Nexus ITAM</strong> verifica novidades e atualiza automaticamente em segundo plano.
-              Caso note que uma nova funcionalidade recém-lançada ainda não apareceu no seu dispositivo, basta clicar em <strong>&ldquo;Verificar Atualizações&rdquo;</strong> ou em <strong>&ldquo;Forçar Atualização e Limpar Cache&rdquo;</strong>. Você nunca precisa desinstalar e reinstalar o aplicativo da sua tela de início.
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={handleHardReset}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50/70 px-4 min-h-[44px] text-xs font-bold text-rose-700 transition-colors hover:bg-rose-100 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300 dark:hover:bg-rose-950/40"
+            title="Limpa caches residuais e força recarregamento do servidor sem precisar desinstalar o PWA"
+          >
+            <Trash2 size={14} aria-hidden="true" /> Forçar Atualização e Limpar Cache
+          </button>
         </div>
-      </div>
-    </Card>
+
+        <div className="rounded-xl bg-slate-50 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-zinc-800 p-3.5 flex items-start gap-2.5 text-xs text-slate-600 dark:text-zinc-300">
+          <Info size={16} className="text-brand-aa shrink-0 mt-0.5" aria-hidden="true" />
+          <p>
+            O <strong>Nexus ITAM</strong> verifica novidades e atualiza automaticamente em segundo plano.
+            Caso note que uma nova funcionalidade recém-lançada ainda não apareceu no seu dispositivo, basta clicar em <strong>&ldquo;Verificar Atualizações&rdquo;</strong> ou em <strong>&ldquo;Forçar Atualização e Limpar Cache&rdquo;</strong>. Você nunca precisa desinstalar e reinstalar o aplicativo da sua tela de início.
+          </p>
+        </div>
+      </Card>
+    </div>
   );
 };
 

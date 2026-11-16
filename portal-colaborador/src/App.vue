@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import CustodyAssetsPanel from './components/CustodyAssetsPanel.vue';
+import PortalIcon from './components/PortalIcon.vue';
 import ResponsibilityTerms from './components/ResponsibilityTerms.vue';
 import SupportTicketDesk from './components/SupportTicketDesk.vue';
 import { useTheme } from './composables/useTheme';
@@ -16,6 +17,26 @@ import {
 const { isDark, toggleTheme, applyBranding } = useTheme();
 
 const WHITELABEL_STORAGE_KEY = 'nexus_portal_whitelabel_v3';
+const VALID_TABS = ['custody', 'terms', 'tickets'];
+
+function readInitialTab() {
+  try {
+    const param = new URLSearchParams(window.location.search).get('tab');
+    return VALID_TABS.includes(param) ? param : 'custody';
+  } catch {
+    return 'custody';
+  }
+}
+
+function syncTabQuery(tabId) {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tabId);
+    window.history.replaceState(null, '', url.toString());
+  } catch {
+    // history API indisponível
+  }
+}
 
 function sanitizeHexColor(value) {
   const raw = String(value || '').trim();
@@ -81,15 +102,25 @@ const showPassword = ref(false);
 const logoLoadError = ref(false);
 
 const session = ref(getStoredSession());
-const activeTab = ref('custody');
+const activeTab = ref(readInitialTab());
 const loading = ref(false);
 const authError = ref('');
-const portalError = ref('');
+const authStatusMessage = ref('');
+const loadError = ref('');
 const wsState = ref('disconnected');
 const liveBanner = ref('');
 const preselectedTag = ref('');
 
+const emailInputRef = ref(null);
+const passwordInputRef = ref(null);
+const tabButtonRefs = ref([]);
+
 const loginForm = reactive({
+  email: '',
+  password: '',
+});
+
+const fieldErrors = reactive({
   email: '',
   password: '',
 });
@@ -101,9 +132,13 @@ const tickets = ref([]);
 let streamHandle = null;
 let bannerTimer = null;
 
+const currentYear = new Date().getFullYear();
+
 function persistWhitelabelFromUser(user) {
   if (!user) return;
-  const company = String(user.companyName || user.tenantName || user.tenant_name || '').trim().slice(0, 80);
+  const company = String(user.companyName || user.tenantName || user.tenant_name || '')
+    .trim()
+    .slice(0, 80);
   const color = sanitizeHexColor(user.primaryColor || user.primary_color);
   const logo = sanitizeLogoUrl(user.logoUrl || user.logo_url);
   if (!company && !color && !logo) return;
@@ -111,7 +146,9 @@ function persistWhitelabelFromUser(user) {
     companyName: company || preLoginBranding.value.companyName,
     primaryColor: color || preLoginBranding.value.primaryColor,
     logoUrl: logo || preLoginBranding.value.logoUrl,
-    whitelabel: Boolean(user.whitelabel ?? (Boolean(color) || Boolean(logo) || preLoginBranding.value.whitelabel)),
+    whitelabel: Boolean(
+      user.whitelabel ?? (Boolean(color) || Boolean(logo) || preLoginBranding.value.whitelabel),
+    ),
   };
   preLoginBranding.value = merged;
   try {
@@ -121,7 +158,6 @@ function persistWhitelabelFromUser(user) {
   }
 }
 
-// Whitelabel computed properties
 const companyName = computed(() => {
   return (
     session.value?.user?.companyName ||
@@ -170,7 +206,6 @@ watch(
   },
 );
 
-// Atualiza o CSS dinâmico de cores Whitelabel sempre que o usuário possuir primaryColor
 watch(
   brandColor,
   (color) => {
@@ -179,14 +214,90 @@ watch(
   { immediate: true },
 );
 
-const pendingTermsCount = computed(
-  () => terms.value.filter((t) => t.status === 'pending').length,
+watch(activeTab, (nextTab) => {
+  if (session.value?.user) {
+    syncTabQuery(nextTab);
+  }
+});
+
+const pendingTermsCount = computed(() => terms.value.filter((t) => t.status === 'pending').length);
+const revokedTermsCount = computed(() => terms.value.filter((t) => t.status === 'revoked').length);
+const signedTermsCount = computed(() => terms.value.filter((t) => t.status === 'signed').length);
+const openTicketsCount = computed(
+  () => tickets.value.filter((t) => t.status !== 'resolved' && t.status !== 'closed').length,
 );
 
-async function refreshPortalData() {
+const termsSummary = computed(() => {
+  if (pendingTermsCount.value > 0) {
+    const word = pendingTermsCount.value === 1 ? 'pendente' : 'pendentes';
+    return {
+      headline: `${pendingTermsCount.value} ${word}`,
+      subtitle: 'Termos Art. 462 §1º',
+      borderCls: 'border-l-amber-600 dark:border-l-amber-400',
+      textCls: 'text-amber-800 dark:text-amber-300',
+      iconCls: 'bg-amber-500/10 text-amber-800 dark:text-amber-300',
+    };
+  }
+  if (revokedTermsCount.value > 0) {
+    const word = revokedTermsCount.value === 1 ? 'revogado' : 'revogados';
+    return {
+      headline: '0 pendentes',
+      subtitle: `${revokedTermsCount.value} ${word} • Art. 462 §1º`,
+      borderCls: 'border-l-slate-400 dark:border-l-zinc-500',
+      textCls: 'text-slate-900 dark:text-[#fafafa]',
+      iconCls: 'bg-slate-500/10 text-slate-700 dark:text-slate-200',
+    };
+  }
+  if (signedTermsCount.value > 0) {
+    return {
+      headline: '100% Regular',
+      subtitle: 'Termos Art. 462 §1º',
+      borderCls: 'border-l-emerald-600 dark:border-l-emerald-400',
+      textCls: 'text-emerald-700 dark:text-emerald-300',
+      iconCls: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+    };
+  }
+  return {
+    headline: '0 pendentes',
+    subtitle: 'Nenhum termo emitido',
+    borderCls: 'border-l-slate-400 dark:border-l-zinc-500',
+    textCls: 'text-slate-900 dark:text-[#fafafa]',
+    iconCls: 'bg-slate-500/10 text-slate-700 dark:text-slate-200',
+  };
+});
+
+const portalTabs = computed(() => [
+  { id: 'custody', label: `Meus equipamentos (${assets.value.length})` },
+  { id: 'terms', label: 'Termos de responsabilidade', badge: pendingTermsCount.value },
+  { id: 'tickets', label: `Central de chamados (${tickets.value.length})` },
+]);
+
+function selectTab(tabId) {
+  if (!VALID_TABS.includes(tabId)) return;
+  activeTab.value = tabId;
+}
+
+function onTabKeydown(event) {
+  const currentIndex = VALID_TABS.indexOf(activeTab.value);
+  if (currentIndex === -1) return;
+
+  let nextIndex = null;
+  if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % VALID_TABS.length;
+  else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + VALID_TABS.length) % VALID_TABS.length;
+  else if (event.key === 'Home') nextIndex = 0;
+  else if (event.key === 'End') nextIndex = VALID_TABS.length - 1;
+
+  if (nextIndex === null) return;
+  event.preventDefault();
+  const nextId = VALID_TABS[nextIndex];
+  selectTab(nextId);
+  tabButtonRefs.value[nextIndex]?.focus();
+}
+
+async function loadWorkspaceData() {
   if (!session.value?.token) return;
   loading.value = true;
-  portalError.value = '';
+  loadError.value = '';
   try {
     const [aRes, tRes, kRes] = await Promise.all([
       portalApi.listMyAssets(),
@@ -197,7 +308,7 @@ async function refreshPortalData() {
     terms.value = tRes.items || [];
     tickets.value = kRes.items || [];
   } catch (err) {
-    portalError.value = err.message;
+    loadError.value = err.message || 'Não foi possível carregar os dados do portal.';
   } finally {
     loading.value = false;
   }
@@ -212,7 +323,7 @@ function startWebSocket() {
     (frame) => {
       if (frame.event === 'welcome' || frame.event === 'pong') return;
       liveBanner.value = `Atualização recebida em tempo real (${frame.event}) via NexusDesk`;
-      refreshPortalData();
+      loadWorkspaceData();
       clearTimeout(bannerTimer);
       bannerTimer = setTimeout(() => {
         liveBanner.value = '';
@@ -222,27 +333,60 @@ function startWebSocket() {
       wsState.value = status;
     },
     () => {
-      refreshPortalData();
+      loadWorkspaceData();
     },
   );
 }
 
+function validateLoginForm() {
+  const trimmedEmail = loginForm.email.trim();
+  fieldErrors.email = '';
+  fieldErrors.password = '';
+
+  if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+    fieldErrors.email = 'Informe um e-mail corporativo válido.';
+  }
+  if (!loginForm.password) {
+    fieldErrors.password = 'Informe sua senha de acesso.';
+  }
+
+  if (fieldErrors.email) {
+    authStatusMessage.value = fieldErrors.email;
+    emailInputRef.value?.focus();
+    return false;
+  }
+  if (fieldErrors.password) {
+    authStatusMessage.value = fieldErrors.password;
+    passwordInputRef.value?.focus();
+    return false;
+  }
+  return true;
+}
+
 async function handleLogin() {
   authError.value = '';
-  portalError.value = '';
+  authStatusMessage.value = '';
+  loadError.value = '';
+
+  if (!validateLoginForm()) return;
+
   loading.value = true;
+  authStatusMessage.value = 'Autenticando credenciais…';
   try {
-    const res = await portalApi.login(loginForm.email, loginForm.password);
+    const res = await portalApi.login(loginForm.email.trim(), loginForm.password);
     session.value = { token: res.accessToken, user: res.user };
     persistWhitelabelFromUser(res.user);
     const brand = res.user?.primaryColor || res.user?.primary_color;
     if (brand) {
       applyBranding(brand);
     }
-    await refreshPortalData();
+    syncTabQuery(activeTab.value);
+    await loadWorkspaceData();
     startWebSocket();
+    authStatusMessage.value = 'Sessão iniciada.';
   } catch (err) {
-    authError.value = err.message;
+    authError.value = err.message || 'Falha ao autenticar no portal.';
+    authStatusMessage.value = authError.value;
   } finally {
     loading.value = false;
   }
@@ -253,20 +397,30 @@ function handleLogout(reason = '') {
     streamHandle.disconnect();
     streamHandle = null;
   }
+  clearTimeout(bannerTimer);
   clearStoredSession();
   session.value = null;
   assets.value = [];
   terms.value = [];
   tickets.value = [];
   wsState.value = 'disconnected';
+  liveBanner.value = '';
+  loginForm.password = '';
+  showPassword.value = false;
+  fieldErrors.email = '';
+  fieldErrors.password = '';
+  authError.value = '';
+  authStatusMessage.value = '';
+  loadError.value = '';
   if (typeof reason === 'string' && reason) {
     authError.value = reason;
+    authStatusMessage.value = reason;
   }
 }
 
 function handleReportIssue(asset) {
-  preselectedTag.value = asset.internal_id;
-  activeTab.value = 'tickets';
+  preselectedTag.value = asset.internal_id || asset.internalId || '';
+  selectTab('tickets');
 }
 
 onMounted(async () => {
@@ -284,10 +438,22 @@ onMounted(async () => {
       if (brand) {
         applyBranding(brand);
       }
-      await refreshPortalData();
-      startWebSocket();
-    } catch {
-      // 401 interceptor cuida da limpeza
+      syncTabQuery(activeTab.value);
+      await loadWorkspaceData();
+      if (session.value?.token) {
+        startWebSocket();
+      }
+    } catch (err) {
+      if (session.value?.token) {
+        const profileErr = err?.message || 'Não foi possível validar sua sessão. Tente novamente.';
+        await loadWorkspaceData();
+        if (session.value?.token) {
+          if (!loadError.value) {
+            loadError.value = profileErr;
+          }
+          startWebSocket();
+        }
+      }
     }
   }
 });
@@ -300,83 +466,110 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+  <div
+    class="min-h-screen flex flex-col bg-slate-50 dark:bg-[#09090b] text-slate-900 dark:text-[#fafafa] transition-colors duration-200"
+  >
     <!-- Top Executive Header -->
-    <header class="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/90 dark:border-slate-800/80 sticky top-0 z-40">
+    <header
+      class="bg-white/90 dark:bg-[#111113]/90 backdrop-blur-md border-b border-slate-200/90 dark:border-zinc-800 sticky top-0 z-40"
+    >
+      <a
+        href="#main-content"
+        class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2.5 focus:rounded-xl focus:bg-brand focus:text-brand-fg focus:text-xs focus:font-semibold focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-ring"
+      >
+        Pular para o conteúdo
+      </a>
+
       <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         <!-- Brand & Identity -->
         <div class="flex items-center gap-3 min-w-0">
           <div
             v-if="userLogoUrl"
-            class="w-10 h-10 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center p-1 shrink-0"
+            class="w-10 h-10 rounded-xl overflow-hidden border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 flex items-center justify-center p-1 shrink-0"
           >
-            <img :src="userLogoUrl" :alt="companyName" class="w-full h-full object-contain" @error="logoLoadError = true" />
+            <img
+              :src="userLogoUrl"
+              :alt="companyName"
+              class="w-full h-full object-contain"
+              @error="logoLoadError = true"
+            />
           </div>
           <div
             v-else
-            class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand to-brand-dark flex items-center justify-center font-black text-sm tracking-tight text-white shadow-md shadow-brand/20 shrink-0"
+            class="w-10 h-10 rounded-xl bg-brand border border-black/10 dark:border-white/15 flex items-center justify-center font-bold text-sm tracking-tight text-brand-fg shadow-sm shrink-0"
           >
             {{ companyInitial }}
           </div>
 
-          <div class="truncate">
-            <div class="flex items-center gap-2">
-              <span class="font-black text-sm tracking-tight text-slate-900 dark:text-white truncate">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="font-bold text-sm tracking-tight text-slate-900 dark:text-[#fafafa] truncate">
                 {{ companyName }}
               </span>
               <span
-                class="hidden sm:inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 items-center gap-1.5"
+                class="hidden sm:inline-flex text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 items-center gap-1.5 shrink-0"
               >
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400" />
                 Portal do Colaborador
               </span>
             </div>
-            <p class="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-              Custódia Patrimonial CLT & Autoatendimento de TI
+            <p class="text-xs text-slate-600 dark:text-slate-300 truncate">
+              Custódia patrimonial CLT e autoatendimento de TI
             </p>
           </div>
         </div>
 
-        <!-- Controls: WebSocket, Theme Switch, Profile, Logout -->
-        <div class="flex items-center gap-2.5 sm:gap-3">
-          <!-- WebSocket Pulse Beacon (Only when logged in) -->
+        <!-- Controls: Live Status, Theme Switch, Profile, Logout -->
+        <div class="flex items-center gap-2 sm:gap-3 shrink-0">
           <div
             v-if="session?.user"
-            class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-mono text-slate-700 dark:text-slate-300"
-            :title="wsState === 'connected' ? 'WebSocket em tempo real ativo' : 'Reconectando canal WebSocket...'"
+            class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-xs text-slate-700 dark:text-slate-200"
+            :title="
+              wsState === 'connected'
+                ? 'Atualizações automáticas ativas'
+                : 'Sincronizando atualizações em tempo real'
+            "
           >
             <span
               class="w-2 h-2 rounded-full"
-              :class="wsState === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400 animate-ping'"
+              :class="
+                wsState === 'connected'
+                  ? 'bg-emerald-600 dark:bg-emerald-400'
+                  : 'bg-amber-600 dark:bg-amber-400'
+              "
             />
-            <span class="font-medium">{{ wsState === 'connected' ? 'Tempo Real Ativo' : 'Sincronizando...' }}</span>
+            <span class="font-medium">
+              {{ wsState === 'connected' ? 'Tempo real ativo' : 'Sincronizando…' }}
+            </span>
           </div>
 
-          <!-- Theme Toggle Switch (Sun / Moon) -->
+          <!-- Theme Toggle Switch -->
           <button
             type="button"
-            class="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-brand dark:hover:text-brand hover:border-brand/40 transition-all cursor-pointer"
+            class="icon-btn min-h-[44px] min-w-[44px] p-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-700 dark:text-slate-200 hover:text-brand-text-light dark:hover:text-brand-text-dark hover:border-brand-ring/50 active:scale-[0.98] transition-colors cursor-pointer flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
             :title="isDark ? 'Alternar para tema claro' : 'Alternar para tema escuro'"
-            aria-label="Alternar tema"
+            :aria-label="isDark ? 'Alternar para tema claro' : 'Alternar para tema escuro'"
+            :aria-pressed="isDark"
             @click="toggleTheme"
           >
-            <span v-if="isDark" class="text-sm">☀️</span>
-            <span v-else class="text-sm">🌙</span>
+            <PortalIcon :name="isDark ? 'sun' : 'moon'" :size="18" />
           </button>
 
           <!-- User Badge & Logout -->
           <template v-if="session?.user">
-            <div class="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+            <div
+              class="hidden md:flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 min-w-0"
+            >
               <div
-                class="w-7 h-7 rounded-lg bg-brand/10 text-brand font-black text-xs flex items-center justify-center uppercase"
+                class="w-7 h-7 rounded-lg bg-brand/10 text-brand-text-light dark:text-brand-text-dark font-bold text-xs flex items-center justify-center uppercase shrink-0"
               >
                 {{ (session.user.name || 'CL').slice(0, 2) }}
               </div>
-              <div class="text-left text-xs">
-                <p class="font-bold text-slate-900 dark:text-white leading-tight">
+              <div class="text-left text-xs min-w-0">
+                <p class="font-semibold text-slate-900 dark:text-[#fafafa] leading-tight truncate max-w-[140px]">
                   {{ session.user.name }}
                 </p>
-                <p class="text-[10px] text-slate-500 dark:text-slate-400">
+                <p class="text-xs text-slate-600 dark:text-slate-300 truncate max-w-[140px]">
                   {{ session.user.department || 'Geral' }}
                 </p>
               </div>
@@ -384,10 +577,11 @@ onBeforeUnmount(() => {
 
             <button
               type="button"
-              class="text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+              class="min-h-[44px] text-xs font-semibold px-3.5 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 active:scale-[0.98] text-slate-700 dark:text-slate-200 transition-colors cursor-pointer inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
               @click="handleLogout('')"
             >
-              Sair
+              <PortalIcon name="log-out" :size="16" />
+              <span>Encerrar sessão</span>
             </button>
           </template>
         </div>
@@ -397,219 +591,288 @@ onBeforeUnmount(() => {
     <!-- Login View (When not logged in) -->
     <main
       v-if="!session?.user"
-      class="flex-1 portal-login-backdrop relative overflow-hidden flex items-center justify-center px-4 py-8 sm:px-6 lg:px-8"
+      id="main-content"
+      tabindex="-1"
+      class="flex-1 portal-login-backdrop relative overflow-hidden flex items-center justify-center px-4 py-8 sm:px-6 lg:px-8 focus:outline-none"
     >
       <div class="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch relative z-10">
-        <!-- Left Executive Showcase Column -->
-        <section class="lg:col-span-7 station-panel p-7 sm:p-9 cert-guilloche-bg flex flex-col justify-between gap-7 relative overflow-hidden">
-          <div class="space-y-5">
+        <!-- Showcase Column (Order 2 on mobile/tablet, Order 1 on desktop) -->
+        <section
+          class="order-2 lg:order-1 lg:col-span-7 station-panel p-6 sm:p-8 cert-guilloche-bg flex flex-col justify-between gap-6 relative overflow-hidden"
+        >
+          <div class="space-y-4">
             <div class="flex flex-wrap items-center gap-2">
-              <span class="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-brand/10 text-brand border border-brand/20">
-                <span class="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />
-                {{ isBrandedContext ? `Ambiente Exclusivo • ${companyName}` : 'Nexus ITAM • Portal Corporativo' }}
+              <span
+                class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-brand/10 text-brand-text-light dark:text-brand-text-dark border border-brand-ring/30"
+              >
+                {{
+                  isBrandedContext
+                    ? `Ambiente corporativo • ${companyName}`
+                    : 'Nexus ITAM • Portal Corporativo'
+                }}
               </span>
-              <span class="mono-tag">
-                HMAC-SHA256 &bull; LGPD
-              </span>
+              <span class="mono-tag">HMAC-SHA256 • LGPD</span>
             </div>
 
-            <div class="space-y-3">
-              <h1 class="text-2xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white leading-[1.12]">
-                Seu passaporte patrimonial e suporte técnico em um só lugar
+            <div class="space-y-2.5">
+              <h1
+                class="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-slate-900 dark:text-[#fafafa] leading-[1.15]"
+              >
+                Equipamentos sob sua guarda e suporte de TI
               </h1>
-              <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl">
-                Consulte equipamentos vinculados ao seu crachá digital, assine Termos de Responsabilidade CLT com autenticidade criptográfica e abra chamados de TI N1/N2 com atualização instantânea.
+              <p class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl">
+                Consulte ativos atribuídos, assine termos digitais (Art. 462 §1º CLT) e acompanhe
+                chamados com retorno direto da equipe técnica.
               </p>
             </div>
           </div>
 
           <!-- Key Pillars Grid -->
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-            <div class="p-4 rounded-xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/70 space-y-1.5">
-              <div class="w-8 h-8 rounded-lg bg-brand/10 text-brand flex items-center justify-center">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="2" y="3" width="20" height="14" rx="2" />
-                  <path d="M8 21h8M12 17v4" />
-                </svg>
+            <div
+              class="p-4 rounded-xl bg-slate-50/90 dark:bg-zinc-900/70 border border-slate-200/80 dark:border-zinc-800 space-y-2"
+            >
+              <div
+                class="w-9 h-9 rounded-lg bg-brand/10 text-brand-text-light dark:text-brand-text-dark flex items-center justify-center"
+              >
+                <PortalIcon name="monitor" :size="18" />
               </div>
-              <h2 class="text-xs font-black text-slate-900 dark:text-white">
-                Custódia Auditada
-              </h2>
-              <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              <p class="text-sm font-semibold text-slate-900 dark:text-[#fafafa]">
+                Custódia auditada
+              </p>
+              <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                 Ativos em sua posse com número de série, patrimônio e histórico completo.
               </p>
             </div>
 
-            <div class="p-4 rounded-xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/70 space-y-1.5">
-              <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                  <path d="m9 12 2 2 4-4" />
-                </svg>
+            <div
+              class="p-4 rounded-xl bg-slate-50/90 dark:bg-zinc-900/70 border border-slate-200/80 dark:border-zinc-800 space-y-2"
+            >
+              <div
+                class="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 flex items-center justify-center"
+              >
+                <PortalIcon name="shield-check" :size="18" />
               </div>
-              <h2 class="text-xs font-black text-slate-900 dark:text-white">
-                Termo CLT Digital
-              </h2>
-              <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              <p class="text-sm font-semibold text-slate-900 dark:text-[#fafafa]">
+                Termo CLT digital
+              </p>
+              <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                 Selo HMAC-SHA256 e comprovação conforme Art. 462 &sect;1&ordm; da CLT.
               </p>
             </div>
 
-            <div class="p-4 rounded-xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/70 space-y-1.5">
-              <div class="w-8 h-8 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center">
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
+            <div
+              class="p-4 rounded-xl bg-slate-50/90 dark:bg-zinc-900/70 border border-slate-200/80 dark:border-zinc-800 space-y-2"
+            >
+              <div
+                class="w-9 h-9 rounded-lg bg-sky-500/10 text-sky-700 dark:text-sky-300 flex items-center justify-center"
+              >
+                <PortalIcon name="message-square" :size="18" />
               </div>
-              <h2 class="text-xs font-black text-slate-900 dark:text-white">
-                Service Desk N1/N2
-              </h2>
-              <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                Abertura direta por patrimônio com retorno em tempo real via WebSocket.
+              <p class="text-sm font-semibold text-slate-900 dark:text-[#fafafa]">
+                Service desk N1/N2
+              </p>
+              <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Abertura direta por patrimônio com retorno imediato da equipe técnica.
               </p>
             </div>
           </div>
 
           <!-- Compliance Footer inside Hero -->
-          <div class="pt-4 border-t border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-            <span class="inline-flex items-center gap-1.5 font-semibold">
-              <svg class="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
-              Privacidade LGPD (Lei 13.709/2018) &bull; Sem telemetria invasiva
-            </span>
-            <span class="font-mono text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              Scrypt Zero-Trust Auth
+          <div
+            class="pt-4 border-t border-slate-200/70 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-300"
+          >
+            <span class="inline-flex items-center gap-1.5 font-medium">
+              <PortalIcon name="shield-check" :size="16" class="text-emerald-700 dark:text-emerald-400" />
+              <span>Privacidade LGPD (Lei 13.709/2018) • Acesso exclusivo do colaborador</span>
             </span>
           </div>
         </section>
 
-        <!-- Right Authentication Card Column -->
-        <section class="lg:col-span-5 flex">
-          <div class="w-full station-panel p-7 sm:p-8 flex flex-col justify-between space-y-6 shadow-2xl border-t-4 border-t-brand">
+        <!-- Authentication Card Column (Order 1 on mobile/tablet so form is immediately visible) -->
+        <section class="order-1 lg:order-2 lg:col-span-5 flex">
+          <div
+            class="w-full station-panel p-6 sm:p-8 flex flex-col justify-between space-y-6 shadow-xl border-t-4 border-t-brand-ring"
+          >
             <div class="space-y-4">
               <div class="flex items-center gap-3.5">
                 <div
                   v-if="userLogoUrl"
-                  class="w-12 h-12 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center p-1.5 shadow-sm shrink-0"
+                  class="w-12 h-12 rounded-2xl overflow-hidden border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 flex items-center justify-center p-1.5 shadow-sm shrink-0"
                 >
-                  <img :src="userLogoUrl" :alt="companyName" class="w-full h-full object-contain" @error="logoLoadError = true" />
+                  <img
+                    :src="userLogoUrl"
+                    :alt="companyName"
+                    class="w-full h-full object-contain"
+                    @error="logoLoadError = true"
+                  />
                 </div>
                 <div
                   v-else
-                  class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand to-brand-dark flex items-center justify-center font-black text-base text-white shadow-lg shadow-brand/25 shrink-0"
+                  class="w-12 h-12 rounded-2xl bg-brand border border-black/10 dark:border-white/15 flex items-center justify-center font-bold text-base text-brand-fg shadow-sm shrink-0"
                 >
                   {{ companyInitial }}
                 </div>
                 <div class="min-w-0">
-                  <p class="text-[10px] font-bold uppercase tracking-widest text-brand">
-                    Acesso Autenticado
+                  <p class="text-xs font-semibold text-brand-text-light dark:text-brand-text-dark">
+                    Acesso autenticado
                   </p>
-                  <h2 class="text-lg sm:text-xl font-black tracking-tight text-slate-900 dark:text-white truncate">
+                  <h2
+                    class="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-[#fafafa] truncate"
+                  >
                     {{ companyName }}
                   </h2>
                 </div>
               </div>
 
-              <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Entre com seu e-mail corporativo e a senha provisória enviada pelo seu gestor de TI ou RH.
+              <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                Entre com seu e-mail corporativo e a senha enviada pela equipe de TI ou RH.
               </p>
             </div>
 
-            <form class="space-y-4" @submit.prevent="handleLogin">
+            <form class="space-y-4" novalidate @submit.prevent="handleLogin">
               <div>
-                <label for="portal-login-email" class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  E-mail Corporativo
+                <label
+                  for="portal-login-email"
+                  class="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1.5"
+                >
+                  E-mail corporativo
                 </label>
                 <div class="relative">
-                  <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500">
-                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect width="20" height="16" x="2" y="4" rx="2" />
-                      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-                    </svg>
+                  <span
+                    class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400"
+                  >
+                    <PortalIcon name="mail" :size="16" />
                   </span>
                   <input
                     id="portal-login-email"
+                    ref="emailInputRef"
                     v-model.trim="loginForm.email"
+                    name="email"
                     type="email"
+                    inputmode="email"
+                    spellcheck="false"
                     autocomplete="email"
                     required
-                    class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/90 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 pl-10 pr-3.5 py-2.5 text-xs sm:text-sm focus:bg-white dark:focus:bg-slate-800 focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none transition-all"
-                    placeholder="colaborador@empresa.com.br"
+                    :aria-invalid="Boolean(fieldErrors.email)"
+                    :aria-describedby="fieldErrors.email ? 'portal-login-email-error' : undefined"
+                    class="w-full min-h-[44px] rounded-xl border bg-slate-50/70 dark:bg-zinc-900 text-slate-900 dark:text-[#fafafa] placeholder-slate-500 dark:placeholder-slate-400 pl-10 pr-3.5 py-2.5 text-sm focus:bg-white dark:focus:bg-zinc-900 focus:border-brand-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring transition-colors"
+                    :class="
+                      fieldErrors.email
+                        ? 'border-rose-600 dark:border-rose-400'
+                        : 'border-slate-300 dark:border-zinc-700'
+                    "
+                    placeholder="nome@empresa.com.br…"
+                    @input="fieldErrors.email = ''"
                   />
                 </div>
+                <p
+                  v-if="fieldErrors.email"
+                  id="portal-login-email-error"
+                  role="alert"
+                  class="mt-1.5 text-xs font-medium text-rose-700 dark:text-rose-300"
+                >
+                  {{ fieldErrors.email }}
+                </p>
               </div>
 
               <div>
-                <label for="portal-login-password" class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Senha de Acesso
+                <label
+                  for="portal-login-password"
+                  class="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1.5"
+                >
+                  Senha de acesso
                 </label>
                 <div class="relative">
-                  <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500">
-                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                    </svg>
+                  <span
+                    class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400"
+                  >
+                    <PortalIcon name="lock" :size="16" />
                   </span>
                   <input
                     id="portal-login-password"
+                    ref="passwordInputRef"
                     v-model="loginForm.password"
+                    name="password"
                     :type="showPassword ? 'text' : 'password'"
                     autocomplete="current-password"
                     required
-                    class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/90 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 pl-10 pr-11 py-2.5 text-xs sm:text-sm focus:bg-white dark:focus:bg-slate-800 focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none transition-all"
-                    placeholder="••••••••••••"
+                    :aria-invalid="Boolean(fieldErrors.password)"
+                    :aria-describedby="fieldErrors.password ? 'portal-login-password-error' : undefined"
+                    class="w-full min-h-[44px] rounded-xl border bg-slate-50/70 dark:bg-zinc-900 text-slate-900 dark:text-[#fafafa] placeholder-slate-500 dark:placeholder-slate-400 pl-10 pr-12 py-2.5 text-sm focus:bg-white dark:focus:bg-zinc-900 focus:border-brand-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring transition-colors"
+                    :class="
+                      fieldErrors.password
+                        ? 'border-rose-600 dark:border-rose-400'
+                        : 'border-slate-300 dark:border-zinc-700'
+                    "
+                    placeholder="Digite sua senha…"
+                    @input="fieldErrors.password = ''"
                   />
                   <button
                     type="button"
-                    class="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                    class="icon-btn absolute right-0.5 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white active:scale-95 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
                     :aria-label="showPassword ? 'Ocultar senha' : 'Exibir senha'"
+                    :aria-pressed="showPassword"
                     :title="showPassword ? 'Ocultar senha' : 'Exibir senha'"
                     @click="showPassword = !showPassword"
                   >
-                    <svg v-if="showPassword" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
-                      <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
-                      <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
-                      <line x1="2" x2="22" y1="2" y2="22" />
-                    </svg>
-                    <svg v-else class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
+                    <PortalIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
                   </button>
                 </div>
+                <p
+                  v-if="fieldErrors.password"
+                  id="portal-login-password-error"
+                  role="alert"
+                  class="mt-1.5 text-xs font-medium text-rose-700 dark:text-rose-300"
+                >
+                  {{ fieldErrors.password }}
+                </p>
               </div>
 
-              <div
-                v-if="authError"
-                role="alert"
-                class="p-3.5 rounded-xl bg-red-500/10 border border-red-500/25 text-xs text-red-700 dark:text-red-300 font-semibold flex items-start gap-2.5"
-              >
-                <svg class="w-4 h-4 text-red-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" x2="12" y1="8" y2="12" />
-                  <line x1="12" x2="12.01" y1="16" y2="16" />
-                </svg>
-                <span>{{ authError }}</span>
+              <div role="status" aria-live="polite">
+                <span v-if="authStatusMessage && !authError" class="sr-only">
+                  {{ authStatusMessage }}
+                </span>
+                <div
+                  v-if="authError"
+                  role="alert"
+                  class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-800 dark:text-rose-200 font-medium flex items-start gap-2.5"
+                >
+                  <PortalIcon
+                    name="alert-circle"
+                    :size="16"
+                    class="text-rose-700 dark:text-rose-300 mt-0.5"
+                  />
+                  <span>{{ authError }}</span>
+                </div>
               </div>
 
               <button
                 type="submit"
                 :disabled="loading"
-                class="w-full py-3 rounded-xl bg-brand hover:bg-brand-dark text-white text-xs font-bold uppercase tracking-wider transition-all shadow-lg shadow-brand/25 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                class="w-full min-h-[44px] py-3 px-4 rounded-xl bg-brand hover:bg-brand-dark border border-black/10 dark:border-white/15 active:scale-[0.98] text-brand-fg text-sm font-semibold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#111113]"
               >
-                <span v-if="loading" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>{{ loading ? 'Autenticando...' : 'Acessar Central Corporativa' }}</span>
+                <span
+                  v-if="loading"
+                  class="w-4 h-4 border-2 border-brand-fg border-t-transparent rounded-full animate-spin"
+                  aria-hidden="true"
+                />
+                <span>{{ loading ? 'Autenticando…' : 'Entrar no portal' }}</span>
               </button>
             </form>
 
-            <div class="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-              <p class="font-semibold text-slate-600 dark:text-slate-300">
+            <div
+              class="pt-4 border-t border-slate-200/80 dark:border-zinc-800 space-y-1 text-xs text-slate-600 dark:text-slate-300"
+            >
+              <p class="font-semibold text-slate-700 dark:text-slate-200">
                 Precisa de acesso ou redefinição de senha?
               </p>
               <p class="leading-relaxed">
-                Solicite ao gestor de TI da sua empresa na tela <strong class="font-semibold text-slate-700 dark:text-slate-200">Portal Colaboradores</strong> para gerar uma nova credencial.
+                Solicite ao gestor de TI da sua empresa na tela
+                <strong class="font-semibold text-slate-900 dark:text-[#fafafa]">
+                  Portal Colaboradores
+                </strong>
+                para gerar uma nova credencial.
               </p>
             </div>
           </div>
@@ -618,17 +881,40 @@ onBeforeUnmount(() => {
     </main>
 
     <!-- Authenticated Workspace View -->
-    <main v-else class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <main
+      v-else
+      id="main-content"
+      tabindex="-1"
+      class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6 focus:outline-none"
+    >
+      <!-- Workspace Title -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div class="min-w-0">
+          <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-[#fafafa]">
+            Custódia e atendimentos de {{ companyName }}
+          </h1>
+          <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-0.5">
+            Consulte seus equipamentos vinculados, assine termos CLT e acompanhe chamados de suporte.
+          </p>
+        </div>
+      </div>
+
       <!-- Error Notification -->
       <div
-        v-if="portalError"
-        class="p-4 rounded-2xl bg-red-500/10 text-red-800 dark:text-red-300 border border-red-500/20 text-xs font-semibold flex items-center justify-between gap-3 shadow-xs"
+        v-if="loadError"
+        role="alert"
+        aria-live="polite"
+        class="p-4 rounded-2xl bg-rose-500/10 text-rose-800 dark:text-rose-200 border border-rose-500/30 text-xs font-medium flex flex-wrap items-center justify-between gap-3 shadow-sm"
       >
-        <span>⚠️ {{ portalError }}</span>
+        <div class="flex items-center gap-2 min-w-0">
+          <PortalIcon name="alert-triangle" :size="16" class="text-rose-700 dark:text-rose-300" />
+          <span class="break-words">{{ loadError }}</span>
+        </div>
         <button
           type="button"
-          class="font-bold text-red-700 dark:text-red-400 hover:underline cursor-pointer"
-          @click="refreshPortalData"
+          :disabled="loading"
+          class="min-h-[44px] px-3 py-1.5 rounded-xl font-semibold text-rose-800 dark:text-rose-200 hover:bg-rose-500/15 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+          @click="loadWorkspaceData"
         >
           Recarregar dados
         </button>
@@ -637,184 +923,214 @@ onBeforeUnmount(() => {
       <!-- Real-time Live Event Toast Banner -->
       <div
         v-if="liveBanner"
-        class="p-3.5 rounded-2xl bg-slate-900 dark:bg-slate-800 text-white border border-emerald-500/40 text-xs font-sans flex items-center justify-between shadow-xl animate-in slide-in-from-top-2 duration-300"
+        role="status"
+        aria-live="polite"
+        class="p-3.5 rounded-2xl bg-slate-900 dark:bg-zinc-900 text-[#fafafa] border border-emerald-500/40 text-xs flex items-center justify-between gap-3 shadow-lg animate-slide-down"
       >
-        <div class="flex items-center gap-2.5">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-          <span class="font-bold text-emerald-400">Atualização em Tempo Real:</span>
-          <span class="text-slate-200">{{ liveBanner }}</span>
+        <div class="flex items-center gap-2.5 min-w-0">
+          <PortalIcon name="check-circle" :size="16" class="text-emerald-400" />
+          <span class="font-semibold text-emerald-300 shrink-0">Atualização em tempo real:</span>
+          <span class="text-slate-100 truncate">{{ liveBanner }}</span>
         </div>
         <button
           type="button"
-          class="text-slate-400 hover:text-white px-2 py-0.5 text-xs font-bold cursor-pointer"
+          class="icon-btn min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-white/10 active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+          aria-label="Dispensar notificação"
           @click="liveBanner = ''"
         >
-          ✕
+          <PortalIcon name="x" :size="16" />
         </button>
       </div>
 
       <!-- Employee Dashboard Quick Summary -->
       <div class="grid gap-3.5 sm:grid-cols-3">
         <!-- Equipamentos sob custódia -->
-        <div class="station-panel p-4 flex items-center justify-between border-l-4 border-l-brand">
-          <div>
-            <p class="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              Equipamentos sob Custódia
+        <div class="station-panel p-4 flex items-center justify-between gap-3 border-l-4 border-l-brand-ring">
+          <div class="min-w-0">
+            <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">
+              Equipamentos sob custódia
             </p>
-            <p class="text-2xl font-black text-slate-900 dark:text-white mt-1">
-              {{ assets.length }} Ativos
+            <p class="text-2xl font-bold text-slate-900 dark:text-[#fafafa] mt-1 tabular-nums truncate">
+              {{ assets.length }} {{ assets.length === 1 ? 'ativo' : 'ativos' }}
             </p>
-            <p class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+            <p class="text-xs text-slate-600 dark:text-slate-300 truncate">
               Vinculados à sua matrícula
             </p>
           </div>
-          <div class="w-11 h-11 rounded-2xl bg-brand/10 text-brand flex items-center justify-center font-bold text-xl">
-            💻
+          <div
+            class="w-11 h-11 rounded-2xl bg-brand/10 text-brand-text-light dark:text-brand-text-dark flex items-center justify-center shrink-0"
+          >
+            <PortalIcon name="laptop" :size="20" />
           </div>
         </div>
 
         <!-- Conformidade CLT -->
         <div
-          class="station-panel p-4 flex items-center justify-between border-l-4"
-          :class="pendingTermsCount > 0 ? 'border-l-amber-500' : 'border-l-emerald-500'"
+          class="station-panel p-4 flex items-center justify-between gap-3 border-l-4"
+          :class="termsSummary.borderCls"
         >
-          <div>
-            <p class="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              Conformidade Jurídica CLT
+          <div class="min-w-0">
+            <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">
+              Conformidade jurídica CLT
             </p>
             <p
-              class="text-2xl font-black mt-1"
-              :class="pendingTermsCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'"
+              class="text-2xl font-bold mt-1 tabular-nums truncate"
+              :class="termsSummary.textCls"
             >
-              {{ pendingTermsCount > 0 ? `${pendingTermsCount} Pendente` : '100% Regular' }}
+              {{ termsSummary.headline }}
             </p>
-            <p class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-              Termos Art. 462 §1º
+            <p class="text-xs text-slate-600 dark:text-slate-300 truncate">
+              {{ termsSummary.subtitle }}
             </p>
           </div>
           <div
-            class="w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-xl"
-            :class="pendingTermsCount > 0 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'"
+            class="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
+            :class="termsSummary.iconCls"
           >
-            📋
+            <PortalIcon name="clipboard-check" :size="20" />
           </div>
         </div>
 
         <!-- Atendimento de TI -->
-        <div class="station-panel p-4 flex items-center justify-between border-l-4 border-l-indigo-500">
-          <div>
-            <p class="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+        <div class="station-panel p-4 flex items-center justify-between gap-3 border-l-4 border-l-sky-600 dark:border-l-sky-400">
+          <div class="min-w-0">
+            <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">
               Atendimento de TI
             </p>
-            <p class="text-2xl font-black text-slate-900 dark:text-white mt-1">
-              {{ tickets.filter(t => t.status !== 'resolved' && t.status !== 'closed').length }} Em Aberto
+            <p class="text-2xl font-bold text-slate-900 dark:text-[#fafafa] mt-1 tabular-nums truncate">
+              {{ openTicketsCount }} em aberto
             </p>
-            <p class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-              {{ tickets.length }} chamados no histórico
+            <p class="text-xs text-slate-600 dark:text-slate-300 tabular-nums truncate">
+              {{ tickets.length }} {{ tickets.length === 1 ? 'chamado' : 'chamados' }} no histórico
             </p>
           </div>
-          <div class="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xl">
-            🎧
+          <div
+            class="w-11 h-11 rounded-2xl bg-sky-500/10 text-sky-700 dark:text-sky-300 flex items-center justify-center shrink-0"
+          >
+            <PortalIcon name="headphones" :size="20" />
           </div>
         </div>
       </div>
 
       <!-- Navigation Tabs -->
-      <nav class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
-        <div class="flex flex-wrap gap-2">
+      <nav
+        aria-label="Navegação do portal"
+        class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-zinc-800 pb-3"
+      >
+        <div
+          role="tablist"
+          aria-label="Seções do portal"
+          class="flex flex-wrap gap-2"
+          @keydown="onTabKeydown"
+        >
           <button
+            v-for="(tab, idx) in portalTabs"
+            :id="`tab-${tab.id}`"
+            :key="tab.id"
+            :ref="(el) => { tabButtonRefs[idx] = el; }"
             type="button"
-            class="px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+            role="tab"
+            :aria-selected="activeTab === tab.id"
+            :aria-controls="`panel-${tab.id}`"
+            :tabindex="activeTab === tab.id ? 0 : -1"
+            class="min-h-[44px] px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold active:scale-[0.98] transition-colors shadow-sm inline-flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
             :class="
-              activeTab === 'custody'
-                ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm'
-                : 'station-panel text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
+              activeTab === tab.id
+                ? 'bg-slate-900 dark:bg-[#fafafa] text-white dark:text-[#09090b]'
+                : 'station-panel text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-zinc-700'
             "
-            @click="activeTab = 'custody'"
+            @click="selectTab(tab.id)"
           >
-            Meus Equipamentos ({{ assets.length }})
-          </button>
-
-          <button
-            type="button"
-            class="px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2 cursor-pointer"
-            :class="
-              activeTab === 'terms'
-                ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm'
-                : 'station-panel text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
-            "
-            @click="activeTab = 'terms'"
-          >
-            <span>Termos de Responsabilidade</span>
+            <span class="tabular-nums">{{ tab.label }}</span>
             <span
-              v-if="pendingTermsCount > 0"
-              class="px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black"
+              v-if="tab.badge > 0"
+              class="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 text-xs font-bold tabular-nums"
             >
-              {{ pendingTermsCount }} pendente
+              {{ tab.badge }} {{ tab.badge === 1 ? 'pendente' : 'pendentes' }}
             </span>
-          </button>
-
-          <button
-            type="button"
-            class="px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-            :class="
-              activeTab === 'tickets'
-                ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm'
-                : 'station-panel text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
-            "
-            @click="activeTab = 'tickets'"
-          >
-            Central de Chamados ({{ tickets.length }})
           </button>
         </div>
 
         <button
           type="button"
-          class="text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-brand transition-colors flex items-center gap-1.5 cursor-pointer py-1.5 px-3 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-          @click="refreshPortalData"
+          :disabled="loading"
+          class="min-h-[44px] text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-brand-text-light dark:hover:text-brand-text-dark active:scale-[0.98] transition-colors inline-flex items-center gap-1.5 cursor-pointer py-2 px-3 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+          @click="loadWorkspaceData"
         >
-          <span>Atualizar Dados</span>
-          <span :class="loading ? 'animate-spin inline-block' : ''">↻</span>
+          <span>Atualizar painel</span>
+          <PortalIcon name="refresh-cw" :size="16" :class="loading ? 'animate-spin' : ''" />
         </button>
       </nav>
 
-      <!-- Tab Content Panels -->
-      <CustodyAssetsPanel
-        v-if="activeTab === 'custody'"
-        :assets="assets"
-        :loading="loading"
-        @report-issue="handleReportIssue"
-      />
+      <!-- Tab Content Panels (kept mounted with v-show to preserve session state) -->
+      <div
+        v-show="activeTab === 'custody'"
+        id="panel-custody"
+        role="tabpanel"
+        aria-labelledby="tab-custody"
+        :aria-hidden="activeTab !== 'custody'"
+      >
+        <CustodyAssetsPanel
+          :assets="assets"
+          :loading="loading"
+          :error="loadError"
+          @retry="loadWorkspaceData"
+          @report-issue="handleReportIssue"
+        />
+      </div>
 
-      <ResponsibilityTerms
-        v-else-if="activeTab === 'terms'"
-        :terms="terms"
-        @signed="refreshPortalData"
-      />
+      <div
+        v-show="activeTab === 'terms'"
+        id="panel-terms"
+        role="tabpanel"
+        aria-labelledby="tab-terms"
+        :aria-hidden="activeTab !== 'terms'"
+      >
+        <ResponsibilityTerms
+          :terms="terms"
+          :loading="loading"
+          :error="loadError"
+          @retry="loadWorkspaceData"
+          @signed="loadWorkspaceData"
+        />
+      </div>
 
-      <SupportTicketDesk
-        v-else
-        :tickets="tickets"
-        :assets="assets"
-        :user-department="session.user.department || 'Geral'"
-        :preselected-asset-tag="preselectedTag"
-        @clear-preselected="preselectedTag = ''"
-        @created="refreshPortalData"
-      />
+      <div
+        v-show="activeTab === 'tickets'"
+        id="panel-tickets"
+        role="tabpanel"
+        aria-labelledby="tab-tickets"
+        :aria-hidden="activeTab !== 'tickets'"
+      >
+        <SupportTicketDesk
+          :tickets="tickets"
+          :assets="assets"
+          :loading="loading"
+          :error="loadError"
+          :user-department="session.user.department || 'Geral'"
+          :preselected-asset-tag="preselectedTag"
+          @retry="loadWorkspaceData"
+          @clear-preselected="preselectedTag = ''"
+          @created="loadWorkspaceData"
+        />
+      </div>
     </main>
 
     <!-- Professional Corporate Footer -->
-    <footer class="bg-white dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800/80 py-4 text-center text-xs text-slate-400 dark:text-slate-500 mt-auto">
+    <footer
+      class="bg-white dark:bg-[#111113] border-t border-slate-200/80 dark:border-zinc-800 py-4 text-center text-xs text-slate-600 dark:text-slate-300 mt-auto"
+    >
       <div class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-        <p>© 2026 {{ companyName }} • Gestão Patrimonial de TI & Service Desk</p>
-        <div class="flex items-center gap-4 text-[11px]">
+        <p>© {{ currentYear }} {{ companyName }} • Gestão Patrimonial de TI e Service Desk</p>
+        <div class="flex items-center gap-4 text-xs">
           <a
             :href="`${GATEWAY_BASE_URL}/docs`"
             target="_blank"
             rel="noopener noreferrer"
-            class="text-slate-500 dark:text-slate-400 hover:text-brand font-bold transition-colors"
+            class="min-h-[44px] inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200 hover:text-brand-text-light dark:hover:text-brand-text-dark active:scale-[0.98] font-semibold transition-colors px-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
           >
-            Catálogo de Integração & APIs ↗
+            <span>Documentação de integrações</span>
+            <PortalIcon name="arrow-up-right" :size="14" />
           </a>
         </div>
       </div>

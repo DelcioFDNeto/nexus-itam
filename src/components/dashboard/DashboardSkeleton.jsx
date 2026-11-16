@@ -2,30 +2,35 @@ import React from 'react';
 
 const DashboardSkeleton = () => {
   return (
-    <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8 pb-24 animate-pulse">
-      
+    <div
+      role="status"
+      aria-label="Carregando painel…"
+      className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8 pb-24 animate-pulse"
+    >
+      <span className="sr-only">Carregando painel…</span>
+
       {/* HEADER SKELETON */}
       <div className="flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
-            <div className="h-8 w-48 bg-gray-200 dark:bg-slate-700 rounded-md mb-2"></div>
-            <div className="h-4 w-64 bg-gray-200 dark:bg-slate-700 rounded-md"></div>
+            <div className="h-8 w-48 bg-gray-200 dark:bg-zinc-800 rounded-md mb-2"></div>
+            <div className="h-4 w-64 bg-gray-200 dark:bg-zinc-800 rounded-md"></div>
         </div>
         <div className="flex gap-2">
-            <div className="h-10 w-32 bg-gray-200 dark:bg-slate-700 rounded-xl"></div>
-            <div className="h-10 w-32 bg-gray-200 dark:bg-slate-700 rounded-xl"></div>
+            <div className="h-10 w-32 bg-gray-200 dark:bg-zinc-800 rounded-xl"></div>
+            <div className="h-10 w-32 bg-gray-200 dark:bg-zinc-800 rounded-xl"></div>
         </div>
       </div>
 
       {/* KPI CARDS SKELETON */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {[...Array(4)].map((_, i) => (
-            <div key={i} className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 h-32 flex items-center justify-between">
+            <div key={i} className="bg-white dark:bg-[#111113] p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800 h-32 flex items-center justify-between">
                 <div>
-                    <div className="h-3 w-20 bg-gray-200 dark:bg-slate-700 rounded-md mb-2"></div>
-                    <div className="h-8 w-16 bg-gray-200 dark:bg-slate-700 rounded-md mb-2"></div>
-                    <div className="h-4 w-24 bg-gray-200 dark:bg-slate-700 rounded-full"></div>
+                    <div className="h-3 w-20 bg-gray-200 dark:bg-zinc-800 rounded-md mb-2"></div>
+                    <div className="h-8 w-16 bg-gray-200 dark:bg-zinc-800 rounded-md mb-2"></div>
+                    <div className="h-4 w-24 bg-gray-200 dark:bg-zinc-800 rounded-full"></div>
                 </div>
-                <div className="h-12 w-12 bg-gray-200 dark:bg-slate-700 rounded-xl"></div>
+                <div className="h-12 w-12 bg-gray-200 dark:bg-zinc-800 rounded-xl"></div>
             </div>
         ))}
       </div>
@@ -35,23 +40,23 @@ const DashboardSkeleton = () => {
           
           {/* LEFT COL */}
           <div className="lg:col-span-2 space-y-8">
-              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl h-80 border border-gray-200 dark:border-slate-700"></div>
+              <div className="bg-white dark:bg-[#111113] p-6 rounded-2xl h-80 border border-gray-200 dark:border-zinc-800"></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl h-64 border border-gray-200 dark:border-slate-700"></div>
-                  <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl h-64 border border-gray-200 dark:border-slate-700"></div>
+                  <div className="bg-white dark:bg-[#111113] p-6 rounded-2xl h-64 border border-gray-200 dark:border-zinc-800"></div>
+                  <div className="bg-white dark:bg-[#111113] p-6 rounded-2xl h-64 border border-gray-200 dark:border-zinc-800"></div>
               </div>
           </div>
 
           {/* RIGHT COL - TIMELINE */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl h-[600px] border border-gray-200 dark:border-slate-700 p-6 flex flex-col gap-4">
-               <div className="h-6 w-40 bg-gray-200 dark:bg-slate-700 rounded-md"></div>
+          <div className="bg-white dark:bg-[#111113] rounded-2xl h-[600px] border border-gray-200 dark:border-zinc-800 p-6 flex flex-col gap-4">
+               <div className="h-6 w-40 bg-gray-200 dark:bg-zinc-800 rounded-md"></div>
                <div className="flex-1 space-y-4 pt-4">
                    {[...Array(5)].map((_, i) => (
                        <div key={i} className="flex gap-3">
-                           <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-slate-700 shrink-0"></div>
+                           <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-zinc-800 shrink-0"></div>
                            <div className="flex-1 space-y-2">
-                               <div className="h-3 w-full bg-gray-200 dark:bg-slate-700 rounded-md"></div>
-                               <div className="h-3 w-2/3 bg-gray-200 dark:bg-slate-700 rounded-md"></div>
+                               <div className="h-3 w-full bg-gray-200 dark:bg-zinc-800 rounded-md"></div>
+                               <div className="h-3 w-2/3 bg-gray-200 dark:bg-zinc-800 rounded-md"></div>
                            </div>
                        </div>
                    ))}

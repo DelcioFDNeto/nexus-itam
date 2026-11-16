@@ -27,24 +27,35 @@ const FileDrop = ({ id, onFiles, multiple = false, label, hint, compact = false 
         setOver(false);
         take(e.dataTransfer.files);
       }}
-      className={`rounded-2xl border-2 border-dashed transition-colors ${over ? 'border-brand bg-brand/5' : 'border-gray-300 dark:border-slate-600 hover:border-brand/60'}`}
+      className={`rounded-2xl border-2 border-dashed transition-colors focus-within:outline-none focus-within:ring-2 focus-within:ring-brand focus-within:ring-offset-2 dark:focus-within:ring-offset-[#111113] ${
+        over
+          ? 'border-brand bg-brand/5 dark:bg-brand/10'
+          : 'border-slate-300 dark:border-zinc-700 hover:border-brand/60 bg-slate-50/50 dark:bg-zinc-900/40'
+      }`}
     >
       <input
         id={id}
         type="file"
         accept={SIGNED_COPY_ACCEPT}
         multiple={multiple}
-        className="sr-only"
+        className="sr-only peer"
         onChange={(e) => {
           take(e.target.files);
           e.target.value = '';
         }}
       />
-      <label htmlFor={id} className={`flex cursor-pointer items-center gap-3 ${compact ? 'p-3' : 'flex-col p-6 text-center'}`}>
-        <span className="p-2.5 rounded-xl bg-brand/10 text-brand"><UploadCloud size={compact ? 18 : 24} /></span>
+      <label
+        htmlFor={id}
+        className={`flex min-h-[44px] cursor-pointer items-center gap-3 rounded-2xl ${
+          compact ? 'p-3' : 'flex-col p-6 text-center'
+        }`}
+      >
+        <span className="p-2.5 rounded-xl bg-brand/10 text-brand-aa" aria-hidden="true">
+          <UploadCloud size={compact ? 18 : 24} aria-hidden="true" />
+        </span>
         <span className="min-w-0">
-          <span className="block text-sm font-black text-gray-800 dark:text-gray-100">{label}</span>
-          {hint && <span className="block text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{hint}</span>}
+          <span className="block text-sm font-black text-slate-900 dark:text-[#fafafa]">{label}</span>
+          {hint && <span className="block text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{hint}</span>}
         </span>
       </label>
     </div>

@@ -5,16 +5,17 @@
 // pagina carrega /settings/{tenantId}, guarda as alteracoes de TODAS as secoes
 // (trocar de secao nao perde o que foi digitado) e salva tudo de uma vez.
 // -----------------------------------------------------------------------------
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import {
-  Building2, ChevronRight, Cpu, Database, Download, FileText, Layers, Lock, MapPin, Palette, RefreshCcw, Save, Settings, Smartphone, Tag, UserCog, Users,
+  AlertCircle, Building2, ChevronRight, Cpu, Database, Download, FileText, Layers, Lock, MapPin, Palette, RefreshCcw, Save, Settings, Smartphone, Tag, UserCog, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '../services/firebase';
 import { describeFirebaseError } from '../services/tenantService';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../components/ConfirmDialog';
 import { can } from '../utils/permissions';
 import { hasFeature } from '../utils/entitlements';
 import { safeCssColor, safeImageUrl } from '../utils/sanitize';
@@ -29,6 +30,7 @@ import LabelsSection from '../components/settings/LabelsSection';
 import AppearanceSection from '../components/settings/AppearanceSection';
 import BackupSection from '../components/settings/BackupSection';
 import AppSettingsSection from '../components/settings/AppSettingsSection';
+import { buttonPrimaryClass, buttonSecondaryClass } from '../components/settings/settingsStyles';
 import { Card, SectionHeader } from '../components/settings/settingsUi';
 
 // Campos da empresa gravados em /settings/{tenantId}. Sem valores de outra
@@ -102,6 +104,8 @@ const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const SettingsPage = () => {
   const { currentUser, refreshProfile } = useAuth();
+  const confirm = useConfirm();
+  const navigate = useNavigate();
   const tenantId = currentUser?.tenantId;
   const canEdit = can(currentUser, 'settings:write');
   const whitelabel = hasFeature(currentUser, 'whitelabel');
@@ -112,40 +116,102 @@ const SettingsPage = () => {
     [currentUser],
   );
   const visibleIds = nav.flatMap((g) => g.items.filter((i) => !i.to).map((i) => i.id));
-  const section = visibleIds.includes(params.get('secao')) ? params.get('secao') : 'empresa';
-  const goTo = (id) => setParams(id === 'empresa' ? {} : { secao: id }, { replace: true });
+  const requestedSection = params.get('section') || params.get('secao');
+  const section = visibleIds.includes(requestedSection) ? requestedSection : 'empresa';
 
   const [config, setConfig] = useState(EMPTY_CONFIG);
   const [savedConfig, setSavedConfig] = useState(EMPTY_CONFIG);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [saving, setSaving] = useState(false);
 
+  const isMountedRef = useRef(true);
+  const loadSeqRef = useRef(0);
+  const loadedRef = useRef(false);
+  const companyNameRef = useRef(currentUser?.companyName);
+  companyNameRef.current = currentUser?.companyName;
+
   useEffect(() => {
-    if (!tenantId) return;
-    (async () => {
-      try {
-        const snap = await getDoc(doc(db, 'settings', tenantId));
-        const data = snap.exists() ? snap.data() : {};
-        const next = { ...EMPTY_CONFIG };
-        EDITABLE_KEYS.forEach((key) => {
-          if (data[key] !== undefined && data[key] !== null) next[key] = data[key];
-        });
-        if (!next.companyName) next.companyName = currentUser?.companyName && currentUser.companyName !== 'Nexus ITAM' ? currentUser.companyName : '';
-        setConfig(next);
-        setSavedConfig(next);
-        setLoaded(true);
-      } catch (error) {
-        console.error('Erro ao carregar configurações:', error);
-        toast.error('Não foi possível carregar as configurações.');
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const loadSettings = useCallback(async () => {
+    if (!tenantId) {
+      loadedRef.current = false;
+      setLoaded(false);
+      return;
+    }
+    const seq = ++loadSeqRef.current;
+    setLoadError(null);
+    if (!loadedRef.current) {
+      setLoaded(false);
+    }
+    try {
+      const snap = await getDoc(doc(db, 'settings', tenantId));
+      if (!isMountedRef.current || seq !== loadSeqRef.current) return;
+      const data = snap.exists() ? snap.data() : {};
+      const next = { ...EMPTY_CONFIG };
+      EDITABLE_KEYS.forEach((key) => {
+        if (data[key] !== undefined && data[key] !== null) {
+          if (key === 'termOverdueDays' && data[key] === '') return;
+          next[key] = data[key];
+        }
+      });
+      if (!next.companyName) {
+        next.companyName = companyNameRef.current && companyNameRef.current !== 'Nexus ITAM' ? companyNameRef.current : '';
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      loadedRef.current = true;
+      setConfig(next);
+      setSavedConfig(next);
+      setLoaded(true);
+    } catch (error) {
+      console.error('Erro ao carregar configurações:', error);
+      if (!isMountedRef.current || seq !== loadSeqRef.current) return;
+      setLoadError('Não foi possível carregar as configurações da empresa.');
+      toast.error('Não foi possível carregar as configurações.');
+    }
   }, [tenantId]);
+
+  useEffect(() => {
+    loadedRef.current = false;
+    setLoaded(false);
+    loadSettings();
+  }, [loadSettings]);
 
   const dirtyKeys = useMemo(() => EDITABLE_KEYS.filter((key) => !sameValue(config[key], savedConfig[key])), [config, savedConfig]);
   const dirty = dirtyKeys.length > 0;
   const dirtySections = new Set(ALL_ITEMS.filter((item) => item.keys?.some((k) => dirtyKeys.includes(k))).map((item) => item.id));
   const set = (key, value) => setConfig((prev) => ({ ...prev, [key]: value }));
+
+  const goTo = async (id, { skipConfirm = false } = {}) => {
+    if (id === section) return;
+    if (!skipConfirm && dirty) {
+      const proceed = await confirm({
+        title: 'Alterações não salvas',
+        message: 'Você possui alterações não salvas nesta seção. Deseja trocar de seção agora? Suas edições continuam pendentes para salvar.',
+        confirmLabel: 'Trocar de seção',
+        cancelLabel: 'Continuar aqui',
+      });
+      if (!proceed) return;
+    }
+    setParams(id === 'empresa' ? {} : { section: id }, { replace: true });
+  };
+
+  const handleExternalLinkClick = async (event, to) => {
+    if (!dirty) return;
+    event.preventDefault();
+    const proceed = await confirm({
+      title: 'Sair sem salvar?',
+      message: 'Você possui alterações não salvas nas configurações. Se sair agora, essas alterações serão perdidas.',
+      confirmLabel: 'Sair sem salvar',
+      cancelLabel: 'Continuar editando',
+      danger: true,
+    });
+    if (proceed) navigate(to);
+  };
 
   // Fechar ou recarregar a aba com alteracoes pendentes pede confirmacao.
   useEffect(() => {
@@ -160,25 +226,42 @@ const SettingsPage = () => {
 
   const handleSave = async (e) => {
     e?.preventDefault();
-    if (!tenantId || !canEdit || !dirty) return;
+    if (!tenantId || !canEdit || !dirty || saving) return;
 
     const color = config.primaryColor ? safeCssColor(config.primaryColor) : '';
     if (config.primaryColor && !color) {
       toast.error('Cor inválida. Use o seletor ou um código como #1E40AF.');
-      goTo('identidade');
+      goTo('identidade', { skipConfirm: true });
       return;
     }
     if (config.logoUrl && !safeImageUrl(config.logoUrl)) {
       toast.error('URL do logotipo inválida. Use um endereço https:// público.');
-      goTo('identidade');
+      goTo('identidade', { skipConfirm: true });
       return;
     }
+    const trimmedEmail = String(config.supportEmail || '').trim();
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      toast.error('E-mail de suporte inválido.');
+      goTo('etiquetas', { skipConfirm: true });
+      return;
+    }
+
+    const parsedOverdue = Number(config.termOverdueDays);
+    const termOverdueDays =
+      config.termOverdueDays === '' ||
+      config.termOverdueDays === null ||
+      config.termOverdueDays === undefined ||
+      !Number.isFinite(parsedOverdue)
+        ? 30
+        : Math.min(90, Math.max(1, Math.round(parsedOverdue)));
 
     setSaving(true);
     try {
       const payload = {
         ...Object.fromEntries(EDITABLE_KEYS.map((key) => [key, config[key]])),
         companyName: config.companyName.trim(),
+        supportEmail: trimmedEmail,
+        termOverdueDays,
         primaryColor: color || '',
         customFields: (config.customFields || []).filter((cf) => cf.label?.trim()),
         updatedAt: serverTimestamp(),
@@ -193,21 +276,37 @@ const SettingsPage = () => {
         });
       }
 
-      const next = { ...config, primaryColor: color || '', customFields: payload.customFields };
-      setConfig(next);
-      setSavedConfig(next);
+      const next = {
+        ...config,
+        companyName: payload.companyName,
+        supportEmail: trimmedEmail,
+        termOverdueDays,
+        primaryColor: color || '',
+        customFields: payload.customFields,
+      };
+      if (isMountedRef.current) {
+        setConfig(next);
+        setSavedConfig(next);
+      }
       // Aplica logo, cor e modulos agora — antes so apareciam apos recarregar.
       await refreshProfile();
-      toast.success('Configurações salvas e aplicadas.');
+      if (isMountedRef.current) {
+        toast.success('Configurações salvas e aplicadas.');
+      }
     } catch (error) {
       console.error(error);
-      toast.error(describeFirebaseError(error, 'Erro ao salvar as configurações.'));
+      if (isMountedRef.current) {
+        toast.error(describeFirebaseError(error, 'Erro ao salvar as configurações.'));
+      }
     } finally {
-      setSaving(false);
+      if (isMountedRef.current) {
+        setSaving(false);
+      }
     }
   };
 
   const formSection = ALL_ITEMS.find((item) => item.id === section)?.keys;
+  const hasActiveForm = Boolean(formSection && loaded && !loadError);
   const sectionProps = { config, set, currentUser, whitelabel, disabled: !canEdit || saving };
 
   const renderSection = () => {
@@ -238,27 +337,31 @@ const SettingsPage = () => {
     <div className="max-w-6xl mx-auto pb-28">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-gray-900 dark:bg-slate-800 text-white rounded-xl"><Settings size={26} /></div>
+          <div className="p-3 bg-slate-900 dark:bg-[#111113] dark:border dark:border-zinc-800 text-white rounded-xl">
+            <Settings size={26} aria-hidden="true" />
+          </div>
           <div>
-            <h1 className="text-2xl font-black text-gray-900 dark:text-white">Configurações</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{config.companyName || 'Sua empresa'}</p>
+            <h1 className="text-2xl font-black text-slate-900 dark:text-[#fafafa]">Configurações</h1>
+            <p className="text-sm text-slate-500 dark:text-zinc-400">{config.companyName || 'Sua empresa'}</p>
           </div>
         </div>
         {canEdit && (
           <button
-            onClick={handleSave}
+            type={hasActiveForm ? 'submit' : 'button'}
+            form={hasActiveForm ? 'settings-form' : undefined}
+            onClick={hasActiveForm ? undefined : handleSave}
             disabled={saving || !dirty}
-            className="self-start md:self-auto bg-brand text-white px-5 py-3 rounded-xl font-bold hover:bg-brand-dark flex items-center gap-2 text-sm shadow-md shadow-brand/30 transition-all active:scale-95 disabled:opacity-50 disabled:shadow-none"
+            className={`${buttonPrimaryClass} self-start md:self-auto min-h-[44px] shadow-sm`}
           >
-            {saving ? <RefreshCcw size={16} className="animate-spin" /> : <Save size={16} />}
-            {saving ? 'Salvando...' : dirty ? `Salvar alterações (${dirtySections.size})` : 'Tudo salvo'}
+            {saving ? <RefreshCcw size={16} className="animate-spin" aria-hidden="true" /> : <Save size={16} aria-hidden="true" />}
+            {saving ? 'Salvando…' : dirty ? <span className="tabular-nums">Salvar alterações ({dirtySections.size})</span> : 'Tudo salvo'}
           </button>
         )}
       </div>
 
       {!canEdit && (
         <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
-          <Lock size={18} className="shrink-0 mt-0.5" />
+          <Lock size={18} className="shrink-0 mt-0.5" aria-hidden="true" />
           <p>Somente o proprietário da conta altera empresa, identidade visual, documentos e módulos. Você pode gerenciar os locais e a sua aparência pessoal.</p>
         </div>
       )}
@@ -269,21 +372,21 @@ const SettingsPage = () => {
           <div className="flex lg:flex-col gap-1 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-1 lg:pb-0">
             {nav.map((group) => (
               <div key={group.group} className="flex lg:flex-col gap-1 shrink-0 lg:shrink lg:mb-3">
-                <p className="hidden lg:block px-3 pt-1 pb-1 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">{group.group}</p>
+                <p className="hidden lg:block px-3 pt-1 pb-1 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">{group.group}</p>
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   const active = section === item.id;
-                  const className = `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-colors ${
-                    active ? 'bg-brand text-white shadow-md shadow-brand/20' : 'text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-slate-800'
+                  const className = `flex items-center gap-2.5 px-3 py-2.5 min-h-[44px] rounded-xl text-sm font-bold whitespace-nowrap transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                    active ? 'bg-brand text-brand-fg shadow-sm' : 'text-slate-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-[#111113]'
                   }`;
                   return item.to ? (
-                    <Link key={item.id} to={item.to} className={className}>
-                      <Icon size={16} /> <span className="flex-1">{item.label}</span> <ChevronRight size={14} className="opacity-50 hidden lg:block" />
+                    <Link key={item.id} to={item.to} onClick={(e) => handleExternalLinkClick(e, item.to)} className={className}>
+                      <Icon size={16} aria-hidden="true" /> <span className="flex-1">{item.label}</span> <ChevronRight size={14} className="opacity-50 hidden lg:block" aria-hidden="true" />
                     </Link>
                   ) : (
                     <button key={item.id} type="button" onClick={() => goTo(item.id)} aria-current={active ? 'page' : undefined} className={className}>
-                      <Icon size={16} /> <span className="flex-1 text-left">{item.label}</span>
-                      {dirtySections.has(item.id) && <span className={`h-2 w-2 rounded-full ${active ? 'bg-white' : 'bg-amber-500'}`} aria-label="alterações não salvas" />}
+                      <Icon size={16} aria-hidden="true" /> <span className="flex-1 text-left">{item.label}</span>
+                      {dirtySections.has(item.id) && <span className={`h-2 w-2 rounded-full ${active ? 'bg-brand-fg' : 'bg-amber-500'}`} aria-label="alterações não salvas" />}
                     </button>
                   );
                 })}
@@ -293,10 +396,23 @@ const SettingsPage = () => {
         </nav>
 
         <div className="min-w-0">
-          {!loaded && formSection ? (
-            <p className="py-16 text-center text-sm text-gray-400">Carregando configurações…</p>
+          {loadError && formSection ? (
+            <div role="alert" className="rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle size={20} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" aria-hidden="true" />
+                <div>
+                  <h2 className="text-sm font-bold text-rose-900 dark:text-rose-200">Erro ao carregar configurações</h2>
+                  <p className="text-xs text-rose-700 dark:text-rose-300 mt-1">{loadError}</p>
+                </div>
+              </div>
+              <button type="button" onClick={loadSettings} className={`${buttonSecondaryClass} min-h-[44px] shrink-0`}>
+                <RefreshCcw size={15} aria-hidden="true" /> Tentar novamente
+              </button>
+            </div>
+          ) : !loaded && formSection ? (
+            <p role="status" className="py-16 text-center text-sm text-slate-500 dark:text-zinc-400">Carregando configurações…</p>
           ) : formSection ? (
-            <form onSubmit={handleSave}>
+            <form id="settings-form" onSubmit={handleSave}>
               <fieldset disabled={!canEdit || saving} className="min-w-0">{renderSection()}</fieldset>
             </form>
           ) : (
@@ -306,16 +422,22 @@ const SettingsPage = () => {
       </div>
 
       {canEdit && dirty && (
-        <div className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-30 w-[calc(100%-2rem)] max-w-xl flex items-center justify-between gap-3 rounded-2xl border border-brand/30 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-4 py-3 shadow-xl" role="region" aria-label="Alterações não salvas">
-          <span className="text-xs font-bold text-gray-600 dark:text-gray-300">
+        <div className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-30 w-[calc(100%-2rem)] max-w-xl flex items-center justify-between gap-3 rounded-2xl border border-brand/30 bg-white/95 dark:bg-[#111113]/95 dark:border-zinc-800 backdrop-blur-sm px-4 py-3 shadow-xl" role="region" aria-label="Alterações não salvas">
+          <span className="text-xs font-bold text-slate-700 dark:text-zinc-300">
             Alterações não salvas em: {ALL_ITEMS.filter((i) => dirtySections.has(i.id)).map((i) => i.label).join(', ')}
           </span>
           <div className="flex gap-2 shrink-0">
-            <button type="button" onClick={() => setConfig(savedConfig)} className="px-3 py-2 rounded-lg text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800">
+            <button type="button" onClick={() => setConfig(savedConfig)} className={`${buttonSecondaryClass} min-h-[44px] py-2 px-3 text-xs`}>
               Descartar
             </button>
-            <button type="button" onClick={handleSave} disabled={saving} className="px-4 py-2 rounded-lg bg-brand text-white text-xs font-black flex items-center gap-1.5 disabled:opacity-60">
-              <Save size={14} /> Salvar
+            <button
+              type={hasActiveForm ? 'submit' : 'button'}
+              form={hasActiveForm ? 'settings-form' : undefined}
+              onClick={hasActiveForm ? undefined : handleSave}
+              disabled={saving}
+              className={`${buttonPrimaryClass} min-h-[44px] py-2 px-4 text-xs font-black`}
+            >
+              <Save size={14} aria-hidden="true" /> {saving ? 'Salvando…' : 'Salvar'}
             </button>
           </div>
         </div>

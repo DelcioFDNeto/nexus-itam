@@ -34,7 +34,9 @@ describe('buildBrandedPortalUrl', () => {
     expect(parsed.searchParams.get('wl')).toBeNull();
   });
 
-  it('retorna vazio se baseUrl estiver ausente', () => {
+  it('retorna vazio se baseUrl estiver ausente ou usar protocolo inseguro', () => {
     expect(buildBrandedPortalUrl('')).toBe('');
+    expect(buildBrandedPortalUrl('javascript:alert(1)', { companyName: 'Acme' })).toBe('');
+    expect(buildBrandedPortalUrl('not-a-valid-url')).toBe('');
   });
 });

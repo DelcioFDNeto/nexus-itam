@@ -3,12 +3,12 @@
 import React from 'react';
 
 export const Card = ({ icon: Icon, title, subtitle, children, action }) => (
-  <section className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
-    <header className="bg-gray-50 dark:bg-slate-900 px-5 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-3">
-      {Icon && <Icon className="text-brand shrink-0" size={18} />}
+  <section className="bg-white dark:bg-[#111113] rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden">
+    <header className="bg-slate-50 dark:bg-zinc-900/80 px-5 py-4 border-b border-slate-100 dark:border-zinc-800 flex items-center gap-3">
+      {Icon && <Icon className="text-brand-aa shrink-0" size={18} aria-hidden="true" />}
       <div className="min-w-0 flex-1">
-        <h2 className="font-bold text-gray-800 dark:text-white text-sm uppercase">{title}</h2>
-        {subtitle && <p className="text-[11px] text-gray-500 dark:text-gray-400">{subtitle}</p>}
+        <h2 className="font-bold text-slate-900 dark:text-white text-sm uppercase">{title}</h2>
+        {subtitle && <p className="text-xs text-slate-600 dark:text-slate-400">{subtitle}</p>}
       </div>
       {action}
     </header>
@@ -18,9 +18,9 @@ export const Card = ({ icon: Icon, title, subtitle, children, action }) => (
 
 export const Field = ({ label, hint, htmlFor, children }) => (
   <div>
-    <label htmlFor={htmlFor} className="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">{label}</label>
+    <label htmlFor={htmlFor} className="block text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1.5">{label}</label>
     {children}
-    {hint && <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">{hint}</p>}
+    {hint && <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">{hint}</p>}
   </div>
 );
 
@@ -28,10 +28,10 @@ export const Field = ({ label, hint, htmlFor, children }) => (
 export const SectionHeader = ({ icon: Icon, title, description, children }) => (
   <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
     <div>
-      <h2 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2">
-        {Icon && <Icon size={20} className="text-brand" />} {title}
+      <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+        {Icon && <Icon size={20} className="text-brand-aa shrink-0" aria-hidden="true" />} {title}
       </h2>
-      {description && <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{description}</p>}
+      {description && <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">{description}</p>}
     </div>
     {children}
   </div>

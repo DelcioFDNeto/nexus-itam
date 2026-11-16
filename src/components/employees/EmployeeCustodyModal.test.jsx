@@ -11,7 +11,7 @@ describe('EmployeeCustodyModal', () => {
     role: 'Analista de Suporte',
     sector: 'TI & Infraestrutura',
     branch: 'Filial Belém',
-    email: 'joao.silva@shineray.com.br',
+    email: 'joao.silva@empresa-exemplo.com.br',
     cpf: '123.456.789-00',
     login: 'joao.silva'
   };
@@ -19,7 +19,7 @@ describe('EmployeeCustodyModal', () => {
   const mockAssets = [
     {
       id: 'ast-1',
-      internalId: 'SHL-BEL-NTB-001',
+      internalId: 'AST-BEL-NTB-001',
       model: 'Latitude 3420',
       brand: 'Dell',
       type: 'Notebook',
@@ -30,7 +30,7 @@ describe('EmployeeCustodyModal', () => {
     },
     {
       id: 'ast-2',
-      internalId: 'SHL-BEL-CEL-001',
+      internalId: 'AST-BEL-CEL-001',
       model: 'Galaxy A15',
       brand: 'Samsung',
       type: 'Smartphone',
@@ -54,13 +54,32 @@ describe('EmployeeCustodyModal', () => {
       </BrowserRouter>
     );
 
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('João da Silva')).toBeInTheDocument();
     expect(screen.getByText(/Analista de Suporte/)).toBeInTheDocument();
     expect(screen.getByText(/TI & Infraestrutura/)).toBeInTheDocument();
     expect(screen.getByText('2 ativos')).toBeInTheDocument();
     expect(screen.getByText(/5\.700,00/)).toBeInTheDocument();
-    expect(screen.getByText('SHL-BEL-NTB-001')).toBeInTheDocument();
-    expect(screen.getByText('SHL-BEL-CEL-001')).toBeInTheDocument();
+    expect(screen.getByText('AST-BEL-NTB-001')).toBeInTheDocument();
+    expect(screen.getByText('AST-BEL-CEL-001')).toBeInTheDocument();
+  });
+
+  it('closes when Escape is pressed', () => {
+    const handleClose = vi.fn();
+    render(
+      <BrowserRouter>
+        <EmployeeCustodyModal
+          employee={mockEmployee}
+          assets={mockAssets}
+          onClose={handleClose}
+          onOpenTerm={vi.fn()}
+          canIssueTerms={true}
+        />
+      </BrowserRouter>
+    );
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(handleClose).toHaveBeenCalledTimes(1);
   });
 
   it('triggers onOpenTerm with responsabilidade and devolucao', () => {

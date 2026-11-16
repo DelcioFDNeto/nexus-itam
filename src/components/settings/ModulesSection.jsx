@@ -19,18 +19,18 @@ const ModulesSection = ({ config, set, currentUser, disabled }) => {
     <div className="space-y-6">
       <SectionHeader icon={Layers} title="Módulos" description="Oculte do menu o que sua equipe não usa. Os dados continuam salvos e voltam ao religar." />
       <Card icon={Layers} title="Módulos do menu">
-        <ul className="divide-y divide-gray-100 dark:divide-slate-700">
+        <ul className="divide-y divide-slate-100 dark:divide-zinc-800">
           {MODULES.map((mod) => {
             const entitled = hasFeature(currentUser, mod.id);
             const visible = !(config.hiddenModules || []).includes(mod.id);
             return (
               <li key={mod.id} className="flex items-center justify-between gap-4 py-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                  <p className="text-sm font-bold text-slate-900 dark:text-[#fafafa] flex flex-wrap items-center gap-2">
                     {mod.label}
-                    {!entitled && <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-gray-300">Fora do plano</span>}
+                    {!entitled && <span className="text-xs font-bold uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">Fora do plano</span>}
                   </p>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400">{mod.description}</p>
+                  <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{mod.description}</p>
                 </div>
                 <button
                   type="button"
@@ -39,9 +39,11 @@ const ModulesSection = ({ config, set, currentUser, disabled }) => {
                   aria-label={`Exibir ${mod.label}`}
                   disabled={!entitled || disabled}
                   onClick={() => toggle(mod.id)}
-                  className={`relative h-6 min-h-0 w-11 shrink-0 rounded-full p-0 transition-colors disabled:opacity-40 ${entitled && visible ? 'bg-brand' : 'bg-gray-300 dark:bg-slate-600'}`}
+                  className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] shrink-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand active:scale-[0.98] disabled:opacity-40"
                 >
-                  <span className={`absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${entitled && visible ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                  <span className={`relative block h-6 w-11 rounded-full transition-colors ${entitled && visible ? 'bg-brand' : 'bg-slate-300 dark:bg-zinc-700'}`}>
+                    <span className={`absolute left-0 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${entitled && visible ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                  </span>
                 </button>
               </li>
             );

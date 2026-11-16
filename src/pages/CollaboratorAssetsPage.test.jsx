@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
@@ -7,12 +7,14 @@ import * as authContext from '../contexts/AuthContext';
 import * as employeeService from '../services/employeeService';
 import * as assetService from '../services/assetService';
 
+const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+
 describe('CollaboratorAssetsPage', () => {
   const mockUser = {
     tenantId: 'tenant-ap3htf6',
     displayName: 'João da Silva',
     name: 'João da Silva',
-    email: 'joao.silva@shineray.com.br',
+    email: 'joao.silva@empresa.com.br',
     role: 'user'
   };
 
@@ -23,14 +25,14 @@ describe('CollaboratorAssetsPage', () => {
       role: 'Analista de Suporte',
       sector: 'TI & Operações',
       branch: 'Filial Belém',
-      email: 'joao.silva@shineray.com.br'
+      email: 'joao.silva@empresa.com.br'
     }
   ];
 
   const mockAssets = [
     {
       id: 'ast-1',
-      internalId: 'SHL-BEL-NTB-001',
+      internalId: 'NXS-BEL-NTB-001',
       model: 'Latitude 3420',
       brand: 'Dell',
       type: 'Notebook',
@@ -42,7 +44,7 @@ describe('CollaboratorAssetsPage', () => {
     },
     {
       id: 'ast-2',
-      internalId: 'SHL-BEL-CEL-001',
+      internalId: 'NXS-BEL-CEL-001',
       model: 'Galaxy A15',
       brand: 'Samsung',
       type: 'Smartphone',
@@ -62,6 +64,15 @@ describe('CollaboratorAssetsPage', () => {
     vi.spyOn(assetService, 'getAssets').mockResolvedValue(mockAssets);
   });
 
+  afterEach(() => {
+    if (originalClipboardDescriptor) {
+      Object.defineProperty(navigator, 'clipboard', originalClipboardDescriptor);
+    } else {
+      delete navigator.clipboard;
+    }
+    vi.restoreAllMocks();
+  });
+
   it('renders collaborator profile, KPIs and assigned equipment', async () => {
     render(
       <BrowserRouter>
@@ -74,8 +85,8 @@ describe('CollaboratorAssetsPage', () => {
     });
 
     expect(screen.getByText('Total de Ativos')).toBeInTheDocument();
-    expect(screen.getByText('SHL-BEL-NTB-001')).toBeInTheDocument();
-    expect(screen.getByText('SHL-BEL-CEL-001')).toBeInTheDocument();
+    expect(screen.getByText('NXS-BEL-NTB-001')).toBeInTheDocument();
+    expect(screen.getByText('NXS-BEL-CEL-001')).toBeInTheDocument();
   });
 
   it('filters equipment via category pills', async () => {
@@ -86,15 +97,15 @@ describe('CollaboratorAssetsPage', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('SHL-BEL-NTB-001')).toBeInTheDocument();
+      expect(screen.getByText('NXS-BEL-NTB-001')).toBeInTheDocument();
     });
 
     // Clica no filtro Smartphones
     const smartBtn = screen.getByText('Smartphones');
     fireEvent.click(smartBtn);
 
-    expect(screen.getByText('SHL-BEL-CEL-001')).toBeInTheDocument();
-    expect(screen.queryByText('SHL-BEL-NTB-001')).not.toBeInTheDocument();
+    expect(screen.getByText('NXS-BEL-CEL-001')).toBeInTheDocument();
+    expect(screen.queryByText('NXS-BEL-NTB-001')).not.toBeInTheDocument();
   });
 
   it('allows confirming asset inspection with visual feedback', async () => {
@@ -105,7 +116,7 @@ describe('CollaboratorAssetsPage', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('SHL-BEL-NTB-001')).toBeInTheDocument();
+      expect(screen.getByText('NXS-BEL-NTB-001')).toBeInTheDocument();
     });
 
     const confirmBtns = screen.getAllByText('Confirmar Posse / Vistoria');
@@ -121,19 +132,19 @@ describe('CollaboratorAssetsPage', () => {
       currentUser: {
         tenantId: 'tenant-ap3htf6',
         name: 'Délcio Farias',
-        email: 'delcio@shineray.com.br',
+        email: 'delcio@empresa.com.br',
         role: 'user'
       }
     });
 
     vi.spyOn(employeeService, 'getEmployees').mockResolvedValue([
-      { id: 'emp-2', name: 'Délcio Farias', email: 'delcio@shineray.com.br', role: 'Gestor' }
+      { id: 'emp-2', name: 'Délcio Farias', email: 'delcio@empresa.com.br', role: 'Gestor' }
     ]);
 
     vi.spyOn(assetService, 'getAssets').mockResolvedValue([
       {
         id: 'ast-compound',
-        internalId: 'SHL-BEL-NTB-017',
+        internalId: 'NXS-BEL-NTB-017',
         model: 'Galaxy Book 2',
         brand: 'Samsung',
         type: 'Notebook',
@@ -150,8 +161,76 @@ describe('CollaboratorAssetsPage', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('SHL-BEL-NTB-017')).toBeInTheDocument();
+      expect(screen.getByText('NXS-BEL-NTB-017')).toBeInTheDocument();
     });
     expect(screen.getByText('Galaxy Book 2')).toBeInTheDocument();
+  });
+
+  it('abre Ficha Técnica como dialog acessível e fecha com Escape restaurando foco', async () => {
+    render(
+      <BrowserRouter>
+        <CollaboratorAssetsPage />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('NXS-BEL-NTB-001')).toBeInTheDocument();
+    });
+
+    const triggers = screen.getAllByRole('button', { name: /Ficha Técnica/i });
+    triggers[0].focus();
+    fireEvent.click(triggers[0]);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(triggers[0]).toHaveFocus();
+  });
+
+  it('exibe estado de erro com retry acessível quando falha ao carregar ativos', async () => {
+    vi.spyOn(assetService, 'getAssets')
+      .mockRejectedValueOnce(new Error('Falha de rede no catálogo'))
+      .mockResolvedValueOnce(mockAssets);
+
+    render(
+      <BrowserRouter>
+        <CollaboratorAssetsPage />
+      </BrowserRouter>
+    );
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Falha de rede no catálogo');
+
+    fireEvent.click(screen.getByRole('button', { name: /Tentar novamente/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('NXS-BEL-NTB-001')).toBeInTheDocument();
+    });
+  });
+
+  it('não fecha Ficha Técnica ao pressionar Escape quando existe alertdialog empilhado acima', async () => {
+    render(
+      <BrowserRouter>
+        <CollaboratorAssetsPage />
+        <div role="alertdialog" aria-modal="true">
+          <button type="button">Cancelar</button>
+        </div>
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('NXS-BEL-NTB-001')).toBeInTheDocument();
+    });
+
+    const triggers = screen.getAllByRole('button', { name: /Ficha Técnica/i });
+    fireEvent.click(triggers[0]);
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

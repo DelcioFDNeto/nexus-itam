@@ -47,32 +47,32 @@ export const SPEC_FIELDS = {
 
 export const ASSET_TYPES = [
   // --- Computacao ---
-  { id: 'Computador', label: 'Computador', icon: Computer,        tone: 'text-violet-500',  specs: ['processor', 'ram', 'storage', 'ip', 'macAddress'] },
+  { id: 'Computador', label: 'Computador', icon: Computer,        tone: 'text-sky-600',     specs: ['processor', 'ram', 'storage', 'ip', 'macAddress'] },
   { id: 'Notebook',   label: 'Notebook',   icon: Laptop,          tone: 'text-blue-600',    specs: ['processor', 'ram', 'storage', 'ip', 'macAddress'] },
   { id: 'Servidor',   label: 'Servidor',   icon: Server,          tone: 'text-slate-600',   specs: ['processor', 'ram', 'storage', 'ip', 'macAddress'] },
   { id: 'Tablet',     label: 'Tablet',     icon: Tablet,          tone: 'text-sky-600',     specs: ['storage', 'imei1'] },
   { id: 'Monitor',    label: 'Monitor',    icon: Monitor,         tone: 'text-teal-600',    specs: ['resolution'] },
 
   // --- Mobilidade e campo ---
-  { id: 'Celular',    label: 'Celular',    icon: Smartphone,      tone: 'text-blue-500',    specs: ['imei1', 'imei2'] },
+  { id: 'Celular',    label: 'Celular',    icon: Smartphone,      tone: 'text-blue-600',    specs: ['imei1', 'imei2'] },
   { id: 'PGT',        label: 'PGT',        icon: CreditCard,      tone: 'text-amber-600',   specs: ['imei1', 'imei2'] },
 
   // --- Impressao e digitalizacao ---
-  { id: 'Impressora', label: 'Impressora', icon: Printer,         tone: 'text-orange-500',  specs: ['pageCount', 'ip', 'macAddress'] },
-  { id: 'Scanner',    label: 'Scanner',    icon: Scan,            tone: 'text-orange-400',  specs: ['ip'] },
+  { id: 'Impressora', label: 'Impressora', icon: Printer,         tone: 'text-orange-600',  specs: ['pageCount', 'ip', 'macAddress'] },
+  { id: 'Scanner',    label: 'Scanner',    icon: Scan,            tone: 'text-orange-500',  specs: ['ip'] },
 
   // --- Infraestrutura ---
   { id: 'Rede',       label: 'Rede',       icon: Network,         tone: 'text-cyan-600',    specs: ['ip', 'macAddress'] },
-  { id: 'Switch',     label: 'Switch / AP', icon: Router,         tone: 'text-cyan-500',    specs: ['ip', 'ports', 'macAddress'] },
-  { id: 'Storage',    label: 'Storage / NAS', icon: HardDrive,    tone: 'text-indigo-500',  specs: ['ip', 'storage', 'macAddress'] },
+  { id: 'Switch',     label: 'Switch / AP', icon: Router,         tone: 'text-cyan-700',    specs: ['ip', 'ports', 'macAddress'] },
+  { id: 'Storage',    label: 'Storage / NAS', icon: HardDrive,    tone: 'text-teal-700',    specs: ['ip', 'storage', 'macAddress'] },
   { id: 'Nobreak',    label: 'Nobreak',    icon: BatteryCharging, tone: 'text-emerald-600', specs: ['capacity'] },
 
   // --- Apoio ---
-  { id: 'Projetor',   label: 'Projetor',   icon: Projector,       tone: 'text-purple-500',  specs: ['resolution'] },
-  { id: 'Camera',     label: 'Camera / CFTV', icon: Camera,       tone: 'text-rose-500',    specs: ['ip', 'macAddress'] },
-  { id: 'Periferico', label: 'Periferico', icon: Keyboard,        tone: 'text-slate-400',   specs: [] },
+  { id: 'Projetor',   label: 'Projetor',   icon: Projector,       tone: 'text-sky-700',     specs: ['resolution'] },
+  { id: 'Camera',     label: 'Camera / CFTV', icon: Camera,       tone: 'text-rose-600',    specs: ['ip', 'macAddress'] },
+  { id: 'Periferico', label: 'Periferico', icon: Keyboard,        tone: 'text-slate-600',   specs: [] },
 
-  { id: 'Outros',     label: 'Outros',     icon: Box,             tone: 'text-slate-500',   specs: [] },
+  { id: 'Outros',     label: 'Outros',     icon: Box,             tone: 'text-slate-600',   specs: [] },
 ];
 
 const BY_ID = Object.fromEntries(ASSET_TYPES.map((t) => [t.id, t]));

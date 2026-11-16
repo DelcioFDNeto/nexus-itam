@@ -58,48 +58,80 @@ const SimulatorTab = ({ tenantId, onQueued }) => {
   const load = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    file.text().then(setJson);
+    file
+      .text()
+      .then(setJson)
+      .catch((error) => {
+        console.error(error);
+        toast.error(error?.message || 'Não foi possível ler o arquivo selecionado.');
+      });
     event.target.value = '';
   };
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-      <section className="xl:col-span-3 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5 space-y-3">
-        <h3 className="font-black text-gray-900 dark:text-white flex items-center gap-2"><FileJson size={16} /> Inventário (JSON)</h3>
+      <section className="xl:col-span-3 bg-white dark:bg-[#111113] rounded-2xl border border-gray-100 dark:border-zinc-800 p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <label htmlFor="simulator-json-input" className="font-black text-gray-900 dark:text-[#fafafa] flex items-center gap-2">
+            <FileJson size={16} aria-hidden="true" /> Inventário (JSON)
+          </label>
+        </div>
         <textarea
+          id="simulator-json-input"
+          name="simulatorJson"
           value={json}
           onChange={(e) => setJson(e.target.value)}
           spellCheck={false}
           aria-label="JSON do inventário"
-          className="w-full h-80 p-4 rounded-xl bg-gray-900 text-cyan-100 font-mono text-xs outline-none border border-gray-800 focus:ring-2 focus:ring-brand resize-y"
+          className="w-full h-80 p-4 rounded-xl bg-[#09090b] text-cyan-100 font-mono text-xs border border-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand resize-y"
         />
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={analyze} disabled={busy} className="px-4 py-2.5 rounded-xl bg-brand text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 disabled:opacity-40">
-            <Play size={14} /> Analisar
+          <button
+            type="button"
+            onClick={analyze}
+            disabled={busy}
+            className="min-h-[44px] px-4 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40"
+          >
+            <Play size={14} aria-hidden="true" /> Analisar
           </button>
-          <button type="button" onClick={enqueue} disabled={busy} className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 text-xs font-black uppercase tracking-wider text-gray-700 dark:text-gray-200 disabled:opacity-40">
+          <button
+            type="button"
+            onClick={enqueue}
+            disabled={busy}
+            className="min-h-[44px] px-4 py-2.5 rounded-xl border border-gray-200 dark:border-zinc-700 text-xs font-black uppercase tracking-wider text-gray-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-[#18181b] transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40"
+          >
             Enviar para a fila
           </button>
-          <label className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 text-xs font-black uppercase tracking-wider text-gray-700 dark:text-gray-200 flex items-center gap-1.5 cursor-pointer">
-            <UploadCloud size={14} /> Abrir arquivo
-            <input type="file" accept=".json,application/json" onChange={load} className="sr-only" />
+          <label
+            htmlFor="simulator-file-input"
+            className="min-h-[44px] px-4 py-2.5 rounded-xl border border-gray-200 dark:border-zinc-700 text-xs font-black uppercase tracking-wider text-gray-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-[#18181b] flex items-center gap-1.5 cursor-pointer transition-colors active:scale-[0.98] focus-within:ring-2 focus-within:ring-brand"
+          >
+            <UploadCloud size={14} aria-hidden="true" /> Abrir arquivo
+            <input
+              id="simulator-file-input"
+              name="simulatorFile"
+              type="file"
+              accept=".json,application/json"
+              onChange={load}
+              className="sr-only"
+            />
           </label>
         </div>
       </section>
 
-      <aside className="xl:col-span-2 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5 space-y-3 self-start">
+      <aside className="xl:col-span-2 bg-white dark:bg-[#111113] rounded-2xl border border-gray-100 dark:border-zinc-800 p-5 space-y-3 self-start">
         {!result ? (
-          <p className="text-sm text-gray-400">Cole um inventário e clique em Analisar para ver como ele entraria no inventário: identidade, patrimônio, local, responsável e alertas.</p>
+          <p className="text-sm text-gray-500 dark:text-zinc-400">Cole um inventário e clique em Analisar para ver como ele entraria no inventário: identidade, patrimônio, local, responsável e alertas.</p>
         ) : (
           <>
-            <p className="font-black text-sm text-gray-900 dark:text-white">
+            <p className="font-black text-sm text-gray-900 dark:text-[#fafafa]">
               {result.duplicate ? `Atualizaria ${result.duplicate.internalId} (por ${result.duplicate.matchField})` : `Criaria ${result.internalId}`}
             </p>
             <dl className="grid grid-cols-2 gap-3 text-xs">
-              <div><dt className="text-[10px] font-black uppercase text-gray-400">Tipo</dt><dd className="font-bold">{result.inventory.type}</dd></div>
-              <div><dt className="text-[10px] font-black uppercase text-gray-400">Serial útil</dt><dd className="font-mono font-bold">{result.inventory.serialNumber || 'não (genérico)'}</dd></div>
-              <div><dt className="text-[10px] font-black uppercase text-gray-400">Local pela rede</dt><dd className="font-bold">{result.location || '—'}</dd></div>
-              <div><dt className="text-[10px] font-black uppercase text-gray-400">Colaborador</dt><dd className="font-bold">{result.employee || '—'}</dd></div>
+              <div><dt className="text-xs font-black uppercase text-gray-500 dark:text-zinc-400">Tipo</dt><dd className="font-bold text-gray-900 dark:text-[#fafafa]">{result.inventory.type}</dd></div>
+              <div><dt className="text-xs font-black uppercase text-gray-500 dark:text-zinc-400">Serial útil</dt><dd className="font-mono font-bold text-gray-900 dark:text-[#fafafa]">{result.inventory.serialNumber || 'não (genérico)'}</dd></div>
+              <div><dt className="text-xs font-black uppercase text-gray-500 dark:text-zinc-400">Local pela rede</dt><dd className="font-bold text-gray-900 dark:text-[#fafafa]">{result.location || '—'}</dd></div>
+              <div><dt className="text-xs font-black uppercase text-gray-500 dark:text-zinc-400">Colaborador</dt><dd className="font-bold text-gray-900 dark:text-[#fafafa]">{result.employee || '—'}</dd></div>
             </dl>
             {result.alerts.map((a) => (
               <p key={a.code} className="text-xs flex items-start gap-1.5 text-amber-700 dark:text-amber-300"><AlertTriangle size={12} className="mt-0.5 shrink-0" /> {a.message}</p>

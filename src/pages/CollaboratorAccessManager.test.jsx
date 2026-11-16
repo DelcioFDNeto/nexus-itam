@@ -2,7 +2,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CollaboratorAccessManager from './CollaboratorAccessManager';
 import { microservicesApi } from '../services/microservicesClient';
 import { getEmployees, getSectors } from '../services/employeeService';
@@ -11,6 +11,7 @@ const toastMock = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
   info: vi.fn(),
+  warning: vi.fn(),
 }));
 
 const confirmMock = vi.hoisted(() => vi.fn().mockResolvedValue(true));
@@ -21,10 +22,10 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
     currentUser: {
       uid: 'mgr-1',
-      email: 'gestor@shineraybysabel.com.br',
+      email: 'gestor@empresa.com.br',
       role: 'manager',
       tenantId: 'tenant-ap3htf6',
-      companyName: 'Shineray By Sabel',
+      companyName: 'Empresa Modelo',
       primaryColor: '#E11D48',
       entitlements: { features: { whitelabel: true } },
     },
@@ -37,7 +38,7 @@ vi.mock('../services/employeeService', () => ({
 }));
 
 vi.mock('../services/microservicesClient', () => ({
-  resolvePortalUrl: () => 'https://portal.shinerayitam.com.br',
+  resolvePortalUrl: () => 'https://portal.nexusitam.com.br',
   microservicesApi: {
     listUsers: vi.fn(),
     createUser: vi.fn(),
@@ -45,6 +46,8 @@ vi.mock('../services/microservicesClient', () => ({
     deleteUser: vi.fn(),
   },
 }));
+
+const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
 
 describe('CollaboratorAccessManager', () => {
   beforeEach(() => {
@@ -59,14 +62,14 @@ describe('CollaboratorAccessManager', () => {
       {
         id: 'emp-1',
         name: 'Marina Silva',
-        email: 'marina.silva@shineraybysabel.com.br',
+        email: 'marina.silva@empresa.com.br',
         sector: 'Vendas',
         role: 'Consultora',
       },
       {
         id: 'emp-2',
         name: 'Carlos Pereira',
-        email: 'carlos.pereira@shineraybysabel.com.br',
+        email: 'carlos.pereira@empresa.com.br',
         sector: 'Pos-Vendas',
         role: 'Analista',
       },
@@ -77,7 +80,7 @@ describe('CollaboratorAccessManager', () => {
         {
           id: 'u-1',
           name: 'Carlos Pereira',
-          email: 'carlos.pereira@shineraybysabel.com.br',
+          email: 'carlos.pereira@empresa.com.br',
           role: 'collaborator',
           department: 'Pos-Vendas',
           job_title: 'Analista',
@@ -89,7 +92,7 @@ describe('CollaboratorAccessManager', () => {
       user: {
         id: 'u-2',
         name: 'Marina Silva',
-        email: 'marina.silva@shineraybysabel.com.br',
+        email: 'marina.silva@empresa.com.br',
         role: 'collaborator',
         department: 'Vendas',
         job_title: 'Consultora',
@@ -100,11 +103,20 @@ describe('CollaboratorAccessManager', () => {
       user: {
         id: 'u-1',
         name: 'Carlos Pereira',
-        email: 'carlos.pereira@shineraybysabel.com.br',
+        email: 'carlos.pereira@empresa.com.br',
         role: 'collaborator',
         active: false,
       },
     });
+  });
+
+  afterEach(() => {
+    if (originalClipboardDescriptor) {
+      Object.defineProperty(navigator, 'clipboard', originalClipboardDescriptor);
+    } else {
+      delete navigator.clipboard;
+    }
+    vi.restoreAllMocks();
   });
 
   it('carrega KPIs, importa colaborador do RH, cadastra acesso e permite suspender/redefinir senha', async () => {
@@ -120,7 +132,7 @@ describe('CollaboratorAccessManager', () => {
 
     // Link Whitelabel carrega marca da empresa para o Portal Vue 3
     const portalLink = screen.getByRole('link', { name: /Abrir Portal/i });
-    expect(portalLink.getAttribute('href')).toContain('empresa=Shineray+By+Sabel');
+    expect(portalLink.getAttribute('href')).toContain('empresa=Empresa+Modelo');
     expect(portalLink.getAttribute('href')).toContain('cor=%23E11D48');
 
     // Seleciona colaborador do RH ainda sem acesso (quick chip)
@@ -128,7 +140,7 @@ describe('CollaboratorAccessManager', () => {
     fireEvent.click(quickChip);
 
     expect(screen.getByLabelText(/Nome Completo/i)).toHaveValue('Marina Silva');
-    expect(screen.getByLabelText(/E-mail Corporativo/i)).toHaveValue('marina.silva@shineraybysabel.com.br');
+    expect(screen.getByLabelText(/E-mail Corporativo/i)).toHaveValue('marina.silva@empresa.com.br');
 
     // Libera o acesso e verifica modal com link Whitelabel
     fireEvent.click(screen.getByRole('button', { name: /Cadastrar e Liberar Acesso ao Portal/i }));
@@ -137,16 +149,21 @@ describe('CollaboratorAccessManager', () => {
       expect(microservicesApi.createUser).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'Marina Silva',
-          email: 'marina.silva@shineraybysabel.com.br',
+          email: 'marina.silva@empresa.com.br',
           role: 'collaborator',
         }),
       );
     });
 
-    expect(await screen.findByText(/Acesso Criado com Sucesso!/i)).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByText(/Acesso Criado com Sucesso!/i)).toBeInTheDocument();
 
-    // Fecha modal e suspende usuario existente
-    fireEvent.click(screen.getByRole('button', { name: /Fechar/i }));
+    // Fecha modal via Escape e suspende usuario existente
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
 
     const suspendBtn = screen.getByTitle('Suspender acesso temporariamente');
     fireEvent.click(suspendBtn);
@@ -154,5 +171,27 @@ describe('CollaboratorAccessManager', () => {
     await waitFor(() => {
       expect(microservicesApi.updateUser).toHaveBeenCalledWith('u-1', { active: false });
     });
+  });
+
+  it('exibe estado de erro com retry acessível quando falha ao consultar contas do gateway', async () => {
+    microservicesApi.listUsers
+      .mockRejectedValueOnce(new Error('Gateway indisponível'))
+      .mockResolvedValueOnce({ items: [] });
+
+    render(
+      <MemoryRouter>
+        <CollaboratorAccessManager />
+      </MemoryRouter>,
+    );
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Gateway indisponível');
+
+    fireEvent.click(screen.getByRole('button', { name: /Tentar novamente/i }));
+
+    await waitFor(() => {
+      expect(microservicesApi.listUsers).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

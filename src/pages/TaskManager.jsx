@@ -1,5 +1,5 @@
 // src/pages/TaskManager.jsx
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
 import { getTasks, addTask, updateTask, deleteTask } from '../services/taskService';
 import { getProjects } from '../services/projectService';
 import { getEmployees } from '../services/employeeService';
@@ -46,21 +46,20 @@ import {
   ArrowRight,
   Check,
   Search,
-  Filter,
   AlertTriangle,
-  Clock,
-  User,
   FolderGit2,
-  Tag,
-  CheckCircle2,
   SlidersHorizontal,
   Flame,
   CheckCheck,
   CircleDot,
-  GripVertical,
   Layers,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { captureFocusTarget, restoreFocusSafely, trapFocusWithin } from '../utils/focusTrap';
+import { isTopmostModal } from '../utils/modalStack';
+
+const fieldBaseClass =
+  'min-h-[44px] border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] text-slate-800 dark:text-[#fafafa] placeholder:text-slate-400 dark:placeholder:text-zinc-500 transition-colors hover:border-slate-300 dark:hover:border-zinc-700 active:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-slate-100 dark:disabled:bg-zinc-900 aria-[invalid=true]:border-rose-500 aria-[invalid=true]:focus-visible:ring-rose-500';
 
 const PRIORITY_THEMES = {
   Crítica: {
@@ -79,7 +78,7 @@ const PRIORITY_THEMES = {
     cardBorder: 'border-l-4 border-l-sky-500',
   },
   Baixa: {
-    badge: 'bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-500/20',
+    badge: 'bg-slate-500/10 text-slate-700 dark:text-zinc-400 border-slate-500/20',
     dot: 'bg-slate-400',
     cardBorder: 'border-l-4 border-l-slate-400',
   },
@@ -87,19 +86,19 @@ const PRIORITY_THEMES = {
 
 const COLUMN_COLORS = {
   slate: {
-    header: 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700',
-    dropHighlight: 'border-slate-400 bg-slate-50/70 dark:bg-slate-900/60',
-    chip: 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300',
+    header: 'bg-slate-100 dark:bg-zinc-900 text-slate-800 dark:text-zinc-200 border-slate-200 dark:border-zinc-800',
+    dropHighlight: 'border-slate-400 bg-slate-50/70 dark:bg-zinc-900/60',
+    chip: 'bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300',
   },
   blue: {
-    header: 'bg-blue-50/80 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 border-blue-200/70 dark:border-blue-900/40',
-    dropHighlight: 'border-blue-400 bg-blue-50/50 dark:bg-blue-950/30',
-    chip: 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300',
+    header: 'bg-sky-50/80 dark:bg-sky-950/40 text-sky-900 dark:text-sky-200 border-sky-200/70 dark:border-sky-900/40',
+    dropHighlight: 'border-sky-400 bg-sky-50/50 dark:bg-sky-950/30',
+    chip: 'bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300',
   },
   violet: {
-    header: 'bg-purple-50/80 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 border-purple-200/70 dark:border-purple-900/40',
-    dropHighlight: 'border-purple-400 bg-purple-50/50 dark:bg-purple-950/30',
-    chip: 'bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300',
+    header: 'bg-teal-50/80 dark:bg-teal-950/40 text-teal-900 dark:text-teal-200 border-teal-200/70 dark:border-teal-900/40',
+    dropHighlight: 'border-teal-400 bg-teal-50/50 dark:bg-teal-950/30',
+    chip: 'bg-teal-100 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300',
   },
   emerald: {
     header: 'bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border-emerald-200/70 dark:border-emerald-900/40',
@@ -125,8 +124,10 @@ const TaskManager = () => {
   const [projects, setProjects] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [savingQuick, setSavingQuick] = useState(false);
   const [savingModal, setSavingModal] = useState(false);
+  const [deletingTaskId, setDeletingTaskId] = useState(null);
 
   const { currentUser } = useAuth();
   const confirm = useConfirm();
@@ -157,6 +158,82 @@ const TaskManager = () => {
   // Drawer de Detalhes Rápido
   const [drawerTask, setDrawerTask] = useState(null);
 
+  const drawerTitleId = useId();
+  const modalTitleId = useId();
+  const drawerRef = useRef(null);
+  const modalRef = useRef(null);
+  const drawerCloseBtnRef = useRef(null);
+  const modalFirstInputRef = useRef(null);
+  const previousDrawerFocusRef = useRef(null);
+  const previousModalFocusRef = useRef(null);
+  const savingModalRef = useRef(savingModal);
+  savingModalRef.current = savingModal;
+  const isMountedRef = useRef(true);
+  const tasksSeqRef = useRef(0);
+  const auxSeqRef = useRef(0);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const isDrawerOpen = Boolean(drawerTask);
+
+  useEffect(() => {
+    if (!isDrawerOpen) return undefined;
+    const container = drawerRef.current;
+    previousDrawerFocusRef.current = captureFocusTarget(container);
+    const raf = requestAnimationFrame(() => drawerCloseBtnRef.current?.focus());
+    const onKeyDown = (e) => {
+      if (!isTopmostModal(container)) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setDrawerTask(null);
+        return;
+      }
+      if (e.key === 'Tab') {
+        trapFocusWithin(e, container);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', onKeyDown);
+      const previous = previousDrawerFocusRef.current;
+      previousDrawerFocusRef.current = null;
+      restoreFocusSafely(previous, null, container);
+    };
+  }, [isDrawerOpen]);
+
+  useEffect(() => {
+    if (!isModalOpen) return undefined;
+    const container = modalRef.current;
+    previousModalFocusRef.current = captureFocusTarget(container);
+    const raf = requestAnimationFrame(() => modalFirstInputRef.current?.focus());
+    const onKeyDown = (e) => {
+      if (!isTopmostModal(container)) return;
+      if (e.key === 'Escape') {
+        if (savingModalRef.current) return;
+        e.preventDefault();
+        setIsModalOpen(false);
+        return;
+      }
+      if (e.key === 'Tab') {
+        trapFocusWithin(e, container);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', onKeyDown);
+      const previous = previousModalFocusRef.current;
+      previousModalFocusRef.current = null;
+      restoreFocusSafely(previous, null, container);
+    };
+  }, [isModalOpen]);
+
   // Mapeamento id -> nome do projeto
   const projectMap = useMemo(() => {
     const map = new Map();
@@ -165,31 +242,48 @@ const TaskManager = () => {
   }, [projects]);
 
   // Carrega Tarefas
-  const loadTasks = useCallback(async () => {
+  const loadTasks = useCallback(async ({ isCancelled } = {}) => {
+    const seq = ++tasksSeqRef.current;
+    const stale = () => !isMountedRef.current || seq !== tasksSeqRef.current || Boolean(isCancelled?.());
+
     if (!tenantId) {
-      setTasks([]);
-      setLoading(false);
+      if (!stale()) {
+        setTasks([]);
+        setLoadError('');
+        setLoading(false);
+      }
       return;
     }
+    setLoading(true);
+    setLoadError('');
     try {
       const data = await getTasks(tenantId);
+      if (stale()) return;
       setTasks(data);
     } catch (err) {
       console.error(err);
+      if (stale()) return;
+      setLoadError('Não foi possível sincronizar as tarefas.');
       toast.error('Erro ao carregar tarefas.');
     } finally {
-      setLoading(false);
+      if (!stale()) {
+        setLoading(false);
+      }
     }
   }, [tenantId]);
 
   // Carrega Recursos Auxiliares (Projetos e Colaboradores)
-  const loadAuxData = useCallback(async () => {
+  const loadAuxData = useCallback(async ({ isCancelled } = {}) => {
     if (!tenantId) return;
+    const seq = ++auxSeqRef.current;
+    const stale = () => !isMountedRef.current || seq !== auxSeqRef.current || Boolean(isCancelled?.());
+
     try {
       const [projData, empData] = await Promise.all([
         getProjects(tenantId).catch(() => []),
         getEmployees(tenantId).catch(() => []),
       ]);
+      if (stale()) return;
       setProjects(projData || []);
       setEmployees(empData || []);
     } catch {
@@ -198,13 +292,17 @@ const TaskManager = () => {
   }, [tenantId]);
 
   useEffect(() => {
+    let cancelled = false;
     if (tenantId) {
-      loadTasks();
-      loadAuxData();
+      loadTasks({ isCancelled: () => cancelled });
+      loadAuxData({ isCancelled: () => cancelled });
     } else {
       setTasks([]);
       setLoading(false);
     }
+    return () => {
+      cancelled = true;
+    };
   }, [tenantId, loadTasks, loadAuxData]);
 
   // Aplicação dos Filtros e Ordenação
@@ -240,6 +338,7 @@ const TaskManager = () => {
   // Handler: Adição Rápida
   const handleQuickAdd = async (e) => {
     e.preventDefault();
+    if (savingQuick) return;
     const title = quickTitle.trim();
     if (!title) return;
     if (!tenantId) {
@@ -260,14 +359,15 @@ const TaskManager = () => {
         checklist: [],
         tenantId,
       });
+      if (!isMountedRef.current) return;
       setQuickTitle('');
       toast.success('Tarefa adicionada à fila.');
       await loadTasks();
     } catch (err) {
       console.error(err);
-      toast.error('Erro ao adicionar tarefa.');
+      if (isMountedRef.current) toast.error('Erro ao adicionar tarefa.');
     } finally {
-      setSavingQuick(false);
+      if (isMountedRef.current) setSavingQuick(false);
     }
   };
 
@@ -277,18 +377,22 @@ const TaskManager = () => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task || task.status === newStatus) return;
 
+    const prevTask = task;
     const patch = statusPatch(newStatus);
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t)));
 
     if (drawerTask?.id === taskId) {
-      setDrawerTask((prev) => ({ ...prev, ...patch }));
+      setDrawerTask((prev) => (prev?.id === taskId ? { ...prev, ...patch } : prev));
     }
 
     try {
       await updateTask(taskId, patch);
-      toast.success(`Tarefa movida para "${newStatus}".`);
+      if (isMountedRef.current) toast.success(`Tarefa movida para "${newStatus}".`);
     } catch (err) {
       console.error(err);
+      if (!isMountedRef.current) return;
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? prevTask : t)));
+      setDrawerTask((prev) => (prev?.id === taskId ? prevTask : prev));
       toast.error('Erro ao atualizar status da tarefa.');
       await loadTasks();
     }
@@ -316,16 +420,21 @@ const TaskManager = () => {
       prev.map((t) => (t.id === task.id ? { ...t, checklist: updatedList } : t)),
     );
     if (drawerTask?.id === task.id) {
-      setDrawerTask((prev) => ({ ...prev, checklist: updatedList }));
+      setDrawerTask((prev) => (prev?.id === task.id ? { ...prev, checklist: updatedList } : prev));
     }
 
     try {
       await updateTask(task.id, { checklist: updatedList });
-      if (allDone && !isDone(task)) {
+      if (isMountedRef.current && allDone && !isDone(task)) {
         toast.info('Todos os itens foram concluídos!');
       }
     } catch (err) {
       console.error(err);
+      if (!isMountedRef.current) return;
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, checklist: currentList } : t)),
+      );
+      setDrawerTask((prev) => (prev?.id === task.id ? { ...prev, checklist: currentList } : prev));
       toast.error('Erro ao salvar checklist.');
       await loadTasks();
     }
@@ -333,23 +442,27 @@ const TaskManager = () => {
 
   // Handler: Excluir Tarefa
   const handleDeleteTask = async (taskId) => {
-    if (!canWrite) return;
+    if (!canWrite || deletingTaskId) return;
     const confirmed = await confirm({
       title: 'Excluir Tarefa',
       message: 'Tem certeza que deseja excluir esta tarefa permanentemente?',
       danger: true,
       confirmLabel: 'Excluir Tarefa',
     });
-    if (!confirmed) return;
+    if (!confirmed || !isMountedRef.current) return;
 
+    setDeletingTaskId(taskId);
     try {
       await deleteTask(taskId);
+      if (!isMountedRef.current) return;
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
       if (drawerTask?.id === taskId) setDrawerTask(null);
       toast.success('Tarefa excluída.');
     } catch (err) {
       console.error(err);
-      toast.error('Erro ao excluir tarefa.');
+      if (isMountedRef.current) toast.error('Erro ao excluir tarefa.');
+    } finally {
+      if (isMountedRef.current) setDeletingTaskId(null);
     }
   };
 
@@ -386,6 +499,7 @@ const TaskManager = () => {
   // Salvar Modal (Criar ou Atualizar)
   const handleSaveModal = async (e) => {
     e.preventDefault();
+    if (savingModal) return;
     if (!taskForm.title.trim()) {
       toast.error('O título da tarefa é obrigatório.');
       return;
@@ -400,6 +514,7 @@ const TaskManager = () => {
           ...sanitized,
           tenantId,
         });
+        if (!isMountedRef.current) return;
         toast.success('Nova tarefa criada com sucesso.');
       } else {
         const patch = {
@@ -407,6 +522,7 @@ const TaskManager = () => {
           ...(isDone(sanitized) ? { completedAt: new Date().toISOString() } : {}),
         };
         await updateTask(taskForm.id, patch);
+        if (!isMountedRef.current) return;
         toast.success('Tarefa atualizada.');
       }
 
@@ -414,9 +530,9 @@ const TaskManager = () => {
       await loadTasks();
     } catch (err) {
       console.error(err);
-      toast.error('Erro ao salvar tarefa.');
+      if (isMountedRef.current) toast.error('Erro ao salvar tarefa.');
     } finally {
-      setSavingModal(false);
+      if (isMountedRef.current) setSavingModal(false);
     }
   };
 
@@ -453,46 +569,48 @@ const TaskManager = () => {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-[1700px] mx-auto pb-24 min-h-screen space-y-6">
       {/* Header Executivo & Ações Principais */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800 pb-5">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-slate-200/80 dark:border-zinc-800 pb-5">
         <div>
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-brand">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-brand-aa">
+            <span aria-hidden="true" className="flex h-2 w-2 rounded-full bg-emerald-500" />
             <span>Fluxo Operacional • Gestão de Tarefas & Demandas</span>
           </div>
-          <h1 className="mt-1 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white flex items-center gap-2.5">
-            <CheckSquare className="text-brand" size={28} />
+          <h1 className="mt-1 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-[#fafafa] flex items-center gap-2.5">
+            <CheckSquare className="text-brand-aa" size={28} aria-hidden="true" />
             <span>Gestão de Tarefas</span>
           </h1>
-          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
+          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-zinc-400 max-w-2xl">
             Planejamento diário de infraestrutura, atendimento a chamados técnicos e acompanhamento de entregas de TI.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Alternador de Visualização (Kanban vs Lista) */}
-          <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 shadow-2xs">
+          <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-sm">
             <button
               type="button"
               onClick={() => setViewMode('kanban')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              aria-pressed={viewMode === 'kanban'}
+              className={`min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                 viewMode === 'kanban'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-white dark:bg-[#111113] text-slate-900 dark:text-[#fafafa] shadow-sm'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-[#fafafa]'
               }`}
             >
-              <Kanban size={14} />
+              <Kanban size={14} aria-hidden="true" />
               <span>Quadro</span>
             </button>
             <button
               type="button"
               onClick={() => setViewMode('list')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              aria-pressed={viewMode === 'list'}
+              className={`min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                 viewMode === 'list'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-white dark:bg-[#111113] text-slate-900 dark:text-[#fafafa] shadow-sm'
+                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-[#fafafa]'
               }`}
             >
-              <List size={14} />
+              <List size={14} aria-hidden="true" />
               <span>Lista</span>
             </button>
           </div>
@@ -500,10 +618,10 @@ const TaskManager = () => {
           <button
             type="button"
             onClick={loadTasks}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
+            className="min-h-[44px] inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand shadow-sm"
             title="Recarregar tarefas"
           >
-            <RefreshCcw size={13} className={loading ? 'animate-spin text-brand' : ''} />
+            <RefreshCcw size={13} aria-hidden="true" className={loading ? 'animate-spin text-brand-aa' : ''} />
             <span className="hidden sm:inline">Atualizar</span>
           </button>
 
@@ -511,9 +629,9 @@ const TaskManager = () => {
             <button
               type="button"
               onClick={handleOpenCreateModal}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-brand to-indigo-600 hover:from-brand-dark hover:to-indigo-700 px-4 py-2 text-xs font-bold text-white shadow-sm transition-all"
+              className="min-h-[44px] inline-flex items-center gap-1.5 rounded-xl bg-brand hover:bg-brand-dark px-4 py-2 text-xs font-bold text-brand-fg shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
-              <Plus size={15} />
+              <Plus size={15} aria-hidden="true" />
               <span>Nova Tarefa</span>
             </button>
           )}
@@ -524,38 +642,38 @@ const TaskManager = () => {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {/* Ativas */}
         <div className="surface-card p-4 border-l-4 border-l-slate-500 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-zinc-400">
             <span>Demandas em Aberto</span>
-            <Layers size={15} className="text-slate-400" />
+            <Layers size={15} className="text-slate-400 dark:text-zinc-400" aria-hidden="true" />
           </div>
           <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 dark:text-white">
+            <span className="text-2xl font-black text-slate-900 dark:text-[#fafafa] tabular-nums">
               {summary.open}
             </span>
-            <span className="text-xs text-slate-400 font-mono">
+            <span className="text-xs text-slate-500 dark:text-zinc-400 font-mono tabular-nums">
               {tasks.length} total
             </span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">
+          <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
             Fila de atividades pendentes
           </p>
         </div>
 
         {/* Em Andamento */}
         <div className="surface-card p-4 border-l-4 border-l-brand flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-zinc-400">
             <span>Em Execução / Revisão</span>
-            <CircleDot size={15} className="text-brand" />
+            <CircleDot size={15} className="text-brand-aa" aria-hidden="true" />
           </div>
           <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 dark:text-white">
+            <span className="text-2xl font-black text-slate-900 dark:text-[#fafafa] tabular-nums">
               {summary.inProgress}
             </span>
-            <span className="text-xs font-semibold text-brand">
+            <span className="text-xs font-semibold text-brand-aa tabular-nums">
               {summary.open > 0 ? Math.round((summary.inProgress / summary.open) * 100) : 0}% da fila
             </span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">
+          <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
             Tarefas sendo trabalhadas agora
           </p>
         </div>
@@ -566,16 +684,17 @@ const TaskManager = () => {
             summary.overdue > 0 ? 'border-l-rose-500' : 'border-l-amber-500'
           }`}
         >
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-zinc-400">
             <span>Atenção & Prazos</span>
             <AlertTriangle
               size={15}
-              className={summary.overdue > 0 ? 'text-rose-500 animate-pulse' : 'text-amber-500'}
+              aria-hidden="true"
+              className={summary.overdue > 0 ? 'text-rose-500' : 'text-amber-500'}
             />
           </div>
           <div className="mt-2 flex items-baseline justify-between">
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black text-slate-900 dark:text-white">
+              <span className="text-2xl font-black text-slate-900 dark:text-[#fafafa] tabular-nums">
                 {summary.overdue}
               </span>
               <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">
@@ -583,31 +702,31 @@ const TaskManager = () => {
               </span>
             </div>
             {summary.dueToday > 0 && (
-              <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
+              <span className="text-xs font-bold text-amber-600 dark:text-amber-400 tabular-nums">
                 {summary.dueToday} para hoje
               </span>
             )}
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">
+          <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
             Prazos com necessidade de ação imediata
           </p>
         </div>
 
         {/* Concluídas */}
         <div className="surface-card p-4 border-l-4 border-l-emerald-500 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-zinc-400">
             <span>Concluídas</span>
-            <CheckCheck size={15} className="text-emerald-500" />
+            <CheckCheck size={15} className="text-emerald-500" aria-hidden="true" />
           </div>
           <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl font-black text-slate-900 dark:text-white">
+            <span className="text-2xl font-black text-slate-900 dark:text-[#fafafa] tabular-nums">
               {summary.done}
             </span>
-            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
               {tasks.length > 0 ? Math.round((summary.done / tasks.length) * 100) : 0}% taxa
             </span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">
+          <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
             Histórico de entregas finalizadas
           </p>
         </div>
@@ -621,10 +740,11 @@ const TaskManager = () => {
             <button
               type="button"
               onClick={() => setQuickFilter('all')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+              aria-pressed={quickFilter === 'all'}
+              className={`min-h-[44px] px-3.5 py-2 rounded-lg font-bold transition-colors tabular-nums active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                 quickFilter === 'all'
-                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-2xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                  ? 'bg-slate-900 text-white dark:bg-[#fafafa] dark:text-zinc-900 shadow-sm'
+                  : 'bg-slate-100 dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-800'
               }`}
             >
               Todas ({tasks.length})
@@ -632,10 +752,11 @@ const TaskManager = () => {
             <button
               type="button"
               onClick={() => setQuickFilter('mine')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+              aria-pressed={quickFilter === 'mine'}
+              className={`min-h-[44px] px-3.5 py-2 rounded-lg font-bold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                 quickFilter === 'mine'
-                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-2xs'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                  ? 'bg-slate-900 text-white dark:bg-[#fafafa] dark:text-zinc-900 shadow-sm'
+                  : 'bg-slate-100 dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-800'
               }`}
             >
               Minhas Tarefas
@@ -643,22 +764,24 @@ const TaskManager = () => {
             <button
               type="button"
               onClick={() => setQuickFilter('overdue')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1 ${
+              aria-pressed={quickFilter === 'overdue'}
+              className={`min-h-[44px] px-3.5 py-2 rounded-lg font-bold transition-colors tabular-nums flex items-center gap-1.5 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                 quickFilter === 'overdue'
-                  ? 'bg-rose-600 text-white shadow-2xs'
-                  : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 hover:bg-rose-100'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/60'
               }`}
             >
-              <Flame size={12} />
+              <Flame size={12} aria-hidden="true" />
               <span>Atrasadas ({summary.overdue})</span>
             </button>
             <button
               type="button"
               onClick={() => setQuickFilter('critical')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+              aria-pressed={quickFilter === 'critical'}
+              className={`min-h-[44px] px-3.5 py-2 rounded-lg font-bold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                 quickFilter === 'critical'
-                  ? 'bg-amber-600 text-white shadow-2xs'
-                  : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 hover:bg-amber-100'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-950/60'
               }`}
             >
               Críticas & Altas
@@ -666,10 +789,11 @@ const TaskManager = () => {
             <button
               type="button"
               onClick={() => setQuickFilter('done')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+              aria-pressed={quickFilter === 'done'}
+              className={`min-h-[44px] px-3.5 py-2 rounded-lg font-bold transition-colors tabular-nums active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                 quickFilter === 'done'
-                  ? 'bg-emerald-600 text-white shadow-2xs'
-                  : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-100'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/60'
               }`}
             >
               Concluídas ({summary.done})
@@ -679,21 +803,27 @@ const TaskManager = () => {
           {/* Busca & Botão de Filtros Avançados */}
           <div className="flex items-center gap-2">
             <div className="relative flex-1 sm:w-64">
-              <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+              <label htmlFor="task-search" className="sr-only">
+                Buscar tarefa
+              </label>
+              <Search size={14} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-400" />
               <input
+                id="task-search"
+                name="search"
                 type="text"
                 value={filters.search}
                 onChange={(e) => setFilters((p) => ({ ...p, search: e.target.value }))}
-                placeholder="Buscar tarefa..."
-                className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:border-brand focus:outline-none"
+                placeholder="Buscar tarefa…"
+                className={`${fieldBaseClass} w-full pl-9 pr-10 py-2 rounded-xl text-xs`}
               />
               {filters.search && (
                 <button
                   type="button"
                   onClick={() => setFilters((p) => ({ ...p, search: '' }))}
-                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                  aria-label="Limpar busca"
+                  className="absolute right-0 top-1/2 -translate-y-1/2 min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-400 dark:text-zinc-400 hover:text-slate-600 dark:hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-xl"
                 >
-                  <X size={12} />
+                  <X size={14} aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -701,22 +831,28 @@ const TaskManager = () => {
             <button
               type="button"
               onClick={() => setShowFiltersPanel((p) => !p)}
-              className={`p-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+              aria-expanded={showFiltersPanel}
+              className={`min-h-[44px] px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                 hasActiveFilters(filters) || showFiltersPanel
-                  ? 'bg-brand/10 border-brand text-brand'
-                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  ? 'bg-brand/10 border-brand text-brand-aa'
+                  : 'border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800'
               }`}
               title="Filtros avançados"
             >
-              <SlidersHorizontal size={14} />
+              <SlidersHorizontal size={14} aria-hidden="true" />
               <span className="hidden sm:inline">Filtros</span>
             </button>
 
             {/* Ordenador */}
+            <label htmlFor="task-sort" className="sr-only">
+              Ordenar tarefas
+            </label>
             <select
+              id="task-sort"
+              name="sortBy"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300 font-medium focus:border-brand focus:outline-none cursor-pointer"
+              className={`${fieldBaseClass} rounded-xl px-3 py-2 text-xs font-medium cursor-pointer`}
             >
               <option value="smart">Ordenar: Inteligente</option>
               <option value="due">Ordenar: Prazo Próximo</option>
@@ -727,15 +863,20 @@ const TaskManager = () => {
 
         {/* Painel Expansível de Filtros Avançados */}
         {showFiltersPanel && (
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 grid gap-3 sm:grid-cols-4 animate-in fade-in duration-200">
+          <div className="pt-3 border-t border-slate-100 dark:border-zinc-800 grid gap-3 sm:grid-cols-4 animate-slide-down">
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+              <label
+                htmlFor="filter-priority"
+                className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1"
+              >
                 Prioridade
               </label>
               <select
+                id="filter-priority"
+                name="filterPriority"
                 value={filters.priority}
                 onChange={(e) => setFilters((p) => ({ ...p, priority: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-xs text-slate-700 dark:text-slate-200"
+                className={`${fieldBaseClass} w-full rounded-lg p-2 text-xs cursor-pointer`}
               >
                 <option value="">Todas as prioridades</option>
                 {TASK_PRIORITIES.map((p) => (
@@ -747,13 +888,18 @@ const TaskManager = () => {
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+              <label
+                htmlFor="filter-assignee"
+                className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1"
+              >
                 Responsável
               </label>
               <select
+                id="filter-assignee"
+                name="filterAssignee"
                 value={filters.assignee}
                 onChange={(e) => setFilters((p) => ({ ...p, assignee: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-xs text-slate-700 dark:text-slate-200"
+                className={`${fieldBaseClass} w-full rounded-lg p-2 text-xs cursor-pointer`}
               >
                 <option value="">Todos os responsáveis</option>
                 <option value="__none__">Sem atribuição</option>
@@ -766,13 +912,18 @@ const TaskManager = () => {
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+              <label
+                htmlFor="filter-project"
+                className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1"
+              >
                 Projeto
               </label>
               <select
+                id="filter-project"
+                name="filterProject"
                 value={filters.projectId}
                 onChange={(e) => setFilters((p) => ({ ...p, projectId: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-xs text-slate-700 dark:text-slate-200"
+                className={`${fieldBaseClass} w-full rounded-lg p-2 text-xs cursor-pointer`}
               >
                 <option value="">Todos os projetos</option>
                 {projects.map((proj) => (
@@ -790,7 +941,7 @@ const TaskManager = () => {
                   setFilters(EMPTY_FILTERS);
                   setQuickFilter('all');
                 }}
-                className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 transition-colors"
+                className="min-h-[44px] w-full p-2 rounded-lg border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800 text-xs font-semibold text-slate-600 dark:text-zinc-300 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
                 Limpar Todos os Filtros
               </button>
@@ -803,24 +954,34 @@ const TaskManager = () => {
       {canWrite && (
         <form
           onSubmit={handleQuickAdd}
-          className="surface-card p-2 sm:p-2.5 flex flex-wrap items-center gap-2 border-dashed border-2 border-slate-300 dark:border-slate-700 hover:border-brand/60 transition-colors"
+          className="surface-card p-2 sm:p-2.5 flex flex-wrap items-center gap-2 border-dashed border-2 border-slate-300 dark:border-zinc-800 hover:border-brand/60 transition-colors"
         >
           <div className="flex-1 min-w-[220px] relative">
+            <label htmlFor="quick-task-title" className="sr-only">
+              Adicionar tarefa rápida
+            </label>
             <input
+              id="quick-task-title"
+              name="quickTitle"
               type="text"
               value={quickTitle}
               onChange={(e) => setQuickTitle(e.target.value)}
-              placeholder="+ Adicionar tarefa rápida à fila (Pressione Enter)..."
+              placeholder="+ Adicionar tarefa rápida à fila (Pressione Enter)…"
               disabled={savingQuick}
-              className="w-full pl-3 pr-3 py-2 text-xs sm:text-sm bg-transparent border-none text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none"
+              className="min-h-[44px] w-full pl-3 pr-3 py-2 rounded-lg text-xs sm:text-sm bg-transparent dark:bg-[#111113] border border-transparent text-slate-900 dark:text-[#fafafa] placeholder:text-slate-400 dark:placeholder:text-zinc-500 transition-colors hover:border-slate-300 dark:hover:border-zinc-700 active:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-slate-100 dark:disabled:bg-zinc-900 aria-[invalid=true]:border-rose-500 aria-[invalid=true]:focus-visible:ring-rose-500"
             />
           </div>
 
           <div className="flex items-center gap-2">
+            <label htmlFor="quick-task-priority" className="sr-only">
+              Prioridade da tarefa rápida
+            </label>
             <select
+              id="quick-task-priority"
+              name="quickPriority"
               value={quickPriority}
               onChange={(e) => setQuickPriority(e.target.value)}
-              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300"
+              className={`${fieldBaseClass} rounded-lg px-2.5 py-2 text-xs cursor-pointer`}
             >
               {TASK_PRIORITIES.map((p) => (
                 <option key={p} value={p}>
@@ -832,9 +993,9 @@ const TaskManager = () => {
             <button
               type="submit"
               disabled={savingQuick || !quickTitle.trim()}
-              className="inline-flex items-center gap-1 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-3 py-1.5 text-xs font-bold hover:opacity-90 transition-opacity disabled:opacity-40"
+              className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg bg-slate-900 dark:bg-[#fafafa] text-white dark:text-zinc-900 px-3.5 py-2 text-xs font-bold hover:opacity-90 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40"
             >
-              {savingQuick ? <RefreshCcw size={13} className="animate-spin" /> : <Plus size={13} />}
+              {savingQuick ? <RefreshCcw size={13} aria-hidden="true" className="animate-spin" /> : <Plus size={13} aria-hidden="true" />}
               <span>Adicionar</span>
             </button>
           </div>
@@ -843,11 +1004,24 @@ const TaskManager = () => {
 
       {/* Conteúdo Principal: Quadro Kanban vs Lista */}
       {loading ? (
-        <div className="surface-card p-16 text-center space-y-3">
-          <RefreshCcw size={28} className="animate-spin text-brand mx-auto" />
-          <p className="text-xs font-medium text-slate-500">
-            Sincronizando tarefas com o banco de dados...
+        <div role="status" className="surface-card p-16 text-center space-y-3">
+          <RefreshCcw size={28} aria-hidden="true" className="animate-spin text-brand-aa mx-auto" />
+          <p className="text-xs font-medium text-slate-500 dark:text-zinc-400">
+            Sincronizando tarefas com o banco de dados…
           </p>
+        </div>
+      ) : loadError ? (
+        <div role="alert" className="surface-card p-12 text-center space-y-4">
+          <AlertTriangle size={28} aria-hidden="true" className="text-rose-500 mx-auto" />
+          <p className="text-sm font-semibold text-slate-800 dark:text-[#fafafa]">{loadError}</p>
+          <button
+            type="button"
+            onClick={loadTasks}
+            className="min-h-[44px] inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg px-4 py-2 text-xs font-bold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <RefreshCcw size={14} aria-hidden="true" />
+            <span>Tentar Novamente</span>
+          </button>
         </div>
       ) : viewMode === 'kanban' ? (
         /* Visualização em Quadro Kanban */
@@ -874,10 +1048,10 @@ const TaskManager = () => {
                   setDragOverColId(null);
                   setDraggedTaskId(null);
                 }}
-                className={`rounded-2xl border transition-all duration-200 flex flex-col bg-slate-50/70 dark:bg-slate-900/40 min-h-[580px] ${
+                className={`rounded-2xl border transition-colors duration-200 flex flex-col bg-slate-50/70 dark:bg-[#111113] min-h-[580px] ${
                   isDropActive
                     ? `${theme.dropHighlight} border-2 border-dashed shadow-md scale-[1.01]`
-                    : 'border-slate-200/90 dark:border-slate-800'
+                    : 'border-slate-200/90 dark:border-zinc-800'
                 }`}
               >
                 {/* Column Header */}
@@ -888,7 +1062,7 @@ const TaskManager = () => {
                     <h3 className="text-xs font-black uppercase tracking-wider">{col.label}</h3>
                   </div>
                   <span
-                    className={`text-xs font-bold px-2 py-0.5 rounded-full ${theme.chip}`}
+                    className={`text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${theme.chip}`}
                   >
                     {colTasks.length}
                   </span>
@@ -897,9 +1071,9 @@ const TaskManager = () => {
                 {/* Cards Container */}
                 <div className="p-2.5 space-y-2.5 flex-1 overflow-y-auto max-h-[72vh] custom-scrollbar">
                   {colTasks.length === 0 ? (
-                    <div className="h-32 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-800 rounded-xl text-center p-3">
-                      <p className="text-[11px] font-semibold text-slate-400">Nenhuma tarefa</p>
-                      <p className="text-[10px] text-slate-400">Arraste tarefas para cá</p>
+                    <div className="h-32 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-zinc-800 rounded-xl text-center p-3">
+                      <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">Nenhuma tarefa</p>
+                      <p className="text-xs text-slate-400 dark:text-zinc-400">Arraste tarefas para cá</p>
                     </div>
                   ) : (
                     colTasks.map((task) => {
@@ -915,7 +1089,7 @@ const TaskManager = () => {
                       const nextCol = colIndex < TASK_COLUMNS.length - 1 ? TASK_COLUMNS[colIndex + 1] : null;
 
                       return (
-                        <div
+                        <article
                           key={task.id}
                           draggable={canWrite}
                           onDragStart={(e) => {
@@ -926,8 +1100,7 @@ const TaskManager = () => {
                             setDraggedTaskId(null);
                             setDragOverColId(null);
                           }}
-                          onClick={() => setDrawerTask(task)}
-                          className={`surface-card p-3.5 space-y-2.5 cursor-pointer hover:border-brand/40 hover:shadow-md transition-all group ${
+                          className={`relative [content-visibility:auto] [contain-intrinsic-size:auto_150px] surface-card p-3.5 space-y-2.5 hover:border-brand/40 hover:shadow-md transition-colors group ${
                             priorityInfo.cardBorder
                           } ${isTaskDragging ? 'opacity-40 scale-95' : ''}`}
                         >
@@ -935,46 +1108,46 @@ const TaskManager = () => {
                           <div className="flex items-center justify-between gap-1.5">
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase flex items-center gap-1 ${priorityInfo.badge}`}
+                                className={`text-xs font-bold px-2 py-0.5 rounded-full border uppercase flex items-center gap-1 ${priorityInfo.badge}`}
                               >
-                                <span className={`w-1.5 h-1.5 rounded-full ${priorityInfo.dot}`} />
+                                <span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full ${priorityInfo.dot}`} />
                                 {task.priority || 'Média'}
                               </span>
 
                               {offStatus && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200">
+                                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 dark:bg-zinc-900 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800">
                                   {offStatus}
                                 </span>
                               )}
 
                               {task.category && task.category !== 'Geral' && (
-                                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-900 text-slate-600 dark:text-zinc-400">
                                   {task.category}
                                 </span>
                               )}
                             </div>
 
-                            {/* Quick edit / delete actions on hover */}
+                            {/* Quick edit / delete actions on hover/focus */}
                             {canWrite && (
-                              <div
-                                className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={(e) => e.stopPropagation()}
-                              >
+                              <div className="relative z-10 flex items-center gap-0.5 opacity-80 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                                 <button
                                   type="button"
                                   onClick={() => handleOpenEditModal(task)}
-                                  className="p-1 rounded text-slate-400 hover:text-brand hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                  aria-label={`Editar tarefa ${task.title}`}
+                                  className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-slate-400 dark:text-zinc-400 hover:text-brand-aa hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                                   title="Editar tarefa"
                                 >
-                                  <Edit3 size={13} />
+                                  <Edit3 size={14} aria-hidden="true" />
                                 </button>
                                 <button
                                   type="button"
+                                  disabled={Boolean(deletingTaskId)}
                                   onClick={() => handleDeleteTask(task.id)}
-                                  className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                                  aria-label={`Excluir tarefa ${task.title}`}
+                                  className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-slate-400 dark:text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
                                   title="Excluir tarefa"
                                 >
-                                  <Trash2 size={13} />
+                                  <Trash2 size={14} aria-hidden="true" />
                                 </button>
                               </div>
                             )}
@@ -982,17 +1155,21 @@ const TaskManager = () => {
 
                           {/* Title & Description */}
                           <div>
-                            <h4
-                              className={`text-xs sm:text-sm font-bold leading-snug ${
-                                isDone(task)
-                                  ? 'line-through text-slate-400 dark:text-slate-500'
-                                  : 'text-slate-900 dark:text-white'
-                              }`}
-                            >
-                              {task.title}
+                            <h4 className="text-xs sm:text-sm font-bold leading-snug">
+                              <button
+                                type="button"
+                                onClick={() => setDrawerTask(task)}
+                                className={`text-left w-full rounded after:absolute after:inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                                  isDone(task)
+                                    ? 'line-through text-slate-400 dark:text-zinc-400'
+                                    : 'text-slate-900 dark:text-[#fafafa]'
+                                }`}
+                              >
+                                {task.title}
+                              </button>
                             </h4>
                             {task.description && (
-                              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                              <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400 line-clamp-2 leading-relaxed">
                                 {task.description}
                               </p>
                             )}
@@ -1000,8 +1177,8 @@ const TaskManager = () => {
 
                           {/* Project Tag */}
                           {task.projectId && projectMap.has(task.projectId) && (
-                            <div className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand font-mono bg-brand/5 dark:bg-brand/15 px-2 py-0.5 rounded-md">
-                              <FolderGit2 size={11} />
+                            <div className="inline-flex items-center gap-1 text-xs font-semibold text-brand-aa font-mono bg-brand/5 dark:bg-brand/15 px-2 py-0.5 rounded-md">
+                              <FolderGit2 size={12} aria-hidden="true" />
                               <span className="truncate max-w-[180px]">
                                 {projectMap.get(task.projectId)}
                               </span>
@@ -1010,21 +1187,18 @@ const TaskManager = () => {
 
                           {/* Checklist preview */}
                           {chkProgress.total > 0 && (
-                            <div
-                              className="bg-slate-50 dark:bg-slate-800/80 rounded-lg p-2 border border-slate-100 dark:border-slate-800 text-xs space-y-1.5"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
+                            <div className="bg-slate-50 dark:bg-zinc-900 rounded-lg p-2 border border-slate-100 dark:border-zinc-800 text-xs space-y-1.5">
+                              <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-zinc-400">
                                 <span className="flex items-center gap-1">
-                                  <CheckSquare size={11} className="text-brand" /> Checklist
+                                  <CheckSquare size={12} className="text-brand-aa" aria-hidden="true" /> Checklist
                                 </span>
-                                <span>
+                                <span className="tabular-nums">
                                   {chkProgress.done}/{chkProgress.total}
                                 </span>
                               </div>
-                              <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                              <div className="w-full bg-slate-200 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
                                 <div
-                                  className="h-full bg-brand rounded-full transition-all"
+                                  className="h-full bg-brand rounded-full transition-colors"
                                   style={{
                                     width: `${Math.round(
                                       (chkProgress.done / chkProgress.total) * 100,
@@ -1036,20 +1210,20 @@ const TaskManager = () => {
                           )}
 
                           {/* Footer: Due date + Assignee + Quick move buttons */}
-                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-xs">
+                          <div className="pt-2 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2 text-xs">
                             <div className="flex items-center gap-2">
                               {/* Due Date Badge */}
                               {dText && (
                                 <span
-                                  className={`inline-flex items-center gap-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  className={`inline-flex items-center gap-1 font-mono text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${
                                     dState === 'overdue'
                                       ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
                                       : dState === 'today'
                                       ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                      : 'bg-slate-100 text-slate-600 dark:bg-zinc-900 dark:text-zinc-400'
                                   }`}
                                 >
-                                  <Calendar size={10} />
+                                  <Calendar size={11} aria-hidden="true" />
                                   <span>{dText}</span>
                                 </span>
                               )}
@@ -1057,7 +1231,7 @@ const TaskManager = () => {
                               {/* Assignee Avatar */}
                               {task.assignee && (
                                 <span
-                                  className="w-5 h-5 rounded-full bg-gradient-to-tr from-brand to-indigo-600 text-white flex items-center justify-center font-bold text-[9px] uppercase shadow-2xs"
+                                  className="w-7 h-7 rounded-full bg-brand text-brand-fg flex items-center justify-center font-bold text-xs uppercase shadow-sm"
                                   title={`Responsável: ${task.assignee}`}
                                 >
                                   {initialsOf(task.assignee)}
@@ -1067,42 +1241,41 @@ const TaskManager = () => {
 
                             {/* Stepper buttons (prev/next column) */}
                             {canWrite && (
-                              <div
-                                className="flex items-center gap-1"
-                                onClick={(e) => e.stopPropagation()}
-                              >
+                              <div className="relative z-10 flex items-center gap-1">
                                 {prevCol && (
                                   <button
                                     type="button"
                                     onClick={() => handleMoveTask(task.id, prevCol.id)}
-                                    className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-900 transition-colors"
+                                    aria-label={`Mover ${task.title} para ${prevCol.label}`}
+                                    className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-[#fafafa] transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                                     title={`Mover para ${prevCol.label}`}
                                   >
-                                    <ArrowLeft size={11} />
+                                    <ArrowLeft size={13} aria-hidden="true" />
                                   </button>
                                 )}
                                 {nextCol && (
                                   <button
                                     type="button"
                                     onClick={() => handleMoveTask(task.id, nextCol.id)}
-                                    className={`p-1 rounded transition-colors ${
+                                    aria-label={`Mover ${task.title} para ${nextCol.label}`}
+                                    className={`min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                                       nextCol.id === DONE_STATUS
-                                        ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300'
-                                        : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-900'
+                                        ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-950/80'
+                                        : 'bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-[#fafafa]'
                                     }`}
                                     title={`Mover para ${nextCol.label}`}
                                   >
                                     {nextCol.id === DONE_STATUS ? (
-                                      <Check size={11} />
+                                      <Check size={13} aria-hidden="true" />
                                     ) : (
-                                      <ArrowRight size={11} />
+                                      <ArrowRight size={13} aria-hidden="true" />
                                     )}
                                   </button>
                                 )}
                               </div>
                             )}
                           </div>
-                        </div>
+                        </article>
                       );
                     })
                   )}
@@ -1116,14 +1289,14 @@ const TaskManager = () => {
         <div className="surface-card overflow-hidden">
           {processedTasks.length === 0 ? (
             <div className="p-16 text-center space-y-2">
-              <CheckSquare size={36} className="mx-auto text-slate-300 dark:text-slate-700" />
-              <p className="text-xs font-semibold text-slate-500">Nenhuma tarefa encontrada.</p>
-              <p className="text-[11px] text-slate-400">
+              <CheckSquare size={36} aria-hidden="true" className="mx-auto text-slate-300 dark:text-zinc-700" />
+              <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">Nenhuma tarefa encontrada.</p>
+              <p className="text-xs text-slate-400 dark:text-zinc-400">
                 Tente alterar os filtros ou cadastre uma nova tarefa.
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            <div className="divide-y divide-slate-100 dark:divide-zinc-800">
               {processedTasks.map((task) => {
                 const priorityInfo = PRIORITY_THEMES[task.priority] || PRIORITY_THEMES.Média;
                 const dState = dueState(task);
@@ -1134,8 +1307,7 @@ const TaskManager = () => {
                 return (
                   <div
                     key={task.id}
-                    onClick={() => setDrawerTask(task)}
-                    className={`p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group ${
+                    className={`relative [content-visibility:auto] [contain-intrinsic-size:auto_76px] p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/80 dark:hover:bg-zinc-800/40 transition-colors group ${
                       done ? 'opacity-65' : ''
                     }`}
                   >
@@ -1143,45 +1315,45 @@ const TaskManager = () => {
                       {/* Checkbox toggle */}
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleDone(task);
-                        }}
+                        onClick={() => handleToggleDone(task)}
                         disabled={!canWrite}
-                        className={`mt-0.5 sm:mt-0 transition-colors shrink-0 ${
+                        aria-label={done ? `Reabrir tarefa ${task.title}` : `Concluir tarefa ${task.title}`}
+                        className={`relative z-10 min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg transition-colors shrink-0 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                           done
                             ? 'text-emerald-500'
-                            : 'text-slate-300 dark:text-slate-600 hover:text-brand'
+                            : 'text-slate-400 dark:text-zinc-400 hover:text-brand-aa'
                         }`}
                       >
-                        {done ? <CheckSquare size={20} /> : <Square size={20} />}
+                        {done ? <CheckSquare size={20} aria-hidden="true" /> : <Square size={20} aria-hidden="true" />}
                       </button>
 
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={`text-xs sm:text-sm font-bold truncate ${
+                          <button
+                            type="button"
+                            onClick={() => setDrawerTask(task)}
+                            className={`text-left text-xs sm:text-sm font-bold truncate rounded after:absolute after:inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                               done
-                                ? 'line-through text-slate-400 dark:text-slate-500'
-                                : 'text-slate-900 dark:text-white'
+                                ? 'line-through text-slate-400 dark:text-zinc-400'
+                                : 'text-slate-900 dark:text-[#fafafa]'
                             }`}
                           >
                             {task.title}
-                          </span>
+                          </button>
 
                           <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${priorityInfo.badge}`}
+                            className={`text-xs font-bold px-2 py-0.5 rounded-full border uppercase ${priorityInfo.badge}`}
                           >
                             {task.priority || 'Média'}
                           </span>
 
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-zinc-300">
                             {task.status}
                           </span>
                         </div>
 
                         {task.description && (
-                          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">
+                          <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400 truncate">
                             {task.description}
                           </p>
                         )}
@@ -1189,22 +1361,19 @@ const TaskManager = () => {
                     </div>
 
                     {/* Metadata & Actions */}
-                    <div
-                      className="flex items-center justify-between sm:justify-end gap-3 shrink-0"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
                       {/* Project */}
                       {task.projectId && projectMap.has(task.projectId) && (
-                        <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-semibold text-brand bg-brand/5 dark:bg-brand/15 px-2 py-0.5 rounded truncate max-w-[140px]">
-                          <FolderGit2 size={11} />
+                        <span className="hidden md:inline-flex items-center gap-1 text-xs font-semibold text-brand-aa bg-brand/5 dark:bg-brand/15 px-2 py-0.5 rounded truncate max-w-[160px]">
+                          <FolderGit2 size={12} aria-hidden="true" />
                           {projectMap.get(task.projectId)}
                         </span>
                       )}
 
                       {/* Checklist count */}
                       {chkProgress.total > 0 && (
-                        <span className="text-[11px] font-mono text-slate-500 font-semibold flex items-center gap-1">
-                          <CheckSquare size={12} className="text-brand" />
+                        <span className="text-xs font-mono text-slate-500 dark:text-zinc-400 font-semibold flex items-center gap-1 tabular-nums">
+                          <CheckSquare size={12} className="text-brand-aa" aria-hidden="true" />
                           <span>
                             {chkProgress.done}/{chkProgress.total}
                           </span>
@@ -1214,12 +1383,12 @@ const TaskManager = () => {
                       {/* Due date */}
                       {dText && (
                         <span
-                          className={`font-mono text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          className={`font-mono text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${
                             dState === 'overdue'
                               ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
                               : dState === 'today'
                               ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                              : 'bg-slate-100 text-slate-600 dark:bg-zinc-900 dark:text-zinc-400'
                           }`}
                         >
                           {dText}
@@ -1229,35 +1398,38 @@ const TaskManager = () => {
                       {/* Assignee Avatar */}
                       {task.assignee ? (
                         <span
-                          className="w-6 h-6 rounded-full bg-gradient-to-tr from-brand to-indigo-600 text-white flex items-center justify-center font-bold text-[10px] uppercase shadow-2xs"
+                          className="w-7 h-7 rounded-full bg-brand text-brand-fg flex items-center justify-center font-bold text-xs uppercase shadow-sm"
                           title={`Responsável: ${task.assignee}`}
                         >
                           {initialsOf(task.assignee)}
                         </span>
                       ) : (
-                        <span className="w-6 h-6 rounded-full border border-dashed border-slate-300 dark:border-slate-700 text-slate-400 flex items-center justify-center text-[9px]">
+                        <span className="w-7 h-7 rounded-full border border-dashed border-slate-300 dark:border-zinc-700 text-slate-400 dark:text-zinc-400 flex items-center justify-center text-xs">
                           --
                         </span>
                       )}
 
                       {/* Edit / Delete actions */}
                       {canWrite && (
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="relative z-10 flex items-center gap-1 opacity-80 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                           <button
                             type="button"
                             onClick={() => handleOpenEditModal(task)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-brand hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            aria-label={`Editar ${task.title}`}
+                            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-slate-400 dark:text-zinc-400 hover:text-brand-aa hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                             title="Editar"
                           >
-                            <Edit3 size={14} />
+                            <Edit3 size={15} aria-hidden="true" />
                           </button>
                           <button
                             type="button"
+                            disabled={Boolean(deletingTaskId)}
                             onClick={() => handleDeleteTask(task.id)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                            aria-label={`Excluir ${task.title}`}
+                            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-slate-400 dark:text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Excluir"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={15} aria-hidden="true" />
                           </button>
                         </div>
                       )}
@@ -1273,24 +1445,30 @@ const TaskManager = () => {
       {/* Drawer Lateral de Detalhes da Tarefa */}
       {drawerTask && (
         <div
-          className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs animate-in fade-in duration-200"
-          onClick={() => setDrawerTask(null)}
+          className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm animate-fade-in overscroll-contain"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDrawerTask(null);
+          }}
         >
           <div
-            className="w-full max-w-lg bg-white dark:bg-slate-900 h-full shadow-2xl p-6 overflow-y-auto space-y-5 border-l border-slate-200 dark:border-slate-800"
-            onClick={(e) => e.stopPropagation()}
+            ref={drawerRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={drawerTitleId}
+            className="w-full max-w-lg bg-white dark:bg-[#111113] h-full shadow-2xl p-6 overflow-y-auto overscroll-contain space-y-5 border-l border-slate-200 dark:border-zinc-800"
           >
             {/* Drawer Header */}
-            <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3">
+            <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
                 <span
-                  className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border uppercase ${
+                  className={`text-xs font-bold px-2.5 py-0.5 rounded-full border uppercase ${
                     (PRIORITY_THEMES[drawerTask.priority] || PRIORITY_THEMES.Média).badge
                   }`}
                 >
                   {drawerTask.priority || 'Média'}
                 </span>
-                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-zinc-300">
                   {drawerTask.status}
                 </span>
               </div>
@@ -1303,43 +1481,46 @@ const TaskManager = () => {
                       setDrawerTask(null);
                       handleOpenEditModal(t);
                     }}
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-brand hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    aria-label="Editar em formulário completo"
+                    className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-slate-500 dark:text-zinc-400 hover:text-brand-aa hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     title="Editar em formulário completo"
                   >
-                    <Edit3 size={16} />
+                    <Edit3 size={16} aria-hidden="true" />
                   </button>
                 )}
                 <button
+                  ref={drawerCloseBtnRef}
                   type="button"
                   onClick={() => setDrawerTask(null)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
+                  aria-label="Fechar detalhes da tarefa"
+                  className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-slate-400 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-[#fafafa] hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
-                  <X size={18} />
+                  <X size={18} aria-hidden="true" />
                 </button>
               </div>
             </div>
 
             {/* Title & Description */}
             <div className="space-y-2">
-              <h2 className="text-lg font-extrabold text-slate-900 dark:text-white leading-snug">
+              <h2 id={drawerTitleId} className="text-lg font-extrabold text-slate-900 dark:text-[#fafafa] leading-snug">
                 {drawerTask.title}
               </h2>
               {drawerTask.description ? (
-                <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                <p className="text-xs text-slate-600 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed bg-slate-50 dark:bg-zinc-900 p-3 rounded-xl border border-slate-200/60 dark:border-zinc-800">
                   {drawerTask.description}
                 </p>
               ) : (
-                <p className="text-xs text-slate-400 italic">Sem descrição detalhada.</p>
+                <p className="text-xs text-slate-400 dark:text-zinc-400 italic">Sem descrição detalhada.</p>
               )}
             </div>
 
             {/* Metadados: Projeto, Responsável, Prazo */}
-            <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
+            <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 dark:bg-zinc-900 p-3.5 rounded-xl border border-slate-200/60 dark:border-zinc-800">
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">
+                <span className="text-xs font-bold uppercase text-slate-500 dark:text-zinc-400 block mb-0.5">
                   Projeto
                 </span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">
+                <span className="font-semibold text-slate-800 dark:text-zinc-200 truncate block">
                   {drawerTask.projectId && projectMap.has(drawerTask.projectId)
                     ? projectMap.get(drawerTask.projectId)
                     : 'Nenhum projeto vinculado'}
@@ -1347,28 +1528,28 @@ const TaskManager = () => {
               </div>
 
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">
+                <span className="text-xs font-bold uppercase text-slate-500 dark:text-zinc-400 block mb-0.5">
                   Responsável
                 </span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">
+                <span className="font-semibold text-slate-800 dark:text-zinc-200 truncate block">
                   {drawerTask.assignee || 'Não atribuído'}
                 </span>
               </div>
 
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">
+                <span className="text-xs font-bold uppercase text-slate-500 dark:text-zinc-400 block mb-0.5">
                   Prazo de Entrega
                 </span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200 block">
+                <span className="font-semibold text-slate-800 dark:text-zinc-200 block tabular-nums">
                   {drawerTask.dueDate ? formatDateBR(drawerTask.dueDate) : 'Sem prazo'}
                 </span>
               </div>
 
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">
+                <span className="text-xs font-bold uppercase text-slate-500 dark:text-zinc-400 block mb-0.5">
                   Categoria
                 </span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200 block">
+                <span className="font-semibold text-slate-800 dark:text-zinc-200 block">
                   {drawerTask.category || 'Geral'}
                 </span>
               </div>
@@ -1377,36 +1558,38 @@ const TaskManager = () => {
             {/* Checklist Interativo */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <CheckSquare size={14} className="text-brand" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300 flex items-center gap-1.5">
+                  <CheckSquare size={14} className="text-brand-aa" aria-hidden="true" />
                   <span>Subtarefas / Checklist</span>
                 </h4>
-                <span className="text-xs font-bold text-slate-500 font-mono">
+                <span className="text-xs font-bold text-slate-500 dark:text-zinc-400 font-mono tabular-nums">
                   {checklistProgress(drawerTask).done}/{checklistProgress(drawerTask).total}
                 </span>
               </div>
 
               <div className="space-y-1.5">
                 {checklistOf(drawerTask).length === 0 ? (
-                  <p className="text-xs text-slate-400 italic py-2">
+                  <p className="text-xs text-slate-400 dark:text-zinc-400 italic py-2">
                     Nenhum item de checklist configurado nesta tarefa.
                   </p>
                 ) : (
                   checklistOf(drawerTask).map((item) => (
-                    <div
+                    <button
                       key={item.id}
+                      type="button"
                       onClick={() => handleToggleChecklistItem(drawerTask, item.id)}
-                      className={`p-2 rounded-lg border text-xs flex items-center gap-2 cursor-pointer transition-colors ${
+                      aria-pressed={Boolean(item.done)}
+                      className={`min-h-[44px] w-full text-left p-2.5 rounded-lg border text-xs flex items-center gap-2 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                         item.done
-                          ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200 text-slate-500 line-through'
-                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 hover:border-brand'
+                          ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/50 text-slate-500 dark:text-zinc-400 line-through'
+                          : 'bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-slate-800 dark:text-zinc-100 hover:border-brand'
                       }`}
                     >
-                      <span className={item.done ? 'text-emerald-500' : 'text-slate-400'}>
-                        {item.done ? <CheckSquare size={15} /> : <Square size={15} />}
+                      <span className={item.done ? 'text-emerald-500' : 'text-slate-400 dark:text-zinc-400'}>
+                        {item.done ? <CheckSquare size={15} aria-hidden="true" /> : <Square size={15} aria-hidden="true" />}
                       </span>
                       <span className="flex-1">{item.text}</span>
-                    </div>
+                    </button>
                   ))
                 )}
               </div>
@@ -1414,8 +1597,8 @@ const TaskManager = () => {
 
             {/* Mover Status Rápido no Drawer */}
             {canWrite && (
-              <div className="space-y-2 pt-3 border-t border-slate-200/80 dark:border-slate-800">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+              <div className="space-y-2 pt-3 border-t border-slate-200/80 dark:border-zinc-800">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 block">
                   Mover para Coluna:
                 </span>
                 <div className="grid grid-cols-2 gap-2">
@@ -1424,10 +1607,11 @@ const TaskManager = () => {
                       key={st}
                       type="button"
                       onClick={() => handleMoveTask(drawerTask.id, st)}
-                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${
+                      aria-pressed={drawerTask.status === st}
+                      className={`min-h-[44px] py-2 px-3 rounded-xl text-xs font-bold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                         drawerTask.status === st
-                          ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-2xs'
-                          : 'border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                          ? 'bg-slate-900 text-white dark:bg-[#fafafa] dark:text-zinc-900 shadow-sm'
+                          : 'border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300'
                       }`}
                     >
                       {st}
@@ -1442,20 +1626,33 @@ const TaskManager = () => {
 
       {/* Modal Completo: Criar ou Editar Tarefa */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-xl p-6 sm:p-7 space-y-5 border border-slate-200/90 dark:border-slate-800 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3">
-              <h2 className="text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                {modalMode === 'create' ? <Plus size={18} className="text-brand" /> : <Edit3 size={18} className="text-brand" />}
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in overscroll-contain"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !savingModal) setIsModalOpen(false);
+          }}
+        >
+          <div
+            ref={modalRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={modalTitleId}
+            className="bg-white dark:bg-[#111113] rounded-2xl shadow-2xl w-full max-w-xl p-6 sm:p-7 space-y-5 border border-slate-200/90 dark:border-zinc-800 max-h-[92vh] overflow-y-auto overscroll-contain animate-zoom-in"
+          >
+            <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-zinc-800 pb-3">
+              <h2 id={modalTitleId} className="text-lg font-extrabold text-slate-900 dark:text-[#fafafa] flex items-center gap-2">
+                {modalMode === 'create' ? <Plus size={18} className="text-brand-aa" aria-hidden="true" /> : <Edit3 size={18} className="text-brand-aa" aria-hidden="true" />}
                 <span>{modalMode === 'create' ? 'Nova Tarefa Operacional' : 'Editar Tarefa'}</span>
               </h2>
               <button
                 type="button"
                 disabled={savingModal}
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
+                aria-label="Fechar modal"
+                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-slate-400 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-[#fafafa] hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
-                <X size={18} />
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
 
@@ -1463,47 +1660,52 @@ const TaskManager = () => {
               <div>
                 <label
                   htmlFor="task-title-input"
-                  className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1"
+                  className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1"
                 >
                   Título da Tarefa *
                 </label>
                 <input
+                  ref={modalFirstInputRef}
                   id="task-title-input"
+                  name="title"
                   type="text"
                   required
                   value={taskForm.title}
                   onChange={(e) => setTaskForm((p) => ({ ...p, title: e.target.value }))}
                   placeholder="Ex.: Instalar switch gerenciável no rack 2"
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs sm:text-sm text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                  className={`${fieldBaseClass} w-full rounded-xl border-slate-300 px-3.5 py-2 text-xs sm:text-sm text-slate-900`}
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="task-description-input"
-                  className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1"
+                  className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1"
                 >
                   Descrição e Orientações Técnicas
                 </label>
                 <textarea
                   id="task-description-input"
+                  name="description"
                   rows={3}
                   value={taskForm.description}
                   onChange={(e) => setTaskForm((p) => ({ ...p, description: e.target.value }))}
-                  placeholder="Instruções de execução, requisitos, links ou detalhes adicionais..."
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs sm:text-sm text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                  placeholder="Instruções de execução, requisitos, links ou detalhes adicionais…"
+                  className={`${fieldBaseClass} w-full rounded-xl border-slate-300 px-3.5 py-2 text-xs sm:text-sm text-slate-900`}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <label htmlFor="task-status-select" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
                     Status
                   </label>
                   <select
+                    id="task-status-select"
+                    name="status"
                     value={taskForm.status}
                     onChange={(e) => setTaskForm((p) => ({ ...p, status: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 text-xs text-slate-800 dark:text-slate-100"
+                    className={`${fieldBaseClass} w-full rounded-xl border-slate-300 p-2 text-xs text-slate-800 dark:text-zinc-100 cursor-pointer`}
                   >
                     {TASK_STATUSES.map((st) => (
                       <option key={st} value={st}>
@@ -1514,13 +1716,15 @@ const TaskManager = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <label htmlFor="task-priority-select" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
                     Prioridade
                   </label>
                   <select
+                    id="task-priority-select"
+                    name="priority"
                     value={taskForm.priority}
                     onChange={(e) => setTaskForm((p) => ({ ...p, priority: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 text-xs text-slate-800 dark:text-slate-100"
+                    className={`${fieldBaseClass} w-full rounded-xl border-slate-300 p-2 text-xs text-slate-800 dark:text-zinc-100 cursor-pointer`}
                   >
                     {TASK_PRIORITIES.map((p) => (
                       <option key={p} value={p}>
@@ -1533,13 +1737,15 @@ const TaskManager = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <label htmlFor="task-category-select" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
                     Categoria
                   </label>
                   <select
+                    id="task-category-select"
+                    name="category"
                     value={taskForm.category}
                     onChange={(e) => setTaskForm((p) => ({ ...p, category: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 text-xs text-slate-800 dark:text-slate-100"
+                    className={`${fieldBaseClass} w-full rounded-xl border-slate-300 p-2 text-xs text-slate-800 dark:text-zinc-100 cursor-pointer`}
                   >
                     {TASK_CATEGORIES.map((cat) => (
                       <option key={cat} value={cat}>
@@ -1550,27 +1756,31 @@ const TaskManager = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <label htmlFor="task-due-date-input" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
                     Prazo de Entrega
                   </label>
                   <input
+                    id="task-due-date-input"
+                    name="dueDate"
                     type="date"
                     value={taskForm.dueDate}
                     onChange={(e) => setTaskForm((p) => ({ ...p, dueDate: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 text-xs text-slate-800 dark:text-slate-100"
+                    className={`${fieldBaseClass} w-full rounded-xl border-slate-300 p-2 text-xs text-slate-800 dark:text-zinc-100 tabular-nums`}
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <label htmlFor="task-assignee-select" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
                     Responsável
                   </label>
                   <select
+                    id="task-assignee-select"
+                    name="assignee"
                     value={taskForm.assignee}
                     onChange={(e) => setTaskForm((p) => ({ ...p, assignee: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 text-xs text-slate-800 dark:text-slate-100"
+                    className={`${fieldBaseClass} w-full rounded-xl border-slate-300 p-2 text-xs text-slate-800 dark:text-zinc-100 cursor-pointer`}
                   >
                     <option value="">Não atribuído</option>
                     {employees.map((emp) => (
@@ -1582,13 +1792,15 @@ const TaskManager = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <label htmlFor="task-project-select" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
                     Vincular a Projeto
                   </label>
                   <select
+                    id="task-project-select"
+                    name="projectId"
                     value={taskForm.projectId}
                     onChange={(e) => setTaskForm((p) => ({ ...p, projectId: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 text-xs text-slate-800 dark:text-slate-100"
+                    className={`${fieldBaseClass} w-full rounded-xl border-slate-300 p-2 text-xs text-slate-800 dark:text-zinc-100 cursor-pointer`}
                   >
                     <option value="">Sem projeto vinculado</option>
                     {projects.map((proj) => (
@@ -1601,13 +1813,15 @@ const TaskManager = () => {
               </div>
 
               {/* Checklist Builder */}
-              <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
+                <label htmlFor="task-new-checklist-input" className="block text-xs font-bold text-slate-700 dark:text-zinc-300">
                   Subtarefas (Checklist)
                 </label>
 
                 <div className="flex gap-2">
                   <input
+                    id="task-new-checklist-input"
+                    name="newChecklistText"
                     type="text"
                     value={newChecklistText}
                     onChange={(e) => setNewChecklistText(e.target.value)}
@@ -1617,13 +1831,13 @@ const TaskManager = () => {
                         handleAddChecklistItemModal();
                       }
                     }}
-                    placeholder="Adicionar item à checklist..."
-                    className="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-800 dark:text-slate-100"
+                    placeholder="Adicionar item à checklist…"
+                    className={`${fieldBaseClass} flex-1 rounded-xl border-slate-300 px-3 py-2 text-xs text-slate-800 dark:text-zinc-100`}
                   />
                   <button
                     type="button"
                     onClick={handleAddChecklistItemModal}
-                    className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors"
+                    className="min-h-[44px] px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200 dark:hover:bg-zinc-800 text-xs font-bold text-slate-700 dark:text-zinc-200 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   >
                     + Item
                   </button>
@@ -1633,21 +1847,21 @@ const TaskManager = () => {
                   {taskForm.checklist.map((item) => (
                     <div
                       key={item.id}
-                      className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs flex items-center justify-between gap-2"
+                      className="p-1.5 rounded-lg bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-xs flex items-center justify-between gap-2"
                     >
                       <button
                         type="button"
                         onClick={() => handleToggleChecklistItemModal(item.id)}
-                        className="flex items-center gap-2 flex-1 text-left"
+                        className="min-h-[44px] px-2 flex items-center gap-2 flex-1 text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                       >
-                        <span className={item.done ? 'text-emerald-500' : 'text-slate-400'}>
-                          {item.done ? <CheckSquare size={14} /> : <Square size={14} />}
+                        <span className={item.done ? 'text-emerald-500' : 'text-slate-400 dark:text-zinc-400'}>
+                          {item.done ? <CheckSquare size={14} aria-hidden="true" /> : <Square size={14} aria-hidden="true" />}
                         </span>
                         <span
                           className={
                             item.done
-                              ? 'line-through text-slate-400'
-                              : 'text-slate-800 dark:text-slate-200'
+                              ? 'line-through text-slate-400 dark:text-zinc-400'
+                              : 'text-slate-800 dark:text-zinc-200'
                           }
                         >
                           {item.text}
@@ -1656,9 +1870,10 @@ const TaskManager = () => {
                       <button
                         type="button"
                         onClick={() => handleRemoveChecklistItemModal(item.id)}
-                        className="text-slate-400 hover:text-red-500"
+                        aria-label={`Remover item ${item.text}`}
+                        className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-md text-slate-400 dark:text-zinc-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                       >
-                        <X size={13} />
+                        <X size={14} aria-hidden="true" />
                       </button>
                     </div>
                   ))}
@@ -1666,22 +1881,22 @@ const TaskManager = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-3 pt-3 border-t border-slate-200/80 dark:border-slate-800">
+              <div className="flex gap-3 pt-3 border-t border-slate-200/80 dark:border-zinc-800">
                 <button
                   type="button"
                   disabled={savingModal}
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  className="min-h-[44px] flex-1 py-2.5 rounded-xl border border-slate-300 dark:border-zinc-800 text-xs font-bold text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={savingModal}
-                  className="flex-1 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white text-xs font-bold uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="min-h-[44px] flex-1 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg text-xs font-bold uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
-                  {savingModal ? <RefreshCcw size={14} className="animate-spin" /> : <Save size={14} />}
-                  <span>{savingModal ? 'Salvando...' : 'Salvar Tarefa'}</span>
+                  {savingModal ? <RefreshCcw size={14} aria-hidden="true" className="animate-spin" /> : <Save size={14} aria-hidden="true" />}
+                  <span>{savingModal ? 'Salvando…' : 'Salvar Tarefa'}</span>
                 </button>
               </div>
             </form>

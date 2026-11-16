@@ -12,30 +12,40 @@
 //  - empresas legadas (sem /tenants) passam a aparecer e podem ser regularizadas;
 //  - provisionamento com erro nao deixa mais conta de login orfa.
 // -----------------------------------------------------------------------------
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  AlertTriangle, Building2, ChevronRight, CircleDollarSign, Pause, Play, PlusSquare, RefreshCcw, Search, ShieldCheck, X,
+  AlertTriangle, Building2, CheckCircle, ChevronRight, CircleDollarSign, Pause, Play, PlusSquare, RefreshCcw, Search, ShieldCheck, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { describeFirebaseError, loadConsoleSnapshot, provisionTenant, updateTenant } from '../services/tenantService';
 import { TENANT_STATUSES } from '../utils/entitlements';
 import { brl, brlCompact, relativeDays, tenantAlerts } from '../utils/consoleMetrics';
-import { PlanBadge, TenantStatusBadge, UsageBar } from '../components/console/consoleUi';
+import { KpiTile, PlanBadge, TenantStatusBadge, UsageBar } from '../components/console/consoleUi';
 import TenantDetailDrawer from '../components/console/TenantDetailDrawer';
 import { useConfirm } from '../components/ConfirmDialog';
+import { captureFocusTarget, restoreFocusSafely, trapFocusWithin } from '../utils/focusTrap';
+import { isTopmostModal } from '../utils/modalStack';
 
 const EMPTY_PROVISION = { companyName: '', adminName: '', email: '', password: '', plan: 'starter' };
 
 const fieldClass =
-  'w-full px-3 py-2.5 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand text-sm font-semibold text-gray-900 dark:text-white';
+  'min-h-[44px] w-full px-3.5 py-2.5 bg-white dark:bg-[#111113] border border-slate-200 dark:border-zinc-800 rounded-xl text-sm font-semibold text-slate-900 dark:text-[#fafafa] placeholder:text-slate-400 dark:placeholder:text-zinc-500 transition-colors hover:border-slate-300 dark:hover:border-zinc-700 active:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-slate-100 dark:disabled:bg-zinc-900 aria-[invalid=true]:border-rose-500 aria-[invalid=true]:focus-visible:ring-rose-500';
+const btnPrimaryClass =
+  'min-h-[44px] px-4 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg font-bold text-xs inline-flex items-center justify-center gap-2 shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#111113] disabled:opacity-60 disabled:cursor-not-allowed';
+const btnSecondaryClass =
+  'min-h-[44px] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] text-slate-700 dark:text-[#fafafa] font-bold text-xs inline-flex items-center justify-center gap-2 transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#111113] disabled:opacity-60 disabled:cursor-not-allowed';
+const btnIconClass =
+  'min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] text-slate-600 dark:text-zinc-300 transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-60 disabled:cursor-not-allowed';
 
 const TenantManager = () => {
   const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
   const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [loadError, setLoadError] = useState('');
+
+  const searchTerm = searchParams.get('q') || '';
   const statusFilter = searchParams.get('status') || 'ALL';
   const planFilter = searchParams.get('plano') || 'ALL';
   const alertsOnly = searchParams.get('alertas') === '1';
@@ -45,6 +55,22 @@ const TenantManager = () => {
   const [provisionForm, setProvisionForm] = useState(EMPTY_PROVISION);
   const [provisionLoading, setProvisionLoading] = useState(false);
   const [provisionError, setProvisionError] = useState('');
+  const [provisionFieldErrors, setProvisionFieldErrors] = useState({});
+  const [togglingId, setTogglingId] = useState(null);
+
+  const provisionTitleId = useId();
+  const provisionDialogRef = useRef(null);
+  const provisionFirstInputRef = useRef(null);
+  const previousFocusRef = useRef(null);
+  const isMountedRef = useRef(true);
+  const loadSeqRef = useRef(0);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const setParam = useCallback((key, value) => {
     setSearchParams((prev) => {
@@ -56,20 +82,74 @@ const TenantManager = () => {
   }, [setSearchParams]);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
+    setLoadError('');
     try {
-      setSnapshot(await loadConsoleSnapshot());
+      const data = await loadConsoleSnapshot();
+      if (!isMountedRef.current || seq !== loadSeqRef.current) return;
+      setSnapshot(data);
     } catch (error) {
       console.error('Erro ao carregar empresas:', error);
+      if (!isMountedRef.current || seq !== loadSeqRef.current) return;
+      setLoadError(describeFirebaseError(error, 'Falha ao carregar a lista de empresas.'));
       toast.error('Falha ao carregar a lista de empresas.');
     } finally {
-      setLoading(false);
+      if (isMountedRef.current && seq === loadSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const closeProvision = useCallback(() => {
+    if (provisionLoading) return;
+    setParam('novo', null);
+    setProvisionForm(EMPTY_PROVISION);
+    setProvisionError('');
+    setProvisionFieldErrors({});
+  }, [provisionLoading, setParam]);
+
+  const provisionLoadingRef = useRef(provisionLoading);
+  provisionLoadingRef.current = provisionLoading;
+  const closeProvisionRef = useRef(closeProvision);
+  closeProvisionRef.current = closeProvision;
+
+  useEffect(() => {
+    if (!showProvision) return undefined;
+    const container = provisionDialogRef.current;
+    previousFocusRef.current = captureFocusTarget(container);
+
+    const raf = requestAnimationFrame(() => {
+      if (provisionFirstInputRef.current) provisionFirstInputRef.current.focus();
+      else container?.focus();
+    });
+
+    const onKeyDown = (event) => {
+      if (!isTopmostModal(container)) return;
+      if (event.key === 'Escape') {
+        if (provisionLoadingRef.current) return;
+        event.preventDefault();
+        closeProvisionRef.current?.();
+        return;
+      }
+      if (event.key === 'Tab') {
+        trapFocusWithin(event, container);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', onKeyDown);
+      const previous = previousFocusRef.current;
+      previousFocusRef.current = null;
+      restoreFocusSafely(previous, null, container);
+    };
+  }, [showProvision]);
 
   const tenants = useMemo(() => snapshot?.tenants || [], [snapshot]);
   const plans = useMemo(() => snapshot?.plans || {}, [snapshot]);
@@ -100,6 +180,7 @@ const TenantManager = () => {
   }), [tenants]);
 
   const quickToggle = async (tenant) => {
+    if (togglingId) return;
     const suspend = ['active', 'trial'].includes(tenant.status);
     const verb = suspend ? 'Suspender' : 'Reativar';
     const ok = await confirm({
@@ -108,138 +189,238 @@ const TenantManager = () => {
       danger: suspend,
       confirmLabel: verb,
     });
-    if (!ok) return;
+    if (!ok || !isMountedRef.current) return;
+    setTogglingId(tenant.id);
     try {
       await updateTenant(tenant.id, { status: suspend ? 'suspended' : 'active' });
+      if (!isMountedRef.current) return;
       toast.success(suspend ? 'Empresa suspensa: acesso bloqueado.' : 'Empresa reativada.');
       load();
     } catch (error) {
       console.error(error);
-      toast.error(describeFirebaseError(error));
+      if (isMountedRef.current) toast.error(describeFirebaseError(error));
+    } finally {
+      if (isMountedRef.current) setTogglingId(null);
     }
-  };
-
-  const closeProvision = () => {
-    setParam('novo', null);
-    setProvisionForm(EMPTY_PROVISION);
-    setProvisionError('');
   };
 
   const handleProvision = async (e) => {
     e.preventDefault();
+    if (provisionLoading) return;
     setProvisionError('');
-    if (provisionForm.password.length < 8) {
-      setProvisionError('A senha inicial precisa de pelo menos 8 caracteres.');
+    const errs = {};
+    if (!provisionForm.companyName.trim()) errs.companyName = true;
+    if (!provisionForm.adminName.trim()) errs.adminName = true;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(provisionForm.email.trim())) errs.email = true;
+    if (provisionForm.password.length < 8) errs.password = true;
+
+    if (Object.keys(errs).length > 0) {
+      setProvisionFieldErrors(errs);
+      setProvisionError(
+        errs.password
+          ? 'A senha inicial precisa de pelo menos 8 caracteres.'
+          : 'Preencha corretamente todos os campos obrigatórios.',
+      );
       return;
     }
+
+    setProvisionFieldErrors({});
     setProvisionLoading(true);
     try {
-      const { tenantId } = await provisionTenant(provisionForm);
-      toast.success(`Empresa "${provisionForm.companyName}" criada. Envie o acesso ao responsável.`);
-      closeProvision();
+      const { tenantId } = await provisionTenant({
+        ...provisionForm,
+        companyName: provisionForm.companyName.trim(),
+        adminName: provisionForm.adminName.trim(),
+        email: provisionForm.email.trim(),
+      });
+      if (!isMountedRef.current) return;
+      toast.success(`Empresa "${provisionForm.companyName.trim()}" criada. Envie o acesso ao responsável.`);
+      setParam('novo', null);
+      setProvisionForm(EMPTY_PROVISION);
+      setProvisionError('');
       await load();
+      if (!isMountedRef.current) return;
       setParam('empresa', tenantId);
     } catch (error) {
       console.error('Erro ao provisionar empresa:', error);
-      setProvisionError(describeFirebaseError(error, 'Erro ao criar a empresa.'));
+      if (isMountedRef.current) setProvisionError(describeFirebaseError(error, 'Erro ao criar a empresa.'));
     } finally {
-      setProvisionLoading(false);
+      if (isMountedRef.current) setProvisionLoading(false);
     }
   };
 
   return (
-    <div className="max-w-7xl mx-auto pb-24 space-y-6">
+    <div className="max-w-7xl mx-auto pb-24 space-y-6 animate-fade-in">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 rounded-xl p-5 border border-slate-200/90 dark:border-slate-800 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-[#111113] rounded-2xl p-5 border border-slate-200/90 dark:border-zinc-800 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-brand/10 border border-brand/20 text-brand flex items-center justify-center shrink-0">
-            <Building2 size={20} />
+          <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 text-brand-aa flex items-center justify-center shrink-0">
+            <Building2 size={20} aria-hidden="true" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Empresas</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Planos, limites sob medida, identidade e saúde de cada cliente.</p>
+            <h1 className="text-xl font-bold text-slate-900 dark:text-[#fafafa] tracking-tight">Empresas</h1>
+            <p className="text-xs text-slate-600 dark:text-zinc-400 mt-0.5">Planos, limites sob medida, identidade e saúde de cada cliente.</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setParam('novo', '1')} className="flex items-center gap-1.5 px-3.5 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg font-semibold text-xs transition-colors shadow-sm">
-            <PlusSquare size={15} /> <span>Nova empresa</span>
+          <button type="button" onClick={() => setParam('novo', '1')} className={btnPrimaryClass}>
+            <PlusSquare size={15} aria-hidden="true" /> <span>Nova empresa</span>
           </button>
-          <button onClick={load} aria-label="Recarregar" title="Recarregar" className="flex items-center justify-center p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg transition-colors border border-slate-200/80 dark:border-slate-700">
-            <RefreshCcw size={15} className={loading ? 'animate-spin' : ''} />
+          <button
+            type="button"
+            onClick={load}
+            disabled={loading}
+            aria-label="Recarregar empresas"
+            title="Recarregar"
+            className={btnIconClass}
+          >
+            <RefreshCcw size={15} className={loading ? 'animate-spin' : ''} aria-hidden="true" />
           </button>
         </div>
       </div>
 
-      {/* RESUMO */}
+      {/* RESUMO KPI */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {[
-          { label: 'Total', value: totals.total, onClick: () => setParam('status', null) },
-          { label: 'Ativas', value: totals.live, onClick: () => setParam('status', 'active') },
-          { label: 'Suspensas / encerradas', value: totals.blocked, onClick: () => setParam('status', 'suspended') },
-          { label: 'Com alertas', value: totals.withAlerts, onClick: () => setParam('alertas', alertsOnly ? null : '1'), icon: AlertTriangle },
-          { label: 'MRR', value: brlCompact.format(totals.mrr), icon: CircleDollarSign },
-        ].map((stat) => (
-          <button
-            key={stat.label}
-            onClick={stat.onClick}
-            disabled={!stat.onClick}
-            className="text-left bg-white dark:bg-slate-800 rounded-xl p-5 border border-gray-100 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow disabled:cursor-default"
-          >
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">{stat.label}</p>
-            <p className="text-2xl font-black text-gray-900 dark:text-white mt-1 tabular-nums">{stat.value}</p>
-          </button>
-        ))}
+        <KpiTile
+          icon={Building2}
+          label="Total"
+          value={totals.total.toLocaleString('pt-BR')}
+          hint={statusFilter === 'ALL' && !alertsOnly ? `${totals.legacy} legadas` : 'Limpar filtro de status'}
+          onClick={() => { setParam('status', null); setParam('alertas', null); }}
+        />
+        <KpiTile
+          icon={CheckCircle}
+          tone="bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400"
+          label="Ativas"
+          value={totals.live.toLocaleString('pt-BR')}
+          hint={statusFilter === 'active' ? 'Filtro ativo' : 'Filtrar ativas'}
+          onClick={() => setParam('status', statusFilter === 'active' ? null : 'active')}
+        />
+        <KpiTile
+          icon={Pause}
+          tone="bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
+          label="Suspensas / encerradas"
+          value={totals.blocked.toLocaleString('pt-BR')}
+          hint={statusFilter === 'suspended' ? 'Filtro ativo' : 'Filtrar suspensas'}
+          onClick={() => setParam('status', statusFilter === 'suspended' ? null : 'suspended')}
+        />
+        <KpiTile
+          icon={AlertTriangle}
+          tone="bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+          label="Com alertas"
+          value={totals.withAlerts.toLocaleString('pt-BR')}
+          hint={alertsOnly ? 'Filtro ativo' : 'Filtrar alertas'}
+          onClick={() => setParam('alertas', alertsOnly ? null : '1')}
+        />
+        <KpiTile
+          icon={CircleDollarSign}
+          tone="bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400"
+          label="MRR"
+          value={brlCompact.format(totals.mrr)}
+          hint={`ARR ${brlCompact.format(totals.mrr * 12)}`}
+        />
       </div>
 
+      {/* ESTADO DE ERRO + RETRY */}
+      {loadError && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={20} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" aria-hidden="true" />
+            <div>
+              <h2 className="text-sm font-bold text-rose-900 dark:text-rose-200">Erro ao carregar empresas</h2>
+              <p className="text-xs text-rose-700 dark:text-rose-300 mt-0.5">{loadError}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={load}
+            disabled={loading}
+            className="min-h-[44px] inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-white dark:bg-[#111113] border border-rose-200 dark:border-rose-800 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 disabled:opacity-60 disabled:cursor-not-allowed shrink-0"
+          >
+            <RefreshCcw size={14} className={loading ? 'animate-spin' : ''} aria-hidden="true" />
+            <span>Tentar novamente</span>
+          </button>
+        </div>
+      )}
+
       {/* FILTROS */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center">
+      <div className="bg-white dark:bg-[#111113] rounded-2xl border border-slate-200/90 dark:border-zinc-800 p-4 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center">
         <div className="relative w-full md:flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <label htmlFor="tm-search" className="sr-only">Buscar empresas</label>
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-zinc-500" aria-hidden="true" />
           <input
+            id="tm-search"
+            name="q"
             type="search"
-            placeholder="Buscar por empresa, ID, responsável ou e-mail..."
+            placeholder="Buscar por empresa, ID, responsável ou e-mail…"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 text-xs bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-brand font-medium text-gray-700 dark:text-slate-200"
+            onChange={(e) => setParam('q', e.target.value)}
+            className={`${fieldClass} pl-10 text-xs`}
           />
         </div>
         <div className="flex flex-wrap gap-2">
-          <select value={statusFilter} onChange={(e) => setParam('status', e.target.value)} aria-label="Filtrar por status" className="text-xs bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-2.5 font-bold text-gray-600 dark:text-slate-300 cursor-pointer focus:outline-none">
-            <option value="ALL">Todos os status</option>
-            {Object.entries(TENANT_STATUSES).map(([id, s]) => <option key={id} value={id}>{s.label}</option>)}
-            <option value="legacy">Legadas (sem cadastro)</option>
-          </select>
-          <select value={planFilter} onChange={(e) => setParam('plano', e.target.value)} aria-label="Filtrar por plano" className="text-xs bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl px-4 py-2.5 font-bold text-gray-600 dark:text-slate-300 cursor-pointer focus:outline-none">
-            <option value="ALL">Todos os planos</option>
-            {Object.values(plans).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          <div>
+            <label htmlFor="tm-status-filter" className="sr-only">Filtrar por status</label>
+            <select
+              id="tm-status-filter"
+              name="status"
+              value={statusFilter}
+              onChange={(e) => setParam('status', e.target.value)}
+              className={`${fieldClass} md:w-48 text-xs cursor-pointer`}
+            >
+              <option value="ALL">Todos os status</option>
+              {Object.entries(TENANT_STATUSES).map(([id, s]) => <option key={id} value={id}>{s.label}</option>)}
+              <option value="legacy">Legadas (sem cadastro)</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="tm-plan-filter" className="sr-only">Filtrar por plano</label>
+            <select
+              id="tm-plan-filter"
+              name="plano"
+              value={planFilter}
+              onChange={(e) => setParam('plano', e.target.value)}
+              className={`${fieldClass} md:w-48 text-xs cursor-pointer`}
+            >
+              <option value="ALL">Todos os planos</option>
+              {Object.values(plans).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
           {alertsOnly && (
-            <button onClick={() => setParam('alertas', null)} className="text-xs font-bold px-3 py-2 rounded-xl bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 flex items-center gap-1">
-              Com alertas <X size={12} />
+            <button
+              type="button"
+              onClick={() => setParam('alertas', null)}
+              className="min-h-[44px] text-xs font-bold px-3.5 py-2 rounded-xl bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60 inline-flex items-center gap-1.5 transition-colors hover:bg-amber-200/70 dark:hover:bg-amber-950/80 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              <span>Com alertas</span>
+              <X size={13} aria-hidden="true" />
             </button>
           )}
         </div>
       </div>
 
       {/* Governança e DPA (Data Processing Agreement) LGPD */}
-      <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 flex items-center justify-between gap-4">
+      <div className="p-3.5 rounded-xl bg-zinc-900 dark:bg-[#111113] border border-zinc-800 text-xs text-zinc-300 flex items-center justify-between gap-4">
         <div className="flex items-center gap-2.5 min-w-0">
-          <ShieldCheck size={18} className="text-emerald-400 shrink-0" />
+          <ShieldCheck size={18} className="text-emerald-400 shrink-0" aria-hidden="true" />
           <span className="truncate">
-            <strong className="text-white font-bold">Acordo de Processamento de Dados (DPA):</strong> Isolamento lógico multi-tenant e hash criptográfico para conformidade com a LGPD (Lei 13.709/2018).
+            <strong className="text-[#fafafa] font-bold">Acordo de Processamento de Dados (DPA):</strong> Isolamento lógico multi-tenant e hash criptográfico para conformidade com a LGPD (Lei 13.709/2018).
           </span>
         </div>
-        <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-[10px] font-bold shrink-0">
-          DPA Ativo • Shineray
+        <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-xs font-bold shrink-0">
+          DPA Ativo • Multi-tenant
         </div>
       </div>
 
       {/* TABELA */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-[#111113] rounded-2xl border border-slate-200/90 dark:border-zinc-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-gray-50 dark:bg-slate-900 text-gray-400 text-[10px] uppercase font-black tracking-widest border-b border-gray-100 dark:border-slate-700">
+              <tr className="bg-slate-50 dark:bg-[#09090b] text-slate-500 dark:text-zinc-400 text-xs uppercase font-black tracking-wider border-b border-slate-200 dark:border-zinc-800">
                 <th className="p-4 pl-6">Empresa</th>
                 <th className="p-4">Responsável</th>
                 <th className="p-4">Plano</th>
@@ -250,73 +431,93 @@ const TenantManager = () => {
                 <th className="p-4 pr-6 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="text-xs font-semibold text-gray-700 dark:text-slate-200">
+            <tbody className="text-xs font-semibold text-slate-700 dark:text-zinc-200">
               {loading && !snapshot ? (
                 <tr>
-                  <td colSpan="8" className="p-12 text-center text-gray-400 font-bold uppercase tracking-widest">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-8 h-8 border-4 border-brand/20 border-t-brand rounded-full animate-spin" />
-                      Carregando empresas...
+                  <td colSpan="8" className="p-12 text-center text-slate-500 dark:text-zinc-400 font-bold uppercase tracking-wider">
+                    <div role="status" className="flex flex-col items-center gap-3">
+                      <div className="w-8 h-8 border-4 border-brand/20 border-t-brand rounded-full animate-spin" aria-hidden="true" />
+                      <span>Carregando empresas…</span>
                     </div>
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="p-8 text-center text-gray-400 font-medium">Nenhuma empresa corresponde aos filtros.</td>
+                  <td colSpan="8" className="p-10 text-center text-slate-500 dark:text-zinc-400 font-medium">
+                    Nenhuma empresa corresponde aos filtros.
+                  </td>
                 </tr>
               ) : (
                 filtered.map((tenant) => {
                   const alerts = tenantAlerts(tenant);
                   const worst = alerts.find((a) => a.level === 'critical') || alerts.find((a) => a.level === 'warning');
+                  const isLive = ['active', 'trial'].includes(tenant.status);
                   return (
                     <tr
                       key={tenant.id}
-                      onClick={() => setParam('empresa', tenant.id)}
-                      className="border-b border-gray-50 dark:border-slate-700/60 hover:bg-gray-50/60 dark:hover:bg-slate-900/40 transition-colors cursor-pointer"
+                      className="border-b border-slate-100 dark:border-zinc-800/80 hover:bg-slate-50/70 dark:hover:bg-zinc-800/50 transition-colors"
                     >
                       <td className="p-4 pl-6">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-brand/10 text-brand flex items-center justify-center font-black shrink-0">
+                          <div className="w-9 h-9 rounded-xl bg-brand/10 text-brand-aa flex items-center justify-center font-black shrink-0">
                             {(tenant.companyName || tenant.id).substring(0, 2).toUpperCase()}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-extrabold text-gray-900 dark:text-white text-sm truncate max-w-[220px] flex items-center gap-1.5">
-                              {tenant.companyName || 'Empresa sem nome'}
-                              {worst && <AlertTriangle size={13} className={worst.level === 'critical' ? 'text-rose-500' : 'text-amber-500'} aria-label={worst.text} />}
-                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setParam('empresa', tenant.id)}
+                              className="min-h-[44px] text-left font-extrabold text-slate-900 dark:text-[#fafafa] hover:text-brand-aa text-sm truncate max-w-[220px] inline-flex items-center gap-1.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                            >
+                              <span className="truncate">{tenant.companyName || 'Empresa sem nome'}</span>
+                              {worst && (
+                                <AlertTriangle
+                                  size={13}
+                                  className={worst.level === 'critical' ? 'text-rose-500 shrink-0' : 'text-amber-500 shrink-0'}
+                                  aria-hidden="true"
+                                />
+                              )}
+                            </button>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               <TenantStatusBadge tenant={tenant} />
-                              <span className="text-[9px] font-mono text-gray-400 truncate max-w-[140px]">#{tenant.id}</span>
+                              <span className="text-xs font-mono text-slate-500 dark:text-zinc-400 truncate max-w-[140px]">#{tenant.id}</span>
                             </div>
                           </div>
                         </div>
                       </td>
                       <td className="p-4">
-                        <p className="font-bold text-gray-900 dark:text-white truncate max-w-[180px]">{tenant.owner?.name || '—'}</p>
-                        <p className="text-[10px] text-gray-400 truncate max-w-[180px]">{tenant.owner?.email || 'Sem responsável'}</p>
+                        <p className="font-bold text-slate-900 dark:text-[#fafafa] truncate max-w-[180px]">{tenant.owner?.name || '—'}</p>
+                        <p className="text-xs text-slate-500 dark:text-zinc-400 truncate max-w-[180px]">{tenant.owner?.email || 'Sem responsável'}</p>
                       </td>
                       <td className="p-4"><PlanBadge tenant={tenant} /></td>
                       <td className="p-4 w-32"><UsageBar compact current={tenant.usersCount} limit={tenant.entitlements?.maxUsers} /></td>
                       <td className="p-4 w-32"><UsageBar compact current={tenant.assetsCount} limit={tenant.entitlements?.maxAssets} /></td>
-                      <td className="p-4 text-[11px] text-gray-500 dark:text-gray-400 whitespace-nowrap">{relativeDays(tenant.lastActivity)}</td>
-                      <td className="p-4 text-right tabular-nums font-black">{tenant.mrr ? brl.format(tenant.mrr) : '—'}</td>
-                      <td className="p-4 pr-6" onClick={(e) => e.stopPropagation()}>
+                      <td className="p-4 text-xs text-slate-600 dark:text-zinc-400 whitespace-nowrap tabular-nums">{relativeDays(tenant.lastActivity)}</td>
+                      <td className="p-4 text-right tabular-nums font-black text-slate-900 dark:text-[#fafafa]">{tenant.mrr ? brl.format(tenant.mrr) : '—'}</td>
+                      <td className="p-4 pr-6">
                         <div className="flex items-center justify-end gap-2">
                           {!tenant.legacy && tenant.status !== 'cancelled' && (
                             <button
+                              type="button"
+                              disabled={togglingId === tenant.id}
                               onClick={() => quickToggle(tenant)}
-                              className={`p-2 rounded-xl border transition-all ${['active', 'trial'].includes(tenant.status) ? 'text-amber-500 border-amber-200/60 hover:bg-amber-50 dark:border-amber-900/60 dark:hover:bg-amber-950/30' : 'text-green-500 border-green-200/60 hover:bg-green-50 dark:border-green-900/60 dark:hover:bg-green-950/30'}`}
-                              title={['active', 'trial'].includes(tenant.status) ? 'Suspender empresa' : 'Reativar empresa'}
-                              aria-label={['active', 'trial'].includes(tenant.status) ? 'Suspender empresa' : 'Reativar empresa'}
+                              className={`${btnIconClass} ${
+                                isLive
+                                  ? 'text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900/60 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                                  : 'text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/60 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                              }`}
+                              title={isLive ? 'Suspender empresa' : 'Reativar empresa'}
+                              aria-label={`${isLive ? 'Suspender' : 'Reativar'} ${tenant.companyName || tenant.id}`}
                             >
-                              {['active', 'trial'].includes(tenant.status) ? <Pause size={14} /> : <Play size={14} />}
+                              {isLive ? <Pause size={15} aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}
                             </button>
                           )}
                           <button
+                            type="button"
                             onClick={() => setParam('empresa', tenant.id)}
-                            className="px-3 py-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300 hover:text-brand hover:border-brand/40 transition-all flex items-center gap-1 text-[10px] font-black uppercase"
+                            className="min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] text-slate-700 dark:text-zinc-200 hover:text-brand-aa hover:border-brand/40 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand inline-flex items-center gap-1 text-xs font-black uppercase"
                           >
-                            Detalhes <ChevronRight size={12} />
+                            <span>Detalhes</span>
+                            <ChevronRight size={13} aria-hidden="true" />
                           </button>
                         </div>
                       </td>
@@ -339,62 +540,110 @@ const TenantManager = () => {
         />
       )}
       {selectedId && !selected && snapshot && !loading && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 !mt-0 rounded-xl bg-slate-900 text-white px-4 py-3 text-xs font-bold shadow-xl flex items-center gap-3">
-          Empresa "{selectedId}" não encontrada.
-          <button onClick={() => setParam('empresa', null)} aria-label="Fechar aviso"><X size={14} /></button>
+        <div
+          role="status"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 !mt-0 rounded-xl bg-zinc-900 dark:bg-[#111113] border border-zinc-800 text-[#fafafa] pl-4 pr-2 py-2 text-xs font-bold shadow-xl flex items-center gap-2"
+        >
+          <span>Empresa &quot;{selectedId}&quot; não encontrada.</span>
+          <button
+            type="button"
+            onClick={() => setParam('empresa', null)}
+            aria-label="Fechar aviso"
+            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-zinc-400 hover:text-[#fafafa] hover:bg-zinc-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <X size={15} aria-hidden="true" />
+          </button>
         </div>
       )}
 
       {/* PROVISIONAMENTO */}
       {showProvision && (
-        <div className="fixed inset-0 !mt-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4" role="dialog" aria-modal="true" aria-label="Nova empresa">
-          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl p-6 w-full max-w-md shadow-2xl">
+        <div
+          className="fixed inset-0 !mt-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4 overscroll-contain animate-fade-in"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !provisionLoading) closeProvision();
+          }}
+        >
+          <div
+            ref={provisionDialogRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={provisionTitleId}
+            className="bg-white dark:bg-[#111113] border border-slate-200 dark:border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[92vh] overflow-y-auto overscroll-contain animate-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-black text-gray-900 dark:text-white">Nova empresa</h2>
-              <button onClick={closeProvision} aria-label="Fechar" className="p-1 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-white"><X size={18} /></button>
+              <h2 id={provisionTitleId} className="text-lg font-black text-slate-900 dark:text-[#fafafa]">Nova empresa</h2>
+              <button
+                type="button"
+                disabled={provisionLoading}
+                onClick={closeProvision}
+                aria-label="Fechar janela de nova empresa"
+                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-[#fafafa] hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
             </div>
 
             {provisionError && (
-              <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">{provisionError}</p>
+              <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">
+                {provisionError}
+              </p>
             )}
 
-            <form onSubmit={handleProvision} className="space-y-4">
+            <form onSubmit={handleProvision} className="space-y-4" noValidate>
               {[
                 ['companyName', 'Razão social / nome fantasia', 'text', 'Ex: ACME Indústria', 'organization'],
                 ['adminName', 'Nome do responsável (owner)', 'text', 'Nome completo', 'name'],
-                ['email', 'E-mail de acesso do responsável', 'email', 'admin@empresa.com', 'off'],
+                ['email', 'E-mail de acesso do responsável', 'email', 'nome@empresa.com.br', 'off'],
                 ['password', 'Senha inicial (mín. 8)', 'password', '••••••••', 'new-password'],
-              ].map(([key, text, type, placeholder, autoComplete]) => (
+              ].map(([key, text, type, placeholder, autoComplete], idx) => (
                 <div key={key}>
-                  <label htmlFor={`prov-${key}`} className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">{text}</label>
+                  <label htmlFor={`prov-${key}`} className="block text-xs font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-wider mb-1.5">{text}</label>
                   <input
+                    ref={idx === 0 ? provisionFirstInputRef : undefined}
                     id={`prov-${key}`}
+                    name={key}
                     type={type}
                     required
                     minLength={key === 'password' ? 8 : undefined}
                     autoComplete={autoComplete}
                     value={provisionForm[key]}
-                    onChange={(e) => setProvisionForm({ ...provisionForm, [key]: e.target.value })}
+                    aria-invalid={provisionFieldErrors[key] ? 'true' : undefined}
+                    onChange={(e) => {
+                      setProvisionForm({ ...provisionForm, [key]: e.target.value });
+                      if (provisionFieldErrors[key]) {
+                        setProvisionFieldErrors((prev) => ({ ...prev, [key]: false }));
+                      }
+                    }}
                     placeholder={placeholder}
                     className={fieldClass}
                   />
                 </div>
               ))}
               <div>
-                <label htmlFor="prov-plan" className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Plano</label>
-                <select id="prov-plan" value={provisionForm.plan} onChange={(e) => setProvisionForm({ ...provisionForm, plan: e.target.value })} className={fieldClass}>
+                <label htmlFor="prov-plan" className="block text-xs font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-wider mb-1.5">Plano</label>
+                <select
+                  id="prov-plan"
+                  name="plan"
+                  value={provisionForm.plan}
+                  onChange={(e) => setProvisionForm({ ...provisionForm, plan: e.target.value })}
+                  className={`${fieldClass} cursor-pointer`}
+                >
                   {Object.values(plans).map((p) => (
                     <option key={p.id} value={p.id}>{p.name} — {brl.format(Number(p.monthlyPrice) || 0)}/mês</option>
                   ))}
                 </select>
               </div>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-slate-600 dark:text-zinc-400">
                 Limites e recursos sob medida podem ser ajustados logo depois, em Detalhes → Plano e limites.
               </p>
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={closeProvision} className="flex-1 px-4 py-3 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-600 dark:text-gray-300 font-bold text-xs uppercase tracking-wider">Cancelar</button>
-                <button type="submit" disabled={provisionLoading} className="flex-1 px-4 py-3 bg-brand text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg disabled:opacity-50">
-                  {provisionLoading ? 'Criando...' : 'Criar empresa'}
+                <button type="button" disabled={provisionLoading} onClick={closeProvision} className={`flex-1 uppercase tracking-wider ${btnSecondaryClass}`}>
+                  Cancelar
+                </button>
+                <button type="submit" disabled={provisionLoading} className={`flex-1 uppercase tracking-wider ${btnPrimaryClass}`}>
+                  {provisionLoading ? 'Criando…' : 'Criar empresa'}
                 </button>
               </div>
             </form>

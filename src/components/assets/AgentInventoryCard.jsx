@@ -22,7 +22,7 @@ import RemoteControlModal from '../agent/RemoteControlModal';
 const LEVEL_STYLE = {
   high: 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300',
   medium: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300',
-  low: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300',
+  low: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-zinc-800 dark:bg-[#111113] dark:text-zinc-300',
 };
 
 const formatDate = (value) => {
@@ -33,13 +33,13 @@ const formatDate = (value) => {
 
 const Fact = ({ label, value, mono = false }) => (
   <div className="min-w-0">
-    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">{label}</p>
-    <p className={`text-sm font-bold text-gray-900 dark:text-white truncate ${mono ? 'font-mono text-xs' : ''}`} title={typeof value === 'string' ? value : undefined}>{value || '—'}</p>
+    <p className="text-xs font-black uppercase tracking-wider text-gray-500 dark:text-zinc-400">{label}</p>
+    <p className={`text-sm font-bold text-gray-900 dark:text-[#fafafa] truncate tabular-nums ${mono ? 'font-mono text-xs' : ''}`} title={typeof value === 'string' ? value : undefined}>{value || '—'}</p>
   </div>
 );
 
 const SectionTitle = ({ icon: Icon, children }) => (
-  <h4 className="text-[11px] font-black uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1.5"><Icon size={13} /> {children}</h4>
+  <h4 className="text-xs font-black uppercase tracking-wider text-gray-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5"><Icon size={14} aria-hidden="true" /> {children}</h4>
 );
 
 /**
@@ -118,10 +118,10 @@ const AgentInventoryCard = ({ asset }) => {
   const accessId = formatAccessId(liveDevice || asset.agent?.deviceKey || asset.serialNumber || asset.internalId);
 
   const healthBadge = onlineNow
-    ? <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"><Wifi size={11} /> Online Ao Vivo (.EXE)</span>
+    ? <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-black uppercase text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"><Wifi size={12} aria-hidden="true" /> Online Ao Vivo (.EXE)</span>
     : health.state === 'online'
-    ? <span className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-2 py-0.5 text-[10px] font-black uppercase text-green-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300"><Activity size={11} /> Comunicando</span>
-    : <span className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-black uppercase text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300"><AlertTriangle size={11} /> Sem comunicação há {health.days} dias</span>;
+    ? <span className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-black uppercase text-green-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300"><Activity size={12} aria-hidden="true" /> Comunicando</span>
+    : <span className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-black uppercase text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300 tabular-nums"><AlertTriangle size={12} aria-hidden="true" /> Sem comunicação há {health.days} dias</span>;
 
   const sec = inventory?.security;
   const antivirus = sec?.antivirus?.length ? sec.antivirus.map((av) => `${av.name}${av.enabled ? '' : ' (desativado)'}${av.enabled && !av.upToDate ? ' (desatualizado)' : ''}`).join(', ') : inventory ? 'Nenhum' : '—';
@@ -137,16 +137,16 @@ const AgentInventoryCard = ({ asset }) => {
   };
 
   return (
-    <section className="bg-white dark:bg-slate-800 rounded-xl p-6 md:p-8 border border-gray-100 dark:border-slate-700 shadow-sm space-y-6" aria-label="Inventário do Agente ITAM">
+    <section className="bg-white dark:bg-[#111113] rounded-xl p-6 md:p-8 border border-gray-100 dark:border-zinc-800 shadow-sm space-y-6" aria-label="Inventário do Agente ITAM">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2"><Cpu size={20} /> Agente ITAM & NexusDesk</h3>
-            <span className="px-2.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-mono text-xs font-bold">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-[#fafafa] flex items-center gap-2"><Cpu size={20} aria-hidden="true" /> Agente ITAM & NexusDesk</h3>
+            <span className="px-2.5 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 font-mono text-xs font-bold tabular-nums">
               NexusDesk: {accessId}
             </span>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+          <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5 tabular-nums">
             Última coleta {formatDate(asset.agent?.collectedAt)} · agente {liveDevice?.agentVersion || asset.agent?.version || '1.x'} · {asset.agent?.source || 'Agente ITAM'}
           </p>
         </div>
@@ -157,16 +157,16 @@ const AgentInventoryCard = ({ asset }) => {
               <button
                 type="button"
                 onClick={() => setRemoteModal({ open: true, tab: 'screen' })}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-sm transition-colors"
+                className="min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg font-black text-xs shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
-                <Monitor size={14} /> NexusDesk
+                <Monitor size={14} aria-hidden="true" /> NexusDesk
               </button>
               <button
                 type="button"
                 onClick={() => setRemoteModal({ open: true, tab: 'terminal' })}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 font-bold text-xs transition-colors"
+                className="min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-transparent dark:border-zinc-800 text-gray-700 dark:text-zinc-200 font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
-                <Terminal size={13} /> Terminal
+                <Terminal size={13} aria-hidden="true" /> Terminal
               </button>
             </>
           )}
@@ -178,15 +178,15 @@ const AgentInventoryCard = ({ asset }) => {
           {alerts.map((alert) => (
             <li key={alert.code} className={`flex flex-col sm:flex-row sm:items-center gap-2 rounded-2xl border px-4 py-3 text-xs ${LEVEL_STYLE[alert.level] || LEVEL_STYLE.low}`}>
               <span className="flex items-start gap-2 flex-1 min-w-0">
-                {alert.level === 'high' ? <ShieldAlert size={15} className="shrink-0" /> : <AlertTriangle size={15} className="shrink-0" />}
-                <span><strong className="uppercase text-[10px] tracking-wider mr-1">{ALERT_LEVELS[alert.level]}</strong>{alert.message}</span>
+                {alert.level === 'high' ? <ShieldAlert size={15} className="shrink-0" aria-hidden="true" /> : <AlertTriangle size={15} className="shrink-0" aria-hidden="true" />}
+                <span><strong className="uppercase text-xs tracking-wider mr-1">{ALERT_LEVELS[alert.level]}</strong>{alert.message}</span>
               </span>
               {canWrite && alert.data?.suggested && ['location_mismatch', 'user_mismatch'].includes(alert.code) && !lifecycleBlocker(asset) && (
                 <button
                   type="button"
                   onClick={() => apply(alert)}
                   disabled={busy}
-                  className="shrink-0 rounded-xl bg-white/80 dark:bg-slate-900/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider hover:bg-white disabled:opacity-50"
+                  className="min-h-[44px] shrink-0 rounded-xl bg-white/80 dark:bg-[#111113] border border-slate-200 dark:border-zinc-800 px-3 py-1.5 text-xs font-black uppercase tracking-wider hover:bg-white dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
                 >
                   {alert.code === 'location_mismatch' ? `Mudar para ${alert.data.suggested}` : `Definir ${alert.data.suggested}`}
                 </button>
@@ -196,11 +196,11 @@ const AgentInventoryCard = ({ asset }) => {
         </ul>
       ) : (
         <p className="flex items-center gap-2 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-xs font-bold text-green-700 dark:border-green-900/60 dark:bg-green-950/20 dark:text-green-300">
-          <ShieldCheck size={15} /> Nenhum alerta na última coleta.
+          <ShieldCheck size={15} aria-hidden="true" /> Nenhum alerta na última coleta.
         </p>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 rounded-2xl bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 p-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 rounded-2xl bg-gray-50 dark:bg-zinc-900/50 border border-gray-100 dark:border-zinc-800 p-4">
         <Fact label="Hostname" value={asset.agent?.hostname} mono />
         <Fact label="Usuário logado" value={asset.agent?.loggedUser} />
         <Fact label="IP / MAC" value={[asset.agent?.ip, asset.agent?.mac].filter(Boolean).join(' · ')} mono />
@@ -232,11 +232,11 @@ const AgentInventoryCard = ({ asset }) => {
                   const used = v.sizeGb ? Math.round(((v.sizeGb - (v.freeGb ?? 0)) / v.sizeGb) * 100) : 0;
                   return (
                     <li key={v.drive} className="text-xs">
-                      <div className="flex justify-between font-bold text-gray-700 dark:text-gray-200">
-                        <span>{v.drive} {v.label && <span className="font-normal text-gray-400">{v.label}</span>} {v.encrypted === true && <span className="text-green-600">· criptografado</span>}{v.encrypted === false && <span className="text-amber-600">· sem criptografia</span>}</span>
+                      <div className="flex justify-between font-bold text-gray-700 dark:text-zinc-200 tabular-nums">
+                        <span>{v.drive} {v.label && <span className="font-normal text-gray-500 dark:text-zinc-400">{v.label}</span>} {v.encrypted === true && <span className="text-emerald-600 dark:text-emerald-400">· criptografado</span>}{v.encrypted === false && <span className="text-amber-600 dark:text-amber-400">· sem criptografia</span>}</span>
                         <span>{v.freeGb} GB livres de {v.sizeGb} GB</span>
                       </div>
-                      <div className="mt-1 h-2 rounded-full bg-gray-100 dark:bg-slate-700 overflow-hidden" role="meter" aria-valuenow={used} aria-valuemin={0} aria-valuemax={100} aria-label={`Uso de ${v.drive}`}>
+                      <div className="mt-1 h-2 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden" role="meter" aria-valuenow={used} aria-valuemin={0} aria-valuemax={100} aria-label={`Uso de ${v.drive}`}>
                         <div className={`h-full ${used >= 100 - policy.diskFreeMinPct ? 'bg-rose-500' : used >= 75 ? 'bg-amber-500' : 'bg-brand'}`} style={{ width: `${Math.min(100, used)}%` }} />
                       </div>
                     </li>
@@ -249,9 +249,9 @@ const AgentInventoryCard = ({ asset }) => {
           {inventory.disks?.length > 0 && (
             <div>
               <SectionTitle icon={HardDrive}>Discos físicos</SectionTitle>
-              <ul className="space-y-1 text-xs text-gray-700 dark:text-gray-200">
+              <ul className="space-y-1 text-xs text-gray-700 dark:text-zinc-200">
                 {inventory.disks.map((d) => (
-                  <li key={`${d.serial}-${d.model}`} className="flex justify-between gap-2"><span className="truncate">{d.model} {d.media && <span className="text-gray-400">({d.media})</span>}</span><span className="font-mono text-gray-400 shrink-0">{d.sizeGb} GB · {d.serial || 's/ serial'}</span></li>
+                  <li key={`${d.serial}-${d.model}`} className="flex justify-between gap-2"><span className="truncate">{d.model} {d.media && <span className="text-gray-500 dark:text-zinc-400">({d.media})</span>}</span><span className="font-mono tabular-nums text-gray-500 dark:text-zinc-400 shrink-0">{d.sizeGb} GB · {d.serial || 's/ serial'}</span></li>
                 ))}
               </ul>
             </div>
@@ -260,9 +260,9 @@ const AgentInventoryCard = ({ asset }) => {
           {inventory.monitors?.length > 0 && (
             <div>
               <SectionTitle icon={Monitor}>Monitores conectados</SectionTitle>
-              <ul className="space-y-1 text-xs text-gray-700 dark:text-gray-200">
+              <ul className="space-y-1 text-xs text-gray-700 dark:text-zinc-200">
                 {inventory.monitors.map((m) => (
-                  <li key={`${m.serial}-${m.model}`} className="flex justify-between gap-2"><span className="truncate">{[m.manufacturer, m.model].filter(Boolean).join(' ')}</span><span className="font-mono text-gray-400 shrink-0">{m.serial || 's/ serial'}</span></li>
+                  <li key={`${m.serial}-${m.model}`} className="flex justify-between gap-2"><span className="truncate">{[m.manufacturer, m.model].filter(Boolean).join(' ')}</span><span className="font-mono tabular-nums text-gray-500 dark:text-zinc-400 shrink-0">{m.serial || 's/ serial'}</span></li>
                 ))}
               </ul>
             </div>
@@ -271,9 +271,9 @@ const AgentInventoryCard = ({ asset }) => {
           {inventory.network?.length > 0 && (
             <div>
               <SectionTitle icon={Network}>Rede</SectionTitle>
-              <ul className="space-y-1 text-xs text-gray-700 dark:text-gray-200">
+              <ul className="space-y-1 text-xs text-gray-700 dark:text-zinc-200">
                 {inventory.network.map((n) => (
-                  <li key={`${n.mac}-${n.ip}`} className="flex justify-between gap-2"><span className="truncate">{n.name}</span><span className="font-mono text-gray-400 shrink-0">{n.ip || '—'} · {n.mac}</span></li>
+                  <li key={`${n.mac}-${n.ip}`} className="flex justify-between gap-2"><span className="truncate">{n.name}</span><span className="font-mono tabular-nums text-gray-500 dark:text-zinc-400 shrink-0">{n.ip || '—'} · {n.mac}</span></li>
                 ))}
               </ul>
             </div>
@@ -282,14 +282,14 @@ const AgentInventoryCard = ({ asset }) => {
           {inventory.security?.localAdmins?.length > 0 && (
             <div>
               <SectionTitle icon={Users}>Administradores locais</SectionTitle>
-              <p className="text-xs text-gray-700 dark:text-gray-200">{inventory.security.localAdmins.join(', ')}</p>
+              <p className="text-xs text-gray-700 dark:text-zinc-200">{inventory.security.localAdmins.join(', ')}</p>
             </div>
           )}
 
           {inventory.battery?.healthPct != null && (
             <div>
               <SectionTitle icon={Battery}>Bateria</SectionTitle>
-              <p className="text-xs text-gray-700 dark:text-gray-200">{inventory.battery.healthPct}% da capacidade original</p>
+              <p className="text-xs text-gray-700 dark:text-zinc-200 tabular-nums">{inventory.battery.healthPct}% da capacidade original</p>
             </div>
           )}
         </div>
@@ -300,28 +300,33 @@ const AgentInventoryCard = ({ asset }) => {
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
             <SectionTitle icon={Package}>Programas instalados ({inventory.software.length})</SectionTitle>
             <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-2.5 text-gray-400" />
+              <label htmlFor="agent-software-search" className="sr-only">
+                Buscar programa instalado
+              </label>
+              <Search size={13} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-zinc-500 pointer-events-none" />
               <input
                 type="search"
+                id="agent-software-search"
+                name="softwareSearch"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar programa…"
                 aria-label="Buscar programa instalado"
-                className="pl-8 pr-3 py-1.5 rounded-xl bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-xs text-gray-800 dark:text-gray-100 focus:outline-none focus:border-brand"
+                className="w-full min-h-[44px] pl-8 pr-3 py-2 rounded-xl bg-gray-50 hover:border-gray-300 active:border-slate-400 focus-visible:outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/25 disabled:opacity-50 disabled:cursor-not-allowed aria-[invalid=true]:border-rose-500 aria-[invalid=true]:focus-visible:ring-rose-500/25 dark:bg-[#111113] dark:border-zinc-800 dark:hover:border-zinc-700 border border-gray-200 text-xs text-gray-800 dark:text-[#fafafa] dark:placeholder:text-zinc-500 transition-colors"
               />
             </div>
           </div>
-          <ul className="divide-y divide-gray-100 dark:divide-slate-700 rounded-2xl border border-gray-100 dark:border-slate-700 text-xs">
+          <ul className="divide-y divide-gray-100 dark:divide-zinc-800 rounded-2xl border border-gray-100 dark:border-zinc-800 text-xs">
             {(showAllSoftware || search ? software : software.slice(0, 12)).map((s) => (
               <li key={`${s.name}-${s.version}`} className="flex justify-between gap-3 px-3 py-2">
-                <span className="truncate text-gray-800 dark:text-gray-100">{s.name}</span>
-                <span className="shrink-0 text-gray-400 font-mono">{s.version}</span>
+                <span className="truncate text-gray-800 dark:text-zinc-100">{s.name}</span>
+                <span className="shrink-0 text-gray-500 dark:text-zinc-400 font-mono tabular-nums">{s.version}</span>
               </li>
             ))}
-            {software.length === 0 && <li className="px-3 py-2 text-gray-400">Nenhum programa com esse nome.</li>}
+            {software.length === 0 && <li className="px-3 py-2 text-gray-500 dark:text-zinc-400">Nenhum programa com esse nome.</li>}
           </ul>
           {!search && software.length > 12 && (
-            <button type="button" onClick={() => setShowAllSoftware((v) => !v)} className="mt-2 text-[11px] font-black uppercase tracking-wider text-brand">
+            <button type="button" onClick={() => setShowAllSoftware((v) => !v)} className="mt-2 min-h-[44px] inline-flex items-center px-2 -mx-2 text-xs font-black uppercase tracking-wider text-brand-aa hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-lg">
               {showAllSoftware ? 'Mostrar menos' : `Ver todos os ${software.length}`}
             </button>
           )}
@@ -329,10 +334,10 @@ const AgentInventoryCard = ({ asset }) => {
       )}
 
       {!inventory && !state.error && state.assetId === asset.id && (
-        <p className="flex items-center gap-2 text-xs text-gray-400"><CheckCircle2 size={13} /> Inventário detalhado disponível a partir da próxima coleta do agente 2.x.</p>
+        <p className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-400"><CheckCircle2 size={13} aria-hidden="true" /> Inventário detalhado disponível a partir da próxima coleta do agente 2.x.</p>
       )}
       {alerts.some((a) => a.code === 'user_mismatch') && !canWrite && (
-        <p className="flex items-center gap-2 text-xs text-gray-400"><UserCheck size={13} /> Peça a um operador para corrigir o responsável.</p>
+        <p className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-400"><UserCheck size={13} aria-hidden="true" /> Peça a um operador para corrigir o responsável.</p>
       )}
 
       <RemoteControlModal

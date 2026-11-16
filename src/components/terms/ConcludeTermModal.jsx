@@ -24,7 +24,7 @@ import { SectionTitle, TermModalFrame } from './termUi';
 import { fieldClass, labelClass } from './termStyles';
 
 const OUTCOME_STYLE = {
-  ok: 'bg-green-600 text-white border-green-600',
+  ok: 'bg-emerald-600 text-white border-emerald-600',
   ressalva: 'bg-orange-500 text-white border-orange-500',
   nao_recebido: 'bg-rose-600 text-white border-rose-600',
 };
@@ -121,10 +121,11 @@ const ConcludeTermModal = ({ term, onClose, onConcluded }) => {
       wide={isTransfer && showIssues}
       title={`${isOpen ? 'Concluir' : 'Anexar assinado'} · ${term.number}`}
       subtitle={isTransfer ? `${term.origin?.name} → ${term.destination?.name} · ${term.assets.length} item(ns)` : `${term.holder?.name || ''} · ${term.assets.length} item(ns)`}
-      onClose={onClose}
+      busy={busy}
+      onClose={busy ? undefined : onClose}
       footer={
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <p className="text-xs font-bold text-gray-500 dark:text-gray-400">
+          <p className="text-xs font-bold text-slate-600 dark:text-zinc-400 tabular-nums">
             {isTransfer
               ? receiptStatus(items) === 'recebido'
                 ? 'Todos os itens conferidos'
@@ -137,9 +138,9 @@ const ConcludeTermModal = ({ term, onClose, onConcluded }) => {
             type="button"
             onClick={submit}
             disabled={!canSubmit}
-            className="px-5 py-3 rounded-xl bg-brand text-white text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-brand/30 disabled:opacity-40 disabled:shadow-none"
+            className="min-h-[44px] px-5 py-3 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {busy ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} {busy ? 'Concluindo…' : action}
+            {busy ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <CheckCircle2 size={15} aria-hidden="true" />} {busy ? 'Concluindo…' : action}
           </button>
         </div>
       }
@@ -147,28 +148,43 @@ const ConcludeTermModal = ({ term, onClose, onConcluded }) => {
       <section>
         <SectionTitle>Termo assinado</SectionTitle>
         {file ? (
-          <div className="rounded-2xl border border-gray-200 dark:border-slate-700 p-3 space-y-2">
+          <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] p-3 space-y-2">
             <div className="flex items-center gap-3">
-              <span className="p-2 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-500"><FileText size={18} /></span>
+              <span className="p-2 rounded-xl bg-slate-100 dark:bg-zinc-900 text-slate-500 dark:text-zinc-400" aria-hidden="true">
+                <FileText size={18} aria-hidden="true" />
+              </span>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{file.name}</p>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400">{sizeLabel(file.size)}</p>
+                <p className="text-sm font-bold text-slate-900 dark:text-[#fafafa] truncate">{file.name}</p>
+                <p className="text-xs text-slate-500 dark:text-zinc-400 tabular-nums">{sizeLabel(file.size)}</p>
               </div>
-              <button type="button" onClick={clearFile} aria-label="Remover arquivo" className="p-2 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40">
-                <X size={16} />
+              <button
+                type="button"
+                onClick={clearFile}
+                aria-label="Remover arquivo"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+              >
+                <X size={16} aria-hidden="true" />
               </button>
             </div>
             {check.state === 'lendo' && (
-              <p className="flex items-center gap-2 text-xs font-bold text-gray-500"><Loader2 size={13} className="animate-spin" /> Lendo o QR do termo…</p>
+              <p role="status" className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-zinc-400">
+                <Loader2 size={13} className="animate-spin" aria-hidden="true" /> Lendo o QR do termo…
+              </p>
             )}
             {check.state === 'ok' && (
-              <p className="flex items-center gap-2 text-xs font-bold text-green-700 dark:text-green-400"><ScanLine size={13} /> QR confere: este é o {term.number}.</p>
+              <p className="flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                <ScanLine size={13} aria-hidden="true" /> QR confere: este é o {term.number}.
+              </p>
             )}
             {check.state === 'sem-qr' && (
-              <p className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-300"><AlertTriangle size={13} /> QR não encontrado no arquivo. Confira se é o {term.number} antes de concluir.</p>
+              <p className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-300">
+                <AlertTriangle size={13} aria-hidden="true" /> QR não encontrado no arquivo. Confira se é o {term.number} antes de concluir.
+              </p>
             )}
             {check.state === 'outro' && (
-              <p className="flex items-center gap-2 text-xs font-bold text-rose-700 dark:text-rose-300"><AlertTriangle size={13} /> Este arquivo é de OUTRO termo. Escolha a digitalização do {term.number}.</p>
+              <p role="alert" className="flex items-center gap-2 text-xs font-bold text-rose-700 dark:text-rose-300">
+                <AlertTriangle size={13} aria-hidden="true" /> Este arquivo é de OUTRO termo. Escolha a digitalização do {term.number}.
+              </p>
             )}
           </div>
         ) : (
@@ -181,11 +197,11 @@ const ConcludeTermModal = ({ term, onClose, onConcluded }) => {
         )}
       </section>
 
-      <section className="rounded-2xl bg-gray-50 dark:bg-slate-800/60 p-4 text-xs text-gray-600 dark:text-gray-300 space-y-1.5">
-        <p className="text-[11px] font-black uppercase tracking-widest text-gray-500 dark:text-gray-400">Ao concluir</p>
+      <section className="rounded-2xl bg-slate-50 dark:bg-zinc-900/70 border border-slate-200/70 dark:border-zinc-800 p-4 text-xs text-slate-600 dark:text-zinc-300 space-y-1.5">
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-zinc-400">Ao concluir</p>
         {isTransfer ? (
           <>
-            <p>
+            <p className="tabular-nums">
               <strong>{term.assets.length - issues.filter((i) => i.outcome === 'nao_recebido').length} item(ns)</strong> passam para{' '}
               <strong>{term.destination?.name}</strong> como <strong>{receipt.newStatus}</strong>
               {receipt.assignToReceiver ? <> e ficam com <strong>{term.receiver?.name}</strong></> : null}.
@@ -210,7 +226,7 @@ const ConcludeTermModal = ({ term, onClose, onConcluded }) => {
             type="button"
             onClick={() => setShowIssues((v) => !v)}
             aria-expanded={showIssues}
-            className="text-xs font-black uppercase tracking-wider text-brand hover:underline"
+            className="min-h-[44px] inline-flex items-center px-2 -mx-2 rounded-lg text-xs font-bold uppercase tracking-wider text-brand-aa hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
             {showIssues ? 'Ocultar conferência' : 'A loja anotou ressalva ou falta? Registrar'}
           </button>
@@ -219,26 +235,30 @@ const ConcludeTermModal = ({ term, onClose, onConcluded }) => {
               <div>
                 <SectionTitle
                   aside={
-                    <button type="button" onClick={() => setField('items', items.map((i) => ({ ...i, outcome: 'ok', note: '' })))} className="text-[11px] font-black uppercase tracking-wider text-brand flex items-center gap-1">
-                      <CheckCheck size={13} /> Tudo OK
+                    <button
+                      type="button"
+                      onClick={() => setField('items', items.map((i) => ({ ...i, outcome: 'ok', note: '' })))}
+                      className="min-h-[44px] px-2.5 rounded-lg text-xs font-bold uppercase tracking-wider text-brand-aa hover:bg-brand/10 flex items-center gap-1 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                    >
+                      <CheckCheck size={14} aria-hidden="true" /> Tudo OK
                     </button>
                   }
                 >
                   Conferência dos itens
                 </SectionTitle>
-                <ul className="divide-y divide-gray-100 dark:divide-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+                <ul className="divide-y divide-slate-100 dark:divide-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
                   {term.assets.map((asset) => {
                     const item = items.find((i) => i.id === asset.id);
                     return (
-                      <li key={asset.id} className="p-3 bg-white dark:bg-slate-900 space-y-2">
+                      <li key={asset.id} className="p-3 bg-white dark:bg-[#111113] space-y-2">
                         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{asset.model || '—'}</p>
-                            <p className="text-[11px] font-mono text-gray-500 dark:text-gray-400 truncate">
+                            <p className="text-sm font-bold text-slate-900 dark:text-[#fafafa] truncate">{asset.model || '—'}</p>
+                            <p className="text-xs font-mono text-slate-500 dark:text-zinc-400 truncate tabular-nums">
                               {asset.internalId}{asset.serialNumber ? ` · SN ${asset.serialNumber}` : ''}{asset.accessories ? ` · ${asset.accessories}` : ''} · enviado: {asset.condition}
                             </p>
                           </div>
-                          <div className="flex rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden shrink-0" role="radiogroup" aria-label={`Conferência de ${asset.internalId}`}>
+                          <div className="flex rounded-xl border border-slate-200 dark:border-zinc-800 overflow-hidden shrink-0" role="radiogroup" aria-label={`Conferência de ${asset.internalId}`}>
                             {Object.entries(RECEIPT_OUTCOMES).map(([value, text]) => (
                               <button
                                 key={value}
@@ -246,7 +266,9 @@ const ConcludeTermModal = ({ term, onClose, onConcluded }) => {
                                 role="radio"
                                 aria-checked={item.outcome === value}
                                 onClick={() => setItem(asset.id, { outcome: value })}
-                                className={`px-2.5 py-1.5 text-[10px] font-black uppercase border-l first:border-l-0 border-gray-200 dark:border-slate-700 ${item.outcome === value ? OUTCOME_STYLE[value] : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+                                className={`min-h-[44px] px-3 py-2 text-xs font-bold uppercase border-l first:border-l-0 border-slate-200 dark:border-zinc-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand ${
+                                  item.outcome === value ? OUTCOME_STYLE[value] : 'text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800'
+                                }`}
                               >
                                 {value === 'ok' ? 'OK' : value === 'ressalva' ? 'Ressalva' : 'Faltou'}
                                 <span className="sr-only"> — {text}</span>
@@ -255,13 +277,21 @@ const ConcludeTermModal = ({ term, onClose, onConcluded }) => {
                           </div>
                         </div>
                         {item.outcome !== 'ok' && (
-                          <input
-                            value={item.note}
-                            onChange={(e) => setItem(asset.id, { note: e.target.value })}
-                            placeholder={item.outcome === 'ressalva' ? 'Descreva a ressalva (ex.: sem carregador, tela riscada) *' : 'O que aconteceu? (ex.: não veio na caixa) *'}
-                            aria-label={`Observação de ${asset.internalId}`}
-                            className={`${fieldClass} text-xs`}
-                          />
+                          <div>
+                            <label htmlFor={`receipt-note-${asset.id}`} className="sr-only">
+                              Observação de {asset.internalId}
+                            </label>
+                            <input
+                              id={`receipt-note-${asset.id}`}
+                              name={`receiptNote-${asset.id}`}
+                              value={item.note}
+                              onChange={(e) => setItem(asset.id, { note: e.target.value })}
+                              placeholder={item.outcome === 'ressalva' ? 'Descreva a ressalva (ex.: sem carregador, tela riscada) *' : 'O que aconteceu? (ex.: não veio na caixa) *'}
+                              aria-label={`Observação de ${asset.internalId}`}
+                              aria-invalid={!String(item.note || '').trim() ? 'true' : undefined}
+                              className={fieldClass}
+                            />
+                          </div>
                         )}
                       </li>
                     );
@@ -272,26 +302,49 @@ const ConcludeTermModal = ({ term, onClose, onConcluded }) => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="receipt-by" className={labelClass}>Recebido por *</label>
-                  <input id="receipt-by" value={receipt.receivedByName} onChange={(e) => setField('receivedByName', e.target.value)} className={fieldClass} />
+                  <input
+                    id="receipt-by"
+                    name="receivedByName"
+                    value={receipt.receivedByName}
+                    onChange={(e) => setField('receivedByName', e.target.value)}
+                    aria-invalid={!String(receipt.receivedByName).trim() ? 'true' : undefined}
+                    className={fieldClass}
+                  />
                 </div>
                 <div>
                   <label htmlFor="receipt-date" className={labelClass}>Data do recebimento *</label>
-                  <input id="receipt-date" type="date" value={receipt.receivedAt} onChange={(e) => setField('receivedAt', e.target.value)} className={fieldClass} />
+                  <input
+                    id="receipt-date"
+                    name="receivedAt"
+                    type="date"
+                    value={receipt.receivedAt}
+                    onChange={(e) => setField('receivedAt', e.target.value)}
+                    aria-invalid={!receipt.receivedAt ? 'true' : undefined}
+                    className={`${fieldClass} tabular-nums`}
+                  />
                 </div>
                 <div>
                   <label htmlFor="receipt-status" className={labelClass}>Situação dos itens recebidos</label>
-                  <select id="receipt-status" value={receipt.newStatus} onChange={(e) => setField('newStatus', e.target.value)} className={fieldClass}>
+                  <select id="receipt-status" name="newStatus" value={receipt.newStatus} onChange={(e) => setField('newStatus', e.target.value)} className={fieldClass}>
                     {ARRIVAL_STATUSES.map((s) => <option key={s} value={s}>{s === 'Disponível' ? 'Disponível (estoque da loja)' : s}</option>)}
                   </select>
                 </div>
-                <label className="flex items-center gap-2 self-end pb-2 text-xs font-bold text-gray-600 dark:text-gray-300 cursor-pointer">
-                  <input type="checkbox" checked={receipt.assignToReceiver} onChange={(e) => setField('assignToReceiver', e.target.checked)} disabled={!term.receiver?.name} className="h-4 w-4" />
+                <label htmlFor="receipt-assign-to-receiver" className="flex items-center gap-2.5 min-h-[44px] self-end text-xs font-bold text-slate-600 dark:text-zinc-300 cursor-pointer">
+                  <input
+                    id="receipt-assign-to-receiver"
+                    name="assignToReceiver"
+                    type="checkbox"
+                    checked={receipt.assignToReceiver}
+                    onChange={(e) => setField('assignToReceiver', e.target.checked)}
+                    disabled={!term.receiver?.name}
+                    className="h-4 w-4 rounded accent-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                  />
                   Registrar o recebedor como responsável pelos itens
                 </label>
               </div>
 
               {issues.some((i) => i.outcome === 'nao_recebido') && (
-                <p className="rounded-xl bg-rose-50 dark:bg-rose-950/30 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300">
+                <p className="rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-300">
                   Itens marcados como "Faltou" continuam em trânsito e aparecem como pendência na tela Termos até serem localizados ou baixados.
                 </p>
               )}
@@ -301,8 +354,15 @@ const ConcludeTermModal = ({ term, onClose, onConcluded }) => {
       )}
 
       {canManage && isOpen && !file && (
-        <label className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
-          <input type="checkbox" checked={withoutCopy} onChange={(e) => setWithoutCopy(e.target.checked)} className="h-4 w-4 mt-0.5" />
+        <label htmlFor="conclude-without-copy" className="flex items-start gap-2.5 min-h-[44px] py-1 text-xs text-slate-600 dark:text-zinc-400 cursor-pointer">
+          <input
+            id="conclude-without-copy"
+            name="withoutCopy"
+            type="checkbox"
+            checked={withoutCopy}
+            onChange={(e) => setWithoutCopy(e.target.checked)}
+            className="h-4 w-4 mt-0.5 rounded accent-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          />
           <span><strong>Concluir sem anexar</strong> (só gestores — use quando o papel se perdeu; o registro mostra que não há assinado).</span>
         </label>
       )}

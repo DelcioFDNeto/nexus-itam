@@ -4,7 +4,7 @@
 // ao vivo (NexusDesk desktop e mobile), atualizacao OTA remota, terminal
 // PowerShell, fila de recepcao, instalador do NexusAgent.exe, politicas e simulador.
 // -----------------------------------------------------------------------------
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Activity,
@@ -17,7 +17,6 @@ import {
   ShieldAlert,
   Wifi,
   WifiOff,
-  Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
@@ -58,14 +57,14 @@ const Kpi = ({ icon: Icon, label, value, tone, onClick }) => (
   <button
     type="button"
     onClick={onClick}
-    className="text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-800 p-3.5 shadow-sm flex items-center gap-3 transition-colors hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50/50 dark:hover:bg-slate-800/40"
+    className="min-h-[44px] text-left bg-white dark:bg-[#111113] rounded-xl border border-slate-200/90 dark:border-zinc-800 p-3.5 shadow-sm flex items-center gap-3 transition-colors active:scale-[0.98] hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50/50 dark:hover:bg-[#18181b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
   >
-    <span className={`p-2 rounded-lg ${tone}`}>
-      <Icon size={17} />
+    <span className={`p-2 rounded-lg shrink-0 ${tone}`}>
+      <Icon size={17} aria-hidden="true" />
     </span>
-    <div>
-      <span className="block text-xl md:text-2xl font-bold text-slate-900 dark:text-white tabular-nums">{value}</span>
-      <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+    <div className="min-w-0">
+      <span className="block text-xl md:text-2xl font-bold text-slate-900 dark:text-[#fafafa] tabular-nums">{value}</span>
+      <span className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
         {label}
       </span>
     </div>
@@ -82,6 +81,21 @@ const AgentManager = () => {
   const [params, setParams] = useSearchParams();
   const tab = TABS.some((t) => t.id === params.get('aba')) ? params.get('aba') : 'frota';
   const setTab = (id) => setParams(id === 'frota' ? {} : { aba: id }, { replace: true });
+  const tabRefs = useRef({});
+
+  const handleTabKeyDown = (event, currentIndex) => {
+    let nextIndex = null;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % TABS.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + TABS.length) % TABS.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = TABS.length - 1;
+    if (nextIndex !== null) {
+      event.preventDefault();
+      const targetTab = TABS[nextIndex];
+      setTab(targetTab.id);
+      tabRefs.current[targetTab.id]?.focus();
+    }
+  };
 
   const [agentToken, setAgentToken] = useState('');
   const [submissions, setSubmissions] = useState([]);
@@ -97,27 +111,52 @@ const AgentManager = () => {
     tab: 'screen',
   });
 
+  const inboxReqSeqRef = useRef(0);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const loadInbox = useCallback(async () => {
-    if (!tenantId) return;
+    if (!tenantId) {
+      setSubmissions([]);
+      setLoadingInbox(false);
+      return;
+    }
+    const reqSeq = ++inboxReqSeqRef.current;
     setLoadingInbox(true);
     try {
-      setSubmissions(await getAgentSubmissions(tenantId));
+      const items = await getAgentSubmissions(tenantId);
+      if (!isMountedRef.current || reqSeq !== inboxReqSeqRef.current) return;
+      setSubmissions(items);
     } catch (error) {
+      if (!isMountedRef.current || reqSeq !== inboxReqSeqRef.current) return;
       console.error(error);
       toast.error('Erro ao carregar a fila do agente.');
     } finally {
-      setLoadingInbox(false);
+      if (isMountedRef.current && reqSeq === inboxReqSeqRef.current) {
+        setLoadingInbox(false);
+      }
     }
   }, [tenantId]);
 
   useEffect(() => {
     loadInbox();
     if (!tenantId) return undefined;
+    let active = true;
     const unsub = subscribeAgentSubmissions(tenantId, (items) => {
+      if (!active) return;
+      inboxReqSeqRef.current += 1;
       setSubmissions(items);
       setLoadingInbox(false);
     });
     return () => {
+      active = false;
+      inboxReqSeqRef.current += 1;
       if (typeof unsub === 'function') unsub();
     };
   }, [loadInbox, tenantId]);
@@ -132,10 +171,21 @@ const AgentManager = () => {
   }, [tenantId]);
 
   useEffect(() => {
-    if (!tenantId) return;
+    if (!tenantId) {
+      setAgentToken('');
+      return undefined;
+    }
+    let active = true;
     migrateLegacyAgentToken(tenantId)
-      .then((token) => setAgentToken(token || ''))
-      .catch((error) => console.error('Falha ao ler o token do agente:', error));
+      .then((token) => {
+        if (active) setAgentToken(token || '');
+      })
+      .catch((error) => {
+        if (active) console.error('Falha ao ler o token do agente:', error);
+      });
+    return () => {
+      active = false;
+    };
   }, [tenantId]);
 
   const fleet = useMemo(
@@ -184,44 +234,58 @@ const AgentManager = () => {
     });
   };
 
+  const handleResolveSupport = async (dev) => {
+    try {
+      await resolveSupportRequest({
+        tenantId,
+        deviceKey: dev.deviceKey,
+        resolvedBy: currentUser?.email || 'TI',
+      });
+      toast.success('Solicitação de suporte concluída.');
+    } catch (error) {
+      console.error(error);
+      toast.error(error?.message || 'Não foi possível concluir a solicitação de suporte.');
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto pb-24 space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-5 shadow-sm">
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white dark:bg-[#111113] border border-slate-200/90 dark:border-zinc-800 rounded-xl p-5 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-brand/10 border border-brand/20 text-brand flex items-center justify-center shrink-0">
-            <Cpu size={22} />
+          <div className="w-10 h-10 rounded-lg bg-brand/10 border border-brand/20 text-brand-aa flex items-center justify-center shrink-0">
+            <Cpu size={22} aria-hidden="true" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-[#fafafa] tracking-tight">
               Agente ITAM & NexusDesk
             </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
               Acesso remoto seguro NexusDesk (desktop e mobile), atualização remota OTA e inventário automático de hardware.
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold ${
+            className={`inline-flex min-h-[44px] items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold ${
               autoAcceptEnabled
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300'
-                : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-zinc-700 dark:bg-[#18181b] dark:text-zinc-300'
             }`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${autoAcceptEnabled ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+            <span className={`w-2 h-2 rounded-full ${autoAcceptEnabled ? 'bg-emerald-500' : 'bg-slate-400'}`} />
             <span>Aceite automático {autoAcceptEnabled ? 'ligado' : 'desligado'}</span>
           </span>
           <button
             type="button"
             onClick={processNow}
             disabled={processing || !pending}
-            className="px-3.5 py-1.5 rounded-lg bg-brand hover:bg-brand-dark text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-40"
+            className="min-h-[44px] px-3.5 py-2 rounded-lg bg-brand hover:bg-brand-dark text-brand-fg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 tabular-nums"
           >
-            {processing ? <Loader2 size={14} className="animate-spin" /> : <Inbox size={14} />}
+            {processing ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Inbox size={14} aria-hidden="true" />}
             <span>Processar fila ({pending})</span>
           </button>
         </div>
-      </div>
+      </header>
 
       {/* Alertas de Chamados de Suporte Abertos pelo Executavel NexusAgent.exe */}
       {openSupportRequests.length > 0 && (
@@ -233,7 +297,7 @@ const AgentManager = () => {
             >
               <div className="flex items-start gap-3">
                 <div className="p-2.5 rounded-xl bg-amber-500 text-slate-950 shrink-0">
-                  <AlertTriangle size={18} />
+                  <AlertTriangle size={18} aria-hidden="true" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -243,7 +307,7 @@ const AgentManager = () => {
                     <span className="px-2 py-0.5 rounded bg-amber-200/80 dark:bg-amber-900 text-amber-900 dark:text-amber-200 font-mono text-xs font-bold">
                       NexusDesk: {formatAccessId(dev)}
                     </span>
-                    <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                    <span className="text-xs font-bold text-amber-800 dark:text-amber-300">
                       ({dev.supportRequest?.priority || 'Normal'})
                     </span>
                   </div>
@@ -257,20 +321,14 @@ const AgentManager = () => {
                 <button
                   type="button"
                   onClick={() => handleOpenRemote(dev, null, 'screen')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-sm"
+                  className="inline-flex min-h-[44px] items-center gap-1.5 px-4 py-2 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg font-black text-xs shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
-                  <Monitor size={14} /> Atender via NexusDesk
+                  <Monitor size={14} aria-hidden="true" /> Atender via NexusDesk
                 </button>
                 <button
                   type="button"
-                  onClick={() =>
-                    resolveSupportRequest({
-                      tenantId,
-                      deviceKey: dev.deviceKey,
-                      resolvedBy: currentUser?.email || 'TI',
-                    })
-                  }
-                  className="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 font-bold text-xs"
+                  onClick={() => handleResolveSupport(dev)}
+                  className="min-h-[44px] px-3.5 py-2 rounded-xl bg-white dark:bg-[#18181b] border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   Concluir
                 </button>
@@ -292,7 +350,7 @@ const AgentManager = () => {
           icon={Laptop}
           label="Com agente"
           value={Math.max(fleet.managed, liveDevices.length)}
-          tone="text-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 dark:text-indigo-300"
+          tone="text-brand-aa bg-brand/10"
           onClick={() => setTab('frota')}
         />
         <Kpi
@@ -326,30 +384,46 @@ const AgentManager = () => {
       </div>
 
       <div
-        className="flex gap-1 overflow-x-auto no-scrollbar border-b border-gray-200 dark:border-slate-700"
+        className="flex gap-1 overflow-x-auto no-scrollbar border-b border-gray-200 dark:border-zinc-800"
         role="tablist"
         aria-label="Seções do agente"
       >
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-4 py-2.5 text-sm font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${
-              tab === t.id
-                ? 'border-brand text-brand'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
-            }`}
-          >
-            {t.label}
-            {t.id === 'fila' && pending ? ` (${pending})` : ''}
-          </button>
-        ))}
+        {TABS.map((t, index) => {
+          const isSelected = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              ref={(el) => {
+                tabRefs.current[t.id] = el;
+              }}
+              id={`agent-tab-${t.id}`}
+              type="button"
+              role="tab"
+              aria-selected={isSelected}
+              aria-controls={`agent-tabpanel-${t.id}`}
+              tabIndex={isSelected ? 0 : -1}
+              onClick={() => setTab(t.id)}
+              onKeyDown={(e) => handleTabKeyDown(e, index)}
+              className={`min-h-[44px] px-4 py-2.5 text-sm font-bold whitespace-nowrap border-b-2 -mb-px transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-t-lg tabular-nums ${
+                isSelected
+                  ? 'border-brand text-brand-aa'
+                  : 'border-transparent text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-[#fafafa]'
+              }`}
+            >
+              {t.label}
+              {t.id === 'fila' && pending ? ` (${pending})` : ''}
+            </button>
+          );
+        })}
       </div>
 
-      <div role="tabpanel">
+      <div
+        id={`agent-tabpanel-${tab}`}
+        role="tabpanel"
+        aria-labelledby={`agent-tab-${tab}`}
+        tabIndex={0}
+        className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-xl"
+      >
         {tab === 'frota' && (
           <FleetTab
             assets={assets}

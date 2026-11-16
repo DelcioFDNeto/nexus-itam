@@ -75,11 +75,20 @@ const PersonFields = ({ value, onChange, title = 'Colaborador', preferBranch, id
     <div className="space-y-3">
       <div>
         <label htmlFor={`${idPrefix}-employee`} className={labelClass}>
-          {title} {preferBranch && localCount > 0 && <span className="normal-case font-bold text-brand">· {localCount} lotado(s) em {preferBranch}</span>}
+          {title}{' '}
+          {preferBranch && localCount > 0 && (
+            <span className="normal-case font-bold text-brand-aa tabular-nums">
+              · {localCount} lotado(s) em {preferBranch}
+            </span>
+          )}
         </label>
         <div className="relative">
-          <UserRound size={15} className="absolute left-3 top-3 text-gray-400 pointer-events-none" />
-          <select id={`${idPrefix}-employee`} value={value.employeeId || ''} onChange={(e) => pick(e.target.value)} className={`${fieldClass} pl-9`}>
+          <UserRound
+            size={15}
+            aria-hidden="true"
+            className="absolute left-3 top-3.5 text-slate-400 dark:text-zinc-500 pointer-events-none"
+          />
+          <select id={`${idPrefix}-employee`} name={`${idPrefix}-employee`} value={value.employeeId || ''} onChange={(e) => pick(e.target.value)} className={`${fieldClass} pl-9`}>
             <option value="">Escolher do cadastro de colaboradores…</option>
             {ordered.map((emp) => (
               <option key={emp.id} value={emp.id}>
@@ -92,23 +101,23 @@ const PersonFields = ({ value, onChange, title = 'Colaborador', preferBranch, id
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="sm:col-span-2">
           <label htmlFor={`${idPrefix}-name`} className={labelClass}>Nome completo *</label>
-          <input id={`${idPrefix}-name`} value={value.name} onChange={set('name')} className={fieldClass} placeholder="Nome de quem assina" />
+          <input id={`${idPrefix}-name`} name={`${idPrefix}-name`} value={value.name} onChange={set('name')} className={fieldClass} placeholder="Nome de quem assina" />
         </div>
         <div>
           <label htmlFor={`${idPrefix}-cpf`} className={labelClass}>CPF</label>
-          <input id={`${idPrefix}-cpf`} value={value.cpf} onChange={set('cpf')} className={`${fieldClass} font-mono`} placeholder="000.000.000-00" />
+          <input id={`${idPrefix}-cpf`} name={`${idPrefix}-cpf`} value={value.cpf} onChange={set('cpf')} className={`${fieldClass} font-mono tabular-nums`} placeholder="000.000.000-00" />
         </div>
         <div>
           <label htmlFor={`${idPrefix}-role`} className={labelClass}>Cargo / função</label>
-          <input id={`${idPrefix}-role`} value={value.role} onChange={set('role')} className={fieldClass} />
+          <input id={`${idPrefix}-role`} name={`${idPrefix}-role`} value={value.role} onChange={set('role')} className={fieldClass} />
         </div>
         <div>
           <label htmlFor={`${idPrefix}-sector`} className={labelClass}>Setor</label>
-          <input id={`${idPrefix}-sector`} value={value.sector} onChange={set('sector')} className={fieldClass} />
+          <input id={`${idPrefix}-sector`} name={`${idPrefix}-sector`} value={value.sector} onChange={set('sector')} className={fieldClass} />
         </div>
         <div>
           <label htmlFor={`${idPrefix}-branch`} className={labelClass}>Unidade / local</label>
-          <input id={`${idPrefix}-branch`} value={value.branch} onChange={set('branch')} className={fieldClass} />
+          <input id={`${idPrefix}-branch`} name={`${idPrefix}-branch`} value={value.branch} onChange={set('branch')} className={fieldClass} />
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 // src/components/portal/CollaboratorAccessWorkspace.jsx
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Check,
@@ -28,6 +28,15 @@ import { microservicesApi, resolvePortalUrl } from '../../services/microservices
 import { generateRandomSecurePassword } from '../../utils/passwords';
 import { buildBrandedPortalUrl } from '../../utils/portalBranding';
 import { useConfirm } from '../ConfirmDialog';
+import {
+  captureFocusTarget,
+  getFocusableElements,
+  restoreFocusSafely,
+  trapFocusWithin,
+} from '../../utils/focusTrap';
+import { isTopmostModal } from '../../utils/modalStack';
+
+const PORTAL_VISIBLE_ROLES = new Set(['collaborator', 'owner', 'admin', 'manager']);
 
 const EMPTY_FORM = () => ({
   name: '',
@@ -45,6 +54,7 @@ const CollaboratorAccessWorkspace = ({
   currentUser,
   portalUsers = [],
   portalLoading = false,
+  portalError = '',
   employees = [],
   sectors = [],
   onRefreshUsers,
@@ -65,6 +75,39 @@ const CollaboratorAccessWorkspace = ({
   const [credsModal, setCredsModal] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [statusAnnouncement, setStatusAnnouncement] = useState('');
+  const credsModalRef = useRef(null);
+  const credsReturnFocusRef = useRef(null);
+  const isCredsModalOpen = Boolean(credsModal);
+
+  useEffect(() => {
+    const dialogEl = credsModalRef.current;
+    if (!isCredsModalOpen || !dialogEl) return undefined;
+
+    credsReturnFocusRef.current = captureFocusTarget(dialogEl);
+    const focusables = getFocusableElements(dialogEl);
+    (focusables[0] || dialogEl).focus();
+
+    const handleKeyDown = (event) => {
+      if (!isTopmostModal(dialogEl)) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setCredsModal(null);
+        return;
+      }
+      if (event.key === 'Tab') {
+        trapFocusWithin(event, dialogEl);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      const previous = credsReturnFocusRef.current;
+      credsReturnFocusRef.current = null;
+      restoreFocusSafely(previous, null, dialogEl);
+    };
+  }, [isCredsModalOpen]);
 
   const rawPortalUrl = resolvePortalUrl();
   const brandedPortalUrl = useMemo(
@@ -86,7 +129,7 @@ const CollaboratorAccessWorkspace = ({
   );
 
   const collaboratorsOnly = useMemo(
-    () => (portalUsers || []).filter((u) => u.role === 'collaborator' || u.role === 'owner' || u.role === 'admin' || u.role === 'manager' || u.role),
+    () => (portalUsers || []).filter((u) => PORTAL_VISIBLE_ROLES.has(u.role)),
     [portalUsers],
   );
 
@@ -110,19 +153,25 @@ const CollaboratorAccessWorkspace = ({
       department: emp.sector || prev.department,
       jobTitle: emp.role || prev.jobTitle,
     }));
-    toast.info(`Dados de ${emp.name} preenchidos no formulário.`);
+    const msg = `Dados de ${emp.name} preenchidos no formulário.`;
+    setStatusAnnouncement(msg);
+    toast.info(msg);
   };
 
   const regeneratePassword = () => {
     setForm((prev) => ({ ...prev, password: generateRandomSecurePassword(14) }));
+    setStatusAnnouncement('Nova senha aleatória gerada no formulário.');
   };
 
   const copyText = async (text, msg) => {
     try {
       await navigator.clipboard.writeText(text);
+      setStatusAnnouncement(msg);
       toast.success(msg);
     } catch {
-      toast.error('Não foi possível copiar para a área de transferência.');
+      const errMsg = 'Não foi possível copiar para a área de transferência.';
+      setStatusAnnouncement(errMsg);
+      toast.error(errMsg);
     }
   };
 
@@ -130,7 +179,8 @@ const CollaboratorAccessWorkspace = ({
     e.preventDefault();
     const cleanEmail = String(form.email || '').trim().toLowerCase();
     const cleanName = String(form.name || '').trim();
-    if (!cleanName || !cleanEmail || !form.password) {
+    const createdPassword = form.password;
+    if (!cleanName || !cleanEmail || !createdPassword) {
       toast.error('Preencha nome, e-mail corporativo e senha.');
       return;
     }
@@ -140,7 +190,7 @@ const CollaboratorAccessWorkspace = ({
       const res = await microservicesApi.createUser({
         name: cleanName,
         email: cleanEmail,
-        password: form.password,
+        password: createdPassword,
         role: 'collaborator',
         department: String(form.department || '').trim() || 'Geral',
         jobTitle: String(form.jobTitle || '').trim() || 'Colaborador',
@@ -149,7 +199,17 @@ const CollaboratorAccessWorkspace = ({
 
       const created = res?.user;
       if (onRefreshUsers) {
-        await onRefreshUsers();
+        try {
+          await onRefreshUsers();
+        } catch (refreshErr) {
+          console.warn('Acesso criado, mas falhou ao atualizar a lista:', refreshErr);
+          if (created && onPortalUsersChange) {
+            onPortalUsersChange((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
+          }
+          (toast.warning || toast.info)(
+            refreshErr?.message || 'Acesso criado, mas não foi possível atualizar a lista de contas.',
+          );
+        }
       } else if (created && onPortalUsersChange) {
         onPortalUsersChange((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
       }
@@ -158,15 +218,19 @@ const CollaboratorAccessWorkspace = ({
         mode: 'created',
         name: cleanName,
         email: cleanEmail,
-        password: form.password,
+        password: createdPassword,
         portalUrl: brandedPortalUrl || rawPortalUrl,
       });
 
       setForm(EMPTY_FORM());
-      toast.success(`Acesso ao Portal liberado para ${cleanName}!`);
+      const successMsg = `Acesso ao Portal liberado para ${cleanName}!`;
+      setStatusAnnouncement(successMsg);
+      toast.success(successMsg);
     } catch (err) {
       console.error('Erro ao cadastrar acesso do colaborador:', err);
-      toast.error(err?.message || 'Não foi possível criar o acesso ao portal.');
+      const errMsg = err?.message || 'Não foi possível criar o acesso ao portal.';
+      setStatusAnnouncement(errMsg);
+      toast.error(errMsg);
     } finally {
       setSubmitting(false);
     }
@@ -188,7 +252,9 @@ const CollaboratorAccessWorkspace = ({
       const res = await microservicesApi.updateUser(user.id, { active: nextActive });
       const updated = res?.user || { ...user, active: nextActive };
       onPortalUsersChange?.((prev) => prev.map((x) => (x.id === user.id ? updated : x)));
-      toast.success(nextActive ? `Acesso de ${user.name} reativado.` : `Acesso de ${user.name} suspenso.`);
+      const msg = nextActive ? `Acesso de ${user.name} reativado.` : `Acesso de ${user.name} suspenso.`;
+      setStatusAnnouncement(msg);
+      toast.success(msg);
     } catch (err) {
       toast.error(err?.message || `Falha ao ${actionLabel.toLowerCase()} acesso.`);
     } finally {
@@ -216,7 +282,9 @@ const CollaboratorAccessWorkspace = ({
         password: newPassword,
         portalUrl: brandedPortalUrl || rawPortalUrl,
       });
-      toast.success(`Nova senha gerada para ${user.name}!`);
+      const msg = `Nova senha gerada para ${user.name}!`;
+      setStatusAnnouncement(msg);
+      toast.success(msg);
     } catch (err) {
       toast.error(err?.message || 'Não foi possível redefinir a senha.');
     } finally {
@@ -237,7 +305,9 @@ const CollaboratorAccessWorkspace = ({
     try {
       await microservicesApi.deleteUser(user.id);
       onPortalUsersChange?.((prev) => prev.filter((x) => x.id !== user.id));
-      toast.success(`Acesso de ${user.name} revogado com sucesso.`);
+      const msg = `Acesso de ${user.name} revogado com sucesso.`;
+      setStatusAnnouncement(msg);
+      toast.success(msg);
     } catch (err) {
       toast.error(err?.message || 'Não foi possível revogar o acesso.');
     } finally {
@@ -264,6 +334,10 @@ const CollaboratorAccessWorkspace = ({
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <div role="status" aria-live="polite" className="sr-only">
+        {statusAnnouncement}
+      </div>
+
       {/* Banner LGPD */}
       <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-4 sm:p-5 flex items-start gap-3">
         <ShieldCheck size={20} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
@@ -279,13 +353,13 @@ const CollaboratorAccessWorkspace = ({
 
       {/* Sugestão rápida de colaboradores da base ainda sem acesso */}
       {unprovisionedEmployees.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm space-y-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <Sparkles size={14} className="text-brand" />
+        <div className="bg-white dark:bg-[#111113] rounded-2xl border border-slate-200 dark:border-zinc-800 p-4 shadow-sm space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-black text-slate-900 dark:text-[#fafafa] flex items-center gap-2">
+              <Sparkles size={14} className="text-brand-aa" />
               Colaboradores da Base sem Acesso ao Portal ({unprovisionedEmployees.length})
             </p>
-            <span className="text-[11px] text-slate-400">Clique para preencher automaticamente</span>
+            <span className="text-xs text-slate-500 dark:text-zinc-400">Clique para preencher automaticamente</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {unprovisionedEmployees.slice(0, 8).map((emp) => (
@@ -293,12 +367,12 @@ const CollaboratorAccessWorkspace = ({
                 key={emp.id}
                 type="button"
                 onClick={() => fillFromEmployee(emp)}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 hover:border-brand/60 hover:bg-brand/5 text-left transition-all"
+                className="inline-flex min-h-[44px] items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-[#18181b] hover:border-brand/60 hover:bg-brand/5 text-left transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
-                <UserPlus size={13} className="text-brand shrink-0" />
+                <UserPlus size={13} className="text-brand-aa shrink-0" />
                 <div className="text-xs">
-                  <span className="font-bold text-slate-800 dark:text-slate-100">{emp.name}</span>
-                  <span className="text-slate-400 ml-1.5 text-[11px]">({emp.email})</span>
+                  <span className="font-bold text-slate-800 dark:text-[#fafafa]">{emp.name}</span>
+                  <span className="text-slate-500 dark:text-zinc-400 ml-1.5 text-xs">({emp.email})</span>
                 </div>
               </button>
             ))}
@@ -310,15 +384,15 @@ const CollaboratorAccessWorkspace = ({
         {/* FORMULÁRIO DE CADASTRO */}
         <form
           onSubmit={handleCreate}
-          className="lg:col-span-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4"
+          className="lg:col-span-5 bg-white dark:bg-[#111113] rounded-2xl border border-slate-200 dark:border-zinc-800 p-6 shadow-sm space-y-4"
         >
-          <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-zinc-800">
             <div>
-              <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <UserPlus size={17} className="text-brand" />
+              <h2 className="text-base font-black text-slate-900 dark:text-[#fafafa] flex items-center gap-2">
+                <UserPlus size={17} className="text-brand-aa" />
                 Cadastro de Acesso ao Portal do Colaborador
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
                 Provisionamento imediato no API Gateway (JWT Isolado).
               </p>
             </div>
@@ -326,19 +400,20 @@ const CollaboratorAccessWorkspace = ({
 
           {employees.some((emp) => emp.email) && (
             <div>
-              <label htmlFor="portal-emp-picker" className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+              <label htmlFor="portal-emp-picker" className="block text-xs font-bold uppercase text-slate-500 dark:text-zinc-400 mb-1">
                 Importar rapidamente da equipe cadastrada
               </label>
               <select
                 id="portal-emp-picker"
+                name="employeePicker"
                 defaultValue=""
                 onChange={(e) => {
                   const found = employees.find((emp) => emp.id === e.target.value);
                   if (found) fillFromEmployee(found);
                 }}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:border-brand"
+                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-[#18181b] text-xs font-semibold text-slate-800 dark:text-[#fafafa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
-                <option value="">Selecionar colaborador com e-mail cadastrado...</option>
+                <option value="">Selecionar colaborador com e-mail cadastrado…</option>
                 {employees
                   .filter((emp) => emp.email)
                   .map((emp) => (
@@ -351,51 +426,54 @@ const CollaboratorAccessWorkspace = ({
           )}
 
           <div>
-            <label htmlFor="portal-name" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+            <label htmlFor="portal-name" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
               Nome Completo
             </label>
             <input
               id="portal-name"
+              name="name"
               type="text"
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="Ex: Roberto Souza"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:border-brand"
+              className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-[#18181b] text-sm font-medium text-slate-900 dark:text-[#fafafa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             />
           </div>
 
           <div>
-            <label htmlFor="portal-email" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+            <label htmlFor="portal-email" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
               E-mail Corporativo (Login)
             </label>
             <div className="relative">
-              <Mail size={15} className="absolute left-3.5 top-3 text-slate-400" />
+              <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500" aria-hidden="true" />
               <input
                 id="portal-email"
+                name="email"
                 type="email"
                 required
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="colaborador@shineraybysabel.com.br"
-                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:border-brand"
+                placeholder="colaborador@empresa.com.br"
+                className="w-full min-h-[44px] pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-[#18181b] text-sm font-medium text-slate-900 dark:text-[#fafafa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label htmlFor="portal-dept" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="portal-dept" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
                 Departamento / Setor
               </label>
               <input
                 id="portal-dept"
+                name="department"
                 type="text"
                 list="portal-sectors-datalist"
                 value={form.department}
                 onChange={(e) => setForm({ ...form, department: e.target.value })}
-                placeholder="Ex: Vendas Concessionária"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:border-brand"
+                placeholder="Ex: Operações / Vendas"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-[#18181b] text-sm font-medium text-slate-900 dark:text-[#fafafa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               />
               {sectors.length > 0 && (
                 <datalist id="portal-sectors-datalist">
@@ -407,31 +485,33 @@ const CollaboratorAccessWorkspace = ({
             </div>
 
             <div>
-              <label htmlFor="portal-job" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="portal-job" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
                 Cargo / Função
               </label>
               <input
                 id="portal-job"
+                name="jobTitle"
                 type="text"
                 value={form.jobTitle}
                 onChange={(e) => setForm({ ...form, jobTitle: e.target.value })}
                 placeholder="Ex: Consultor Comercial"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-medium text-slate-900 dark:text-white focus:outline-none focus:border-brand"
+                className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-[#18181b] text-sm font-medium text-slate-900 dark:text-[#fafafa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               />
             </div>
           </div>
 
           {/* Geração de Senha Aleatória Segura */}
-          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2.5">
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-zinc-800 space-y-2.5">
             <div className="flex items-center justify-between gap-2">
-              <label htmlFor="portal-password" className="text-xs font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                <Lock size={13} className="text-brand" />
+              <label htmlFor="portal-password" className="text-xs font-black text-slate-700 dark:text-zinc-200 flex items-center gap-1.5">
+                <Lock size={13} className="text-brand-aa" />
                 Geração de Senha Aleatória Segura
               </label>
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="text-[11px] font-bold text-slate-500 hover:text-brand flex items-center gap-1"
+                aria-label={showPassword ? 'Ocultar senha gerada' : 'Mostrar senha gerada'}
+                className="min-h-[44px] px-2 rounded-lg text-xs font-bold text-slate-600 dark:text-zinc-300 hover:text-brand-aa flex items-center gap-1 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
                 {showPassword ? <EyeOff size={13} /> : <Eye size={13} />}
                 <span>{showPassword ? 'Ocultar' : 'Mostrar'}</span>
@@ -441,12 +521,13 @@ const CollaboratorAccessWorkspace = ({
             <div className="flex gap-2">
               <input
                 id="portal-password"
+                name="password"
                 type={showPassword ? 'text' : 'password'}
                 required
                 minLength={8}
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="flex-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-brand"
+                className="flex-1 min-h-[44px] px-3 py-2 rounded-lg border border-slate-300 dark:border-zinc-700 bg-white dark:bg-[#111113] font-mono text-xs font-bold text-slate-900 dark:text-[#fafafa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               />
             </div>
 
@@ -454,14 +535,14 @@ const CollaboratorAccessWorkspace = ({
               <button
                 type="button"
                 onClick={regeneratePassword}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-brand/50 hover:text-brand transition-colors"
+                className="inline-flex min-h-[44px] items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#111113] text-xs font-bold text-slate-700 dark:text-zinc-200 hover:border-brand/50 hover:text-brand-aa transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
                 <RefreshCw size={13} /> Gerar Outra Senha
               </button>
               <button
                 type="button"
                 onClick={() => copyText(form.password, 'Senha copiada para a área de transferência!')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-brand/50 hover:text-brand transition-colors"
+                className="inline-flex min-h-[44px] items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#111113] text-xs font-bold text-slate-700 dark:text-zinc-200 hover:border-brand/50 hover:text-brand-aa transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
                 <Copy size={13} /> Copiar Senha
               </button>
@@ -471,23 +552,23 @@ const CollaboratorAccessWorkspace = ({
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3 px-4 rounded-xl bg-brand hover:bg-brand-dark text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-brand/20 transition-all disabled:opacity-60"
+            className="w-full min-h-[44px] py-3 px-4 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-brand/20 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-60"
           >
             <CheckCircle2 size={16} />
-            <span>{submitting ? 'Provisionando...' : 'Cadastrar e Liberar Acesso ao Portal'}</span>
+            <span>{submitting ? 'Provisionando…' : 'Cadastrar e Liberar Acesso ao Portal'}</span>
           </button>
         </form>
 
         {/* LISTA DE ACESSOS EXISTENTES */}
-        <div className="lg:col-span-7 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="p-5 border-b border-slate-100 dark:border-slate-800 space-y-3">
+        <div className="lg:col-span-7 bg-white dark:bg-[#111113] rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-slate-100 dark:border-zinc-800 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <Users size={16} className="text-brand" />
-                  Contas Provisionadas no Gateway ({filteredPortalUsers.length})
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <h2 className="text-sm font-black text-slate-900 dark:text-[#fafafa] flex items-center gap-2">
+                  <Users size={16} className="text-brand-aa" />
+                  Contas Provisionadas no Gateway (<span className="tabular-nums">{filteredPortalUsers.length}</span>)
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-zinc-400">
                   Gerencie logins ativos, suspensões temporárias ou redefinição de senhas.
                 </p>
               </div>
@@ -495,26 +576,32 @@ const CollaboratorAccessWorkspace = ({
                 <button
                   type="button"
                   onClick={onRefreshUsers}
-                  className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-brand"
+                  aria-label="Atualizar lista de contas"
                   title="Atualizar lista de contas"
+                  className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-xl border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-300 hover:text-brand-aa hover:border-brand/40 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
-                  <RefreshCw size={14} className={portalLoading ? 'animate-spin' : ''} />
+                  <RefreshCw size={15} className={portalLoading ? 'animate-spin' : ''} />
                 </button>
               )}
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2">
               <div className="relative flex-1">
-                <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                <label htmlFor="portal-users-search" className="sr-only">
+                  Filtrar contas provisionadas por nome, e-mail ou setor
+                </label>
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500" aria-hidden="true" />
                 <input
+                  id="portal-users-search"
+                  name="portalUsersSearch"
                   type="search"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Filtrar por nome, e-mail ou setor..."
-                  className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-brand"
+                  placeholder="Filtrar por nome, e-mail ou setor…"
+                  className="w-full min-h-[44px] pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-[#18181b] text-xs font-medium text-slate-900 dark:text-[#fafafa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 />
               </div>
-              <div className="flex rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-50 dark:bg-slate-950 text-xs font-bold">
+              <div className="flex rounded-xl border border-slate-200 dark:border-zinc-700 overflow-hidden bg-slate-50 dark:bg-[#18181b] text-xs font-bold">
                 {[
                   { id: 'all', label: 'Todos' },
                   { id: 'active', label: 'Ativos' },
@@ -523,11 +610,12 @@ const CollaboratorAccessWorkspace = ({
                   <button
                     key={f.id}
                     type="button"
+                    aria-pressed={statusFilter === f.id}
                     onClick={() => setStatusFilter(f.id)}
-                    className={`px-3 py-2 transition-colors ${
+                    className={`min-h-[44px] px-3 py-2 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand ${
                       statusFilter === f.id
-                        ? 'bg-brand text-white'
-                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                        ? 'bg-brand text-brand-fg'
+                        : 'text-slate-600 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-[#fafafa]'
                     }`}
                   >
                     {f.label}
@@ -538,18 +626,56 @@ const CollaboratorAccessWorkspace = ({
           </div>
 
           {portalLoading ? (
-            <div className="p-10 text-center text-xs text-slate-400 animate-pulse">
-              Consultando contas no API Gateway...
-            </div>
-          ) : filteredPortalUsers.length === 0 ? (
-            <div className="p-10 text-center space-y-2">
-              <AlertCircle size={24} className="mx-auto text-slate-300 dark:text-slate-600" />
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                Nenhuma conta encontrada para os filtros aplicados.
+            <div role="status" aria-live="polite" className="p-6 space-y-3">
+              <div className="h-14 rounded-xl bg-slate-100 dark:bg-[#18181b] animate-pulse" />
+              <div className="h-14 rounded-xl bg-slate-100 dark:bg-[#18181b] animate-pulse" />
+              <div className="h-14 rounded-xl bg-slate-100 dark:bg-[#18181b] animate-pulse" />
+              <p className="text-xs text-center font-medium text-slate-500 dark:text-zinc-400">
+                Consultando contas no API Gateway…
               </p>
             </div>
+          ) : portalError ? (
+            <div role="alert" className="p-8 text-center space-y-3">
+              <AlertCircle size={26} className="mx-auto text-rose-500" />
+              <div className="space-y-1">
+                <p className="text-sm font-black text-slate-900 dark:text-[#fafafa]">
+                  Falha ao carregar contas do portal
+                </p>
+                <p className="text-xs text-rose-600 dark:text-rose-400">
+                  {portalError}
+                </p>
+              </div>
+              {onRefreshUsers && (
+                <button
+                  type="button"
+                  onClick={onRefreshUsers}
+                  className="inline-flex min-h-[44px] items-center gap-2 px-4 py-2 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg text-xs font-bold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                >
+                  <RefreshCw size={14} /> Tentar novamente
+                </button>
+              )}
+            </div>
+          ) : filteredPortalUsers.length === 0 ? (
+            <div className="p-10 text-center space-y-3">
+              <AlertCircle size={24} className="mx-auto text-slate-400 dark:text-zinc-500" />
+              <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
+                Nenhuma conta encontrada para os filtros aplicados.
+              </p>
+              {(searchTerm.trim() || statusFilter !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setStatusFilter('all');
+                  }}
+                  className="inline-flex min-h-[44px] items-center px-3.5 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-[#18181b] transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
           ) : (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[560px] overflow-y-auto">
+            <div className="divide-y divide-slate-100 dark:divide-zinc-800 max-h-[560px] overflow-y-auto overscroll-contain">
               {filteredPortalUsers.map((u) => {
                 const isActive = u.active !== false;
                 const isCollaborator = u.role === 'collaborator';
@@ -557,34 +683,34 @@ const CollaboratorAccessWorkspace = ({
                 return (
                   <div
                     key={u.id}
-                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 dark:hover:bg-slate-950/50 transition-colors"
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 dark:hover:bg-[#18181b]/70 transition-colors"
                   >
                     <div className="flex items-start gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 text-brand flex items-center justify-center font-black text-sm shrink-0">
+                      <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 text-brand-aa flex items-center justify-center font-black text-sm shrink-0">
                         {(u.name || u.email || '?').charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                          <span className="text-sm font-bold text-slate-900 dark:text-[#fafafa] truncate">
                             {u.name}
                           </span>
                           <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase ${
+                            className={`px-2 py-0.5 rounded text-xs font-black uppercase ${
                               isActive
-                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                                : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                                : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
                             }`}
                           >
                             {isActive ? 'Ativo' : 'Suspenso'}
                           </span>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                          <span className="px-2 py-0.5 rounded text-xs font-bold uppercase bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300">
                             {isCollaborator ? 'Colaborador' : u.role}
                           </span>
                         </div>
-                        <p className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        <p className="text-xs font-mono text-slate-500 dark:text-zinc-400 truncate mt-0.5">
                           {u.email}
                         </p>
-                        <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
+                        <p className="text-xs text-slate-500 dark:text-zinc-400 truncate mt-0.5">
                           {u.department || 'Geral'} • {u.job_title || 'Colaborador'}
                         </p>
                       </div>
@@ -594,7 +720,7 @@ const CollaboratorAccessWorkspace = ({
                       <button
                         type="button"
                         onClick={() => copyText(u.email, `E-mail ${u.email} copiado!`)}
-                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[11px] font-bold text-brand hover:bg-brand/5 transition-colors"
+                        className="min-h-[44px] px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-bold text-brand-aa hover:bg-brand/5 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                       >
                         Copiar E-mail
                       </button>
@@ -606,9 +732,10 @@ const CollaboratorAccessWorkspace = ({
                             disabled={busy}
                             onClick={() => handleResetPassword(u)}
                             title="Gerar nova senha para este colaborador"
-                            className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-brand hover:border-brand/40 transition-colors disabled:opacity-50"
+                            aria-label={`Redefinir senha de ${u.name || u.email}`}
+                            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-lg border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:text-brand-aa hover:border-brand/40 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
                           >
-                            <KeyRound size={14} />
+                            <KeyRound size={15} />
                           </button>
 
                           <button
@@ -616,23 +743,28 @@ const CollaboratorAccessWorkspace = ({
                             disabled={busy}
                             onClick={() => handleToggleActive(u)}
                             title={isActive ? 'Suspender acesso temporariamente' : 'Reativar acesso'}
-                            className={`p-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
+                            aria-label={
                               isActive
-                                ? 'border-amber-200 dark:border-amber-900/50 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30'
-                                : 'border-emerald-200 dark:border-emerald-900/50 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                                ? `Suspender acesso temporariamente de ${u.name || u.email}`
+                                : `Reativar acesso de ${u.name || u.email}`
+                            }
+                            className={`min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-lg border transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 ${
+                              isActive
+                                ? 'border-amber-200 dark:border-amber-900/50 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                                : 'border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
                             }`}
                           >
-                            {isActive ? <Pause size={14} /> : <Play size={14} />}
+                            {isActive ? <Pause size={15} /> : <Play size={15} />}
                           </button>
 
                           <button
                             type="button"
                             disabled={busy}
                             onClick={() => handleRevoke(u)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-rose-200 dark:border-rose-900/50 text-[11px] font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors disabled:opacity-50"
+                            className="inline-flex min-h-[44px] items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 dark:border-rose-900/50 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 disabled:opacity-50"
                             title="Revogar acesso deste colaborador"
                           >
-                            <Trash2 size={13} />
+                            <Trash2 size={14} />
                             <span>Revogar</span>
                           </button>
                         </>
@@ -648,59 +780,66 @@ const CollaboratorAccessWorkspace = ({
 
       {/* MODAL DE CREDENCIAIS GERADAS / REDEFINIDAS */}
       {credsModal && (
-        <div
-          className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setCredsModal(null);
-          }}
-        >
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            aria-hidden="true"
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm animate-fade-in"
+            onClick={() => setCredsModal(null)}
+          />
+          <div
+            ref={credsModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="creds-modal-title"
+            tabIndex={-1}
+            className="relative bg-white dark:bg-[#111113] border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto overscroll-contain p-6 shadow-2xl space-y-4 animate-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
             <button
               type="button"
               onClick={() => setCredsModal(null)}
               aria-label="Fechar modal de credenciais"
-              className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white"
+              className="absolute top-3 right-3 min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-lg text-slate-400 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-[#fafafa] hover:bg-slate-100 dark:hover:bg-[#18181b] transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
               <X size={18} />
             </button>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 pr-10">
               <div className="w-11 h-11 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
                 <Check size={22} />
               </div>
               <div>
-                <h3 className="text-base font-black text-slate-900 dark:text-white">
+                <h3 id="creds-modal-title" className="text-base font-black text-slate-900 dark:text-[#fafafa]">
                   {credsModal.mode === 'reset' ? 'Senha Redefinida com Sucesso!' : 'Acesso Criado com Sucesso!'}
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="text-xs text-slate-500 dark:text-zinc-400">
                   Entregue estas credenciais diretamente ao colaborador.
                 </p>
               </div>
             </div>
 
-            <div className="rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 space-y-2 text-xs">
+            <div className="rounded-xl bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-zinc-800 p-4 space-y-2.5 text-xs">
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block">Colaborador</span>
-                <span className="font-bold text-slate-900 dark:text-white">{credsModal.name}</span>
+                <span className="text-xs font-bold uppercase text-slate-500 dark:text-zinc-400 block">Colaborador</span>
+                <span className="font-bold text-slate-900 dark:text-[#fafafa]">{credsModal.name}</span>
               </div>
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block">Login (E-mail)</span>
-                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{credsModal.email}</span>
+                <span className="text-xs font-bold uppercase text-slate-500 dark:text-zinc-400 block">Login (E-mail)</span>
+                <span className="font-mono font-bold text-slate-800 dark:text-zinc-200">{credsModal.email}</span>
               </div>
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block">Senha Gerada</span>
-                <span className="font-mono font-black text-sm text-brand select-all">{credsModal.password}</span>
+                <span className="text-xs font-bold uppercase text-slate-500 dark:text-zinc-400 block">Senha Gerada</span>
+                <span className="font-mono font-black text-sm text-brand-aa select-all">{credsModal.password}</span>
               </div>
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block">Link Whitelabel do Portal</span>
+                <span className="text-xs font-bold uppercase text-slate-500 dark:text-zinc-400 block">Link Whitelabel do Portal</span>
                 <a
                   href={credsModal.portalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-mono text-[11px] text-brand hover:underline inline-flex items-center gap-1 break-all"
+                  className="min-h-[44px] font-mono text-xs text-brand-aa hover:underline inline-flex items-center gap-1 break-all active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded"
                 >
                   <span>{credsModal.portalUrl}</span>
-                  <ExternalLink size={11} className="shrink-0" />
+                  <ExternalLink size={12} className="shrink-0" />
                 </a>
               </div>
             </div>
@@ -709,14 +848,14 @@ const CollaboratorAccessWorkspace = ({
               <button
                 type="button"
                 onClick={() => copyText(formatCredentialsText(credsModal, false), 'Credenciais completas copiadas!')}
-                className="py-2.5 px-3 rounded-xl bg-brand hover:bg-brand-dark text-white text-xs font-black flex items-center justify-center gap-1.5 transition-colors"
+                className="min-h-[44px] py-2.5 px-3 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg text-xs font-black flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
                 <Copy size={14} /> Copiar Credenciais Completas
               </button>
               <button
                 type="button"
                 onClick={() => copyText(formatCredentialsText(credsModal, true), 'Mensagem formatada para WhatsApp copiada!')}
-                className="py-2.5 px-3 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-black flex items-center justify-center gap-1.5 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+                className="min-h-[44px] py-2.5 px-3 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-black flex items-center justify-center gap-1.5 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <MessageSquare size={14} /> Copiar p/ WhatsApp
               </button>

@@ -20,13 +20,33 @@ const PWAUpdatePrompt = () => {
     return (
       <aside
         aria-label="Aviso de atualização pendente"
-        className="fixed top-3 right-3 z-50 cursor-pointer safe-area-pt animate-fade-in"
-        onClick={handleUpdate}
+        className="dark fixed top-3 right-3 z-50 safe-area-pt animate-fade-in"
       >
-        <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-lg hover:bg-slate-800 transition-colors">
-          <span className="w-2 h-2 rounded-full bg-brand" />
-          <RefreshCw size={13} className={updating ? 'animate-spin' : ''} />
-          <span>Atualização pendente · Toque para aplicar</span>
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-[#111113] p-1 text-[#fafafa] shadow-lg"
+        >
+          <button
+            type="button"
+            onClick={handleUpdate}
+            disabled={updating}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-[#fafafa] transition-colors hover:bg-[#18181b] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <span className="h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden="true" />
+            <RefreshCw size={14} aria-hidden="true" className={updating ? 'animate-spin' : ''} />
+            <span>{updating ? 'Atualizando…' : 'Atualização pendente · Atualizar'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setBannerDismissed(false)}
+            aria-label="Expandir aviso de atualização"
+            title="Expandir aviso de atualização"
+            data-icon-button="true"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-[#18181b] hover:text-[#fafafa] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <ArrowUpCircle size={16} aria-hidden="true" />
+          </button>
         </div>
       </aside>
     );
@@ -35,19 +55,26 @@ const PWAUpdatePrompt = () => {
   return (
     <aside
       aria-label="Atualização disponível"
-      className="fixed inset-x-3 bottom-20 z-50 sm:bottom-4 sm:left-auto sm:right-4 sm:w-96 animate-slide-up"
+      className="dark fixed inset-x-3 bottom-20 z-50 sm:bottom-4 sm:left-auto sm:right-4 sm:w-96 animate-fade-in"
     >
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 text-white shadow-xl">
+      <div
+        role="status"
+        aria-live="polite"
+        className="rounded-xl border border-zinc-800 bg-[#111113] p-4 text-[#fafafa] shadow-xl"
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand text-white shadow-sm">
-              <ArrowUpCircle size={18} />
+            <div
+              aria-hidden="true"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand text-brand-fg shadow-sm"
+            >
+              <ArrowUpCircle size={18} aria-hidden="true" />
             </div>
             <div>
-              <h4 className="text-xs sm:text-sm font-bold text-white">
+              <h2 className="text-xs sm:text-sm font-bold text-[#fafafa]">
                 Nova versão disponível
-              </h4>
-              <p className="mt-0.5 text-xs text-slate-300">
+              </h2>
+              <p className="mt-0.5 text-xs text-zinc-300">
                 Uma nova versão do sistema está pronta. Atualize agora para carregar as melhorias.
               </p>
             </div>
@@ -55,19 +82,20 @@ const PWAUpdatePrompt = () => {
           <button
             type="button"
             onClick={() => setBannerDismissed(true)}
-            aria-label="Minimizar aviso"
-            title="Minimizar aviso"
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+            aria-label="Dispensar aviso"
+            title="Dispensar aviso"
+            data-icon-button="true"
+            className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-[#18181b] hover:text-[#fafafa] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
-            <X size={15} />
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
 
-        <div className="mt-3 flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+        <div className="mt-3 flex items-center justify-end gap-2 border-t border-zinc-800 pt-3">
           <button
             type="button"
             onClick={() => setBannerDismissed(true)}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+            className="min-h-[44px] rounded-lg px-3.5 py-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-[#18181b] hover:text-[#fafafa] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
             Depois
           </button>
@@ -75,9 +103,9 @@ const PWAUpdatePrompt = () => {
             type="button"
             onClick={handleUpdate}
             disabled={updating}
-            className="flex items-center gap-1.5 rounded-lg bg-brand hover:bg-brand-dark px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-brand-fg shadow-sm transition-colors hover:bg-brand-dark active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-[#111113] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <RefreshCw size={13} className={updating ? 'animate-spin' : ''} />
+            <RefreshCw size={14} aria-hidden="true" className={updating ? 'animate-spin' : ''} />
             <span>{updating ? 'Atualizando…' : 'Atualizar agora'}</span>
           </button>
         </div>

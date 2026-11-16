@@ -10,7 +10,7 @@
 // Agora tudo vem do banco: empresas (inclusive legadas), plano efetivo,
 // receita recorrente, uso de limites e alertas acionaveis.
 // -----------------------------------------------------------------------------
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import {
@@ -32,21 +32,21 @@ ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Legend, Too
 
 const PLAN_COLORS = {
   starter: 'rgba(100, 116, 139, 0.85)',
-  pro: 'rgba(147, 51, 234, 0.85)',
+  pro: 'rgba(20, 184, 166, 0.85)',
   enterprise: 'rgba(245, 158, 11, 0.9)',
 };
-const EXTRA_COLORS = ['rgba(16, 185, 129, 0.85)', 'rgba(59, 130, 246, 0.85)', 'rgba(236, 72, 153, 0.85)'];
+const EXTRA_COLORS = ['rgba(16, 185, 129, 0.85)', 'rgba(14, 165, 233, 0.85)', 'rgba(244, 63, 94, 0.85)'];
 
 const LEVEL_ORDER = { critical: 0, warning: 1, info: 2 };
 
 const Section = ({ title, subtitle, icon: Icon, action, children, className = '' }) => (
-  <section className={`bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col ${className}`}>
+  <section className={`bg-white dark:bg-[#111113] p-5 rounded-xl border border-slate-200/90 dark:border-zinc-800 shadow-sm flex flex-col ${className}`}>
     <div className="flex items-start justify-between gap-3 mb-4">
       <div>
-        <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2 text-sm tracking-tight">
-          <Icon size={18} className="text-brand" /> {title}
+        <h3 className="font-bold text-slate-900 dark:text-[#fafafa] flex items-center gap-2 text-sm tracking-tight">
+          <Icon size={18} className="text-brand-aa" aria-hidden="true" /> {title}
         </h3>
-        {subtitle && <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">{subtitle}</p>}
+        {subtitle && <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium mt-0.5">{subtitle}</p>}
       </div>
       {action}
     </div>
@@ -60,23 +60,41 @@ const NexusDashboard = () => {
   const [snapshot, setSnapshot] = useState(null);
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const isMountedRef = useRef(true);
+  const loadSeqRef = useRef(0);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const load = useCallback(async (silent = false) => {
+    const seq = ++loadSeqRef.current;
     if (silent) setRefreshing(true);
+    else setLoading(true);
+    setLoadError('');
     try {
       const [snap, logs] = await Promise.all([
         loadConsoleSnapshot(),
         getGlobalActivity(8).catch(() => []),
       ]);
+      if (!isMountedRef.current || seq !== loadSeqRef.current) return;
       setSnapshot(snap);
       setActivity(logs);
     } catch (error) {
       console.error('Erro ao carregar o console:', error);
+      if (!isMountedRef.current || seq !== loadSeqRef.current) return;
+      setLoadError('Falha ao carregar os indicadores globais da plataforma.');
       toast.error('Falha ao carregar as métricas da plataforma.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (isMountedRef.current && seq === loadSeqRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
@@ -142,14 +160,31 @@ const NexusDashboard = () => {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh]">
+      <div role="status" className="flex flex-col items-center justify-center min-h-[50vh]">
         <div className="w-12 h-12 border-4 border-brand/20 border-t-brand rounded-full animate-spin" />
-        <p className="mt-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Carregando console...</p>
+        <p className="mt-4 text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest">Carregando console…</p>
       </div>
     );
   }
 
-  const tickColor = isDark ? '#94a3b8' : '#64748b';
+  if (loadError && !snapshot) {
+    return (
+      <div role="alert" className="max-w-lg mx-auto my-12 rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-white dark:bg-[#111113] p-8 text-center space-y-4">
+        <AlertTriangle size={28} aria-hidden="true" className="text-rose-500 mx-auto" />
+        <p className="text-sm font-bold text-slate-900 dark:text-[#fafafa]">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => load(false)}
+          className="min-h-[44px] inline-flex items-center gap-2 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg px-4 py-2 text-xs font-bold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        >
+          <RefreshCcw size={14} aria-hidden="true" />
+          <span>Tentar Novamente</span>
+        </button>
+      </div>
+    );
+  }
+
+  const tickColor = isDark ? '#a1a1aa' : '#64748b';
   const revenueKeys = Object.keys(revenueByPlan);
   const doughnutData = {
     labels: revenueKeys.map((k) => plans[k]?.name || k),
@@ -165,67 +200,76 @@ const NexusDashboard = () => {
     datasets: [{
       label: 'Ativos',
       data: topByAssets.map((t) => t.assetsCount),
-      backgroundColor: 'rgba(99, 102, 241, 0.8)',
-      hoverBackgroundColor: 'rgba(79, 70, 229, 1)',
+      backgroundColor: 'rgba(14, 165, 233, 0.82)',
+      hoverBackgroundColor: 'rgba(2, 132, 199, 1)',
       borderRadius: 8,
       barThickness: 22,
     }],
   };
-  const tooltip = { backgroundColor: 'rgba(15, 23, 42, 0.92)', padding: 12, cornerRadius: 8 };
+  const tooltip = { backgroundColor: 'rgba(9, 9, 11, 0.94)', padding: 12, cornerRadius: 8 };
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in pb-16">
       {/* COMANDO MASTER */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-5 md:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-[#111113] border border-slate-200/90 dark:border-zinc-800 rounded-xl p-5 md:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-mono text-[11px] font-semibold mb-2">
-            <ShieldAlert size={14} /> Nexus Master Console
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-brand/10 border border-brand/20 text-brand-aa font-mono text-xs font-semibold mb-2">
+            <ShieldAlert size={14} aria-hidden="true" /> Nexus Master Console
           </div>
-          <h1 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Console de Gestão Global</h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xl">
+          <h1 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-[#fafafa] tracking-tight">Console de Gestão Global</h1>
+          <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-xl">
             Receita recorrente, saúde das contas e alocação de licenças de todas as empresas contratantes.
           </p>
-          <p className="mt-2 text-[11px] font-mono text-slate-400 dark:text-slate-500">
+          <p className="mt-2 text-xs font-mono text-slate-500 dark:text-zinc-400 tabular-nums">
             Sincronizado {snapshot?.loadedAt ? snapshot.loadedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
-          <button onClick={() => navigate('/admin/tenants?novo=1')} className="bg-brand hover:bg-brand-dark text-white px-4 py-2 rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-sm">
-            <PlusSquare size={16} /> Nova empresa
+          <button
+            type="button"
+            onClick={() => navigate('/admin/tenants?novo=1')}
+            className="min-h-[44px] bg-brand hover:bg-brand-dark text-brand-fg px-4 py-2 rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <PlusSquare size={16} aria-hidden="true" /> Nova empresa
           </button>
-          <button onClick={() => load(true)} disabled={refreshing} className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-300 px-3.5 py-2 rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-60">
-            <RefreshCcw size={15} className={refreshing ? 'animate-spin' : ''} /> Atualizar
+          <button
+            type="button"
+            onClick={() => load(true)}
+            disabled={refreshing}
+            className="min-h-[44px] bg-slate-100 hover:bg-slate-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-slate-200/80 dark:border-zinc-800 text-slate-700 dark:text-zinc-200 px-3.5 py-2 rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-60 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <RefreshCcw size={15} aria-hidden="true" className={refreshing ? 'animate-spin' : ''} /> Atualizar
           </button>
         </div>
       </div>
 
       {/* Governança & Privacidade LGPD (Art. 6º e 46 da Lei 13.709/2018) */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-2xl p-5 md:p-6 text-white shadow-xl relative overflow-hidden">
+      <div className="bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl p-5 md:p-6 text-white shadow-xl relative overflow-hidden">
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold font-mono">
-              <ShieldCheck size={14} />
+              <ShieldCheck size={14} aria-hidden="true" />
               <span>Conformidade LGPD Ativa • Art. 6º, 46 e 50</span>
             </div>
             <h2 className="text-lg md:text-xl font-black tracking-tight text-white flex items-center gap-2">
               Visão de Governança & Proteção de Dados do Sistema
             </h2>
-            <p className="text-xs text-indigo-200/80 leading-relaxed">
-              O ecossistema Nexus opera sob arquitetura de <strong className="text-white">Minimização Estrita de Dados</strong> e <strong className="text-white">Zero-Surveillance</strong>. O console Nexus Master monitora a integridade das instâncias corporativas (cliente ativo em produção: <strong className="text-white">Shineray By Sabel</strong>) sem inspecionar telas, arquivos privados ou telemetria invasiva de colaboradores.
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              O ecossistema Nexus opera sob arquitetura de <strong className="text-white">Minimização Estrita de Dados</strong> e <strong className="text-white">Zero-Surveillance</strong>. O console Nexus Master monitora a integridade das instâncias corporativas ativas sem inspecionar telas, arquivos privados ou telemetria invasiva de colaboradores.
             </p>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 shrink-0">
             <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
-              <span className="block text-[10px] uppercase font-bold text-indigo-300">Cliente em Produção</span>
-              <span className="text-sm font-black text-white">Shineray</span>
+              <span className="block text-xs uppercase font-bold text-zinc-400">Instâncias Ativas</span>
+              <span className="text-sm font-black text-white tabular-nums">{metrics.live} em produção</span>
             </div>
             <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
-              <span className="block text-[10px] uppercase font-bold text-indigo-300">Selo Digital CLT</span>
+              <span className="block text-xs uppercase font-bold text-zinc-400">Selo Digital CLT</span>
               <span className="text-sm font-black text-emerald-400">HMAC-SHA256</span>
             </div>
             <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center col-span-2 sm:col-span-1">
-              <span className="block text-[10px] uppercase font-bold text-indigo-300">Auditoria</span>
+              <span className="block text-xs uppercase font-bold text-zinc-400">Auditoria</span>
               <span className="text-sm font-black text-sky-400">Hash-Chain</span>
             </div>
           </div>
@@ -234,14 +278,14 @@ const NexusDashboard = () => {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-        <KpiTile icon={CircleDollarSign} tone="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400" label="Receita mensal (MRR)" value={brlCompact.format(metrics.mrr)} hint={`ARR ${brlCompact.format(metrics.mrr * 12)}`} />
+        <KpiTile icon={CircleDollarSign} tone="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" label="Receita mensal (MRR)" value={brlCompact.format(metrics.mrr)} hint={`ARR ${brlCompact.format(metrics.mrr * 12)}`} />
         <KpiTile icon={Building2} label="Empresas ativas" value={metrics.live} hint={metrics.blocked ? `${metrics.blocked} suspensas/encerradas` : `${tenants.length} no total`} onClick={() => navigate('/admin/tenants')} />
-        <KpiTile icon={Sparkles} tone="bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400" label="Novas em 30 dias" value={metrics.newThisMonth} hint={`Ticket médio ${brl.format(metrics.avgTicket)}`} />
-        <KpiTile icon={Users} tone="bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400" label="Usuários" value={metrics.members} hint={`${metrics.activeMembers} ativos em 30 dias`} onClick={() => navigate('/admin/users')} />
-        <KpiTile icon={Server} tone="bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400" label="Ativos gerenciados" value={metrics.assets.toLocaleString('pt-BR')} />
+        <KpiTile icon={Sparkles} tone="bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400" label="Novas em 30 dias" value={metrics.newThisMonth} hint={`Ticket médio ${brl.format(metrics.avgTicket)}`} />
+        <KpiTile icon={Users} tone="bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400" label="Usuários" value={metrics.members} hint={`${metrics.activeMembers} ativos em 30 dias`} onClick={() => navigate('/admin/users')} />
+        <KpiTile icon={Server} tone="bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" label="Ativos gerenciados" value={metrics.assets.toLocaleString('pt-BR')} />
         <KpiTile
           icon={AlertTriangle}
-          tone={metrics.legacy ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' : 'bg-gray-50 text-gray-500 dark:bg-slate-900 dark:text-gray-400'}
+          tone={metrics.legacy ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400' : 'bg-slate-50 text-slate-600 dark:bg-zinc-900 dark:text-zinc-400'}
           label="Sem cadastro (legadas)"
           value={metrics.legacy}
           hint={metrics.legacy ? 'Regularize para cobrar e limitar' : 'Tudo regularizado'}
@@ -256,21 +300,33 @@ const NexusDashboard = () => {
           title="Precisa de atenção"
           subtitle="Limites, contas legadas, inatividade e bloqueios"
           className="lg:col-span-2"
-          action={<button onClick={() => navigate('/admin/tenants?alertas=1')} className="text-[10px] font-black uppercase tracking-widest text-brand bg-brand/10 px-3 py-1.5 rounded-lg">Ver todas</button>}
+          action={
+            <button
+              type="button"
+              onClick={() => navigate('/admin/tenants?alertas=1')}
+              className="min-h-[44px] text-xs font-black uppercase tracking-wider text-brand-aa bg-brand/10 hover:bg-brand/15 px-3.5 py-2 rounded-lg transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              Ver todas
+            </button>
+          }
         >
           {attention.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-gray-400 dark:text-gray-500">
-              <UserCheck size={32} className="mb-3 opacity-40" />
+            <div className="flex flex-col items-center justify-center py-10 text-slate-500 dark:text-zinc-400">
+              <UserCheck size={32} aria-hidden="true" className="mb-3 opacity-40" />
               <p className="font-bold text-sm">Nenhuma pendência. Todas as contas estão saudáveis.</p>
             </div>
           ) : (
             <ul className="space-y-2">
               {attention.map(({ level, text, tenant }, i) => (
                 <li key={`${tenant.id}-${i}`}>
-                  <button onClick={() => openTenant(tenant.id)} className={`w-full text-left flex items-center gap-3 rounded-lg border px-3.5 py-2.5 transition-colors ${ALERT_STYLE[level]}`}>
+                  <button
+                    type="button"
+                    onClick={() => openTenant(tenant.id)}
+                    className={`min-h-[44px] w-full text-left flex items-center gap-3 rounded-lg border px-3.5 py-2.5 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${ALERT_STYLE[level]}`}
+                  >
                     <span className="font-bold text-xs truncate max-w-[40%]">{tenant.companyName || tenant.id}</span>
                     <span className="text-xs font-medium flex-1 min-w-0 truncate">{text}</span>
-                    <ArrowRight size={14} className="shrink-0 opacity-60" />
+                    <ArrowRight size={14} aria-hidden="true" className="shrink-0 opacity-60" />
                   </button>
                 </li>
               ))}
@@ -281,20 +337,20 @@ const NexusDashboard = () => {
         {/* Receita por plano */}
         <Section icon={CircleDollarSign} title="Receita por plano" subtitle="Empresas ativas, com preços sob medida">
           {revenueKeys.length === 0 ? (
-            <p className="text-sm text-gray-400 dark:text-gray-500 py-10 text-center">Nenhuma receita recorrente registrada ainda.</p>
+            <p className="text-sm text-slate-500 dark:text-zinc-400 py-10 text-center">Nenhuma receita recorrente registrada ainda.</p>
           ) : (
             <>
               <div className="relative h-44">
                 <Doughnut data={doughnutData} options={{ responsive: true, maintainAspectRatio: false, cutout: '72%', plugins: { legend: { display: false }, tooltip: { ...tooltip, callbacks: { label: (ctx) => ` ${brl.format(ctx.raw)}` } } } }} />
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-xl font-black text-gray-900 dark:text-white">{brlCompact.format(metrics.mrr)}</span>
-                  <span className="text-[10px] uppercase font-bold text-gray-400 tracking-widest">por mês</span>
+                  <span className="text-xl font-black text-slate-900 dark:text-[#fafafa] tabular-nums">{brlCompact.format(metrics.mrr)}</span>
+                  <span className="text-xs uppercase font-bold text-slate-500 dark:text-zinc-400 tracking-wider">por mês</span>
                 </div>
               </div>
               <ul className="mt-4 space-y-2">
                 {revenueKeys.map((k, i) => (
-                  <li key={k} className="flex items-center gap-2 text-xs font-bold text-gray-600 dark:text-gray-300">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PLAN_COLORS[k] || EXTRA_COLORS[i % EXTRA_COLORS.length] }} />
+                  <li key={k} className="flex items-center gap-2 text-xs font-bold text-slate-600 dark:text-zinc-300">
+                    <span aria-hidden="true" className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PLAN_COLORS[k] || EXTRA_COLORS[i % EXTRA_COLORS.length] }} />
                     <span className="truncate">{plans[k]?.name || k}</span>
                     <span className="ml-auto tabular-nums">{brl.format(revenueByPlan[k])}</span>
                   </li>
@@ -309,7 +365,7 @@ const NexusDashboard = () => {
         {/* Top empresas por volume */}
         <Section icon={Server} title="Maiores parques" subtitle="Empresas com mais ativos cadastrados" className="lg:col-span-2 min-h-[320px]">
           {topByAssets.length === 0 ? (
-            <p className="text-sm text-gray-400 dark:text-gray-500 py-10 text-center">Nenhum ativo cadastrado na plataforma ainda.</p>
+            <p className="text-sm text-slate-500 dark:text-zinc-400 py-10 text-center">Nenhum ativo cadastrado na plataforma ainda.</p>
           ) : (
             <div className="relative flex-1 min-h-[220px]">
               <Bar
@@ -334,18 +390,26 @@ const NexusDashboard = () => {
           icon={Layers}
           title="Planos"
           subtitle="Limites e preços vigentes"
-          action={<button onClick={() => navigate('/admin/plans')} className="text-[10px] font-black uppercase tracking-widest text-brand bg-brand/10 px-3 py-1.5 rounded-lg">Ajustar</button>}
+          action={
+            <button
+              type="button"
+              onClick={() => navigate('/admin/plans')}
+              className="min-h-[44px] text-xs font-black uppercase tracking-wider text-brand-aa bg-brand/10 hover:bg-brand/15 px-3.5 py-2 rounded-lg transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              Ajustar
+            </button>
+          }
         >
           <ul className="space-y-3">
             {Object.values(plans).map((plan) => {
               const count = tenants.filter((t) => !t.legacy && t.entitlements?.planId === plan.id).length;
               return (
-                <li key={plan.id} className="p-3 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40">
+                <li key={plan.id} className="p-3 rounded-lg border border-slate-200/80 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/40">
                   <div className="flex justify-between items-center">
-                    <p className="font-bold text-xs text-slate-900 dark:text-white">{plan.name}</p>
-                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 tabular-nums">{brl.format(Number(plan.monthlyPrice) || 0)}<span className="text-slate-400 font-normal">/mês</span></p>
+                    <p className="font-bold text-xs text-slate-900 dark:text-[#fafafa]">{plan.name}</p>
+                    <p className="text-xs font-semibold text-slate-700 dark:text-zinc-300 tabular-nums">{brl.format(Number(plan.monthlyPrice) || 0)}<span className="text-slate-500 dark:text-zinc-400 font-normal">/mês</span></p>
                   </div>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                  <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5 tabular-nums">
                     {isUnlimited(plan.maxAssets) ? 'Ativos ilimitados' : `${Number(plan.maxAssets).toLocaleString('pt-BR')} ativos`} ·{' '}
                     {isUnlimited(plan.maxUsers) ? 'usuários ilimitados' : `${plan.maxUsers} usuários`} · <strong>{count}</strong> {count === 1 ? 'empresa' : 'empresas'}
                   </p>
@@ -362,18 +426,30 @@ const NexusDashboard = () => {
           icon={Building2}
           title="Empresas recentes"
           subtitle="Últimos cadastros na plataforma"
-          action={<button onClick={() => navigate('/admin/tenants')} className="text-[10px] font-black uppercase tracking-widest text-brand bg-brand/10 px-3 py-1.5 rounded-lg">Todas</button>}
+          action={
+            <button
+              type="button"
+              onClick={() => navigate('/admin/tenants')}
+              className="min-h-[44px] text-xs font-black uppercase tracking-wider text-brand-aa bg-brand/10 hover:bg-brand/15 px-3.5 py-2 rounded-lg transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              Todas
+            </button>
+          }
         >
-          <ul className="divide-y divide-gray-100 dark:divide-slate-700">
+          <ul className="divide-y divide-slate-100 dark:divide-zinc-800">
             {tenants.slice(0, 6).map((t) => (
               <li key={t.id}>
-                <button onClick={() => openTenant(t.id)} className="w-full text-left py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-slate-900/50 rounded-xl px-2 -mx-2 transition-colors">
-                  <div className="w-9 h-9 rounded-xl bg-brand/10 text-brand flex items-center justify-center font-black shrink-0">
+                <button
+                  type="button"
+                  onClick={() => openTenant(t.id)}
+                  className="min-h-[44px] w-full text-left py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-zinc-800/50 rounded-xl px-2 -mx-2 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-brand/10 text-brand-aa flex items-center justify-center font-black shrink-0">
                     {(t.companyName || t.id).substring(0, 2).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-bold text-sm text-gray-900 dark:text-white truncate">{t.companyName || t.id}</p>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                    <p className="font-bold text-sm text-slate-900 dark:text-[#fafafa] truncate">{t.companyName || t.id}</p>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 tabular-nums">
                       {t.createdAtDate ? `Criada ${relativeDays(t.createdAtDate)}` : 'Data de criação desconhecida'} · último acesso {relativeDays(t.lastActivity)}
                     </p>
                   </div>
@@ -387,7 +463,7 @@ const NexusDashboard = () => {
                 </button>
               </li>
             ))}
-            {tenants.length === 0 && <li className="py-8 text-center text-sm text-gray-400">Nenhuma empresa cadastrada.</li>}
+            {tenants.length === 0 && <li className="py-8 text-center text-sm text-slate-500 dark:text-zinc-400">Nenhuma empresa cadastrada.</li>}
           </ul>
         </Section>
 
@@ -395,27 +471,31 @@ const NexusDashboard = () => {
         <Section icon={Activity} title="Atividade recente" subtitle="Últimas operações registradas pelas empresas">
           <ul className="space-y-3">
             {activity.map((act) => (
-              <li key={act.id} className="p-3 rounded-2xl border border-gray-100 dark:border-slate-700 bg-gray-50/60 dark:bg-slate-900/40">
+              <li key={act.id} className="p-3 rounded-2xl border border-slate-100 dark:border-zinc-800 bg-slate-50/60 dark:bg-zinc-900/40">
                 <div className="flex justify-between gap-2">
-                  <p className="font-black text-sm text-gray-900 dark:text-white">{act.action}</p>
-                  <span className="text-[10px] font-bold text-gray-400 whitespace-nowrap">
+                  <p className="font-black text-sm text-slate-900 dark:text-[#fafafa]">{act.action}</p>
+                  <span className="text-xs font-bold text-slate-500 dark:text-zinc-400 whitespace-nowrap tabular-nums">
                     {act.jsDate && !Number.isNaN(act.jsDate.getTime()) ? act.jsDate.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '--'}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{act.details || act.reason || 'Operação registrada.'}</p>
+                <p className="text-xs text-slate-500 dark:text-zinc-400 truncate">{act.details || act.reason || 'Operação registrada.'}</p>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
                   {act.tenantId && (
-                    <button onClick={() => openTenant(act.tenantId)} className="text-[9px] font-black text-brand uppercase tracking-widest bg-brand/10 px-2 py-0.5 rounded">
+                    <button
+                      type="button"
+                      onClick={() => openTenant(act.tenantId)}
+                      className="min-h-[44px] inline-flex items-center text-xs font-black text-brand-aa uppercase tracking-wider bg-brand/10 hover:bg-brand/15 px-3 py-1.5 rounded-lg transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                    >
                       {tenantName(act.tenantId)}
                     </button>
                   )}
                   {typeof act.user === 'string' && act.user && (
-                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{act.user.split('@')[0]}</span>
+                    <span className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">{act.user.split('@')[0]}</span>
                   )}
                 </div>
               </li>
             ))}
-            {activity.length === 0 && <li className="py-8 text-center text-sm text-gray-400">Nenhuma atividade registrada ainda.</li>}
+            {activity.length === 0 && <li className="py-8 text-center text-sm text-slate-500 dark:text-zinc-400">Nenhuma atividade registrada ainda.</li>}
           </ul>
         </Section>
       </div>

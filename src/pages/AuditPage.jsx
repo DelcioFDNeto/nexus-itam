@@ -7,6 +7,7 @@
 // -----------------------------------------------------------------------------
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { AlertCircle, RefreshCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useAssets } from '../hooks/useAssets';
@@ -45,25 +46,28 @@ const AuditPage = () => {
   const tenantId = currentUser?.tenantId;
   const canRun = can(currentUser, 'audit:run');
   const canWrite = can(currentUser, 'assets:write');
-  const { assets, loading } = useAssets();
+  const { assets, loading, error: assetsError, refresh: refreshAssets } = useAssets();
   const { locations } = useLocations();
   const [params, setParams] = useSearchParams();
   const reportId = params.get('relatorio');
 
   const [audits, setAudits] = useState([]);
   const [auditsLoading, setAuditsLoading] = useState(true);
+  const [auditsError, setAuditsError] = useState('');
   const [draft, setDraft] = useState(() => (tenantId ? readDraft(tenantId) : null));
   const [sessionOpen, setSessionOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [extraReport, setExtraReport] = useState(null);
+  const [extraState, setExtraState] = useState({ id: null, audit: null, error: false });
 
   const loadAudits = useCallback(async () => {
     if (!tenantId) return;
     setAuditsLoading(true);
+    setAuditsError('');
     try {
       setAudits(await listAudits(tenantId));
     } catch (error) {
       console.error('Falha ao carregar auditorias:', error);
+      setAuditsError('Não foi possível carregar o histórico de auditorias.');
       toast.error('Não foi possível carregar o histórico de auditorias.');
     } finally {
       setAuditsLoading(false);
@@ -77,9 +81,23 @@ const AuditPage = () => {
   // Relatorio fora dos 100 mais recentes (link antigo).
   useEffect(() => {
     if (!reportId || auditsLoading || audits.some((a) => a.id === reportId)) return;
+    let active = true;
     getAudit(reportId)
-      .then((audit) => (audit?.tenantId === tenantId ? setExtraReport(audit) : toast.error('Relatório não encontrado.')))
-      .catch(() => toast.error('Relatório não encontrado.'));
+      .then((audit) => {
+        if (!active) return;
+        if (audit?.tenantId === tenantId) {
+          setExtraState({ id: reportId, audit, error: false });
+        } else {
+          setExtraState({ id: reportId, audit: null, error: true });
+          toast.error('Relatório não encontrado.');
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        setExtraState({ id: reportId, audit: null, error: true });
+        toast.error('Relatório não encontrado.');
+      });
+    return () => { active = false; };
   }, [reportId, auditsLoading, audits, tenantId]);
 
   const updateDraft = (next) => {
@@ -150,8 +168,36 @@ const AuditPage = () => {
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900 dark:border-slate-700 dark:border-t-white" />
+      <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-label="Carregando auditoria">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand dark:border-zinc-800 dark:border-t-brand" aria-hidden="true" />
+        <span className="sr-only">Carregando auditoria…</span>
+      </div>
+    );
+  }
+
+  if (!reportId && assetsError && assets.length === 0) {
+    return (
+      <div
+        role="alert"
+        className="max-w-lg mx-auto my-16 rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-white dark:bg-[#111113] p-8 text-center space-y-4 shadow-sm"
+      >
+        <AlertCircle size={40} className="mx-auto text-rose-500 opacity-80" aria-hidden="true" />
+        <div className="space-y-1">
+          <p className="font-bold text-slate-900 dark:text-[#fafafa]">Falha ao carregar os ativos para auditoria</p>
+          <p className="text-xs text-slate-500 dark:text-zinc-400">
+            Não foi possível carregar o inventário para calcular os ativos esperados por local. Verifique sua conexão e tente novamente.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof refreshAssets === 'function') refreshAssets();
+            else window.location.reload();
+          }}
+          className="min-h-[44px] inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg text-xs font-bold uppercase tracking-wider transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        >
+          <RefreshCcw size={14} aria-hidden="true" /> Tentar novamente
+        </button>
       </div>
     );
   }
@@ -173,13 +219,28 @@ const AuditPage = () => {
     );
   }
 
-  const report = reportId ? audits.find((a) => a.id === reportId) || (extraReport?.id === reportId ? extraReport : null) : null;
+  const extraReport = extraState.id === reportId ? extraState.audit : null;
+  const extraReportError = extraState.id === reportId && extraState.error;
+  const report = reportId ? audits.find((a) => a.id === reportId) || extraReport : null;
   if (reportId) {
-    return report ? (
-      <AuditReport audit={report} assets={assets} currentUser={currentUser} canWrite={canWrite} onBack={() => setParams({})} />
-    ) : (
-      <p className="py-16 text-center text-sm text-gray-400">Carregando relatório…</p>
-    );
+    if (report) {
+      return <AuditReport audit={report} assets={assets} currentUser={currentUser} canWrite={canWrite} onBack={() => setParams({})} />;
+    }
+    if (extraReportError) {
+      return (
+        <div role="alert" className="max-w-md mx-auto my-16 rounded-2xl border border-rose-200 dark:border-rose-800/60 bg-white dark:bg-[#111113] p-6 text-center space-y-4">
+          <p className="text-sm font-bold text-rose-700 dark:text-rose-300">Relatório não encontrado ou indisponível.</p>
+          <button
+            type="button"
+            onClick={() => setParams({})}
+            className="min-h-[44px] px-4 py-2 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg text-xs font-bold uppercase tracking-wider transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            Voltar para auditorias
+          </button>
+        </div>
+      );
+    }
+    return <p role="status" className="py-16 text-center text-sm text-slate-500 dark:text-zinc-400">Carregando relatório…</p>;
   }
 
   return (
@@ -188,6 +249,8 @@ const AuditPage = () => {
       locationNames={locationNames}
       audits={audits}
       auditsLoading={auditsLoading}
+      auditsError={auditsError}
+      onRetryAudits={loadAudits}
       draft={draft}
       canRun={canRun}
       onStart={start}

@@ -1,5 +1,7 @@
 // src/utils/portalBranding.js
-import { safeCssColor, safeImageUrl } from './sanitize';
+import { safeCssColor, safeImageUrl, safeText } from './sanitize';
+
+const ALLOWED_PORTAL_PROTOCOLS = ['http:', 'https:'];
 
 /**
  * Monta a URL do Portal do Colaborador preservando parametros de Whitelabel
@@ -10,7 +12,7 @@ export const buildBrandedPortalUrl = (baseUrl, branding = {}) => {
   const cleanBase = String(baseUrl || '').trim().replace(/\/$/, '');
   if (!cleanBase) return '';
 
-  const companyName = String(branding?.companyName || branding?.tenantName || '').trim();
+  const companyName = safeText(branding?.companyName || branding?.tenantName || '', 120).trim();
   const primaryColor = safeCssColor(branding?.primaryColor);
   const logoUrl = safeImageUrl(branding?.logoUrl);
   const whitelabel = Boolean(
@@ -19,6 +21,8 @@ export const buildBrandedPortalUrl = (baseUrl, branding = {}) => {
 
   try {
     const url = new URL(cleanBase);
+    if (!ALLOWED_PORTAL_PROTOCOLS.includes(url.protocol)) return '';
+
     if (companyName && companyName !== 'Nexus ITAM') {
       url.searchParams.set('empresa', companyName);
     }
@@ -33,6 +37,6 @@ export const buildBrandedPortalUrl = (baseUrl, branding = {}) => {
     }
     return url.toString();
   } catch {
-    return cleanBase;
+    return '';
   }
 };

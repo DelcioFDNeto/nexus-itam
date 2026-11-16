@@ -17,24 +17,33 @@ import { PWAProvider } from './contexts/PWAContext';
 import { ConfirmProvider } from './components/ConfirmDialog';
 
 const PageLoader = () => (
-  <div className="flex min-h-[50vh] flex-col items-center justify-center">
-    <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900 dark:border-slate-700 dark:border-t-white" />
-    <p className="mt-4 text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Carregando</p>
+  <div
+    role="status"
+    aria-live="polite"
+    className="flex min-h-[50vh] flex-col items-center justify-center"
+  >
+    <div
+      aria-hidden="true"
+      className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand dark:border-zinc-800 dark:border-t-brand"
+    />
+    <p className="mt-4 text-xs font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
+      Carregando…
+    </p>
   </div>
 );
 
 const NotFound = () => (
   <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
-    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Erro 404</p>
-    <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+    <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Erro 404</p>
+    <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900 dark:text-[#fafafa]">
       Página não encontrada
     </h1>
-    <p className="mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400">
+    <p className="mt-2 max-w-sm text-sm text-slate-600 dark:text-zinc-400">
       O endereço acessado não existe ou foi movido.
     </p>
     <Link
       to="/dashboard"
-      className="mt-6 rounded-xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-widest text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900"
+      className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-xl bg-brand px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-brand-fg shadow-sm transition-colors hover:bg-brand-dark active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#09090b]"
     >
       Voltar ao painel
     </Link>

@@ -1,5 +1,5 @@
 // src/components/Layout.jsx
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import {
@@ -43,7 +43,7 @@ const computeOptimalSidebarWidth = (companyName) => {
 const Layout = ({ children }) => {
   const { currentUser } = useAuth();
   const { resolvedTheme } = useTheme();
-  const { isStandalone, canInstall, setIsInstallModalOpen } = usePWA();
+  const { isStandalone, canInstall, isInstallModalOpen, setIsInstallModalOpen } = usePWA();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -53,6 +53,7 @@ const Layout = ({ children }) => {
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const menuTriggerRef = useRef(null);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(SIDEBAR_KEY) ?? 'false');
@@ -152,19 +153,30 @@ const Layout = ({ children }) => {
   // Atalhos de teclado (desktop)
   useEffect(() => {
     const onKeyDown = (e) => {
+      const hasOpenModal =
+        isInstallModalOpen ||
+        isSearchOpen ||
+        Boolean(document.querySelector('[aria-modal="true"]'));
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        if (hasOpenModal) return;
         e.preventDefault();
         setIsSearchOpen(true);
+        return;
       }
       if (e.altKey && e.key.toLowerCase() === 'n' && !isSuperadmin(currentUser) && can(currentUser, 'assets:write')) {
+        if (hasOpenModal) return;
         e.preventDefault();
         navigate('/assets/new');
+        return;
       }
-      if (e.key === 'Escape') setIsMobileMenuOpen(false);
+      if (e.key === 'Escape' && isMobileMenuOpen && !hasOpenModal) {
+        setIsMobileMenuOpen(false);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [navigate, currentUser]);
+  }, [navigate, currentUser, isMobileMenuOpen, isSearchOpen, isInstallModalOpen]);
 
   // Barra inferior mobile: montada a partir das permissões reais do usuário
   const bottomNav = useMemo(() => {
@@ -177,7 +189,7 @@ const Layout = ({ children }) => {
       ];
     }
     return [
-      { to: '/dashboard', icon: Home, label: 'Inicio' },
+      { to: '/dashboard', icon: Home, label: 'Início' },
       { to: '/assets', icon: Box, label: 'Ativos' },
       can(currentUser, 'assets:write') ? { to: '/assets/new', icon: Plus, label: 'Novo', primary: true } : null,
       can(currentUser, 'agent:manage') && isModuleEnabled(currentUser, 'agent') ? { to: '/agent', icon: Monitor, label: 'NexusDesk' } : null,
@@ -201,7 +213,14 @@ const Layout = ({ children }) => {
     .toUpperCase();
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 selection:bg-brand selection:text-white">
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-[#09090b] dark:text-[#fafafa] selection:bg-brand selection:text-brand-fg">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:inline-flex focus:min-h-[44px] focus:items-center focus:rounded-lg focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-brand-fg focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 dark:focus:ring-offset-[#09090b]"
+      >
+        Pular para o conteúdo
+      </a>
+
       <Toaster richColors position="top-right" theme={resolvedTheme} />
 
       {/* ------------------------------------------------------------------ */}
@@ -227,6 +246,7 @@ const Layout = ({ children }) => {
           isOpen={isMobileMenuOpen}
           onClose={() => setIsMobileMenuOpen(false)}
           onSearchClick={() => setIsSearchOpen(true)}
+          returnFocusRef={menuTriggerRef}
         />
       </div>
 
@@ -240,17 +260,22 @@ const Layout = ({ children }) => {
         className="flex min-h-screen flex-col lg:[padding-left:var(--sidebar-offset)] transition-[padding] duration-150 ease-out"
       >
         {/* Topo compacto mobile estilo console com Safe Area Top */}
-        <header className="lg:hidden sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 dark:border-slate-800/80 dark:bg-[#0B0F17]/95 backdrop-blur-xl safe-area-pt">
-          <div className="flex items-center justify-between gap-2 px-3.5 py-2.5">
+        <header className="lg:hidden sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 dark:border-zinc-800 dark:bg-[#111113]/95 backdrop-blur-xl safe-area-pt">
+          <div className="flex items-center justify-between gap-2 px-3.5 py-2">
             {/* Esquerda: Menu Drawer, Logo e Empresa/Tenant */}
-            <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex min-w-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => setIsMobileMenuOpen(true)}
+                onClick={(e) => {
+                  menuTriggerRef.current = e.currentTarget;
+                  setIsMobileMenuOpen(true);
+                }}
                 aria-label="Abrir menu"
-                className="-ml-1 rounded-lg p-2 text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors active:scale-95"
+                aria-expanded={isMobileMenuOpen}
+                data-icon-button="true"
+                className="-ml-1.5 flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100 dark:text-zinc-200 dark:hover:bg-[#18181b] transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
-                <Menu size={20} />
+                <Menu size={20} aria-hidden="true" />
               </button>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
@@ -262,25 +287,26 @@ const Layout = ({ children }) => {
                     aria-label={isOnline ? 'Online' : 'Offline'}
                   >
                     <span
+                      aria-hidden="true"
                       className={`h-2 w-2 rounded-full transition-colors ${
                         isOnline
                           ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]'
-                          : 'bg-rose-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]'
+                          : 'bg-rose-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]'
                       }`}
                     />
                     {!isOnline && (
-                      <span className="text-[9px] font-mono font-bold text-rose-500 uppercase tracking-tight">
+                      <span className="text-xs font-mono font-bold text-rose-600 dark:text-rose-400 uppercase tracking-tight">
                         Off
                       </span>
                     )}
                   </span>
                 </div>
                 <div className="flex items-center gap-1 min-w-0">
-                  <p className="truncate text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <p className="truncate text-xs font-mono font-semibold uppercase tracking-wider text-slate-600 dark:text-zinc-400">
                     {currentUser?.companyName || 'Nexus ITAM'}
                   </p>
                   {currentUser?.tenantId && (
-                    <span className="hidden xs:inline-block font-mono text-[9px] text-slate-400 dark:text-slate-500 truncate">
+                    <span className="hidden sm:inline-block font-mono text-xs text-slate-500 dark:text-zinc-400 truncate">
                       · #{currentUser.tenantId.slice(0, 8)}
                     </span>
                   )}
@@ -295,11 +321,11 @@ const Layout = ({ children }) => {
                   type="button"
                   onClick={() => setIsInstallModalOpen(true)}
                   aria-label="Instalar App"
-                  className="flex items-center gap-1 rounded-lg border border-brand/30 bg-brand/10 hover:bg-brand/20 text-brand dark:text-brand-light px-2 py-1 text-xs font-semibold transition-all active:scale-95 shadow-2xs cursor-pointer"
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-brand/30 bg-brand/10 hover:bg-brand/20 text-brand-aa px-3 py-2 text-xs font-semibold transition-colors active:scale-[0.98] shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   title="Instalar aplicativo Nexus ITAM no dispositivo"
                 >
-                  <Download size={13} strokeWidth={2.4} className="shrink-0" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Instalar</span>
+                  <Download size={14} strokeWidth={2.2} className="shrink-0" aria-hidden="true" />
+                  <span className="text-xs font-bold uppercase tracking-wider">Instalar</span>
                 </button>
               )}
 
@@ -307,14 +333,15 @@ const Layout = ({ children }) => {
                 type="button"
                 onClick={() => setIsSearchOpen(true)}
                 aria-label="Buscar"
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 transition-all active:scale-95"
+                data-icon-button="true"
+                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-[#18181b] dark:text-zinc-300 dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
-                <Search size={15} />
+                <Search size={18} aria-hidden="true" />
               </button>
 
               <div
                 title={`${currentUser?.name || 'Usuário'} — ${ROLE_LABELS[currentUser?.role] || 'Operador'} (${currentUser?.companyName || 'Nexus ITAM'})`}
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 font-mono text-[11px] font-bold text-white dark:bg-slate-800 border border-slate-700/60 shadow-2xs select-none"
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 font-mono text-xs font-bold text-white dark:bg-[#18181b] border border-slate-700/60 dark:border-zinc-700 shadow-sm select-none"
               >
                 {initials}
               </div>
@@ -323,7 +350,11 @@ const Layout = ({ children }) => {
         </header>
 
         {/* Conteúdo com Safe Area Bottom para não colidir com o Bottom Nav */}
-        <main className="flex-1 px-4 pt-4 pb-28 sm:px-6 lg:px-8 lg:py-6 lg:pb-8 safe-area-pb">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 px-4 pt-4 pb-28 sm:px-6 lg:px-8 lg:py-6 lg:pb-8 safe-area-pb focus:outline-none"
+        >
           <div className="mx-auto w-full max-w-[1600px]">{children}</div>
         </main>
       </div>
@@ -332,10 +363,10 @@ const Layout = ({ children }) => {
       {/* BARRA INFERIOR — Bottom Navigation Bar Corporativa Nativa          */}
       {/* ------------------------------------------------------------------ */}
       <nav
-        aria-label="Navegacao rapida"
+        aria-label="Navegação rápida"
         className="lg:hidden fixed inset-x-3 z-40 bottom-[calc(0.6rem+env(safe-area-inset-bottom,0px))] sm:inset-x-auto sm:left-1/2 sm:w-[440px] sm:-translate-x-1/2"
       >
-        <div className="flex items-center justify-around rounded-2xl border border-slate-200/80 bg-white/90 dark:border-slate-800/80 dark:bg-[#0D121F]/90 backdrop-blur-xl px-2 py-1.5 shadow-[0_10px_30px_-5px_rgba(0,0,0,0.25)] dark:shadow-[0_12px_36px_-6px_rgba(0,0,0,0.7)] select-none">
+        <div className="flex items-center justify-around rounded-2xl border border-slate-200/80 bg-white/95 dark:border-zinc-800 dark:bg-[#111113]/95 backdrop-blur-xl px-2 py-1.5 shadow-[0_10px_30px_-5px_rgba(0,0,0,0.25)] dark:shadow-[0_12px_36px_-6px_rgba(0,0,0,0.7)] select-none">
           {bottomNav.map(({ to, icon: Icon, label, primary }) => {
             const active = isActive(to);
             if (primary) {
@@ -344,12 +375,12 @@ const Layout = ({ children }) => {
                   key={to}
                   to={to}
                   aria-label={label}
-                  className="group relative flex flex-1 flex-col items-center justify-center py-1 transition-all duration-150 active:scale-95"
+                  className="group relative flex flex-1 min-h-[44px] min-w-[44px] flex-col items-center justify-center py-1 rounded-xl transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand text-white shadow-md shadow-brand/30 transition-transform group-hover:scale-105 group-active:scale-95">
-                    <Icon size={19} strokeWidth={2.5} />
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand text-brand-fg shadow-md shadow-brand/30 transition-transform group-hover:scale-105 group-active:scale-95">
+                    <Icon size={19} strokeWidth={2.5} aria-hidden="true" />
                   </span>
-                  <span className="mt-0.5 text-[9.5px] font-bold tracking-tight text-brand dark:text-brand-light">
+                  <span className="mt-0.5 text-xs font-bold tracking-tight text-brand-aa">
                     {label}
                   </span>
                 </Link>
@@ -362,25 +393,25 @@ const Layout = ({ children }) => {
                 to={to}
                 aria-label={label}
                 aria-current={active ? 'page' : undefined}
-                className={`group relative flex flex-1 flex-col items-center justify-center py-1 px-1 rounded-xl transition-all duration-150 active:scale-95 ${
+                className={`group relative flex flex-1 min-h-[44px] min-w-[44px] flex-col items-center justify-center py-1 px-1 rounded-xl transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                   active
-                    ? 'text-brand dark:text-brand-light font-semibold'
-                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                    ? 'text-brand-aa font-semibold'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-[#fafafa]'
                 }`}
               >
                 {/* Active pill indicator com microinteração suave */}
                 <span
-                  className={`flex h-7 w-12 items-center justify-center rounded-full transition-all duration-200 ${
+                  className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors ${
                     active
-                      ? 'bg-brand/12 dark:bg-brand/25 text-brand dark:text-brand-light shadow-2xs'
-                      : 'bg-transparent text-slate-500 dark:text-slate-400 group-hover:bg-slate-100/60 dark:group-hover:bg-slate-800/40'
+                      ? 'bg-brand/15 text-brand-aa shadow-sm'
+                      : 'bg-transparent text-slate-600 dark:text-zinc-400 group-hover:bg-slate-100/70 dark:group-hover:bg-[#18181b]'
                   }`}
                 >
-                  <Icon size={18} strokeWidth={active ? 2.4 : 1.9} />
+                  <Icon size={18} strokeWidth={active ? 2.4 : 1.9} aria-hidden="true" />
                 </span>
                 <span
-                  className={`mt-0.5 text-[9.5px] tracking-tight transition-colors ${
-                    active ? 'font-bold text-slate-900 dark:text-white' : 'font-medium'
+                  className={`mt-0.5 text-xs tracking-tight transition-colors ${
+                    active ? 'font-bold text-slate-900 dark:text-[#fafafa]' : 'font-medium'
                   }`}
                 >
                   {label}
@@ -391,19 +422,27 @@ const Layout = ({ children }) => {
 
           <button
             type="button"
-            onClick={() => setIsMobileMenuOpen(true)}
-            aria-label="Mais opcoes"
-            className="group relative flex flex-1 flex-col items-center justify-center py-1 px-1 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 transition-all duration-150 active:scale-95 cursor-pointer"
+            onClick={(e) => {
+              menuTriggerRef.current = e.currentTarget;
+              setIsMobileMenuOpen(true);
+            }}
+            aria-label="Mais opções"
+            aria-expanded={isMobileMenuOpen}
+            className="group relative flex flex-1 min-h-[44px] min-w-[44px] flex-col items-center justify-center py-1 px-1 rounded-xl text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-[#fafafa] transition-colors active:scale-[0.98] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
-            <span className="flex h-7 w-12 items-center justify-center rounded-full transition-all duration-200 group-hover:bg-slate-100/60 dark:group-hover:bg-slate-800/40">
-              <MoreHorizontal size={18} strokeWidth={1.9} />
+            <span className="flex h-7 w-12 items-center justify-center rounded-full transition-colors group-hover:bg-slate-100/70 dark:group-hover:bg-[#18181b]">
+              <MoreHorizontal size={18} strokeWidth={1.9} aria-hidden="true" />
             </span>
-            <span className="mt-0.5 text-[9.5px] font-medium tracking-tight">Mais</span>
+            <span className="mt-0.5 text-xs font-medium tracking-tight">Mais</span>
           </button>
         </div>
       </nav>
 
-      <GlobalSearch isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+      <GlobalSearch
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        returnFocusRef={menuTriggerRef}
+      />
     </div>
   );
 };

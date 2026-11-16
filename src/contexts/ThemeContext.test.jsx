@@ -1,7 +1,8 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ThemeProvider, useTheme } from './ThemeContext';
+import { ACCENTS, ThemeProvider, useTheme } from './ThemeContext';
+import { contrastRatio } from '../utils/color';
 
 vi.mock('./AuthContext', () => ({ useAuth: vi.fn(() => mockAuth) }));
 
@@ -49,6 +50,7 @@ const Probe = () => {
 
 const setup = () => render(<ThemeProvider><Probe /></ThemeProvider>);
 const brand = () => document.documentElement.style.getPropertyValue('--color-brand');
+const cssVar = (name) => document.documentElement.style.getPropertyValue(name);
 
 describe('ThemeContext', () => {
   beforeEach(() => {
@@ -102,9 +104,11 @@ describe('ThemeContext', () => {
     expect(localStorage.getItem('nexus_theme')).toBe('dark');
   });
 
-  it('usa o indigo padrao sem inquilino e sem acento', () => {
+  it('usa o azul enterprise padrao sem inquilino e sem acento', () => {
     setup();
-    expect(brand()).toBe('#4F46E5');
+    expect(brand()).toBe('#0C5CAB');
+    expect(cssVar('--color-brand-fg')).toBe('#fafafa');
+    expect(cssVar('--color-brand-fg-rgb')).toBe('250 250 250');
   });
 
   it('herda a cor da empresa quando o acento esta em automatico', () => {
@@ -119,7 +123,7 @@ describe('ThemeContext', () => {
     mockAuth = { currentUser: { primaryColor: '#FF0000' } };
     setup();
     fireEvent.click(screen.getByText('verde'));
-    expect(brand()).toBe('#10B981');
+    expect(brand()).toBe('#047857');
   });
 
   it('voltar para automatico devolve a cor da empresa', () => {
@@ -134,13 +138,45 @@ describe('ThemeContext', () => {
   it('recusa cor de inquilino invalida e cai no padrao', () => {
     mockAuth = { currentUser: { primaryColor: 'url(https://evil.tld)' } };
     setup();
-    expect(brand()).toBe('#4F46E5');
+    expect(brand()).toBe('#0C5CAB');
   });
 
   it('deriva um tom escuro da cor efetiva', () => {
     setup();
     const dark = document.documentElement.style.getPropertyValue('--color-brand-dark');
     expect(dark).toMatch(/^#[0-9a-f]{6}$/);
-    expect(dark).not.toBe('#4F46E5');
+    expect(dark).not.toBe('#0C5CAB');
+  });
+
+  it('calcula foreground escuro para marca clara (#FDE047 -> 9 9 11)', () => {
+    mockAuth = { currentUser: { primaryColor: '#FDE047' } };
+    setup();
+    expect(cssVar('--color-brand-fg')).toBe('#09090b');
+    expect(cssVar('--color-brand-fg-rgb')).toBe('9 9 11');
+  });
+
+  it('garante legibilidade AA de --color-brand-text-light e --color-brand-text-dark para marca clara', () => {
+    mockAuth = { currentUser: { primaryColor: '#FDE047' } };
+    setup();
+    expect(contrastRatio(cssVar('--color-brand-text-light'), '#ffffff')).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(cssVar('--color-brand-text-dark'), '#111113')).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('garante legibilidade AA de --color-brand-text-light e --color-brand-text-dark para marca padrao', () => {
+    mockAuth = { currentUser: { primaryColor: '#0C5CAB' } };
+    setup();
+    expect(contrastRatio(cssVar('--color-brand-text-light'), '#ffffff')).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(cssVar('--color-brand-text-dark'), '#111113')).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('migra legado purple salvo no localStorage sem quebrar e todos os presets atendem AA', () => {
+    localStorage.setItem('nexus_accent', 'purple');
+    setup();
+    expect(screen.getByTestId('accent')).toHaveTextContent('teal');
+    expect(brand()).toBe('#0F766E');
+
+    Object.values(ACCENTS).forEach((hex) => {
+      expect(contrastRatio(hex, '#fafafa')).toBeGreaterThanOrEqual(4.5);
+    });
   });
 });

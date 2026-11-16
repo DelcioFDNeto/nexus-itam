@@ -1,8 +1,9 @@
 // src/pages/ImportData.test.jsx
 import React, { act } from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { writeBatch } from 'firebase/firestore';
 import ImportData from './ImportData';
 import { 
   normalizeStatus, 
@@ -19,7 +20,7 @@ vi.mock('../contexts/AuthContext', () => ({
       uid: 'user-admin-1',
       tenantId: 'tenant-test-itam',
       name: 'Gestor TI',
-      email: 'gestor@shineray.com.br',
+      email: 'gestor@empresa.com.br',
       role: 'admin',
     },
   })),
@@ -190,13 +191,13 @@ describe('ImportData - V3 Ingestion Engine', () => {
         Status: 'Em Uso',
         Local: 'Filial Sul',
         Serial: 'C02G12345',
-        Usuario: 'diretor@shineray.com.br'
+        Usuario: 'diretor@empresa.com.br'
       });
 
       expect(transformed.internalId).toBe('NTB-999');
       expect(transformed.model).toBe('MacBook Pro M2');
       expect(transformed.serialNumber).toBe('C02G12345');
-      expect(transformed.assignedTo).toBe('diretor@shineray.com.br');
+      expect(transformed.assignedTo).toBe('diretor@empresa.com.br');
     });
 
     it('transforms commercial employees rows preserving custom status', () => {
@@ -230,6 +231,79 @@ describe('ImportData - V3 Ingestion Engine', () => {
       });
       expect(withInvalidDate.createdAt).toBeDefined();
       expect(withInvalidDate.createdAt).not.toBeInstanceOf(Date); // serverTimestamp fallback
+    });
+
+    it('resolves lowercase, accented, and colAliases headers across all 4 schemas in validateRow and transform', () => {
+      const assetAliasRow = {
+        tombamento: 'NTB-500',
+        modelo: 'Dell XPS',
+        tipo: 'Notebook',
+        status: 'Em Uso',
+        'localização': 'Filial Norte',
+        'número de série': 'SN-500',
+        'responsável': 'ana@empresa.com',
+      };
+      expect(IMPORT_SCHEMAS.assets.validateRow(assetAliasRow)).toEqual({ errors: [], warnings: [] });
+      expect(IMPORT_SCHEMAS.assets.transform(assetAliasRow)).toMatchObject({
+        internalId: 'NTB-500',
+        model: 'Dell XPS',
+        type: 'Notebook',
+        status: 'Em Uso',
+        location: 'Filial Norte',
+        serialNumber: 'SN-500',
+        assignedTo: 'ana@empresa.com',
+      });
+
+      const empAliasRow = {
+        colaborador: 'Maria Clara',
+        'e-mail': 'MARIA@EMPRESA.COM',
+        'função': 'Engenheira de Redes',
+        departamento: 'Infra',
+        filial: 'Matriz - Belém',
+      };
+      expect(IMPORT_SCHEMAS.employees.validateRow(empAliasRow)).toEqual({ errors: [], warnings: [] });
+      expect(IMPORT_SCHEMAS.employees.transform(empAliasRow)).toMatchObject({
+        name: 'Maria Clara',
+        email: 'maria@empresa.com',
+        role: 'Engenheira de Redes',
+        sector: 'Infra',
+        branch: 'Matriz - Belém',
+        status: 'Ativo',
+      });
+
+      const projAliasRow = {
+        projeto: 'Upgrade Core',
+        status: 'em andamento',
+        'descrição': 'Troca dos switches',
+        prioridade: 'Alta',
+        'líder': 'carlos@empresa.com',
+      };
+      expect(IMPORT_SCHEMAS.projects.validateRow(projAliasRow)).toEqual({ errors: [], warnings: [] });
+      expect(IMPORT_SCHEMAS.projects.transform(projAliasRow)).toMatchObject({
+        name: 'Upgrade Core',
+        description: 'Troca dos switches',
+        status: 'Em Andamento',
+        priority: 'Alta',
+        leader: 'carlos@empresa.com',
+      });
+
+      const taskAliasRow = {
+        tarefa: 'Trocar patch panel',
+        status: 'todo',
+        descricao: 'Rack B',
+        prioridade: 'crítica',
+        categoria: 'infraestrutura',
+        projeto: 'proj-1',
+      };
+      expect(IMPORT_SCHEMAS.tasks.validateRow(taskAliasRow)).toEqual({ errors: [], warnings: [] });
+      expect(IMPORT_SCHEMAS.tasks.transform(taskAliasRow)).toMatchObject({
+        title: 'Trocar patch panel',
+        description: 'Rack B',
+        status: 'A Fazer',
+        priority: 'Crítica',
+        category: 'Infraestrutura',
+        projectId: 'proj-1',
+      });
     });
   });
 
@@ -295,6 +369,64 @@ describe('ImportData - V3 Ingestion Engine', () => {
       });
 
       expect(screen.getByTitle(/Som desativado/i)).toBeInTheDocument();
+    });
+
+    it('aceita cabecalhos em minusculo/aliases no upload e bloqueia ingestao quando !skipErrors e ha linhas invalidas', async () => {
+      render(
+        <MemoryRouter>
+          <ImportData />
+        </MemoryRouter>
+      );
+
+      const fileInput = screen.getByLabelText(/Selecionar arquivo para Ativos/i);
+      const payload = [
+        { tombamento: 'NTB-701', modelo: 'ThinkPad T14', tipo: 'Notebook', status: 'Em Uso', local: 'Matriz', serial: 'SN701' },
+        { tombamento: '', modelo: 'Sem Patrimonio', tipo: 'Notebook', status: 'Em Uso', local: 'Matriz', serial: 'SN702' },
+      ];
+      const file = new File([JSON.stringify(payload)], 'ativos-alias.json', { type: 'application/json' });
+
+      fireEvent.change(fileInput, { target: { files: [file] } });
+
+      expect(await screen.findByText('ativos-alias.json')).toBeInTheDocument();
+      expect(screen.queryByText(/Colunas Obrigatórias Ausentes/i)).not.toBeInTheDocument();
+      expect(screen.getByText('NTB-701')).toBeInTheDocument();
+
+      const importBtn = screen.getByRole('button', { name: /Iniciar Ingestão em Massa/i });
+      const skipCheckbox = screen.getByRole('checkbox', { name: /Ignorar registros com erros/i });
+
+      // Com skipErrors marcado, permite importar apenas os validos
+      expect(skipCheckbox).toBeChecked();
+      expect(importBtn).toBeEnabled();
+
+      // Desmarcar skipErrors quando ha erros bloqueia o botao e exibe alerta explicativo
+      fireEvent.click(skipCheckbox);
+      expect(skipCheckbox).not.toBeChecked();
+      expect(importBtn).toBeDisabled();
+      expect(screen.getByText(/Importação bloqueada: existem 1 registro\(s\) com erros/i)).toBeInTheDocument();
+
+      fireEvent.click(importBtn);
+      expect(writeBatch).not.toHaveBeenCalled();
+
+      // Remarcar skipErrors reabilita e importa apenas 1 registro valido
+      fireEvent.click(skipCheckbox);
+      expect(importBtn).toBeEnabled();
+
+      const batchSet = vi.fn();
+      const batchCommit = vi.fn().mockResolvedValue(true);
+      writeBatch.mockReturnValue({ set: batchSet, commit: batchCommit });
+
+      fireEvent.click(importBtn);
+
+      await waitFor(() => {
+        expect(batchCommit).toHaveBeenCalledTimes(1);
+      });
+      // 1 ativo valido + 1 registro de historico = 2 chamadas de set
+      expect(batchSet).toHaveBeenCalledTimes(2);
+      expect(batchSet.mock.calls[0][1]).toMatchObject({
+        internalId: 'NTB-701',
+        model: 'ThinkPad T14',
+        tenantId: 'tenant-test-itam',
+      });
     });
   });
 });

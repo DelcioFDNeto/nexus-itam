@@ -150,8 +150,8 @@ describe('AssetForm', () => {
   it('gera tag automática no padrão da empresa ao clicar em Gerar Tag', async () => {
     const { getAllAssets } = await import('../services/assetService');
     getAllAssets.mockResolvedValueOnce([
-      { internalId: 'SHL-BEL-NTB-010', type: 'Notebook', location: 'Matriz - Belém' },
-      { internalId: 'SHL-BEL-NTB-011', type: 'Notebook', location: 'Matriz - Belém' },
+      { internalId: 'EMP-MTZ-NTB-010', type: 'Notebook', location: 'Matriz - Centro' },
+      { internalId: 'EMP-MTZ-NTB-011', type: 'Notebook', location: 'Matriz - Centro' },
     ]);
 
     render(
@@ -172,6 +172,75 @@ describe('AssetForm', () => {
     await waitFor(() => {
       const input = screen.getByPlaceholderText(/Ex: NB-001/i);
       expect(input.value).toBeTruthy();
+    });
+  });
+
+  it('registers beforeunload protection when form has unsaved edits', async () => {
+    render(
+      <BrowserRouter>
+        <AssetForm />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Ex: Notebook/i)).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/Ex: Notebook/i), { target: { value: 'ThinkPad X1' } });
+
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('mostra erro claro quando getAssetById retorna null no modo edicao', async () => {
+    mockParams = { id: 'inexistente-1' };
+    getAssetById.mockResolvedValueOnce(null);
+
+    render(
+      <BrowserRouter>
+        <AssetForm />
+      </BrowserRouter>
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Ativo não encontrado/i);
+    expect(screen.getByRole('link', { name: /Voltar para Lista/i })).toHaveAttribute('href', '/assets');
+  });
+
+  it('faz trim do internalId e impede duplo envio simultaneo', async () => {
+    let resolveCreate;
+    createAsset.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        }),
+    );
+
+    render(
+      <BrowserRouter>
+        <AssetForm />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Ex: Notebook/i)).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/Ex: Notebook/i), { target: { value: 'Latitude 5440' } });
+    fireEvent.change(screen.getByPlaceholderText(/Ex: NB-001/i), { target: { value: '  DEV-002  ' } });
+
+    const submitBtn = screen.getByRole('button', { name: /Cadastrar Ativo/i });
+    fireEvent.click(submitBtn);
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(createAsset).toHaveBeenCalledTimes(1);
+    });
+    expect(createAsset.mock.calls[0][0].internalId).toBe('DEV-002');
+
+    resolveCreate('asset-new-1');
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/assets');
     });
   });
 });

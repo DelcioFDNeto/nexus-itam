@@ -3,31 +3,23 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   AlertCircle,
-  ArrowUpRight,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock,
-  Cpu,
   ExternalLink,
   FileSignature,
-  Filter,
-  HardDrive,
   Inbox,
   Laptop,
   Lock,
   MessageSquare,
   Monitor,
   Network,
-  Play,
-  Plus,
-  Radio,
   RefreshCw,
   Search,
   Send,
   Server,
   ShieldCheck,
-  Sparkles,
   Tag,
   Terminal,
   Ticket,
@@ -40,21 +32,28 @@ import {
 import { toast } from 'sonner';
 import {
   clearGatewaySession,
-  getGatewayBaseUrl,
   getGatewaySession,
   microservicesApi,
   onGatewaySessionChange,
   resolvePortalUrl,
 } from '../services/microservicesClient';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../components/ConfirmDialog';
 import RemoteControlModal from '../components/RemoteControlModal';
 import { buildBrandedPortalUrl } from '../utils/portalBranding';
+import {
+  captureFocusTarget,
+  getFocusableElements,
+  restoreFocusSafely,
+  trapFocusWithin,
+} from '../utils/focusTrap';
+import { isTopmostModal } from '../utils/modalStack';
 
 const STATUS_BADGES = {
-  open: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
-  in_progress: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
-  resolved: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
-  closed: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20',
+  open: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25',
+  in_progress: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/25',
+  resolved: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25',
+  closed: 'bg-zinc-500/10 text-zinc-700 dark:text-zinc-300 border-zinc-500/25',
 };
 
 const STATUS_NAMES = {
@@ -115,6 +114,7 @@ const formatRelativeTime = (timestamp) => {
 
 const ServiceDeskHub = () => {
   const { currentUser } = useAuth?.() || {};
+  const confirm = useConfirm();
   const [gatewaySession, setGatewaySessionState] = useState(() => getGatewaySession());
   const [remoteModalDevice, setRemoteModalDevice] = useState(null);
   const [clusterHealth, setClusterHealth] = useState(null);
@@ -159,13 +159,69 @@ const ServiceDeskHub = () => {
   });
 
   const [credentials, setCredentials] = useState(() => ({
-    email: 'ti@shineraybysabel.com.br',
-    password: 'Shineray@2026!',
+    email: '',
+    password: '',
   }));
 
   const wsRef = useRef(null);
-  const gatewayUrl = getGatewayBaseUrl();
+  const wsFeedSeqRef = useRef(0);
+  const activeTicketCommentIdRef = useRef(null);
+  const commentsReqSeqRef = useRef(0);
+  const newTicketModalRef = useRef(null);
+  const newTermModalRef = useRef(null);
+  const modalReturnFocusRef = useRef(null);
+  const isModalSubmittingRef = useRef(false);
   const portalUrl = buildBrandedPortalUrl(resolvePortalUrl(), currentUser || gatewaySession?.user);
+
+  useEffect(() => {
+    isModalSubmittingRef.current = submittingTicket || submittingTerm;
+  }, [submittingTicket, submittingTerm]);
+
+  useEffect(() => {
+    activeTicketCommentIdRef.current = activeTicketCommentId;
+  }, [activeTicketCommentId]);
+
+  useEffect(() => {
+    const activeModalEl = isNewTicketModalOpen
+      ? newTicketModalRef.current
+      : isNewTermModalOpen
+        ? newTermModalRef.current
+        : null;
+
+    if (!activeModalEl) return undefined;
+
+    modalReturnFocusRef.current = captureFocusTarget(activeModalEl);
+    const focusables = getFocusableElements(activeModalEl);
+    if (focusables.length > 0) {
+      focusables[0].focus();
+    } else {
+      activeModalEl.focus();
+    }
+
+    const handleKeyDown = (event) => {
+      if (!isTopmostModal(activeModalEl)) return;
+
+      if (event.key === 'Escape') {
+        if (isModalSubmittingRef.current) return;
+        event.preventDefault();
+        if (isNewTicketModalOpen) setIsNewTicketModalOpen(false);
+        if (isNewTermModalOpen) setIsNewTermModalOpen(false);
+        return;
+      }
+
+      if (event.key === 'Tab') {
+        trapFocusWithin(event, activeModalEl);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      const previous = modalReturnFocusRef.current;
+      modalReturnFocusRef.current = null;
+      restoreFocusSafely(previous, null, activeModalEl);
+    };
+  }, [isNewTicketModalOpen, isNewTermModalOpen]);
 
   const handleCreateNewTicket = async (e) => {
     e.preventDefault();
@@ -214,7 +270,9 @@ const ServiceDeskHub = () => {
       setHealthError('');
     } catch (err) {
       setHealthError(
-        `API Gateway offline em ${gatewayUrl}. Inicie a malha com "npm run dev:microservices" ou "docker compose up". (${err.message})`,
+        err?.message
+          ? `Serviço indisponível no momento (${err.message}). Tente reconectar em instantes.`
+          : 'Serviço temporariamente indisponível. Verifique a conectividade ou tente novamente.',
       );
       return;
     }
@@ -238,7 +296,7 @@ const ServiceDeskHub = () => {
     } finally {
       setLoading(false);
     }
-  }, [gatewayUrl]);
+  }, []);
 
   const refreshTimeoutRef = useRef(null);
 
@@ -264,7 +322,9 @@ const ServiceDeskHub = () => {
       .catch((err) => {
         if (active) {
           setHealthError(
-            `Gateway não detectado em ${gatewayUrl} (${err.message}). Execute "npm run dev:microservices" ou "docker compose up -d".`,
+            err?.message
+              ? `Não foi possível conectar aos serviços do Service Desk (${err.message}).`
+              : 'Não foi possível conectar aos serviços do Service Desk no momento.',
           );
         }
       });
@@ -283,7 +343,11 @@ const ServiceDeskHub = () => {
           setFleet(flRes || { summary: {}, devices: [] });
           setChainReport(chRes);
         })
-        .catch(() => {});
+        .catch((err) => {
+          if (!active) return;
+          console.error('Erro ao carregar dados iniciais do Service Desk:', err);
+          toast.error(err?.message || 'Não foi possível carregar os dados do Service Desk.');
+        });
 
       const handle = microservicesApi.openNexusDeskSocket(gatewaySession.token, {
         onStatus: (st) => {
@@ -291,7 +355,11 @@ const ServiceDeskHub = () => {
         },
         onFrame: (frame) => {
           if (!active) return;
-          setWsFeed((prev) => [frame, ...prev].slice(0, 15));
+          const feedItem = {
+            ...frame,
+            _feedKey: frame?.id || `${frame?.event || 'evt'}-${Date.now()}-${++wsFeedSeqRef.current}`,
+          };
+          setWsFeed((prev) => [feedItem, ...prev].slice(0, 15));
           const isBusinessEvent =
             frame?.event &&
             (frame.event.startsWith('ticket.') ||
@@ -313,7 +381,7 @@ const ServiceDeskHub = () => {
       }
       wsRef.current?.close();
     };
-  }, [debouncedLoadDomainData, gatewaySession?.token, gatewayUrl]);
+  }, [debouncedLoadDomainData, gatewaySession?.token]);
 
   const handleConnectGateway = async (e) => {
     e.preventDefault();
@@ -334,6 +402,16 @@ const ServiceDeskHub = () => {
     clearGatewaySession();
     setGatewaySessionState(null);
     setWsStatus('disconnected');
+    setTickets([]);
+    setTerms([]);
+    setFleet({ summary: {}, devices: [] });
+    setChainReport(null);
+    setWsFeed([]);
+    activeTicketCommentIdRef.current = null;
+    setActiveTicketCommentId(null);
+    setTicketCommentsMap({});
+    setLoadingCommentsId(null);
+    setRemoteModalDevice(null);
   };
 
   const handleResolveTicket = async (ticketId, nextStatus) => {
@@ -342,8 +420,8 @@ const ServiceDeskHub = () => {
         status: nextStatus,
         resolutionNotes:
           nextStatus === 'resolved'
-            ? 'Atendimento técnico concluído. Solicitação atendida de acordo com os padrões corporativos de SLA.'
-            : 'Chamado assumido pela equipe de TI & Infraestrutura Shineray By Sabel.',
+            ? 'Atendimento técnico concluído. Solicitação atendida conforme o SLA corporativo.'
+            : 'Chamado assumido pela equipe de TI & Infraestrutura.',
       });
       toast.success(`Status do chamado atualizado para ${STATUS_NAMES[nextStatus]}.`);
       loadDomainData();
@@ -353,6 +431,15 @@ const ServiceDeskHub = () => {
   };
 
   const handleDeleteTicket = async (ticketId, protocol) => {
+    const ok = await confirm({
+      title: `Excluir chamado ${protocol || ''}?`,
+      message: 'Esta ação removerá o chamado da fila operacional e não poderá ser desfeita.',
+      confirmLabel: 'Excluir chamado',
+      cancelLabel: 'Cancelar',
+      danger: true,
+    });
+    if (!ok) return;
+
     try {
       await microservicesApi.deleteTicket(ticketId);
       setTickets((prev) => prev.filter((t) => t.id !== ticketId));
@@ -365,20 +452,31 @@ const ServiceDeskHub = () => {
 
   const handleToggleTicketComments = async (ticketId) => {
     if (activeTicketCommentId === ticketId) {
+      activeTicketCommentIdRef.current = null;
       setActiveTicketCommentId(null);
+      setLoadingCommentsId(null);
       return;
     }
+    const reqSeq = ++commentsReqSeqRef.current;
+    activeTicketCommentIdRef.current = ticketId;
     setActiveTicketCommentId(ticketId);
     setLoadingCommentsId(ticketId);
     try {
       const detail = await microservicesApi.getTicketById(ticketId);
+      if (reqSeq !== commentsReqSeqRef.current || activeTicketCommentIdRef.current !== ticketId) {
+        return;
+      }
       if (detail?.comments) {
         setTicketCommentsMap((prev) => ({ ...prev, [ticketId]: detail.comments }));
       }
-    } catch {
-      // mantém estado local
+    } catch (err) {
+      if (reqSeq === commentsReqSeqRef.current && activeTicketCommentIdRef.current === ticketId) {
+        toast.error(err?.message || 'Não foi possível carregar o histórico de mensagens.');
+      }
     } finally {
-      setLoadingCommentsId(null);
+      if (reqSeq === commentsReqSeqRef.current) {
+        setLoadingCommentsId((prev) => (prev === ticketId ? null : prev));
+      }
     }
   };
 
@@ -475,6 +573,15 @@ const ServiceDeskHub = () => {
   };
 
   const handleDeleteTerm = async (termId, employeeName) => {
+    const ok = await confirm({
+      title: 'Remover termo de custódia CLT?',
+      message: `Confirma a remoção permanente do termo emitido para ${employeeName || 'este colaborador'}?`,
+      confirmLabel: 'Remover termo',
+      cancelLabel: 'Cancelar',
+      danger: true,
+    });
+    if (!ok) return;
+
     try {
       await microservicesApi.deleteTerm(termId);
       setTerms((prev) => prev.filter((t) => t.id !== termId));
@@ -567,12 +674,16 @@ const ServiceDeskHub = () => {
       else if (ticketFilter === 'in_progress') matchesFilter = t.status === 'in_progress';
       else if (ticketFilter === 'resolved') matchesFilter = t.status === 'resolved' || t.status === 'closed';
       else if (ticketFilter === 'mine') {
-        const userName = gatewaySession?.user?.name?.toLowerCase() || '';
-        matchesFilter =
-          Boolean(t.technician_name && t.technician_name.toLowerCase().includes(userName)) ||
-          Boolean(t.assigned_tech_name && t.assigned_tech_name.toLowerCase().includes(userName)) ||
-          Boolean(t.assigned_to && t.assigned_to.toLowerCase().includes(userName)) ||
-          Boolean(t.requester_name && t.requester_name.toLowerCase().includes(userName));
+        const userName = gatewaySession?.user?.name?.toLowerCase()?.trim() || '';
+        if (!userName) {
+          matchesFilter = false;
+        } else {
+          matchesFilter =
+            Boolean(t.technician_name && t.technician_name.toLowerCase().includes(userName)) ||
+            Boolean(t.assigned_tech_name && t.assigned_tech_name.toLowerCase().includes(userName)) ||
+            Boolean(t.assigned_to && t.assigned_to.toLowerCase().includes(userName)) ||
+            Boolean(t.requester_name && t.requester_name.toLowerCase().includes(userName));
+        }
       } else if (ticketFilter === 'critical') {
         matchesFilter = t.priority === 'critical' || t.priority === 'high' || t.status === 'open';
       }
@@ -590,18 +701,18 @@ const ServiceDeskHub = () => {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Enterprise Header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200/80 dark:border-slate-800 pb-5">
+      {/* Header */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200/80 dark:border-zinc-800 pb-5">
         <div>
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-brand">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>ITSM & Service Operations • Enterprise Suite</span>
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-brand-aa">
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+            <span>Operações de TI &amp; Atendimento</span>
           </div>
-          <h1 className="mt-1 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-            Service Desk & Orquestração de Microsserviços
+          <h1 className="mt-1 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-zinc-50">
+            Service Desk &amp; Orquestração de Microsserviços
           </h1>
-          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-3xl">
-            Centro unificado de resolução de incidentes N1/N2, custódia patrimonial com assinatura digital CLT e telemetria de frotas em tempo real.
+          <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-zinc-400 max-w-3xl">
+            Central de chamados N1/N2, custódia patrimonial CLT com assinatura HMAC e telemetria da frota.
           </p>
         </div>
 
@@ -609,21 +720,22 @@ const ServiceDeskHub = () => {
           <button
             type="button"
             onClick={() => setShowDevDrawer((p) => !p)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:border-brand dark:hover:border-brand transition-colors"
-            title="Exibir topologia técnica dos microsserviços e documentação"
+            aria-expanded={showDevDrawer}
+            className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:border-brand dark:hover:border-brand active:bg-slate-50 dark:active:bg-zinc-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            title="Exibir diagnósticos e ferramentas de verificação"
           >
-            <Server size={13} className="text-brand" />
-            <span>Topologia & APIs</span>
-            {showDevDrawer ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            <Server size={14} className="text-brand-aa" />
+            <span>Topologia &amp; APIs</span>
+            {showDevDrawer ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
 
           <a
             href={portalUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand to-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:opacity-95 transition-all"
+            className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg bg-brand hover:bg-brand-dark px-3.5 py-2 text-xs font-bold text-brand-fg shadow-sm active:opacity-90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
-            <Laptop size={13} />
+            <Laptop size={14} />
             <span>Portal do Colaborador</span>
             <ExternalLink size={12} />
           </a>
@@ -631,9 +743,9 @@ const ServiceDeskHub = () => {
           <button
             type="button"
             onClick={loadDomainData}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-900 active:bg-slate-100 dark:active:bg-zinc-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
-            <RefreshCw size={13} className={loading ? 'animate-spin text-brand' : ''} />
+            <RefreshCw size={14} className={loading ? 'animate-spin text-brand-aa' : ''} />
             <span>Atualizar</span>
           </button>
         </div>
@@ -641,20 +753,33 @@ const ServiceDeskHub = () => {
 
       {/* Offline Alert */}
       {healthError && (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-xs font-medium text-amber-800 dark:text-amber-200 flex items-start gap-3">
-          <AlertCircle size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-          <div>
-            <p className="font-bold">Aviso de Conectividade do Cluster</p>
-            <p className="mt-0.5">{healthError}</p>
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-xs font-medium text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p className="font-bold">Aviso de Conectividade do Cluster</p>
+              <p className="mt-0.5">{healthError}</p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={loadDomainData}
+            className="min-h-[44px] shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-500/40 bg-white/80 dark:bg-[#111113] px-3.5 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-zinc-900 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <RefreshCw size={13} />
+            <span>Tentar novamente</span>
+          </button>
         </div>
       )}
 
-      {/* Executive SaaS KPI Cards */}
+      {/* KPI Cards */}
       <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
         {/* SLA Compliance KPI */}
         <div className="surface-card p-4 flex flex-col justify-between relative overflow-hidden border-l-4 border-l-emerald-500">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-600 dark:text-zinc-400">
             <span>SLA Operacional (MTTR)</span>
             <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               <Clock size={15} />
@@ -662,14 +787,14 @@ const ServiceDeskHub = () => {
           </div>
           <div className="mt-2">
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black text-slate-900 dark:text-white">
+              <span className="text-2xl font-black tabular-nums text-slate-900 dark:text-zinc-50">
                 {slaMetrics.rate}
               </span>
-              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center">
+              <span className="text-xs font-bold tabular-nums text-emerald-600 dark:text-emerald-400 flex items-center">
                 <TrendingUp size={12} className="mr-0.5" /> {slaMetrics.badge}
               </span>
             </div>
-            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-xs text-slate-600 dark:text-zinc-400">
               {slaMetrics.subtitle}
             </p>
           </div>
@@ -677,106 +802,104 @@ const ServiceDeskHub = () => {
 
         {/* Active Ticket Desk KPI */}
         <div className="surface-card p-4 flex flex-col justify-between relative overflow-hidden border-l-4 border-l-brand">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-600 dark:text-zinc-400">
             <span>Fila de Atendimento</span>
-            <span className="p-1.5 rounded-lg bg-brand/10 text-brand">
+            <span className="p-1.5 rounded-lg bg-brand/10 text-brand-aa">
               <Ticket size={15} />
             </span>
           </div>
           <div className="mt-2">
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black text-slate-900 dark:text-white">
+              <span className="text-2xl font-black tabular-nums text-slate-900 dark:text-zinc-50">
                 {activeTickets.length}
               </span>
-              <span className="text-xs font-medium text-slate-500">chamados em aberto</span>
+              <span className="text-xs font-medium text-slate-600 dark:text-zinc-400">
+                chamados em aberto
+              </span>
             </div>
-            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-              {tickets.filter((t) => t.status === 'open').length} novos • {tickets.filter((t) => t.status === 'in_progress').length} em andamento
+            <p className="mt-1 text-xs tabular-nums text-slate-600 dark:text-zinc-400">
+              {tickets.filter((t) => t.status === 'open').length} novos •{' '}
+              {tickets.filter((t) => t.status === 'in_progress').length} em andamento
             </p>
           </div>
         </div>
 
         {/* CLT Legal Compliance KPI */}
-        <div className="surface-card p-4 flex flex-col justify-between relative overflow-hidden border-l-4 border-l-indigo-500">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+        <div className="surface-card p-4 flex flex-col justify-between relative overflow-hidden border-l-4 border-l-sky-500">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-600 dark:text-zinc-400">
             <span>Conformidade Jurídica CLT</span>
-            <span className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+            <span className="p-1.5 rounded-lg bg-sky-500/10 text-sky-700 dark:text-sky-300">
               <ShieldCheck size={15} />
             </span>
           </div>
           <div className="mt-2">
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black text-slate-900 dark:text-white">
+              <span className="text-2xl font-black tabular-nums text-slate-900 dark:text-zinc-50">
                 {signedTerms.length} / {terms.length}
               </span>
-              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+              <span className="text-xs font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
                 {terms.length > 0
                   ? `${Math.round((signedTerms.length / terms.length) * 100)}% Selados`
                   : 'Sem pendências'}
               </span>
             </div>
-            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-              Art. 462 CLT com assinatura digital HMAC-SHA256
+            <p className="mt-1 text-xs text-slate-600 dark:text-zinc-400">
+              Art. 462 CLT com assinatura HMAC-SHA256
             </p>
           </div>
         </div>
 
         {/* Fleet Telemetry (RMM) KPI */}
         <div className="surface-card p-4 flex flex-col justify-between relative overflow-hidden border-l-4 border-l-cyan-500">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-600 dark:text-zinc-400">
             <span>Estações Conectadas (RMM)</span>
-            <span className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
+            <span className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-700 dark:text-cyan-300">
               <Laptop size={15} />
             </span>
           </div>
           <div className="mt-2">
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black text-slate-900 dark:text-white">
+              <span className="text-2xl font-black tabular-nums text-slate-900 dark:text-zinc-50">
                 {fleet.devices?.length || 0}
               </span>
-              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-xs font-medium tabular-nums text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
                 {(fleet.devices || []).filter((d) => d.online !== false).length} Ativas
               </span>
             </div>
-            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-              Telemetria contínua via WebSocket RFC 6455
+            <p className="mt-1 text-xs text-slate-600 dark:text-zinc-400">
+              Telemetria contínua via WebSocket
             </p>
           </div>
         </div>
       </div>
 
-      {/* Cluster Infrastructure Status Ribbon */}
+      {/* Cluster Infrastructure Status Ribbon (flattened, single surface level) */}
       {clusterHealth && (
-        <div className="surface-card p-3 sm:p-4 bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200/90 dark:border-slate-800">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-              <Network size={14} className="text-brand" />
-              <span>Infraestrutura da Malha & Microsserviços</span>
+        <section
+          aria-label="Infraestrutura da Malha e Microsserviços"
+          className="surface-card p-3 sm:p-4 space-y-2.5"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-200">
+              <Network size={14} className="text-brand-aa" />
+              <span>Infraestrutura da Malha &amp; Microsserviços</span>
             </div>
-            <div className="flex items-center gap-2">
-              <a
-                href={`${gatewayUrl}/docs`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand hover:underline"
-              >
-                <span>Catálogo OpenAPI 3.1</span>
-                <ExternalLink size={10} />
-              </a>
-            </div>
+            <span className="text-xs font-medium text-slate-600 dark:text-zinc-400">
+              Monitoramento operacional ativo
+            </span>
           </div>
 
           <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-            <div className="surface-card p-2.5 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-              <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+            <div className="rounded-lg p-2.5 bg-slate-50 dark:bg-zinc-900/70 border border-slate-200/80 dark:border-zinc-800">
+              <div className="flex items-center justify-between text-xs font-mono text-slate-600 dark:text-zinc-400">
                 <span>BANCO DE DADOS</span>
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
               </div>
-              <p className="mt-1 text-xs font-bold text-slate-900 dark:text-white">
+              <p className="mt-1 text-xs font-bold text-slate-900 dark:text-zinc-50">
                 {clusterHealth.database?.engine}
               </p>
-              <p className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">
+              <p className="text-xs font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
                 Latência: {clusterHealth.database?.latencyMs}ms
               </p>
             </div>
@@ -784,40 +907,40 @@ const ServiceDeskHub = () => {
             {(clusterHealth.microservices || []).map((svc) => (
               <div
                 key={svc.service}
-                className="surface-card p-2.5 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                className="rounded-lg p-2.5 bg-slate-50 dark:bg-zinc-900/70 border border-slate-200/80 dark:border-zinc-800"
               >
-                <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                <div className="flex items-center justify-between gap-1 text-xs font-mono text-slate-600 dark:text-zinc-400">
                   <span className="truncate">{svc.service}</span>
                   <span
-                    className={`h-2 w-2 rounded-full ${
+                    className={`h-2 w-2 rounded-full shrink-0 ${
                       svc.status === 'healthy' ? 'bg-emerald-500' : 'bg-red-500'
                     }`}
                   />
                 </div>
-                <p className="mt-1 text-xs font-bold text-slate-900 dark:text-white capitalize">
+                <p className="mt-1 text-xs font-bold text-slate-900 dark:text-zinc-50 capitalize">
                   {svc.status}
                 </p>
-                <p className="text-[10px] font-mono text-slate-500">
+                <p className="text-xs font-mono tabular-nums text-slate-600 dark:text-zinc-400">
                   RTT: {svc.latencyMs}ms
                 </p>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
       {/* Collapsible Architecture & Cluster Diagnostics Drawer */}
       {showDevDrawer && (
-        <div className="surface-card p-5 space-y-4 border border-brand/30 bg-slate-50/50 dark:bg-slate-900/40 animate-in fade-in duration-200">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/70 dark:border-slate-800 pb-3">
+        <div className="surface-card p-5 space-y-4 border-brand/30 animate-fade-in">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/70 dark:border-zinc-800 pb-3">
             <div className="flex items-center gap-2">
-              <Terminal size={16} className="text-brand" />
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-                Ferramentas de Engenharia & Diagnóstico Rápido
+              <Terminal size={16} className="text-brand-aa" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-zinc-50">
+                Ferramentas Operacionais &amp; Verificação Rápida
               </h3>
             </div>
-            <span className="text-[11px] text-slate-500">
-              Gateway: <code className="font-mono text-brand">{gatewayUrl}</code>
+            <span className="text-xs font-medium text-slate-600 dark:text-zinc-400">
+              {clusterHealth ? 'Cluster saudável' : 'Aguardando status do cluster'}
             </span>
           </div>
 
@@ -825,15 +948,15 @@ const ServiceDeskHub = () => {
             <button
               type="button"
               onClick={handleQuickNextTag}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:border-brand shadow-2xs"
+              className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-zinc-200 hover:border-brand active:bg-slate-50 dark:active:bg-zinc-800 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
-              <Tag size={13} className="text-brand" />
+              <Tag size={13} className="text-brand-aa" />
               <span>Consultar Próxima Tag (API 1)</span>
             </button>
             <button
               type="button"
               onClick={handleVerifyAuditChainNow}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:border-brand shadow-2xs"
+              className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-zinc-200 hover:border-brand active:bg-slate-50 dark:active:bg-zinc-800 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
               <ShieldCheck size={13} className="text-emerald-500" />
               <span>Auditar Hash-Chain SHA-256 (API 3)</span>
@@ -841,9 +964,9 @@ const ServiceDeskHub = () => {
             <button
               type="button"
               onClick={() => setIsNewTermModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:border-brand shadow-2xs"
+              className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-zinc-200 hover:border-brand active:bg-slate-50 dark:active:bg-zinc-800 shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
-              <FileSignature size={13} className="text-indigo-500" />
+              <FileSignature size={13} className="text-sky-600 dark:text-sky-400" />
               <span>Emitir Termo de Custódia CLT</span>
             </button>
           </div>
@@ -852,55 +975,57 @@ const ServiceDeskHub = () => {
 
       {/* Gateway Authentication Card (When not signed in) */}
       {!gatewaySession?.token ? (
-        <div className="surface-card p-6 sm:p-8 max-w-xl mx-auto shadow-xl space-y-5 border-slate-200/90 dark:border-slate-800">
+        <div className="surface-card p-6 sm:p-8 max-w-xl mx-auto shadow-xl space-y-5">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-brand/10 text-brand">
+            <div className="p-2.5 rounded-xl bg-brand/10 text-brand-aa">
               <Lock size={22} />
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-zinc-50">
                 Autenticação no Gateway de Operações
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Sessão com criptografia Scrypt e tokens assinados JWT HS256.
+              <p className="text-xs text-slate-600 dark:text-zinc-400">
+                Entre com suas credenciais de operador para acessar chamados e telemetria.
               </p>
             </div>
           </div>
 
-          {/* Informação de Acesso Produção Shineray */}
-          <div className="bg-slate-50 dark:bg-slate-900/60 rounded-xl p-3 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
-            <span className="font-medium">
-              Acesso exclusivo para o <strong className="text-slate-900 dark:text-white">Proprietário (Dono)</strong> e equipe de <strong className="text-slate-900 dark:text-white">TI da Shineray By Sabel</strong>.
-            </span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-brand/10 text-brand font-bold shrink-0">
-              tenant-ap3htf6
-            </span>
-          </div>
-
           <form onSubmit={handleConnectGateway} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <label
+                htmlFor="gw-operator-email"
+                className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1.5"
+              >
                 E-mail de Operador / Gestor de TI
               </label>
               <input
+                id="gw-operator-email"
+                name="email"
                 type="email"
+                autoComplete="email"
                 value={credentials.email}
                 onChange={(e) => setCredentials((p) => ({ ...p, email: e.target.value }))}
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-brand focus:outline-none"
-                placeholder="ti@shineraybysabel.com.br"
+                className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3.5 py-2 text-xs sm:text-sm text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                placeholder="operador@empresa.com.br"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              <label
+                htmlFor="gw-operator-password"
+                className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1.5"
+              >
                 Senha de Acesso
               </label>
               <input
+                id="gw-operator-password"
+                name="password"
                 type="password"
+                autoComplete="current-password"
                 value={credentials.password}
                 onChange={(e) => setCredentials((p) => ({ ...p, password: e.target.value }))}
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-brand focus:outline-none"
-                placeholder="••••••••••••"
+                className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3.5 py-2 text-xs sm:text-sm text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                placeholder="Digite sua senha de acesso"
                 required
               />
             </div>
@@ -908,24 +1033,24 @@ const ServiceDeskHub = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-brand hover:bg-brand-dark py-2.5 text-xs font-bold text-white uppercase tracking-wider transition-colors shadow-sm disabled:opacity-50"
+              className="w-full min-h-[44px] rounded-lg bg-brand hover:bg-brand-dark py-2.5 text-xs font-bold text-brand-fg uppercase tracking-wider active:opacity-90 transition-colors shadow-sm disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
-              {loading ? 'Validando Credenciais...' : 'Conectar ao Cluster de Microsserviços'}
+              {loading ? 'Validando Credenciais…' : 'Conectar ao Cluster de Microsserviços'}
             </button>
           </form>
         </div>
       ) : (
         <>
           {/* Active Status Bar */}
-          <div className="surface-card p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+          <div className="surface-card p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 font-mono font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
                 API 5 WebSocket: {wsStatus.toUpperCase()}
               </span>
 
               {chainReport && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/15 px-3 py-1 font-mono font-semibold text-indigo-700 dark:text-indigo-300 border border-indigo-500/30">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/15 px-3 py-1 font-mono font-semibold tabular-nums text-sky-700 dark:text-sky-300 border border-sky-500/30">
                   <ShieldCheck size={13} />
                   Hash-Chain SHA-256: {chainReport.intact ? `ÍNTEGRA (${chainReport.checkedRecords} blocos)` : 'ALERTA'}
                 </span>
@@ -934,134 +1059,143 @@ const ServiceDeskHub = () => {
 
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
-                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                <p className="text-xs font-bold text-slate-800 dark:text-zinc-100">
                   {gatewaySession.user?.name || 'Gestor de TI'}
                 </p>
-                <p className="text-[10px] text-slate-500 font-mono">
-                  {gatewaySession.user?.role?.toUpperCase()} • {gatewaySession.user?.tenantId}
+                <p className="text-xs text-slate-500 dark:text-zinc-400 font-mono">
+                  {gatewaySession.user?.role?.toUpperCase()}
+                  {gatewaySession.user?.tenantId ? ` • ${gatewaySession.user.tenantId}` : ''}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={handleDisconnectGateway}
-                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:border-red-300 transition-colors"
+                className="min-h-[44px] text-xs font-semibold px-3.5 py-2 rounded-lg border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:border-red-400 active:bg-slate-50 dark:active:bg-zinc-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
                 Desconectar
               </button>
             </div>
           </div>
 
-          {/* Executive Quick Ticket KPIs - 2x2 Grid on Mobile, 4 Cols on Desktop */}
+          {/* Quick Ticket KPIs - 2x2 Grid on Mobile, 4 Cols on Desktop */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
-            <div
+            <button
+              type="button"
               onClick={() => setTicketFilter('all')}
-              className={`surface-card p-3 sm:p-4 flex flex-col justify-between cursor-pointer border-l-4 border-l-brand hover:border-slate-300 dark:hover:border-slate-700 transition-all active:scale-[0.98] ${
+              aria-pressed={ticketFilter === 'all'}
+              className={`surface-card min-h-[44px] p-3 sm:p-4 flex flex-col justify-between text-left border-l-4 border-l-brand hover:border-slate-300 dark:hover:border-zinc-700 active:bg-slate-50 dark:active:bg-zinc-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                 ticketFilter === 'all' ? 'ring-1 ring-brand/40 bg-brand/5 dark:bg-brand/10' : ''
               }`}
             >
-              <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+              <div className="w-full flex items-center justify-between text-xs font-medium text-slate-600 dark:text-zinc-400">
                 <span className="truncate font-semibold">Total Chamados</span>
-                <span className="p-1 sm:p-1.5 rounded-lg bg-brand/10 text-brand">
+                <span className="p-1.5 rounded-lg bg-brand/10 text-brand-aa shrink-0">
                   <Ticket size={14} />
                 </span>
               </div>
               <div className="mt-2">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                  <span className="text-xl sm:text-2xl font-black tabular-nums text-slate-900 dark:text-zinc-50">
                     {ticketCounts.total}
                   </span>
-                  <span className="text-[10px] font-mono font-medium text-slate-400 hidden sm:inline">
+                  <span className="text-xs font-mono font-medium text-slate-500 dark:text-zinc-400 hidden sm:inline">
                     registrados
                   </span>
                 </div>
-                <p className="mt-0.5 text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                <p className="mt-0.5 text-xs text-slate-600 dark:text-zinc-400 truncate">
                   Central de Atendimento N1/N2
                 </p>
               </div>
-            </div>
+            </button>
 
-            <div
+            <button
+              type="button"
               onClick={() => setTicketFilter('open')}
-              className={`surface-card p-3 sm:p-4 flex flex-col justify-between cursor-pointer border-l-4 border-l-amber-500 hover:border-slate-300 dark:hover:border-slate-700 transition-all active:scale-[0.98] ${
+              aria-pressed={ticketFilter === 'open'}
+              className={`surface-card min-h-[44px] p-3 sm:p-4 flex flex-col justify-between text-left border-l-4 border-l-amber-500 hover:border-slate-300 dark:hover:border-zinc-700 active:bg-slate-50 dark:active:bg-zinc-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                 ticketFilter === 'open' ? 'ring-1 ring-amber-500/40 bg-amber-500/5 dark:bg-amber-500/10' : ''
               }`}
             >
-              <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+              <div className="w-full flex items-center justify-between text-xs font-medium text-slate-600 dark:text-zinc-400">
                 <span className="truncate font-semibold">Abertos</span>
-                <span className="p-1 sm:p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
                   <Inbox size={14} />
                 </span>
               </div>
               <div className="mt-2">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                  <span className="text-xl sm:text-2xl font-black tabular-nums text-slate-900 dark:text-zinc-50">
                     {ticketCounts.open}
                   </span>
                   {ticketCounts.open > 0 && (
-                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 animate-pulse">
+                    <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
                       Pendente
                     </span>
                   )}
                 </div>
-                <p className="mt-0.5 text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                <p className="mt-0.5 text-xs text-slate-600 dark:text-zinc-400 truncate">
                   Fila inicial sem atribuição
                 </p>
               </div>
-            </div>
+            </button>
 
-            <div
+            <button
+              type="button"
               onClick={() => setTicketFilter('in_progress')}
-              className={`surface-card p-3 sm:p-4 flex flex-col justify-between cursor-pointer border-l-4 border-l-indigo-500 hover:border-slate-300 dark:hover:border-slate-700 transition-all active:scale-[0.98] ${
-                ticketFilter === 'in_progress' ? 'ring-1 ring-indigo-500/40 bg-indigo-500/5 dark:bg-indigo-500/10' : ''
+              aria-pressed={ticketFilter === 'in_progress'}
+              className={`surface-card min-h-[44px] p-3 sm:p-4 flex flex-col justify-between text-left border-l-4 border-l-sky-500 hover:border-slate-300 dark:hover:border-zinc-700 active:bg-slate-50 dark:active:bg-zinc-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                ticketFilter === 'in_progress' ? 'ring-1 ring-sky-500/40 bg-sky-500/5 dark:bg-sky-500/10' : ''
               }`}
             >
-              <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+              <div className="w-full flex items-center justify-between text-xs font-medium text-slate-600 dark:text-zinc-400">
                 <span className="truncate font-semibold">Em Atendimento</span>
-                <span className="p-1 sm:p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                <span className="p-1.5 rounded-lg bg-sky-500/10 text-sky-700 dark:text-sky-300 shrink-0">
                   <Activity size={14} />
                 </span>
               </div>
               <div className="mt-2">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                  <span className="text-xl sm:text-2xl font-black tabular-nums text-slate-900 dark:text-zinc-50">
                     {ticketCounts.inProgress}
                   </span>
-                  <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                  <span className="text-xs font-bold text-sky-700 dark:text-sky-300">
                     Em curso
                   </span>
                 </div>
-                <p className="mt-0.5 text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                <p className="mt-0.5 text-xs text-slate-600 dark:text-zinc-400 truncate">
                   Técnico em diagnóstico
                 </p>
               </div>
-            </div>
+            </button>
 
-            <div
+            <button
+              type="button"
               onClick={() => setTicketFilter('resolved')}
-              className={`surface-card p-3 sm:p-4 flex flex-col justify-between cursor-pointer border-l-4 border-l-emerald-500 hover:border-slate-300 dark:hover:border-slate-700 transition-all active:scale-[0.98] ${
+              aria-pressed={ticketFilter === 'resolved'}
+              className={`surface-card min-h-[44px] p-3 sm:p-4 flex flex-col justify-between text-left border-l-4 border-l-emerald-500 hover:border-slate-300 dark:hover:border-zinc-700 active:bg-slate-50 dark:active:bg-zinc-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                 ticketFilter === 'resolved' ? 'ring-1 ring-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-500/10' : ''
               }`}
             >
-              <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+              <div className="w-full flex items-center justify-between text-xs font-medium text-slate-600 dark:text-zinc-400">
                 <span className="truncate font-semibold">Concluídos</span>
-                <span className="p-1 sm:p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
                   <CheckCircle2 size={14} />
                 </span>
               </div>
               <div className="mt-2">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                  <span className="text-xl sm:text-2xl font-black tabular-nums text-slate-900 dark:text-zinc-50">
                     {ticketCounts.resolved}
                   </span>
-                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
                     Resolvidos
                   </span>
                 </div>
-                <p className="mt-0.5 text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                <p className="mt-0.5 text-xs text-slate-600 dark:text-zinc-400 truncate">
                   Histórico fechado
                 </p>
               </div>
-            </div>
+            </button>
           </div>
 
           {/* Main 2-Column Command Workspace */}
@@ -1070,8 +1204,8 @@ const ServiceDeskHub = () => {
             <div className="lg:col-span-7 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <Ticket size={17} className="text-brand shrink-0" />
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100 truncate">
+                  <Ticket size={17} className="text-brand-aa shrink-0" aria-hidden="true" />
+                  <h2 className="text-sm font-bold uppercase tracking-wider tabular-nums text-slate-800 dark:text-zinc-100 truncate">
                     Fila Operacional de Chamados ({filteredTickets.length})
                   </h2>
                 </div>
@@ -1079,9 +1213,9 @@ const ServiceDeskHub = () => {
                 <button
                   type="button"
                   onClick={() => setIsNewTicketModalOpen(true)}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand hover:bg-brand-dark px-3.5 py-2 text-xs font-bold text-white shadow-sm transition-all min-h-[44px] sm:min-h-[36px] shrink-0 active:scale-[0.98]"
+                  className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand hover:bg-brand-dark px-4 py-2 text-xs font-bold text-brand-fg shadow-sm active:opacity-90 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
-                  <Plus size={15} />
+                  <span aria-hidden="true">+</span>
                   <span>Novo Chamado</span>
                 </button>
               </div>
@@ -1103,25 +1237,27 @@ const ServiceDeskHub = () => {
                       key={tab.id}
                       type="button"
                       onClick={() => setTicketFilter(tab.id)}
-                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 border shrink-0 ${
+                      aria-pressed={isTabActive}
+                      className={`min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors active:scale-[0.98] flex items-center gap-1.5 border shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                         isTabActive
-                          ? 'bg-slate-900 text-white border-slate-900 shadow-sm dark:bg-white dark:text-slate-900 dark:border-white'
-                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-sm dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100'
+                          : 'bg-white dark:bg-[#111113] text-slate-700 dark:text-zinc-300 border-slate-200/80 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-900'
                       }`}
                     >
                       {Icon && (
                         <Icon
                           size={13}
-                          className={isTabActive ? 'text-white dark:text-slate-900' : 'text-slate-400'}
+                          aria-hidden="true"
+                          className={isTabActive ? 'text-white dark:text-zinc-900' : 'text-slate-400 dark:text-zinc-500'}
                         />
                       )}
                       <span>{tab.label}</span>
                       {tab.count !== undefined && (
                         <span
-                          className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono tabular-nums ${
+                          className={`px-1.5 py-0.5 rounded-md text-xs font-mono tabular-nums ${
                             isTabActive
-                              ? 'bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900'
-                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                              ? 'bg-white/20 text-white dark:bg-zinc-900/15 dark:text-zinc-900'
+                              : 'bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-200'
                           }`}
                         >
                           {tab.count}
@@ -1134,22 +1270,27 @@ const ServiceDeskHub = () => {
 
               {/* Search input with Clear button */}
               <div className="relative">
-                <Search size={14} className="absolute left-3 top-3.5 text-slate-400" />
+                <label htmlFor="service-desk-ticket-search" className="sr-only">
+                  Pesquisar chamados por protocolo, solicitante, tag ou assunto
+                </label>
+                <Search size={14} className="absolute left-3.5 top-3.5 text-slate-400 pointer-events-none" />
                 <input
+                  id="service-desk-ticket-search"
+                  name="ticketSearch"
                   type="text"
                   value={ticketSearch}
                   onChange={(e) => setTicketSearch(e.target.value)}
-                  placeholder="Pesquisar por protocolo, solicitante, tag ou assunto..."
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pl-9 pr-9 py-2.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:border-brand focus:outline-none min-h-[44px]"
+                  placeholder="Pesquisar por protocolo, solicitante, tag ou assunto…"
+                  className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] pl-9 pr-11 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 />
                 {ticketSearch && (
                   <button
                     type="button"
                     onClick={() => setTicketSearch('')}
-                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-full"
+                    className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center absolute right-0 top-0 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 rounded-xl transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     aria-label="Limpar pesquisa"
                   >
-                    <X size={14} />
+                    <X size={15} />
                   </button>
                 )}
               </div>
@@ -1158,8 +1299,8 @@ const ServiceDeskHub = () => {
               <div className="space-y-3">
                 {filteredTickets.length === 0 ? (
                   <div className="surface-card p-10 text-center space-y-2">
-                    <Inbox size={32} className="mx-auto text-slate-300 dark:text-slate-600" />
-                    <p className="text-xs font-medium text-slate-500">
+                    <Inbox size={32} className="mx-auto text-slate-300 dark:text-zinc-600" />
+                    <p className="text-xs font-medium text-slate-600 dark:text-zinc-400">
                       Nenhum chamado encontrado com os filtros selecionados.
                     </p>
                   </div>
@@ -1170,22 +1311,22 @@ const ServiceDeskHub = () => {
                     return (
                       <div
                         key={tk.id}
-                        className="surface-card p-4 space-y-3 hover:border-slate-300 dark:hover:border-slate-700 transition-all active:bg-slate-50/50 dark:active:bg-slate-800/40"
+                        className="surface-card p-4 space-y-3 hover:border-slate-300 dark:hover:border-zinc-700 transition-colors"
                       >
                         {/* Linha 1: Protocolo, Tag, Categoria, Prioridade com Dot, Status */}
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-900 text-white dark:bg-slate-800 border border-slate-700">
+                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-900 text-white dark:bg-zinc-800 border border-slate-700 dark:border-zinc-700">
                               {tk.protocol}
                             </span>
                             {tk.asset_tag && (
-                              <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center gap-1">
-                                <Laptop size={11} />
+                              <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 flex items-center gap-1">
+                                <Laptop size={12} />
                                 {tk.asset_tag}
                               </span>
                             )}
                             {tk.category && (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
                                 {CATEGORY_NAMES[tk.category] || tk.category}
                               </span>
                             )}
@@ -1194,14 +1335,14 @@ const ServiceDeskHub = () => {
                           <div className="flex items-center gap-1.5">
                             {/* Prioridade com Dot colorido */}
                             <span
-                              className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full border ${priorityMeta.border} ${priorityMeta.text}`}
+                              className={`inline-flex items-center gap-1.5 text-xs font-bold px-2 py-0.5 rounded-full border ${priorityMeta.border} ${priorityMeta.text}`}
                             >
                               <span className={`h-1.5 w-1.5 rounded-full ${priorityMeta.color}`} />
                               <span>{priorityMeta.label}</span>
                             </span>
 
                             <span
-                              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                              className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
                                 STATUS_BADGES[tk.status] || STATUS_BADGES.open
                               }`}
                             >
@@ -1212,10 +1353,10 @@ const ServiceDeskHub = () => {
 
                         {/* Linha 2: Título e Descrição */}
                         <div>
-                          <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-50 leading-snug">
                             {tk.title}
                           </h3>
-                          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-3">
+                          <p className="mt-1 text-xs text-slate-600 dark:text-zinc-400 leading-relaxed line-clamp-3">
                             {tk.description}
                           </p>
                         </div>
@@ -1228,29 +1369,29 @@ const ServiceDeskHub = () => {
                         )}
 
                         {/* Linha 3: Solicitante e Data de abertura relativa */}
-                        <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 pt-1">
+                        <div className="flex items-center justify-between gap-2 text-xs text-slate-600 dark:text-zinc-400 pt-1">
                           <div className="flex items-center gap-1.5 truncate max-w-[70%]">
-                            <div className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase shrink-0">
+                            <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 flex items-center justify-center text-xs font-bold text-slate-700 dark:text-zinc-200 uppercase shrink-0">
                               {(tk.requester_name || 'C').charAt(0)}
                             </div>
-                            <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                            <span className="font-semibold text-slate-800 dark:text-zinc-200 truncate">
                               {tk.requester_name}
                             </span>
                             {tk.department && (
-                              <span className="text-[11px] text-slate-400 hidden sm:inline">
+                              <span className="text-xs text-slate-500 dark:text-zinc-400 hidden sm:inline">
                                 ({tk.department})
                               </span>
                             )}
                           </div>
 
-                          <div className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0">
-                            <Clock size={11} />
+                          <div className="flex items-center gap-1 text-xs tabular-nums text-slate-500 dark:text-zinc-400 shrink-0">
+                            <Clock size={12} />
                             <span>{formatRelativeTime(tk.created_at || tk.createdAt)}</span>
                           </div>
                         </div>
 
-                        {/* Linha 4: Ações Operacionais com alvos de toque generosos (44px+ mobile) */}
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                        {/* Linha 4: Ações Operacionais */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-zinc-800/80">
                           <div className="flex flex-wrap items-center gap-2">
                             {tk.status !== 'resolved' && tk.status !== 'closed' && (
                               <>
@@ -1258,7 +1399,7 @@ const ServiceDeskHub = () => {
                                   <button
                                     type="button"
                                     onClick={() => handleResolveTicket(tk.id, 'in_progress')}
-                                    className="min-h-[44px] sm:min-h-[36px] rounded-xl border border-indigo-500/40 bg-indigo-50/50 dark:bg-indigo-950/30 px-3.5 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors flex items-center gap-1.5 active:scale-[0.98]"
+                                    className="min-h-[44px] rounded-xl border border-sky-500/40 bg-sky-50 dark:bg-sky-950/30 px-3.5 py-2 text-xs font-bold text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/40 active:opacity-90 transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                                   >
                                     <Zap size={13} />
                                     <span>Assumir Chamado</span>
@@ -1267,7 +1408,7 @@ const ServiceDeskHub = () => {
                                 <button
                                   type="button"
                                   onClick={() => handleResolveTicket(tk.id, 'resolved')}
-                                  className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition-colors active:scale-[0.98]"
+                                  className="min-h-[44px] inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-3.5 py-2 text-xs font-bold text-white shadow-sm active:opacity-90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                                 >
                                   <CheckCircle2 size={13} />
                                   <span>Concluir Atendimento</span>
@@ -1282,7 +1423,7 @@ const ServiceDeskHub = () => {
                                     (d) =>
                                       d.internalId === tk.asset_tag ||
                                       d.hostname === tk.asset_tag ||
-                                      d.device_key === tk.asset_tag
+                                      d.device_key === tk.asset_tag,
                                   ) || {
                                     hostname: tk.asset_tag,
                                     internalId: tk.asset_tag,
@@ -1291,8 +1432,8 @@ const ServiceDeskHub = () => {
                                   };
                                   setRemoteModalDevice(dev);
                                 }}
-                                className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 rounded-xl border border-indigo-500/40 bg-indigo-50/50 dark:bg-indigo-950/30 px-3 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors active:scale-[0.98]"
-                                title={`Acessar notebook ${tk.asset_tag} remotamente via NexusDesk`}
+                                className="min-h-[44px] inline-flex items-center gap-1.5 rounded-xl border border-brand/35 bg-brand/10 px-3 py-2 text-xs font-bold text-brand-aa hover:bg-brand/15 active:opacity-90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                                title={`Acessar estação ${tk.asset_tag} remotamente via NexusDesk`}
                               >
                                 <Monitor size={13} />
                                 <span>NexusDesk ({tk.asset_tag})</span>
@@ -1301,22 +1442,23 @@ const ServiceDeskHub = () => {
                             <button
                               type="button"
                               onClick={() => handleDeleteTicket(tk.id, tk.protocol)}
-                              className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-800 px-2.5 py-1.5 text-xs font-semibold text-slate-400 hover:text-rose-600 hover:border-rose-500/40 transition-colors"
+                              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1 rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-xs font-semibold text-slate-500 dark:text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-500/40 active:bg-rose-50 dark:active:bg-rose-950/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                               title="Excluir chamado"
+                              aria-label={`Excluir chamado ${tk.protocol || tk.title}`}
                             >
-                              <Trash2 size={13} />
+                              <Trash2 size={14} />
                             </button>
                           </div>
 
                           <button
                             type="button"
                             onClick={() => handleToggleTicketComments(tk.id)}
-                            className="min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-brand transition-colors"
+                            aria-expanded={activeTicketCommentId === tk.id}
+                            className="min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold tabular-nums text-slate-600 dark:text-zinc-300 hover:text-brand-aa hover:bg-slate-50 dark:hover:bg-zinc-900 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                           >
                             <MessageSquare size={13} />
                             <span>
-                              Diálogo Técnico (
-                              {ticketCommentsMap[tk.id]?.length ?? tk.comments_count ?? 0})
+                              Diálogo Técnico ({ticketCommentsMap[tk.id]?.length ?? tk.comments_count ?? 0})
                             </span>
                             {activeTicketCommentId === tk.id ? (
                               <ChevronUp size={13} />
@@ -1326,67 +1468,72 @@ const ServiceDeskHub = () => {
                           </button>
                         </div>
 
-                      {/* Technical Dialog Drawer */}
-                      {activeTicketCommentId === tk.id && (
-                        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
-                          {loadingCommentsId === tk.id ? (
-                            <p className="text-[11px] text-slate-400 italic py-1">
-                              Carregando histórico de mensagens...
-                            </p>
-                          ) : (ticketCommentsMap[tk.id] || tk.comments || []).length === 0 ? (
-                            <p className="text-[11px] text-slate-400 italic py-1">
-                              Nenhuma mensagem registrada neste chamado até o momento.
-                            </p>
-                          ) : (
-                            <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                              {(ticketCommentsMap[tk.id] || tk.comments || []).map((cm) => (
-                                <div
-                                  key={cm.id}
-                                  className="rounded-lg bg-slate-50 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-800 p-2.5 text-xs"
-                                >
-                                  <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500 mb-1">
-                                    <span className="font-bold text-slate-800 dark:text-slate-200">
-                                      {cm.author_name || cm.author_email}
-                                    </span>
-                                    <span>{formatRelativeTime(cm.created_at)}</span>
+                        {/* Technical Dialog Drawer */}
+                        {activeTicketCommentId === tk.id && (
+                          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 space-y-2.5">
+                            {loadingCommentsId === tk.id ? (
+                              <p className="text-xs text-slate-500 dark:text-zinc-400 italic py-1">
+                                Carregando histórico de mensagens…
+                              </p>
+                            ) : (ticketCommentsMap[tk.id] || tk.comments || []).length === 0 ? (
+                              <p className="text-xs text-slate-500 dark:text-zinc-400 italic py-1">
+                                Nenhuma mensagem registrada neste chamado até o momento.
+                              </p>
+                            ) : (
+                              <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                                {(ticketCommentsMap[tk.id] || tk.comments || []).map((cm) => (
+                                  <div
+                                    key={cm.id}
+                                    className="rounded-lg bg-slate-50 dark:bg-zinc-900/70 border border-slate-200/80 dark:border-zinc-800 p-2.5 text-xs"
+                                  >
+                                    <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-zinc-400 mb-1">
+                                      <span className="font-bold text-slate-800 dark:text-zinc-200">
+                                        {cm.author_name || cm.author_email}
+                                      </span>
+                                      <span className="tabular-nums">{formatRelativeTime(cm.created_at)}</span>
+                                    </div>
+                                    <p className="text-slate-700 dark:text-zinc-300 leading-relaxed">
+                                      {cm.message}
+                                    </p>
                                   </div>
-                                  <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
-                                    {cm.message}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                                ))}
+                              </div>
+                            )}
 
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={ticketCommentText}
-                              onChange={(e) => setTicketCommentText(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSendTicketComment(tk.id);
-                              }}
-                              placeholder="Digite uma mensagem técnica para o solicitante..."
-                              className="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-800 dark:text-slate-100 focus:border-brand focus:outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleSendTicketComment(tk.id)}
-                              className="inline-flex items-center gap-1 rounded-lg bg-brand px-3.5 py-1.5 text-xs font-bold text-white hover:bg-brand-dark transition-colors"
-                            >
-                              <Send size={12} />
-                              <span>Enviar</span>
-                            </button>
+                            <div className="flex gap-2">
+                              <label htmlFor={`ticket-comment-input-${tk.id}`} className="sr-only">
+                                Mensagem técnica para o chamado {tk.protocol}
+                              </label>
+                              <input
+                                id={`ticket-comment-input-${tk.id}`}
+                                name="ticketComment"
+                                type="text"
+                                value={ticketCommentText}
+                                onChange={(e) => setTicketCommentText(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSendTicketComment(tk.id);
+                                }}
+                                placeholder="Digite uma mensagem técnica para o solicitante…"
+                                className="flex-1 min-h-[44px] rounded-lg border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-xs text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleSendTicketComment(tk.id)}
+                                className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-bold text-brand-fg hover:bg-brand-dark active:opacity-90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                              >
+                                <Send size={12} />
+                                <span>Enviar</span>
+                              </button>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-zinc-400">
+                              A mensagem é transmitida imediatamente ao Portal do Colaborador.
+                            </p>
                           </div>
-                          <p className="text-[10px] text-slate-400">
-                            A mensagem é transmitida imediatamente ao Portal do Colaborador.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 
@@ -1395,42 +1542,44 @@ const ServiceDeskHub = () => {
               {/* Fleet Telemetry (RMM) */}
               <div className="surface-card p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider tabular-nums text-slate-800 dark:text-zinc-100 flex items-center gap-2">
                     <Laptop size={15} className="text-cyan-500" />
                     <span>Telemetria de Frotas ({fleet.devices?.length || 0})</span>
                   </h3>
-                  <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
                     Ao Vivo
                   </span>
                 </div>
 
                 <div className="space-y-2">
                   {(fleet.devices || []).length === 0 ? (
-                    <p className="text-xs text-slate-400 italic py-2">
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 italic py-2">
                       Nenhuma estação enviando telemetria no momento.
                     </p>
                   ) : (
                     (fleet.devices || []).map((dev) => (
                       <div
                         key={dev.id || dev.device_key}
-                        className="surface-subtle p-3 space-y-2"
+                        className="surface-subtle p-3 space-y-2.5"
                       >
-                        <div className="flex items-center justify-between text-xs">
-                          <div>
-                            <p className="font-mono font-bold text-slate-800 dark:text-slate-100">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <div className="min-w-0">
+                            <p className="font-mono font-bold text-slate-900 dark:text-zinc-50 truncate">
                               {dev.hostname}
                             </p>
-                            <p className="text-[11px] text-slate-500">{dev.os_version}</p>
+                            <p className="text-xs text-slate-600 dark:text-zinc-400 truncate">
+                              {dev.os_version}
+                            </p>
                           </div>
                           <div className="flex items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => setRemoteModalDevice(dev)}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 transition-colors text-[10px] font-bold"
-                              title="Acessar remotamente via NexusDesk (PWA Mobile / 30+ FPS)"
+                              className="min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand/10 hover:bg-brand/20 border border-brand/30 text-brand-aa active:opacity-90 transition-colors text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                              title="Acessar remotamente via NexusDesk"
                             >
-                              <Monitor size={11} />
+                              <Monitor size={12} />
                               <span>NexusDesk</span>
                             </button>
                             <button
@@ -1441,30 +1590,30 @@ const ServiceDeskHub = () => {
                                   'force_inventory',
                                 )
                               }
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-200 dark:bg-slate-700 hover:text-brand hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-[10px] font-semibold"
+                              className="min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-200 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 hover:text-brand-aa hover:bg-slate-300 dark:hover:bg-zinc-700 active:opacity-90 transition-colors text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                               title="Despachar comando de inventário imediato"
                             >
-                              <Terminal size={11} />
+                              <Terminal size={12} />
                               <span>Inventariar</span>
                             </button>
                           </div>
                         </div>
 
                         {/* Resource Meters */}
-                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                        <div className="grid grid-cols-2 gap-2 text-xs">
                           <div>
-                            <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
+                            <div className="flex justify-between text-xs text-slate-600 dark:text-zinc-400 mb-1">
                               <span>CPU</span>
-                              <span className="font-mono font-bold">{dev.cpu_percent}%</span>
+                              <span className="font-mono font-bold tabular-nums">{dev.cpu_percent}%</span>
                             </div>
-                            <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                            <div className="w-full bg-slate-200 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
                               <div
-                                className={`h-full rounded-full transition-all duration-500 ${
+                                className={`h-full rounded-full transition-[width] duration-300 ${
                                   dev.cpu_percent > 80
                                     ? 'bg-rose-500'
                                     : dev.cpu_percent > 60
-                                    ? 'bg-amber-500'
-                                    : 'bg-emerald-500'
+                                      ? 'bg-amber-500'
+                                      : 'bg-emerald-500'
                                 }`}
                                 style={{ width: `${Math.min(dev.cpu_percent, 100)}%` }}
                               />
@@ -1472,18 +1621,18 @@ const ServiceDeskHub = () => {
                           </div>
 
                           <div>
-                            <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
+                            <div className="flex justify-between text-xs text-slate-600 dark:text-zinc-400 mb-1">
                               <span>RAM</span>
-                              <span className="font-mono font-bold">{dev.ram_percent}%</span>
+                              <span className="font-mono font-bold tabular-nums">{dev.ram_percent}%</span>
                             </div>
-                            <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                            <div className="w-full bg-slate-200 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
                               <div
-                                className={`h-full rounded-full transition-all duration-500 ${
+                                className={`h-full rounded-full transition-[width] duration-300 ${
                                   dev.ram_percent > 85
                                     ? 'bg-rose-500'
                                     : dev.ram_percent > 70
-                                    ? 'bg-amber-500'
-                                    : 'bg-indigo-500'
+                                      ? 'bg-amber-500'
+                                      : 'bg-sky-500'
                                 }`}
                                 style={{ width: `${Math.min(dev.ram_percent, 100)}%` }}
                               />
@@ -1498,15 +1647,15 @@ const ServiceDeskHub = () => {
 
               {/* Legal Custody Terms (CLT Passports) */}
               <div className="surface-card p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                    <FileSignature size={15} className="text-indigo-500" />
-                    <span>Custódia & Termos CLT ({terms.length})</span>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider tabular-nums text-slate-800 dark:text-zinc-100 flex items-center gap-2">
+                    <FileSignature size={15} className="text-sky-600 dark:text-sky-400" />
+                    <span>Custódia &amp; Termos CLT ({terms.length})</span>
                   </h3>
                   <button
                     type="button"
                     onClick={() => setIsNewTermModalOpen(true)}
-                    className="text-[11px] font-bold text-brand hover:underline"
+                    className="min-h-[44px] px-2.5 text-xs font-bold text-brand-aa hover:underline rounded-lg transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   >
                     + Novo Termo
                   </button>
@@ -1514,29 +1663,29 @@ const ServiceDeskHub = () => {
 
                 <div className="space-y-2">
                   {terms.length === 0 ? (
-                    <p className="text-xs text-slate-400 italic py-2">
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 italic py-2">
                       Nenhum termo de custódia CLT emitido no momento.
                     </p>
                   ) : (
                     terms.slice(0, 6).map((tm) => (
                       <div
                         key={tm.id}
-                        className="surface-subtle p-2.5 flex items-center justify-between text-xs"
+                        className="surface-subtle p-2.5 flex items-center justify-between gap-2 text-xs"
                       >
                         <div className="space-y-0.5 min-w-0 pr-2">
-                          <p className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                          <p className="font-semibold text-slate-800 dark:text-zinc-100 truncate">
                             {tm.employee_name}
                           </p>
-                          <p className="font-mono text-[10px] text-slate-400 truncate max-w-[170px]">
+                          <p className="font-mono text-xs text-slate-500 dark:text-zinc-400 truncate max-w-[180px]">
                             Doc: {tm.document_hash}
                           </p>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-1 shrink-0">
                           <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                            className={`text-xs font-bold px-2 py-0.5 rounded-full uppercase ${
                               tm.status === 'signed'
-                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                                : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
                             }`}
                           >
                             {tm.status === 'signed' ? 'HMAC Assinado' : 'Pendente'}
@@ -1545,27 +1694,30 @@ const ServiceDeskHub = () => {
                             <button
                               type="button"
                               onClick={() => handleSignTerm(tm.id)}
-                              className="p-1 rounded text-slate-400 hover:text-indigo-500 transition-colors"
+                              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-slate-500 dark:text-zinc-400 hover:text-brand-aa hover:bg-slate-200/60 dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                               title="Assinar termo digitalmente (HMAC-SHA256)"
+                              aria-label={`Assinar termo de ${tm.employee_name}`}
                             >
-                              <FileSignature size={14} />
+                              <FileSignature size={15} />
                             </button>
                           )}
                           <button
                             type="button"
                             onClick={() => handleVerifySingleTerm(tm.id)}
-                            className="p-1 rounded text-slate-400 hover:text-emerald-500 transition-colors"
+                            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-slate-500 dark:text-zinc-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-200/60 dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                             title="Auditar integridade da assinatura criptográfica"
+                            aria-label={`Auditar termo de ${tm.employee_name}`}
                           >
-                            <ShieldCheck size={14} />
+                            <ShieldCheck size={15} />
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteTerm(tm.id, tm.employee_name)}
-                            className="p-1 rounded text-slate-400 hover:text-rose-500 transition-colors"
+                            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-slate-500 dark:text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                             title="Remover termo"
+                            aria-label={`Remover termo de ${tm.employee_name}`}
                           >
-                            <Trash2 size={13} />
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       </div>
@@ -1577,33 +1729,35 @@ const ServiceDeskHub = () => {
               {/* Live Operational Audit Log */}
               <div className="surface-card p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-zinc-100 flex items-center gap-2">
                     <Activity size={14} className="text-emerald-500" />
                     <span>Auditoria de Eventos em Tempo Real</span>
                   </h3>
-                  <span className="text-[10px] font-mono text-slate-400">WebSocket Ativo</span>
+                  <span className="text-xs font-mono text-slate-500 dark:text-zinc-400">
+                    WebSocket Ativo
+                  </span>
                 </div>
 
-                <div className="max-h-48 overflow-y-auto space-y-1.5 font-mono text-[11px] custom-scrollbar">
+                <div className="max-h-48 overflow-y-auto space-y-1.5 font-mono text-xs custom-scrollbar">
                   {wsFeed.length === 0 ? (
-                    <p className="text-xs text-slate-400 py-3 text-center">
-                      Aguardando eventos operacionais na malha...
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 py-3 text-center">
+                      Aguardando eventos operacionais na malha…
                     </p>
                   ) : (
-                    wsFeed.map((item, idx) => (
+                    wsFeed.map((item) => (
                       <div
-                        key={idx}
-                        className="rounded-lg bg-slate-900 text-slate-200 px-3 py-1.5 border border-slate-800 flex items-center justify-between text-[11px]"
+                        key={item._feedKey}
+                        className="rounded-lg bg-zinc-900 text-zinc-200 px-3 py-2 border border-zinc-800 flex items-center justify-between text-xs"
                       >
                         <div className="flex items-center gap-2 truncate">
                           <span className="text-emerald-400 font-bold">[{item.event}]</span>
-                          <span className="text-slate-300 truncate">
+                          <span className="text-zinc-300 truncate">
                             {typeof item.data === 'string'
                               ? item.data
                               : item.data?.title || item.data?.message || item.role || 'Evento processado'}
                           </span>
                         </div>
-                        <span className="text-[9px] text-slate-500 uppercase shrink-0 ml-2">
+                        <span className="text-xs text-zinc-400 uppercase shrink-0 ml-2">
                           Live
                         </span>
                       </div>
@@ -1620,23 +1774,34 @@ const ServiceDeskHub = () => {
       {isNewTermModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div
-            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200"
-            onClick={() => setIsNewTermModalOpen(false)}
+            aria-hidden="true"
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm animate-fade-in"
+            onClick={() => !submittingTerm && setIsNewTermModalOpen(false)}
           />
 
-          <div className="relative bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-lg p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar animate-in slide-in-from-bottom duration-300 safe-area-pb">
-            <div className="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto -mt-2 mb-2 sm:hidden" />
+          <div
+            ref={newTermModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-term-modal-title"
+            tabIndex={-1}
+            className="relative bg-white dark:bg-[#111113] rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl w-full max-w-lg p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto overscroll-contain custom-scrollbar animate-zoom-in safe-area-pb focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <div className="w-10 h-1 bg-slate-300 dark:bg-zinc-700 rounded-full mx-auto -mt-2 mb-2 sm:hidden" />
 
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-800">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                <div className="p-2 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
                   <FileSignature size={20} />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  <h3
+                    id="new-term-modal-title"
+                    className="text-base font-bold text-slate-900 dark:text-zinc-50"
+                  >
                     Emitir Termo de Custódia CLT
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-slate-600 dark:text-zinc-400">
                     Art. 462 §1º CLT • Selo Criptográfico SHA-256 + HMAC
                   </p>
                 </div>
@@ -1644,7 +1809,8 @@ const ServiceDeskHub = () => {
               <button
                 type="button"
                 onClick={() => setIsNewTermModalOpen(false)}
-                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+                disabled={submittingTerm}
+                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-500 dark:text-zinc-400 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
                 aria-label="Fechar modal de termo"
               >
                 <X size={18} />
@@ -1654,10 +1820,15 @@ const ServiceDeskHub = () => {
             <form onSubmit={handleCreateNewTerm} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label
+                    htmlFor="term-employee-name"
+                    className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300 mb-1.5"
+                  >
                     Colaborador Responsável *
                   </label>
                   <input
+                    id="term-employee-name"
+                    name="employeeName"
                     type="text"
                     required
                     value={newTermForm.employeeName}
@@ -1665,80 +1836,105 @@ const ServiceDeskHub = () => {
                       setNewTermForm((p) => ({ ...p, employeeName: e.target.value }))
                     }
                     placeholder="Ex: Délcio Farias"
-                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3.5 py-2 text-xs sm:text-sm text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label
+                    htmlFor="term-employee-email"
+                    className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300 mb-1.5"
+                  >
                     E-mail Corporativo *
                   </label>
                   <input
+                    id="term-employee-email"
+                    name="employeeEmail"
                     type="email"
                     required
                     value={newTermForm.employeeEmail}
                     onChange={(e) =>
                       setNewTermForm((p) => ({ ...p, employeeEmail: e.target.value }))
                     }
-                    placeholder="Ex: ti@shineraybysabel.com.br"
-                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                    placeholder="Ex: colaborador@empresa.com.br"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3.5 py-2 text-xs sm:text-sm text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label
+                    htmlFor="term-type"
+                    className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300 mb-1.5"
+                  >
                     Tipo de Termo
                   </label>
                   <select
+                    id="term-type"
+                    name="termType"
                     value={newTermForm.termType}
                     onChange={(e) =>
                       setNewTermForm((p) => ({ ...p, termType: e.target.value }))
                     }
-                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 dark:text-zinc-50 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   >
-                    <option value="entrega">Termo de Entrega & Guarda</option>
+                    <option value="entrega">Termo de Entrega &amp; Guarda</option>
                     <option value="emprestimo">Termo de Empréstimo Temporário</option>
                     <option value="devolucao">Termo de Devolução Patrimonial</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label
+                    htmlFor="term-department"
+                    className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300 mb-1.5"
+                  >
                     Departamento / Filial
                   </label>
                   <input
+                    id="term-department"
+                    name="department"
                     type="text"
                     value={newTermForm.department}
                     onChange={(e) =>
                       setNewTermForm((p) => ({ ...p, department: e.target.value }))
                     }
                     placeholder="Ex: TI & Operações"
-                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3.5 py-2 text-xs sm:text-sm text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label
+                    htmlFor="term-asset-tag"
+                    className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300 mb-1.5"
+                  >
                     Tag Patrimonial *
                   </label>
                   <input
+                    id="term-asset-tag"
+                    name="internalId"
                     type="text"
                     required
                     value={newTermForm.internalId}
                     onChange={(e) =>
                       setNewTermForm((p) => ({ ...p, internalId: e.target.value }))
                     }
-                    placeholder="SHL-BEL-NTB-001"
-                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono uppercase text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                    placeholder="Ex: NTB-001"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs font-mono uppercase text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label
+                    htmlFor="term-asset-model"
+                    className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300 mb-1.5"
+                  >
                     Equipamento / Modelo *
                   </label>
                   <input
+                    id="term-asset-model"
+                    name="model"
                     type="text"
                     required
                     value={newTermForm.model}
@@ -1746,42 +1942,48 @@ const ServiceDeskHub = () => {
                       setNewTermForm((p) => ({ ...p, model: e.target.value }))
                     }
                     placeholder="Notebook Samsung Book"
-                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs sm:text-sm text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label
+                    htmlFor="term-serial-number"
+                    className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300 mb-1.5"
+                  >
                     Número de Série
                   </label>
                   <input
+                    id="term-serial-number"
+                    name="serialNumber"
                     type="text"
                     value={newTermForm.serialNumber}
                     onChange={(e) =>
                       setNewTermForm((p) => ({ ...p, serialNumber: e.target.value }))
                     }
                     placeholder="Opcional"
-                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs font-mono text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100 dark:border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setIsNewTermModalOpen(false)}
-                  className="min-h-[42px] rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  disabled={submittingTerm}
+                  className="min-h-[44px] rounded-xl border border-slate-300 dark:border-zinc-700 px-4 py-2 text-xs font-bold text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 active:opacity-90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={submittingTerm}
-                  className="min-h-[42px] rounded-xl bg-brand hover:bg-brand-dark px-4 py-2 text-xs font-bold text-white shadow-md transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="min-h-[44px] rounded-xl bg-brand hover:bg-brand-dark px-4 py-2 text-xs font-bold text-brand-fg shadow-md active:opacity-90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   {submittingTerm ? (
                     <>
                       <RefreshCw size={14} className="animate-spin" />
-                      <span>Emitindo...</span>
+                      <span>Emitindo…</span>
                     </>
                   ) : (
                     <>
@@ -1796,36 +1998,47 @@ const ServiceDeskHub = () => {
         </div>
       )}
 
-      {/* Modal de Abertura de Novo Chamado (Mobile-first Bottom Sheet / Desktop Dialog) */}
+      {/* Modal de Abertura de Novo Chamado */}
       {isNewTicketModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div
-            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200"
-            onClick={() => setIsNewTicketModalOpen(false)}
+            aria-hidden="true"
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm animate-fade-in"
+            onClick={() => !submittingTicket && setIsNewTicketModalOpen(false)}
           />
 
-          <div className="relative bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-lg p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar animate-in slide-in-from-bottom duration-300 safe-area-pb">
-            {/* Handle on mobile */}
-            <div className="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto -mt-2 mb-2 sm:hidden" />
+          <div
+            ref={newTicketModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-ticket-modal-title"
+            tabIndex={-1}
+            className="relative bg-white dark:bg-[#111113] rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl w-full max-w-lg p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto overscroll-contain custom-scrollbar animate-zoom-in safe-area-pb focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          >
+            <div className="w-10 h-1 bg-slate-300 dark:bg-zinc-700 rounded-full mx-auto -mt-2 mb-2 sm:hidden" />
 
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-800">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-brand/10 text-brand">
+                <div className="p-2 rounded-xl bg-brand/10 text-brand-aa">
                   <Ticket size={20} />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  <h3
+                    id="new-ticket-modal-title"
+                    className="text-base font-bold text-slate-900 dark:text-zinc-50"
+                  >
                     Novo Chamado Técnico
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Registre a ocorrência para a Engenharia de Suporte N1/N2
+                  <p className="text-xs text-slate-600 dark:text-zinc-400">
+                    Registre a ocorrência para a equipe de Suporte N1/N2
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsNewTicketModalOpen(false)}
-                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+                disabled={submittingTicket}
+                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-500 dark:text-zinc-400 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
                 aria-label="Fechar modal"
               >
                 <X size={18} />
@@ -1834,10 +2047,15 @@ const ServiceDeskHub = () => {
 
             <form onSubmit={handleCreateNewTicket} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                <label
+                  htmlFor="new-ticket-title"
+                  className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1.5 uppercase tracking-wider"
+                >
                   Assunto / Título da Demanda *
                 </label>
                 <input
+                  id="new-ticket-title"
+                  name="title"
                   type="text"
                   required
                   value={newTicketForm.title}
@@ -1845,40 +2063,50 @@ const ServiceDeskHub = () => {
                     setNewTicketForm((p) => ({ ...p, title: e.target.value }))
                   }
                   placeholder="Ex: Falha na conexão VPN corporativa"
-                  className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-brand focus:outline-none"
+                  className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                  <label
+                    htmlFor="new-ticket-category"
+                    className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1.5 uppercase tracking-wider"
+                  >
                     Categoria
                   </label>
                   <select
+                    id="new-ticket-category"
+                    name="category"
                     value={newTicketForm.category}
                     onChange={(e) =>
                       setNewTicketForm((p) => ({ ...p, category: e.target.value }))
                     }
-                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 dark:text-zinc-50 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   >
                     <option value="hardware">Hardware / Equipamento</option>
                     <option value="software">Software / SO</option>
-                    <option value="network">Rede & Conectividade VPN</option>
-                    <option value="access">Acesso & Credenciais</option>
+                    <option value="network">Rede &amp; Conectividade VPN</option>
+                    <option value="access">Acesso &amp; Credenciais</option>
                     <option value="other">Outros</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
-                    Prioridade & Impacto
+                  <label
+                    htmlFor="new-ticket-priority"
+                    className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1.5 uppercase tracking-wider"
+                  >
+                    Prioridade &amp; Impacto
                   </label>
                   <select
+                    id="new-ticket-priority"
+                    name="priority"
                     value={newTicketForm.priority}
                     onChange={(e) =>
                       setNewTicketForm((p) => ({ ...p, priority: e.target.value }))
                     }
-                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:border-brand focus:outline-none"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 dark:text-zinc-50 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   >
                     <option value="medium">P3 Normal (SLA 24h)</option>
                     <option value="high">P2 Alta (SLA 8h)</option>
@@ -1890,69 +2118,85 @@ const ServiceDeskHub = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                  <label
+                    htmlFor="new-ticket-asset-tag"
+                    className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1.5 uppercase tracking-wider"
+                  >
                     Patrimônio / Tag (Opcional)
                   </label>
                   <input
+                    id="new-ticket-asset-tag"
+                    name="assetTag"
                     type="text"
                     value={newTicketForm.assetTag}
                     onChange={(e) =>
                       setNewTicketForm((p) => ({ ...p, assetTag: e.target.value }))
                     }
-                    placeholder="Ex: SHL-BEL-NTB-001"
-                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-brand focus:outline-none uppercase"
+                    placeholder="Ex: NTB-001"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3.5 py-2.5 text-xs sm:text-sm font-mono text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand uppercase"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                  <label
+                    htmlFor="new-ticket-department"
+                    className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1.5 uppercase tracking-wider"
+                  >
                     Departamento / Área
                   </label>
                   <input
+                    id="new-ticket-department"
+                    name="department"
                     type="text"
                     value={newTicketForm.department}
                     onChange={(e) =>
                       setNewTicketForm((p) => ({ ...p, department: e.target.value }))
                     }
                     placeholder="Ex: Operações / Logística"
-                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-brand focus:outline-none"
+                    className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase text-[10px] tracking-wider">
+                <label
+                  htmlFor="new-ticket-description"
+                  className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1.5 uppercase tracking-wider"
+                >
                   Descrição Detalhada do Problema *
                 </label>
                 <textarea
+                  id="new-ticket-description"
+                  name="description"
                   required
                   rows={3}
                   value={newTicketForm.description}
                   onChange={(e) =>
                     setNewTicketForm((p) => ({ ...p, description: e.target.value }))
                   }
-                  placeholder="Descreva o sintoma observado, mensagem de erro ou equipamento afetado..."
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-brand focus:outline-none resize-none"
+                  placeholder="Descreva o sintoma observado, mensagem de erro ou equipamento afetado…"
+                  className="w-full rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 p-3 text-xs sm:text-sm text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand resize-none"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100 dark:border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setIsNewTicketModalOpen(false)}
-                  className="min-h-[44px] rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  disabled={submittingTicket}
+                  className="min-h-[44px] rounded-xl border border-slate-300 dark:border-zinc-700 px-4 py-2 text-xs font-bold text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 active:opacity-90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={submittingTicket}
-                  className="min-h-[44px] rounded-xl bg-brand hover:bg-brand-dark px-4 py-2 text-xs font-bold text-white shadow-md transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="min-h-[44px] rounded-xl bg-brand hover:bg-brand-dark px-4 py-2 text-xs font-bold text-brand-fg shadow-md active:opacity-90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   {submittingTicket ? (
                     <>
                       <RefreshCw size={14} className="animate-spin" />
-                      <span>Registrando...</span>
+                      <span>Registrando…</span>
                     </>
                   ) : (
                     <>
@@ -1966,12 +2210,12 @@ const ServiceDeskHub = () => {
           </div>
         </div>
       )}
-      {/* Modal Remoto NexusDesk PWA Mobile */}
+      {/* Modal Remoto NexusDesk */}
       {remoteModalDevice && (
         <RemoteControlModal
           isOpen={Boolean(remoteModalDevice)}
           onClose={() => setRemoteModalDevice(null)}
-          tenantId={gatewaySession?.user?.tenantId || currentUser?.tenantId || 'tenant-ap3htf6'}
+          tenantId={gatewaySession?.user?.tenantId || currentUser?.tenantId || ''}
           initialDevice={remoteModalDevice}
           currentUser={currentUser || gatewaySession?.user}
           initialTab="screen"

@@ -7,7 +7,7 @@ import { useLocations } from '../hooks/useLocations';
 /**
  * Seletor de local, alimentado pela colecao `locations` do inquilino.
  *
- * Substitui as quatro copias do mesmo <select> com as filiais da Shineray
+ * Substitui as quatro copias do mesmo <select> com as filiais da empresa
  * escritas direto no JSX. Preserva um valor que ja esteja gravado no registro
  * mesmo que ele nao exista mais na lista — trocar de filial nao pode apagar
  * silenciosamente o local de um ativo antigo.
@@ -18,7 +18,7 @@ const LocationSelect = ({
   name = 'location',
   className = '',
   allowEmpty = true,
-  emptyLabel = 'Selecione...',
+  emptyLabel = 'Selecione…',
   showManageLink = false,
   // 'kind' agrupa por Matriz / Lojas / Depositos (transferencias).
   groupBy = 'region',
@@ -36,8 +36,15 @@ const LocationSelect = ({
 
   return (
     <>
-      <select id={id} name={name} value={value || ''} onChange={onChange} className={className} disabled={loading || disabled}>
-        {allowEmpty && <option value="">{loading ? 'Carregando locais...' : emptyLabel}</option>}
+      <select
+        id={id}
+        name={name}
+        value={value || ''}
+        onChange={onChange}
+        className={`dark:bg-[#111113] dark:text-[#fafafa] dark:[&_option]:bg-[#111113] dark:[&_option]:text-[#fafafa] dark:[&_optgroup]:bg-[#111113] dark:[&_optgroup]:text-zinc-400 ${className}`}
+        disabled={loading || disabled}
+      >
+        {allowEmpty && <option value="">{loading ? 'Carregando locais…' : emptyLabel}</option>}
 
         {/* Mantém o valor histórico visível e selecionável */}
         {isOrphan && <option value={value}>{value} (fora da lista)</option>}
@@ -54,10 +61,10 @@ const LocationSelect = ({
       </select>
 
       {!loading && locations.length === 0 && (
-        <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-500">
+        <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
           Nenhum local cadastrado.{' '}
           {showManageLink && (
-            <Link to="/settings?secao=locais" className="font-bold underline">
+            <Link to="/settings?secao=locais" className="font-bold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded">
               Cadastrar filiais
             </Link>
           )}

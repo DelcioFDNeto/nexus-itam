@@ -22,6 +22,14 @@ describe('catalogo de status', () => {
     expect(RETIRED_STATUSES.map((s) => s.id)).toEqual(['Extraviado', 'Baixado']);
   });
 
+  it('nao usa tons roxos/violetas/indigo no catalogo de status', () => {
+    ASSET_STATUSES.forEach((st) => {
+      expect(['purple', 'violet', 'indigo']).not.toContain(st.tone);
+      expect(statusBadgeClass(st.id)).not.toMatch(/purple|violet|indigo/);
+      expect(statusDotClass(st.id)).not.toMatch(/purple|violet|indigo/);
+    });
+  });
+
   it('oferece motivos de baixa', () => {
     expect(WRITE_OFF_REASONS.length).toBeGreaterThan(3);
     expect(WRITE_OFF_REASONS).toContain('Fim de vida útil');

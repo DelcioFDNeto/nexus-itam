@@ -121,24 +121,25 @@ const TermIssueModal = ({ kind = 'responsabilidade', initialAssets = [], initial
       icon={copy.icon}
       title={copy.title}
       subtitle={copy.subtitle}
-      onClose={onClose}
+      busy={busy}
+      onClose={busy ? undefined : onClose}
       footer={
         <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
           <button
             type="button"
             onClick={preview}
             disabled={assets.length === 0}
-            className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-40"
+            className="min-h-[44px] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-200 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-white dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Eye size={15} /> Pré-visualizar rascunho
+            <Eye size={15} aria-hidden="true" /> Pré-visualizar rascunho
           </button>
           <button
             type="button"
             onClick={submit}
             disabled={!canSubmit}
-            className="px-5 py-3 rounded-xl bg-brand text-white text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-brand/30 disabled:opacity-40 disabled:shadow-none"
+            className="min-h-[44px] px-5 py-3 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Printer size={15} /> {busy ? 'Registrando…' : copy.action}
+            <Printer size={15} aria-hidden="true" /> {busy ? 'Registrando…' : copy.action}
           </button>
         </div>
       }
@@ -160,8 +161,8 @@ const TermIssueModal = ({ kind = 'responsabilidade', initialAssets = [], initial
       />
 
       {otherHolders.length > 0 && (
-        <p className="flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs font-bold text-amber-700 dark:text-amber-300">
-          <Info size={14} className="shrink-0 mt-0.5" />
+        <p className="flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 px-3 py-2 text-xs font-bold text-amber-700 dark:text-amber-300 tabular-nums">
+          <Info size={14} className="shrink-0 mt-0.5" aria-hidden="true" />
           {otherHolders.length} item(ns) estão registrados com outra pessoa ({otherHolders.map((a) => a.assignedTo).filter((v, i, arr) => arr.indexOf(v) === i).join(', ')}).
         </p>
       )}
@@ -181,7 +182,7 @@ const TermIssueModal = ({ kind = 'responsabilidade', initialAssets = [], initial
           </div>
           <div>
             <label htmlFor="return-receiver" className={labelClass}>Recebido por (TI)</label>
-            <input id="return-receiver" value={receivedByName} onChange={(e) => setReceivedByName(e.target.value)} className={fieldClass} />
+            <input id="return-receiver" name="receivedByName" value={receivedByName} onChange={(e) => setReceivedByName(e.target.value)} className={fieldClass} />
           </div>
         </section>
       )}
@@ -190,6 +191,7 @@ const TermIssueModal = ({ kind = 'responsabilidade', initialAssets = [], initial
         <label htmlFor={`term-notes-${kind}`} className={labelClass}>Observações (saem no termo)</label>
         <textarea
           id={`term-notes-${kind}`}
+          name="notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={2}
@@ -198,8 +200,8 @@ const TermIssueModal = ({ kind = 'responsabilidade', initialAssets = [], initial
         />
       </section>
 
-      <p className="flex items-start gap-2 text-[11px] text-gray-500 dark:text-gray-400">
-        <Info size={13} className="shrink-0 mt-0.5 text-brand" />
+      <p className="flex items-start gap-2 text-xs text-slate-500 dark:text-zinc-400">
+        <Info size={14} className="shrink-0 mt-0.5 text-brand-aa" aria-hidden="true" />
         {isReturn
           ? 'Ao registrar, os itens ficam sem responsável e voltam como "Disponível" (ou "Defeito", se marcados como avariados).'
           : `Ao emitir, os itens passam para o nome de ${holder.name || 'quem recebe'}; os que estavam "Disponível" viram "Em Uso". O termo fica aguardando assinatura até o assinado ser anexado em Termos.`}

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
@@ -42,6 +42,10 @@ describe('ProjectDetails', () => {
       { id: 'emp-1', name: 'João da Silva' },
       { id: 'emp-2', name: 'Délcio Farias' }
     ]);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('renders project details, hero banner and progress meter', async () => {
@@ -127,5 +131,25 @@ describe('ProjectDetails', () => {
     await waitFor(() => {
       expect(addLogSpy).toHaveBeenCalled();
     });
+  });
+
+  it('opens accessible edit modal dialog and closes on Escape', async () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/proj-1']}>
+        <Routes>
+          <Route path="/projects/:id" element={<ProjectDetails />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Migração ERP Nuvem')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Editar Projeto'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

@@ -64,23 +64,32 @@ const SignedCopyViewer = ({ term, onClose }) => {
             type="button"
             onClick={() => state.blob && downloadBlob(state.blob, copy?.name || `${term.number}.pdf`)}
             disabled={!state.blob}
-            className="px-5 py-3 rounded-xl bg-brand text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 disabled:opacity-40"
+            className="min-h-[44px] px-5 py-3 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Download size={15} /> Baixar arquivo
+            <Download size={15} aria-hidden="true" /> Baixar arquivo
           </button>
         </div>
       }
     >
       {state.loading ? (
-        <p className="py-16 text-center text-sm text-gray-400">Carregando o termo assinado…</p>
+        <p role="status" className="py-16 text-center text-sm text-slate-500 dark:text-zinc-400">Carregando o termo assinado…</p>
       ) : state.error ? (
-        <p className="py-16 text-center text-sm font-bold text-rose-600 dark:text-rose-400">{state.error}</p>
+        <p role="alert" className="py-16 text-center text-sm font-bold text-rose-600 dark:text-rose-400">{state.error}</p>
       ) : (
         <div className="space-y-3">
           {state.pages.map((url, index) => (
-            <img key={url} src={url} alt={`${term.number} — página ${index + 1}`} className="w-full rounded-xl border border-gray-200 dark:border-slate-700 bg-white" />
+            <img
+              key={url}
+              src={url}
+              alt={`${term.number} — página ${index + 1}`}
+              className="w-full rounded-xl border border-slate-200 dark:border-zinc-800 bg-white"
+            />
           ))}
-          {state.truncated && <p className="text-center text-xs text-gray-500">Mostrando as {MAX_PREVIEW_PAGES} primeiras páginas. Baixe o arquivo para ver todas.</p>}
+          {state.truncated && (
+            <p className="text-center text-xs text-slate-500 dark:text-zinc-400 tabular-nums">
+              Mostrando as {MAX_PREVIEW_PAGES} primeiras páginas. Baixe o arquivo para ver todas.
+            </p>
+          )}
         </div>
       )}
     </TermModalFrame>

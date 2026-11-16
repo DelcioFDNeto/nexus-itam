@@ -1,7 +1,7 @@
 // src/components/terms/AssetTermsCard.jsx
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileCheck2, FileSignature, Printer } from 'lucide-react';
+import { FileCheck2, FileSignature, Printer, RefreshCcw } from 'lucide-react';
 import { listTermsForAsset } from '../../services/termService';
 import { isGatewayActiveSession, microservicesApi } from '../../services/microservicesClient';
 import { useTermPrinter } from '../../hooks/useTermPrinter';
@@ -14,9 +14,10 @@ import SignedCopyViewer from './SignedCopyViewer';
  */
 const AssetTermsCard = ({ tenantId, assetId, refreshKey }) => {
   const { printTerm } = useTermPrinter();
+  const [reloadCount, setReloadCount] = useState(0);
   const [state, setState] = useState({ key: null, terms: [], error: false });
   const [viewing, setViewing] = useState(null);
-  const requestKey = `${tenantId}:${assetId}:${refreshKey}`;
+  const requestKey = `${tenantId}:${assetId}:${refreshKey}:${reloadCount}`;
 
   useEffect(() => {
     if (!tenantId || !assetId) return undefined;
@@ -65,25 +66,39 @@ const AssetTermsCard = ({ tenantId, assetId, refreshKey }) => {
   const loading = state.key !== requestKey;
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-100 dark:border-slate-700 shadow-sm">
-      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-        <FileSignature size={20} /> Termos e documentos
+    <div className="bg-white dark:bg-[#111113] rounded-xl p-6 border border-slate-200/80 dark:border-zinc-800 shadow-sm">
+      <h3 className="text-lg font-bold text-slate-900 dark:text-[#fafafa] mb-4 flex items-center gap-2">
+        <FileSignature size={20} aria-hidden="true" /> Termos e documentos
       </h3>
       {loading ? (
-        <p className="text-sm text-gray-400">Carregando…</p>
+        <p role="status" className="text-sm text-slate-500 dark:text-zinc-400">Carregando…</p>
       ) : state.error ? (
-        <p className="text-sm text-gray-400">Não foi possível carregar os termos.</p>
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-semibold text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">
+          <span>Não foi possível carregar os termos.</span>
+          <button
+            type="button"
+            onClick={() => setReloadCount((c) => c + 1)}
+            className="min-h-[44px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+          >
+            <RefreshCcw size={13} aria-hidden="true" /> Tentar novamente
+          </button>
+        </div>
       ) : state.terms.length === 0 ? (
-        <p className="text-sm text-gray-400 dark:text-gray-500 italic">Nenhum termo emitido para este ativo.</p>
+        <p className="text-sm text-slate-500 dark:text-zinc-400 italic">Nenhum termo emitido para este ativo.</p>
       ) : (
         <ul className="space-y-2">
           {state.terms.slice(0, 8).map((term) => (
-            <li key={term.id} className="flex items-center gap-3 rounded-2xl border border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 px-3 py-2.5">
-              <Link to={`/termos/${term.id}`} className="min-w-0 flex-1">
-                <p className="font-mono text-sm font-black text-gray-900 dark:text-white">{term.number}</p>
+            <li key={term.id} className="flex items-center gap-2 rounded-2xl border border-slate-200/80 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/70 px-3 py-2.5">
+              <Link
+                to={`/termos/${term.id}`}
+                className="min-w-0 flex-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                <p className="font-mono text-sm font-black text-slate-900 dark:text-[#fafafa] tabular-nums">{term.number}</p>
                 <div className="flex flex-wrap items-center gap-2 mt-0.5">
                   <TermKindTag kind={term.kind} />
-                  <span className="text-[10px] text-gray-400">{term.issuedAtDate ? term.issuedAtDate.toLocaleDateString('pt-BR') : ''}</span>
+                  <span className="text-xs text-slate-500 dark:text-zinc-400 tabular-nums">
+                    {term.issuedAtDate ? term.issuedAtDate.toLocaleDateString('pt-BR') : ''}
+                  </span>
                 </div>
               </Link>
               <TermStatusBadge status={term.status} />
@@ -93,9 +108,9 @@ const AssetTermsCard = ({ tenantId, assetId, refreshKey }) => {
                   onClick={() => setViewing(term)}
                   aria-label={`Ver ${term.number} assinado`}
                   title="Ver termo assinado"
-                  className="p-2 rounded-lg text-green-600 hover:bg-white dark:hover:bg-slate-800"
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-emerald-600 dark:text-emerald-400 hover:bg-white dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
-                  <FileCheck2 size={15} />
+                  <FileCheck2 size={16} aria-hidden="true" />
                 </button>
               )}
               <button
@@ -103,9 +118,9 @@ const AssetTermsCard = ({ tenantId, assetId, refreshKey }) => {
                 onClick={() => printTerm(term)}
                 aria-label={`Imprimir ${term.number}`}
                 title="Imprimir"
-                className="p-2 rounded-lg text-gray-400 hover:text-brand hover:bg-white dark:hover:bg-slate-800"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-500 dark:text-zinc-400 hover:text-brand-aa hover:bg-white dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
-                <Printer size={15} />
+                <Printer size={16} aria-hidden="true" />
               </button>
             </li>
           ))}

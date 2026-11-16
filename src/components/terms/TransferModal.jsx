@@ -17,11 +17,11 @@ import { fieldClass, labelClass } from './termStyles';
 
 const PlaceCard = ({ label, place, tone }) => (
   <div className={`flex-1 min-w-0 rounded-2xl border p-3 ${tone}`}>
-    <p className="text-[10px] font-black uppercase tracking-widest opacity-70">{label}</p>
+    <p className="text-xs font-bold uppercase tracking-widest opacity-75">{label}</p>
     <p className="mt-1 text-sm font-black truncate flex items-center gap-1.5">
-      {place?.kind === 'loja' ? <Store size={13} /> : <MapPin size={13} />} {place?.name || 'Selecione…'}
+      {place?.kind === 'loja' ? <Store size={13} aria-hidden="true" /> : <MapPin size={13} aria-hidden="true" />} {place?.name || 'Selecione…'}
     </p>
-    {place?.address && <p className="text-[11px] opacity-80 truncate">{place.address}</p>}
+    {place?.address && <p className="text-xs opacity-80 truncate">{place.address}</p>}
   </div>
 );
 
@@ -120,24 +120,25 @@ const TransferModal = ({ initialAssets = [], onClose, onDispatched }) => {
       wide
       title="Transferência para loja"
       subtitle="Escolha os itens e a loja. O termo sai impresso e os itens ficam em trânsito até o assinado ser anexado."
-      onClose={onClose}
+      busy={busy}
+      onClose={busy ? undefined : onClose}
       footer={
         <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
           <button
             type="button"
             onClick={() => printTerm(termDraft(), { draft: true })}
             disabled={assets.length === 0 || !destinationName}
-            className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-40"
+            className="min-h-[44px] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-200 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-white dark:hover:bg-zinc-800 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Eye size={15} /> Pré-visualizar rascunho
+            <Eye size={15} aria-hidden="true" /> Pré-visualizar rascunho
           </button>
           <button
             type="button"
             onClick={submit}
             disabled={!canSubmit}
-            className="px-5 py-3 rounded-xl bg-brand text-white text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-brand/30 disabled:opacity-40 disabled:shadow-none"
+            className="min-h-[44px] px-5 py-3 rounded-xl bg-brand hover:bg-brand-dark text-brand-fg text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Send size={15} /> {busy ? 'Registrando…' : 'Emitir termo e enviar'}
+            <Send size={15} aria-hidden="true" /> {busy ? 'Registrando…' : 'Emitir termo e enviar'}
           </button>
         </div>
       }
@@ -145,12 +146,22 @@ const TransferModal = ({ initialAssets = [], onClose, onDispatched }) => {
       <section>
         <SectionTitle>Rota</SectionTitle>
         <div className="flex flex-col sm:flex-row items-stretch gap-2">
-          <PlaceCard label="Origem" place={{ ...originLoc, kind: locationKind(originLoc) }} tone="border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200" />
-          <div className="flex items-center justify-center text-gray-300 dark:text-slate-600"><ArrowRight size={22} className="rotate-90 sm:rotate-0" /></div>
+          <PlaceCard
+            label="Origem"
+            place={{ ...originLoc, kind: locationKind(originLoc) }}
+            tone="border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-900/60 text-slate-800 dark:text-zinc-200"
+          />
+          <div className="flex items-center justify-center text-slate-400 dark:text-zinc-500" aria-hidden="true">
+            <ArrowRight size={22} className="rotate-90 sm:rotate-0" aria-hidden="true" />
+          </div>
           <PlaceCard
             label="Destino"
             place={destinationLoc ? { ...destinationLoc, kind: locationKind(destinationLoc) } : null}
-            tone={destinationLoc ? 'border-brand/40 bg-brand/5 text-gray-900 dark:text-white' : 'border-dashed border-gray-300 dark:border-slate-600 text-gray-400'}
+            tone={
+              destinationLoc
+                ? 'border-brand/40 bg-brand/5 dark:bg-brand/10 text-slate-900 dark:text-[#fafafa]'
+                : 'border-dashed border-slate-300 dark:border-zinc-700 text-slate-500 dark:text-zinc-400'
+            }
           />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -164,8 +175,8 @@ const TransferModal = ({ initialAssets = [], onClose, onDispatched }) => {
           </div>
         </div>
         {!headquarters && locations.length > 0 && (
-          <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400 flex items-start gap-1.5">
-            <Info size={12} className="shrink-0 mt-0.5 text-brand" /> Dica: marque a matriz em Configurações → Filiais e locais para ela vir sempre como origem.
+          <p className="mt-2 text-xs text-slate-500 dark:text-zinc-400 flex items-start gap-1.5">
+            <Info size={13} className="shrink-0 mt-0.5 text-brand-aa" aria-hidden="true" /> Dica: marque a matriz em Configurações → Filiais e locais para ela vir sempre como origem.
           </p>
         )}
       </section>
@@ -181,8 +192,8 @@ const TransferModal = ({ initialAssets = [], onClose, onDispatched }) => {
       />
 
       {outsideOrigin.length > 0 && (
-        <p className="flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs font-bold text-amber-700 dark:text-amber-300">
-          <Info size={14} className="shrink-0 mt-0.5" />
+        <p className="flex items-start gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 px-3 py-2 text-xs font-bold text-amber-700 dark:text-amber-300 tabular-nums">
+          <Info size={14} className="shrink-0 mt-0.5" aria-hidden="true" />
           {outsideOrigin.length} item(ns) não estão registrados em {effectiveOrigin} ({[...new Set(outsideOrigin.map((a) => a.location))].join(', ')}). Confira antes de enviar.
         </p>
       )}
@@ -192,17 +203,17 @@ const TransferModal = ({ initialAssets = [], onClose, onDispatched }) => {
         onClick={() => setShowDetails((v) => !v)}
         aria-expanded={showDetails}
         aria-controls="transfer-details"
-        className="w-full flex items-center justify-between gap-3 rounded-2xl border border-gray-200 dark:border-slate-700 px-4 py-3 text-left hover:border-brand/40"
+        className="w-full min-h-[44px] flex items-center justify-between gap-3 rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] px-4 py-3 text-left hover:border-brand/40 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
       >
         <span className="min-w-0">
-          <span className="block text-[11px] font-black uppercase tracking-widest text-gray-500 dark:text-gray-400">Recebedor, transporte e observações (opcional)</span>
-          <span className="block text-xs font-semibold text-gray-700 dark:text-gray-200 truncate">
+          <span className="block text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-zinc-400">Recebedor, transporte e observações (opcional)</span>
+          <span className="block text-xs font-semibold text-slate-700 dark:text-zinc-200 truncate tabular-nums">
             {receiver.name ? `Recebe: ${receiver.name}` : 'Recebedor em branco (preenchido no papel)'} · {transport.mode}
             {transport.carrier ? ` · ${transport.carrier}` : ''}
             {expectedAt ? ` · chega ${expectedAt.split('-').reverse().join('/')}` : ''}
           </span>
         </span>
-        <ChevronDown size={18} className={`shrink-0 text-gray-400 transition-transform ${showDetails ? 'rotate-180' : ''}`} />
+        <ChevronDown size={18} className={`shrink-0 text-slate-400 dark:text-zinc-500 transition-transform ${showDetails ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
 
       {/* Fica montado mesmo recolhido: o recebedor sugerido completa CPF/cargo pelo cadastro. */}
@@ -217,28 +228,28 @@ const TransferModal = ({ initialAssets = [], onClose, onDispatched }) => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label htmlFor="transfer-mode" className={labelClass}>Meio de transporte</label>
-              <select id="transfer-mode" value={transport.mode} onChange={(e) => setTransport({ ...transport, mode: e.target.value })} className={fieldClass}>
+              <select id="transfer-mode" name="transportMode" value={transport.mode} onChange={(e) => setTransport({ ...transport, mode: e.target.value })} className={fieldClass}>
                 {TRANSPORT_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
             <div>
               <label htmlFor="transfer-carrier" className={labelClass}>Transportador / motorista</label>
-              <input id="transfer-carrier" value={transport.carrier} onChange={(e) => setTransport({ ...transport, carrier: e.target.value })} className={fieldClass} placeholder="Nome de quem leva" />
+              <input id="transfer-carrier" name="transportCarrier" value={transport.carrier} onChange={(e) => setTransport({ ...transport, carrier: e.target.value })} className={fieldClass} placeholder="Nome de quem leva" />
             </div>
             <div>
               <label htmlFor="transfer-document" className={labelClass}>NF / romaneio</label>
-              <input id="transfer-document" value={transport.document} onChange={(e) => setTransport({ ...transport, document: e.target.value })} className={fieldClass} placeholder="Opcional" />
+              <input id="transfer-document" name="transportDocument" value={transport.document} onChange={(e) => setTransport({ ...transport, document: e.target.value })} className={fieldClass} placeholder="Opcional" />
             </div>
             <div>
               <label htmlFor="transfer-expected" className={labelClass}>Previsão de chegada</label>
-              <input id="transfer-expected" type="date" value={expectedAt} onChange={(e) => setExpectedAt(e.target.value)} className={fieldClass} />
+              <input id="transfer-expected" name="expectedAt" type="date" value={expectedAt} onChange={(e) => setExpectedAt(e.target.value)} className={`${fieldClass} tabular-nums`} />
             </div>
           </div>
         </section>
 
         <section>
           <label htmlFor="transfer-notes" className={labelClass}>Observações (saem no termo)</label>
-          <textarea id="transfer-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={`${fieldClass} resize-y`} placeholder="Ex.: caixa lacrada; entregar ao gerente." />
+          <textarea id="transfer-notes" name="notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={`${fieldClass} resize-y`} placeholder="Ex.: caixa lacrada; entregar ao gerente." />
         </section>
       </div>
     </TermModalFrame>

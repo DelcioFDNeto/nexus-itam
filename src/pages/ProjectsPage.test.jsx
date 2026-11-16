@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
@@ -49,17 +49,17 @@ describe('ProjectsPage', () => {
       priority: 'Média',
       progress: 10,
       budget: 25000,
-      leader: 'Admin Shineray',
+      leader: 'Admin Corporativo',
       version: '0.9',
       deadline: '2026-08-15',
-      team: ['Admin Shineray']
+      team: ['Admin Corporativo']
     }
   ];
 
   const mockEmployees = [
     { id: 'emp-1', name: 'João da Silva', role: 'Analista' },
     { id: 'emp-2', name: 'Délcio Farias', role: 'Gestor' },
-    { id: 'emp-3', name: 'Admin Shineray', role: 'Diretor' }
+    { id: 'emp-3', name: 'Admin Corporativo', role: 'Diretor' }
   ];
 
   beforeEach(() => {
@@ -68,6 +68,10 @@ describe('ProjectsPage', () => {
     });
     vi.spyOn(projectService, 'getProjects').mockResolvedValue(mockProjects);
     vi.spyOn(employeeService, 'getEmployees').mockResolvedValue(mockEmployees);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('renders executive KPIs and project cards', async () => {

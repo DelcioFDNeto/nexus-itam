@@ -1,5 +1,5 @@
 // src/components/settings/BackupSection.jsx
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Code, Download, EyeOff, FileJson, Info, Play, RefreshCcw, UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateFullBackup, restoreBackup } from '../../services/backupService';
@@ -7,6 +7,7 @@ import { useConfirm } from '../ConfirmDialog';
 import { can } from '../../utils/permissions';
 import { isoDay } from '../../utils/dates';
 import { Card, SectionHeader } from './settingsUi';
+import { buttonPrimaryClass, buttonSecondaryClass } from './settingsStyles';
 
 const downloadJson = (data, filename) => {
   // Blob em vez de data: URI — backups grandes estouravam o limite de URL.
@@ -35,17 +36,28 @@ const BackupSection = ({ currentUser }) => {
   const [dragActive, setDragActive] = useState(false);
   const [importSummary, setImportSummary] = useState(null);
   const [showFormatGuide, setShowFormatGuide] = useState(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const handleFullBackup = async () => {
+    if (backupLoading) return;
     setBackupLoading(true);
     try {
-      downloadJson(await generateFullBackup(tenantId, false), `BACKUP_NEXUS_${isoDay()}.json`);
+      const data = await generateFullBackup(tenantId, false);
+      if (!isMountedRef.current) return;
+      downloadJson(data, `BACKUP_NEXUS_${isoDay()}.json`);
       toast.success('Backup gerado.');
     } catch (error) {
       console.error(error);
-      toast.error('Erro ao gerar backup.');
+      if (isMountedRef.current) toast.error('Erro ao gerar backup.');
     } finally {
-      setBackupLoading(false);
+      if (isMountedRef.current) setBackupLoading(false);
     }
   };
 
@@ -66,13 +78,15 @@ const BackupSection = ({ currentUser }) => {
   };
 
   const handleFile = (file) => {
-    if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
+    const isJson = file.type === 'application/json' || file.name.toLowerCase().endsWith('.json');
+    if (!isJson) {
       toast.error('Arquivo inválido. Envie um JSON.');
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
     const reader = new FileReader();
     reader.onload = (e) => {
+      if (!isMountedRef.current) return;
       try {
         const json = JSON.parse(e.target.result);
         if (!json.meta || !json.data) {
@@ -94,6 +108,12 @@ const BackupSection = ({ currentUser }) => {
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
+    reader.onerror = () => {
+      if (isMountedRef.current) {
+        toast.error('Erro ao ler o arquivo selecionado.');
+      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
     reader.readAsText(file);
   };
 
@@ -105,7 +125,7 @@ const BackupSection = ({ currentUser }) => {
   };
 
   const confirmRestore = async () => {
-    if (!importSummary) return;
+    if (!importSummary || restoreLoading) return;
     const summary = importSummary;
     const confirmed = await confirm({
       title: 'Confirmar Restauração de Backup',
@@ -113,17 +133,19 @@ const BackupSection = ({ currentUser }) => {
       danger: true,
       confirmLabel: 'Restaurar Dados',
     });
-    if (!confirmed) return;
+    if (!confirmed || !isMountedRef.current) return;
 
     setImportSummary(null);
     setRestoreLoading(true);
     setRestoreProgress(0);
-    setRestoreStatus('Inicializando...');
+    setRestoreStatus('Inicializando…');
     try {
       const stats = await restoreBackup(summary.rawData, (progress, message) => {
+        if (!isMountedRef.current) return;
         setRestoreProgress(progress);
         setRestoreStatus(message);
       }, tenantId, currentUser);
+      if (!isMountedRef.current) return;
       const notes = [
         `Documentos restaurados: ${stats.totalDocsProcessed}`,
         stats.rejectedDocs ? `Recusados (outra empresa ou ID inválido): ${stats.rejectedDocs}` : null,
@@ -133,10 +155,12 @@ const BackupSection = ({ currentUser }) => {
       toast.success('Restauração finalizada.', { description: notes.join(' · '), duration: 8000 });
     } catch (error) {
       console.error(error);
-      toast.error(`Falha na restauração: ${error.message}`);
+      if (isMountedRef.current) toast.error(`Falha na restauração: ${error.message}`);
     } finally {
-      setRestoreLoading(false);
-      setRestoreStatus('');
+      if (isMountedRef.current) {
+        setRestoreLoading(false);
+        setRestoreStatus('');
+      }
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -147,9 +171,9 @@ const BackupSection = ({ currentUser }) => {
 
       {canBackup && (
         <Card icon={Download} title="Backup" subtitle="Ativos, histórico, termos, equipe, locais e inventário do agente (sem as cópias dos termos assinados)">
-          <button onClick={handleFullBackup} disabled={backupLoading} className="w-full sm:w-auto bg-blue-600 text-white px-5 py-3 rounded-xl font-bold hover:bg-blue-700 flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-60">
-            {backupLoading ? <RefreshCcw className="animate-spin" size={18} /> : <FileJson size={18} />}
-            {backupLoading ? 'Gerando arquivo...' : 'Baixar backup completo'}
+          <button type="button" onClick={handleFullBackup} disabled={backupLoading} className={`${buttonPrimaryClass} w-full sm:w-auto min-h-[44px] shadow-sm`}>
+            {backupLoading ? <RefreshCcw className="animate-spin" size={18} aria-hidden="true" /> : <FileJson size={18} aria-hidden="true" />}
+            {backupLoading ? 'Gerando arquivo…' : 'Baixar backup completo'}
           </button>
         </Card>
       )}
@@ -164,74 +188,90 @@ const BackupSection = ({ currentUser }) => {
               type="button"
               onClick={() => setShowFormatGuide((v) => !v)}
               aria-expanded={showFormatGuide}
-              className="text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white flex items-center gap-1 bg-gray-100 dark:bg-slate-700 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-slate-600"
+              className={`${buttonSecondaryClass} min-h-[44px] px-3 py-2 text-xs`}
             >
-              {showFormatGuide ? <EyeOff size={12} /> : <Code size={12} />} {showFormatGuide ? 'Ocultar formato' : 'Ver formato'}
+              {showFormatGuide ? <EyeOff size={14} aria-hidden="true" /> : <Code size={14} aria-hidden="true" />} {showFormatGuide ? 'Ocultar formato' : 'Ver formato'}
             </button>
           }
         >
           {showFormatGuide && (
             <div className="text-xs space-y-3">
-              <div className="flex justify-between items-center">
-                <p className="font-bold text-gray-700 dark:text-gray-200 flex items-center gap-1.5"><Info size={14} className="text-blue-500" /> Estrutura esperada</p>
-                <button type="button" onClick={handleDownloadTemplate} className="text-[10px] bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 px-2 py-1 rounded font-bold text-gray-700 dark:text-gray-200">Baixar modelo</button>
+              <div className="flex justify-between items-center gap-2">
+                <p className="font-bold text-slate-700 dark:text-zinc-200 flex items-center gap-1.5">
+                  <Info size={14} className="text-brand-aa" aria-hidden="true" /> Estrutura esperada
+                </p>
+                <button type="button" onClick={handleDownloadTemplate} className={`${buttonSecondaryClass} min-h-[44px] px-3 py-2 text-xs`}>
+                  Baixar modelo
+                </button>
               </div>
-              <pre className="bg-gray-900 text-gray-100 p-3 rounded-xl overflow-x-auto font-mono text-[11px]">{`{
+              <pre className="bg-slate-900 text-slate-100 p-3.5 rounded-xl overflow-x-auto font-mono text-xs">{`{
   "meta": { "version": "2.2", "date": "2026-01-01T10:00:00Z" },
   "data": {
-    "assets": [ { "internalId": "NB-001", "model": "Dell", ... } ],
-    "employees": [ ... ],
-    "history": [ ... ],
-    "locations": [ ... ],
-    "terms": [ ... ]
+    "assets": [ { "internalId": "NB-001", "model": "Dell" } ],
+    "employees": [],
+    "history": [],
+    "locations": [],
+    "terms": []
   }
 }`}</pre>
-              <p className="flex items-start gap-1.5 text-orange-700 bg-orange-50 dark:bg-orange-950/30 dark:text-orange-300 p-2.5 rounded-lg">
-                <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+              <p className="flex items-start gap-2 text-amber-800 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-300 p-3 rounded-xl text-xs">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" aria-hidden="true" />
                 Registros com o mesmo ID são atualizados; os demais são criados. Usuários, planos, configurações de segurança e cópias pesadas de termos não entram na restauração.
               </p>
             </div>
           )}
 
           {importSummary ? (
-            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 rounded-xl p-4 space-y-3">
-              <p className="font-bold text-blue-900 dark:text-blue-200 flex items-center gap-2 text-sm"><FileJson size={16} /> {importSummary.filename}</p>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400">Gerado em {importSummary.date}</p>
+            <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50 rounded-xl p-4 space-y-3">
+              <p className="font-bold text-sky-900 dark:text-sky-200 flex items-center gap-2 text-sm">
+                <FileJson size={16} aria-hidden="true" /> {importSummary.filename}
+              </p>
+              <p className="text-xs text-slate-600 dark:text-zinc-400 tabular-nums">Gerado em {importSummary.date}</p>
               <div className="grid grid-cols-3 gap-2">
                 {Object.entries(importSummary.counts).map(([key, count]) => (
-                  <div key={key} className="bg-white dark:bg-slate-800 p-2 rounded text-center border border-gray-100 dark:border-slate-700">
-                    <span className="block text-base font-black text-gray-800 dark:text-gray-100">{count}</span>
-                    <span className="text-[9px] text-gray-500 dark:text-gray-400 uppercase font-bold">{key}</span>
+                  <div key={key} className="bg-white dark:bg-[#111113] p-2.5 rounded-xl text-center border border-slate-200 dark:border-zinc-800">
+                    <span className="block text-base font-black text-slate-900 dark:text-[#fafafa] tabular-nums">{count}</span>
+                    <span className="text-xs text-slate-500 dark:text-zinc-400 uppercase font-bold">{key}</span>
                   </div>
                 ))}
               </div>
               <div className="flex gap-2">
-                <button type="button" onClick={() => setImportSummary(null)} className="flex-1 py-2.5 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-200 font-bold rounded-lg text-xs">Cancelar</button>
-                <button type="button" onClick={confirmRestore} className="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5"><Play size={14} /> Restaurar</button>
+                <button type="button" onClick={() => setImportSummary(null)} className={`${buttonSecondaryClass} flex-1 min-h-[44px] text-xs`}>Cancelar</button>
+                <button type="button" onClick={confirmRestore} className={`${buttonPrimaryClass} flex-1 min-h-[44px] text-xs`}>
+                  <Play size={14} aria-hidden="true" /> Restaurar
+                </button>
               </div>
             </div>
           ) : restoreLoading ? (
-            <div className="text-center py-6">
-              <div className="w-12 h-12 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-3" />
-              <p className="font-bold text-lg text-gray-800 dark:text-gray-100">{restoreProgress}%</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{restoreStatus}</p>
+            <div className="text-center py-6" role="status">
+              <div className="w-12 h-12 border-4 border-amber-200 border-t-amber-500 rounded-full animate-spin mx-auto mb-3" aria-hidden="true" />
+              <p className="font-bold text-lg text-slate-900 dark:text-[#fafafa] tabular-nums">{restoreProgress}%</p>
+              <p className="text-xs text-slate-500 dark:text-zinc-400">{restoreStatus}</p>
             </div>
           ) : (
-            <div
-              role="button"
-              tabIndex={0}
-              className={`p-6 border-2 border-dashed ${dragActive ? 'border-brand bg-brand/5' : 'border-gray-200 dark:border-slate-600 bg-gray-50/50 dark:bg-slate-900/50'} transition-all text-center rounded-xl cursor-pointer group`}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
-            >
-              <input ref={fileInputRef} type="file" className="hidden" accept=".json" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
-              <UploadCloud size={28} className="mx-auto mb-2 text-gray-400 group-hover:text-orange-500 transition-colors" />
-              <p className="font-bold text-sm text-gray-700 dark:text-gray-200">Clique ou arraste o JSON aqui</p>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">O arquivo é validado antes de importar.</p>
+            <div>
+              <input
+                id="backup-restore-file"
+                name="backup-restore-file"
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                accept=".json"
+                onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+              />
+              <button
+                type="button"
+                className={`w-full p-6 border-2 border-dashed ${dragActive ? 'border-brand bg-brand/5' : 'border-slate-200 dark:border-zinc-700 bg-slate-50/50 dark:bg-zinc-900/50'} transition-colors text-center rounded-xl cursor-pointer group min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand active:scale-[0.98]`}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <UploadCloud size={28} className="mx-auto mb-2 text-slate-400 group-hover:text-brand-aa transition-colors" aria-hidden="true" />
+                <span className="block font-bold text-sm text-slate-700 dark:text-zinc-200">Clique ou arraste o JSON aqui</span>
+                <span className="block text-xs text-slate-500 dark:text-zinc-400 mt-1">O arquivo é validado antes de importar.</span>
+              </button>
             </div>
           )}
         </Card>

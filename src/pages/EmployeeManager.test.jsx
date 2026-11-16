@@ -1,7 +1,8 @@
 // src/pages/EmployeeManager.test.jsx
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import EmployeeManager from './EmployeeManager';
 import { generateRandomSecurePassword } from '../utils/passwords';
 import { useAuth } from '../contexts/AuthContext';
@@ -42,14 +43,17 @@ vi.mock('../services/assetService', () => ({
 }));
 
 describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', () => {
+  let originalClipboardDescriptor;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
 
     useAuth.mockReturnValue({
       currentUser: {
         uid: 'user-owner-1',
-        name: 'TI Shineray',
-        email: 'ti@shineraybysabel.com.br',
+        name: 'TI Corporativa',
+        email: 'ti@empresa-exemplo.com.br',
         role: 'owner',
         tenantId: 'tenant-ap3htf6',
       },
@@ -59,7 +63,7 @@ describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', 
       {
         id: 'emp-1',
         name: 'João da Silva',
-        email: 'joao.silva@shineray.com.br',
+        email: 'joao.silva@empresa-exemplo.com.br',
         role: 'Consultor de Vendas',
         sector: 'Vendas Concessionária',
         branch: 'Matriz Belém',
@@ -67,7 +71,7 @@ describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', 
     ]);
 
     employeeService.getSectors.mockResolvedValue([
-      { id: 'sec-1', name: 'TI & Infraestrutura', manager: 'Délcio Farias' },
+      { id: 'sec-1', name: 'TI & Infraestrutura', manager: 'Marcos Almeida' },
       { id: 'sec-2', name: 'Vendas Concessionária', manager: 'João da Silva' },
     ]);
 
@@ -80,7 +84,7 @@ describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', 
         {
           id: 'u-colab-1',
           name: 'Karen Matos',
-          email: 'karen.matos@shineraybysabel.com.br',
+          email: 'karen.matos@empresa-exemplo.com.br',
           role: 'collaborator',
           department: 'Vendas & Pós-Vendas',
           job_title: 'Consultora Comercial',
@@ -93,7 +97,7 @@ describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', 
       user: {
         id: 'u-colab-new',
         name: 'Lucas Ferreira',
-        email: 'lucas.ferreira@shineraybysabel.com.br',
+        email: 'lucas.ferreira@empresa-exemplo.com.br',
         role: 'collaborator',
         department: 'Vendas Concessionária',
         job_title: 'Consultor de Vendas',
@@ -108,6 +112,15 @@ describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', 
       configurable: true,
       writable: true,
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (originalClipboardDescriptor) {
+      Object.defineProperty(navigator, 'clipboard', originalClipboardDescriptor);
+    } else {
+      delete navigator.clipboard;
+    }
   });
 
   describe('generateRandomSecurePassword', () => {
@@ -141,8 +154,14 @@ describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', 
   });
 
   describe('Interface e Aba do Portal do Colaborador', () => {
+    const renderPage = () => render(
+      <MemoryRouter>
+        <EmployeeManager />
+      </MemoryRouter>,
+    );
+
     it('renderiza as 3 abas principais: Colaboradores, Setores e Portal do Colaborador (Acessos)', async () => {
-      render(<EmployeeManager />);
+      renderPage();
 
       expect(await screen.findByText(/Gestão de Pessoas & Áreas/i)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Colaboradores/i })).toBeInTheDocument();
@@ -150,8 +169,19 @@ describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', 
       expect(screen.getByRole('button', { name: /Portal do Colaborador \(Acessos\)/i })).toBeInTheDocument();
     });
 
+    it('exibe estado de erro com retry quando o carregamento falha', async () => {
+      employeeService.getEmployees.mockRejectedValueOnce(new Error('Network error'));
+      renderPage();
+
+      expect(await screen.findByRole('alert')).toBeInTheDocument();
+      const retryBtn = screen.getByRole('button', { name: /Tentar novamente/i });
+      fireEvent.click(retryBtn);
+
+      expect(await screen.findByText('João da Silva')).toBeInTheDocument();
+    });
+
     it('alterna para a aba do Portal do Colaborador e exibe banner LGPD e formulário', async () => {
-      render(<EmployeeManager />);
+      renderPage();
 
       const portalTabBtn = await screen.findByRole('button', {
         name: /Portal do Colaborador \(Acessos\)/i,
@@ -161,20 +191,23 @@ describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', 
       expect(
         await screen.findByText(/Cadastro de Acesso ao Portal do Colaborador/i),
       ).toBeInTheDocument();
+      expect(await screen.findByText('Karen Matos')).toBeInTheDocument();
       expect(
         screen.getByText(/Aderência às Normas LGPD \(Lei 13.709\/2018 - Art. 6º e 46\)/i),
       ).toBeInTheDocument();
-      expect(screen.getByPlaceholderText(/colaborador@shineraybysabel.com.br/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/E-mail Corporativo/i)).toBeInTheDocument();
       expect(screen.getByText(/Geração de Senha Aleatória Segura/i)).toBeInTheDocument();
     });
 
     it('permite gerar nova senha aleatória com botão de regeneração', async () => {
-      render(<EmployeeManager />);
+      renderPage();
 
       const portalTabBtn = await screen.findByRole('button', {
         name: /Portal do Colaborador \(Acessos\)/i,
       });
       fireEvent.click(portalTabBtn);
+
+      expect(await screen.findByText('Karen Matos')).toBeInTheDocument();
 
       const regenerateBtn = await screen.findByRole('button', { name: /Gerar Outra Senha/i });
       fireEvent.click(regenerateBtn);
@@ -182,24 +215,29 @@ describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', 
       // Botão copiar senha copia para o clipboard
       const copyBtn = screen.getByRole('button', { name: /Copiar Senha/i });
       fireEvent.click(copyBtn);
-      expect(navigator.clipboard.writeText).toHaveBeenCalled();
+      await waitFor(() => {
+        expect(navigator.clipboard.writeText).toHaveBeenCalled();
+        expect(screen.getByRole('status')).toHaveTextContent(/Senha copiada/i);
+      });
     });
 
     it('cadastra colaborador no Gateway via microservicesApi.createUser e abre modal de credenciais', async () => {
-      render(<EmployeeManager />);
+      renderPage();
 
       const portalTabBtn = await screen.findByRole('button', {
         name: /Portal do Colaborador \(Acessos\)/i,
       });
       fireEvent.click(portalTabBtn);
 
+      expect(await screen.findByText('Karen Matos')).toBeInTheDocument();
+
       const nameInput = await screen.findByPlaceholderText(/Ex: Roberto Souza/i);
-      const emailInput = screen.getByPlaceholderText(/colaborador@shineraybysabel.com.br/i);
-      const deptInput = screen.getByPlaceholderText(/Ex: Vendas Concessionária/i);
+      const emailInput = screen.getByLabelText(/E-mail Corporativo/i);
+      const deptInput = screen.getByPlaceholderText(/Ex: Operações \/ Vendas/i);
       const jobInput = screen.getByPlaceholderText(/Ex: Consultor Comercial/i);
 
       fireEvent.change(nameInput, { target: { value: 'Lucas Ferreira' } });
-      fireEvent.change(emailInput, { target: { value: 'lucas.ferreira@shineraybysabel.com.br' } });
+      fireEvent.change(emailInput, { target: { value: 'lucas.ferreira@empresa-exemplo.com.br' } });
       fireEvent.change(deptInput, { target: { value: 'Vendas Concessionária' } });
       fireEvent.change(jobInput, { target: { value: 'Consultor de Vendas' } });
 
@@ -212,7 +250,7 @@ describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', 
         expect(microservicesApi.createUser).toHaveBeenCalledWith(
           expect.objectContaining({
             name: 'Lucas Ferreira',
-            email: 'lucas.ferreira@shineraybysabel.com.br',
+            email: 'lucas.ferreira@empresa-exemplo.com.br',
             role: 'collaborator',
             department: 'Vendas Concessionária',
             jobTitle: 'Consultor de Vendas',
@@ -224,17 +262,20 @@ describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', 
       // Modal de credenciais geradas é exibido com botão para copiar credenciais completas
       expect(await screen.findByText(/Acesso Criado com Sucesso!/i)).toBeInTheDocument();
       expect(screen.getByText('Lucas Ferreira')).toBeInTheDocument();
-      expect(screen.getByText('lucas.ferreira@shineraybysabel.com.br')).toBeInTheDocument();
+      expect(screen.getByText('lucas.ferreira@empresa-exemplo.com.br')).toBeInTheDocument();
 
       const copyCredsBtn = screen.getByRole('button', { name: /Copiar Credenciais Completas/i });
       fireEvent.click(copyCredsBtn);
-      expect(navigator.clipboard.writeText).toHaveBeenCalled();
+      await waitFor(() => {
+        expect(navigator.clipboard.writeText).toHaveBeenCalled();
+        expect(screen.getByRole('status')).toHaveTextContent(/Credenciais completas copiadas!/i);
+      });
     });
 
     it('permite revogar acesso de um colaborador da lista do portal', async () => {
       vi.spyOn(microservicesApi, 'deleteUser').mockResolvedValue({ success: true });
 
-      render(<EmployeeManager />);
+      renderPage();
 
       const portalTab = await screen.findByRole('button', {
         name: /Portal do Colaborador \(Acessos\)/i,
@@ -247,6 +288,7 @@ describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', 
 
       await waitFor(() => {
         expect(microservicesApi.deleteUser).toHaveBeenCalledWith('u-colab-1');
+        expect(screen.getByRole('status')).toHaveTextContent(/revogado com sucesso/i);
       });
     });
   });
