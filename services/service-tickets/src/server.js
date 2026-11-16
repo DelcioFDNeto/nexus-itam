@@ -10,14 +10,19 @@ import cors from '@fastify/cors';
 import { pathToFileURL } from 'node:url';
 import { checkDbHealth, initDatabase, ticketsRepo } from '../../shared/db.js';
 import { publishDomainEvent } from '../../shared/eventBus.js';
-import { requireRoles, sanitizeText, verifyGatewayOrJwt } from '../../shared/security.js';
+import {
+  requireRoles,
+  sanitizeText,
+  sanitizeTicketAttachments,
+  verifyGatewayOrJwt,
+} from '../../shared/security.js';
 
 export async function buildTicketsService(opts = {}) {
   await initDatabase();
 
   const app = Fastify({
     logger: opts.logger ?? false,
-    bodyLimit: 1_048_576,
+    bodyLimit: 4_194_304,
     forceCloseConnections: true,
   });
 
@@ -109,12 +114,28 @@ export async function buildTicketsService(opts = {}) {
           required: ['title', 'description'],
           properties: {
             title: { type: 'string', minLength: 4, maxLength: 200 },
-            description: { type: 'string', minLength: 6, maxLength: 3000 },
+            description: { type: 'string', minLength: 3, maxLength: 3000 },
             category: { type: 'string', maxLength: 64 },
             priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
             department: { type: 'string', maxLength: 120 },
             assetId: { type: ['string', 'null'], maxLength: 64 },
             assetTag: { type: ['string', 'null'], maxLength: 64 },
+            attachments: {
+              type: 'array',
+              maxItems: 4,
+              items: {
+                type: 'object',
+                required: ['dataUrl'],
+                properties: {
+                  id: { type: 'string', maxLength: 64 },
+                  name: { type: 'string', maxLength: 140 },
+                  mimeType: { type: 'string', maxLength: 64 },
+                  sizeBytes: { type: 'number', minimum: 1, maximum: 1_000_000 },
+                  dataUrl: { type: 'string', minLength: 24, maxLength: 600_000 },
+                },
+                additionalProperties: false,
+              },
+            },
           },
           additionalProperties: false,
         },
@@ -123,6 +144,14 @@ export async function buildTicketsService(opts = {}) {
     async (request, reply) => {
       const user = verifyGatewayOrJwt(request);
       const body = request.body;
+      const rawAttachments = Array.isArray(body.attachments) ? body.attachments : [];
+      const attachments = sanitizeTicketAttachments(rawAttachments, { maxItems: 4 });
+      if (rawAttachments.length > 0 && attachments.length < rawAttachments.length) {
+        return reply.code(400).send({
+          error: 'INVALID_ATTACHMENT',
+          message: 'Formato ou tamanho de imagem inválido. Envie fotos/prints PNG, JPG, WEBP ou GIF.',
+        });
+      }
 
       const created = await ticketsRepo.create(
         user.tenantId,
@@ -134,6 +163,7 @@ export async function buildTicketsService(opts = {}) {
           department: sanitizeText(body.department || 'Corporativo', 120),
           assetId: body.assetId ? sanitizeText(body.assetId, 64) : null,
           assetTag: body.assetTag ? sanitizeText(body.assetTag, 64).toUpperCase() : null,
+          attachments,
         },
         user,
       );
@@ -146,6 +176,7 @@ export async function buildTicketsService(opts = {}) {
         requesterName: created.requester_name,
         requesterEmail: created.requester_email,
         assetTag: created.asset_tag,
+        attachmentsCount: attachments.length,
       });
 
       return reply.code(201).send(created);
@@ -212,9 +243,24 @@ export async function buildTicketsService(opts = {}) {
       schema: {
         body: {
           type: 'object',
-          required: ['message'],
           properties: {
-            message: { type: 'string', minLength: 1, maxLength: 2000 },
+            message: { type: 'string', maxLength: 2000 },
+            attachments: {
+              type: 'array',
+              maxItems: 4,
+              items: {
+                type: 'object',
+                required: ['dataUrl'],
+                properties: {
+                  id: { type: 'string', maxLength: 64 },
+                  name: { type: 'string', maxLength: 140 },
+                  mimeType: { type: 'string', maxLength: 64 },
+                  sizeBytes: { type: 'number', minimum: 1, maximum: 1_000_000 },
+                  dataUrl: { type: 'string', minLength: 24, maxLength: 600_000 },
+                },
+                additionalProperties: false,
+              },
+            },
           },
           additionalProperties: false,
         },
@@ -233,20 +279,43 @@ export async function buildTicketsService(opts = {}) {
         return reply.code(403).send({ error: 'FORBIDDEN', message: 'Acesso negado ao chamado.' });
       }
 
+      const cleanMessage = sanitizeText(request.body?.message || '', 2000);
+      const rawAttachments = Array.isArray(request.body?.attachments)
+        ? request.body.attachments
+        : [];
+      const attachments = sanitizeTicketAttachments(rawAttachments, { maxItems: 4 });
+      if (rawAttachments.length > 0 && attachments.length < rawAttachments.length) {
+        return reply.code(400).send({
+          error: 'INVALID_ATTACHMENT',
+          message: 'Formato ou tamanho de imagem inválido. Envie fotos/prints PNG, JPG, WEBP ou GIF.',
+        });
+      }
+      if (!cleanMessage && attachments.length === 0) {
+        return reply.code(400).send({
+          error: 'EMPTY_COMMENT',
+          message: 'Escreva uma mensagem ou anexe pelo menos uma foto/print.',
+        });
+      }
+
       const comment = await ticketsRepo.addComment(
         user.tenantId,
         request.params.id,
         user,
-        sanitizeText(request.body.message, 2000),
+        cleanMessage,
+        attachments,
       );
 
       await publishDomainEvent('ticket.commented', user.tenantId, {
+        commentId: comment.id,
         ticketId: ticket.id,
         protocol: ticket.protocol,
         requesterEmail: ticket.requester_email,
         authorName: comment.author_name,
+        authorEmail: comment.author_email,
         authorRole: comment.author_role,
         message: comment.message,
+        attachments: comment.attachments || [],
+        createdAt: comment.created_at,
       });
 
       return reply.code(201).send(comment);

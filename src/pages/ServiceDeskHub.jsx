@@ -9,15 +9,16 @@ import {
   Clock,
   ExternalLink,
   FileSignature,
+  Image as ImageIcon,
   Inbox,
   Laptop,
   Lock,
   MessageSquare,
   Monitor,
   Network,
+  Paperclip,
   RefreshCw,
   Search,
-  Send,
   Server,
   ShieldCheck,
   Tag,
@@ -40,6 +41,13 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../components/ConfirmDialog';
 import RemoteControlModal from '../components/RemoteControlModal';
+import TicketChatPanel from '../components/servicedesk/TicketChatPanel';
+import {
+  MAX_TICKET_ATTACHMENTS,
+  TICKET_QUICK_TEMPLATES,
+  extractClipboardImages,
+  processTicketImageFiles,
+} from '../utils/ticketMedia';
 import { buildBrandedPortalUrl } from '../utils/portalBranding';
 import {
   captureFocusTarget,
@@ -128,8 +136,10 @@ const ServiceDeskHub = () => {
   const [chainReport, setChainReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeTicketCommentId, setActiveTicketCommentId] = useState(null);
-  const [ticketCommentText, setTicketCommentText] = useState('');
+  const [ticketDetailMap, setTicketDetailMap] = useState({});
   const [ticketCommentsMap, setTicketCommentsMap] = useState({});
+  const [unreadTicketsMap, setUnreadTicketsMap] = useState({});
+  const [typingByTicket, setTypingByTicket] = useState({});
   const [loadingCommentsId, setLoadingCommentsId] = useState(null);
   const [ticketFilter, setTicketFilter] = useState('all');
   const [ticketSearch, setTicketSearch] = useState('');
@@ -137,6 +147,9 @@ const ServiceDeskHub = () => {
 
   const [isNewTicketModalOpen, setIsNewTicketModalOpen] = useState(false);
   const [submittingTicket, setSubmittingTicket] = useState(false);
+  const [newTicketAttachments, setNewTicketAttachments] = useState([]);
+  const [processingModalImages, setProcessingModalImages] = useState(false);
+  const [modalDropActive, setModalDropActive] = useState(false);
   const [newTicketForm, setNewTicketForm] = useState({
     title: '',
     description: '',
@@ -169,6 +182,9 @@ const ServiceDeskHub = () => {
   const commentsReqSeqRef = useRef(0);
   const newTicketModalRef = useRef(null);
   const newTermModalRef = useRef(null);
+  const newTicketFileInputRef = useRef(null);
+  const chatPanelWrapperRef = useRef(null);
+  const typingTimersRef = useRef({});
   const modalReturnFocusRef = useRef(null);
   const isModalSubmittingRef = useRef(false);
   const portalUrl = buildBrandedPortalUrl(resolvePortalUrl(), currentUser || gatewaySession?.user);
@@ -223,21 +239,56 @@ const ServiceDeskHub = () => {
     };
   }, [isNewTicketModalOpen, isNewTermModalOpen]);
 
+  const handleNewTicketFiles = async (fileList) => {
+    if (!fileList || fileList.length === 0) return;
+    setProcessingModalImages(true);
+    try {
+      const { added, errors } = await processTicketImageFiles(
+        fileList,
+        newTicketAttachments,
+        MAX_TICKET_ATTACHMENTS,
+      );
+      if (added.length > 0) {
+        setNewTicketAttachments((prev) => [...prev, ...added]);
+      }
+      if (errors.length > 0) {
+        toast.error(errors[0]);
+      }
+    } finally {
+      setProcessingModalImages(false);
+    }
+  };
+
+  const handleNewTicketPaste = async (e) => {
+    const imgs = extractClipboardImages(e.clipboardData);
+    if (imgs.length > 0) {
+      e.preventDefault();
+      await handleNewTicketFiles(imgs);
+    }
+  };
+
   const handleCreateNewTicket = async (e) => {
     e.preventDefault();
-    if (!newTicketForm.title.trim() || !newTicketForm.description.trim()) {
-      toast.error('Preencha o título e a descrição do chamado.');
+    if (!newTicketForm.title.trim()) {
+      toast.error('Preencha o título do chamado.');
+      return;
+    }
+    if (!newTicketForm.description.trim() && newTicketAttachments.length === 0) {
+      toast.error('Descreva o problema ou anexe pelo menos uma foto/print.');
       return;
     }
     setSubmittingTicket(true);
     try {
       const created = await microservicesApi.createTicket({
         title: newTicketForm.title.trim(),
-        description: newTicketForm.description.trim(),
+        description:
+          newTicketForm.description.trim() ||
+          'Evidência visual (foto/print) anexada na abertura do chamado.',
         category: newTicketForm.category,
         priority: newTicketForm.priority,
         department: newTicketForm.department || 'Corporativo',
         assetTag: newTicketForm.assetTag.trim() || null,
+        attachments: newTicketAttachments,
       });
       toast.success(`Chamado ${created?.protocol || ''} registrado com sucesso!`);
       setIsNewTicketModalOpen(false);
@@ -249,6 +300,13 @@ const ServiceDeskHub = () => {
         assetTag: '',
         department: 'TI Corporativa',
       });
+      setNewTicketAttachments([]);
+      if (created?.id) {
+        setTicketDetailMap((prev) => ({ ...prev, [created.id]: created }));
+        setTicketCommentsMap((prev) => ({ ...prev, [created.id]: [] }));
+        activeTicketCommentIdRef.current = created.id;
+        setActiveTicketCommentId(created.id);
+      }
       loadDomainData();
     } catch (err) {
       toast.error(err.message || 'Falha ao registrar novo chamado.');
@@ -355,18 +413,129 @@ const ServiceDeskHub = () => {
         },
         onFrame: (frame) => {
           if (!active) return;
-          const feedItem = {
-            ...frame,
-            _feedKey: frame?.id || `${frame?.event || 'evt'}-${Date.now()}-${++wsFeedSeqRef.current}`,
-          };
-          setWsFeed((prev) => [feedItem, ...prev].slice(0, 15));
+          const evt = String(frame?.event || '');
+          const data = frame?.data || {};
+          const myEmail = String(
+            gatewaySession?.user?.email || currentUser?.email || '',
+          )
+            .toLowerCase()
+            .trim();
+
+          if (evt === 'ticket.typing' && data.ticketId) {
+            const senderEmail = String(data.senderEmail || '').toLowerCase().trim();
+            if (senderEmail && senderEmail === myEmail) return;
+
+            if (typingTimersRef.current[data.ticketId]) {
+              clearTimeout(typingTimersRef.current[data.ticketId]);
+            }
+            if (data.isTyping === false) {
+              setTypingByTicket((prev) => {
+                const next = { ...prev };
+                delete next[data.ticketId];
+                return next;
+              });
+              return;
+            }
+            setTypingByTicket((prev) => ({
+              ...prev,
+              [data.ticketId]: {
+                senderName: data.senderName || 'Colaborador',
+                senderRole: data.senderRole || 'collaborator',
+              },
+            }));
+            typingTimersRef.current[data.ticketId] = setTimeout(() => {
+              setTypingByTicket((prev) => {
+                const next = { ...prev };
+                delete next[data.ticketId];
+                return next;
+              });
+            }, 3600);
+            return;
+          }
+
+          if (evt === 'ticket.commented' && data.ticketId) {
+            const senderEmail = String(data.authorEmail || '').toLowerCase().trim();
+            if (typingTimersRef.current[data.ticketId]) {
+              clearTimeout(typingTimersRef.current[data.ticketId]);
+            }
+            setTypingByTicket((prev) => {
+              if (!prev[data.ticketId]) return prev;
+              const next = { ...prev };
+              delete next[data.ticketId];
+              return next;
+            });
+
+            const incomingComment = {
+              id: data.commentId || `ws-${Date.now().toString(36)}`,
+              ticket_id: data.ticketId,
+              author_name: data.authorName || data.authorEmail || 'Participante',
+              author_email: data.authorEmail || '',
+              author_role: data.authorRole || 'collaborator',
+              message: data.message || '',
+              attachments: Array.isArray(data.attachments) ? data.attachments : [],
+              created_at: data.createdAt || frame?.timestamp || new Date().toISOString(),
+            };
+
+            setTicketCommentsMap((prev) => {
+              const existing = prev[data.ticketId] || [];
+              const duplicate = existing.some(
+                (cm) =>
+                  (incomingComment.id && cm.id === incomingComment.id) ||
+                  (cm.message === incomingComment.message &&
+                    String(cm.author_email || '').toLowerCase() === senderEmail &&
+                    Math.abs(
+                      new Date(cm.created_at).getTime() -
+                        new Date(incomingComment.created_at).getTime(),
+                    ) < 4000),
+              );
+              if (duplicate) return prev;
+              return { ...prev, [data.ticketId]: [...existing, incomingComment] };
+            });
+
+            setTickets((prev) =>
+              prev.map((tk) =>
+                tk.id === data.ticketId
+                  ? {
+                      ...tk,
+                      comments_count: Number(tk.comments_count || 0) + 1,
+                      attachments_count:
+                        Number(tk.attachments_count || 0) + (incomingComment.attachments?.length || 0),
+                      last_message_at: incomingComment.created_at,
+                      last_message_preview:
+                        incomingComment.message?.trim() ||
+                        (incomingComment.attachments?.length ? '📷 Imagem anexada' : ''),
+                    }
+                  : tk,
+              ),
+            );
+
+            if (activeTicketCommentIdRef.current !== data.ticketId && senderEmail !== myEmail) {
+              setUnreadTicketsMap((prev) => ({
+                ...prev,
+                [data.ticketId]: (prev[data.ticketId] || 0) + 1,
+              }));
+              toast.info(
+                `Nova mensagem em ${data.protocol || 'chamado'} (${incomingComment.author_name})`,
+              );
+            }
+          }
+
+          if (evt !== 'ticket.typing') {
+            const feedItem = {
+              ...frame,
+              _feedKey:
+                frame?.id || `${frame?.event || 'evt'}-${Date.now()}-${++wsFeedSeqRef.current}`,
+            };
+            setWsFeed((prev) => [feedItem, ...prev].slice(0, 15));
+          }
+
           const isBusinessEvent =
-            frame?.event &&
-            (frame.event.startsWith('ticket.') ||
-              frame.event.startsWith('term.') ||
-              frame.event.startsWith('audit.') ||
-              frame.event === 'cluster.sync');
-          if (isBusinessEvent) {
+            evt &&
+            (evt.startsWith('ticket.') ||
+              evt.startsWith('term.') ||
+              evt.startsWith('audit.') ||
+              evt === 'cluster.sync');
+          if (isBusinessEvent && evt !== 'ticket.typing') {
             debouncedLoadDomainData();
           }
         },
@@ -380,8 +549,10 @@ const ServiceDeskHub = () => {
         clearTimeout(refreshTimeoutRef.current);
       }
       wsRef.current?.close();
+      Object.values(typingTimersRef.current).forEach((timerId) => clearTimeout(timerId));
+      typingTimersRef.current = {};
     };
-  }, [debouncedLoadDomainData, gatewaySession?.token]);
+  }, [debouncedLoadDomainData, gatewaySession?.token, gatewaySession?.user?.email, currentUser?.email]);
 
   const handleConnectGateway = async (e) => {
     e.preventDefault();
@@ -429,15 +600,23 @@ const ServiceDeskHub = () => {
     setRemoteModalDevice(null);
   };
 
-  const handleResolveTicket = async (ticketId, nextStatus) => {
+  const handleResolveTicket = async (ticketId, nextStatus, customNotes = '') => {
     try {
-      await microservicesApi.updateTicketStatus(ticketId, {
+      const notes =
+        String(customNotes || '').trim() ||
+        (nextStatus === 'resolved'
+          ? 'Atendimento técnico concluído. Solicitação atendida conforme o SLA corporativo.'
+          : 'Chamado assumido pela equipe de TI & Infraestrutura.');
+      const updated = await microservicesApi.updateTicketStatus(ticketId, {
         status: nextStatus,
-        resolutionNotes:
-          nextStatus === 'resolved'
-            ? 'Atendimento técnico concluído. Solicitação atendida conforme o SLA corporativo.'
-            : 'Chamado assumido pela equipe de TI & Infraestrutura.',
+        resolutionNotes: notes,
       });
+      if (updated?.id) {
+        setTickets((prev) => prev.map((t) => (t.id === ticketId ? { ...t, ...updated } : t)));
+        setTicketDetailMap((prev) =>
+          prev[ticketId] ? { ...prev, [ticketId]: { ...prev[ticketId], ...updated } } : prev,
+        );
+      }
       toast.success(`Status do chamado atualizado para ${STATUS_NAMES[nextStatus]}.`);
       loadDomainData();
     } catch (err) {
@@ -458,6 +637,10 @@ const ServiceDeskHub = () => {
     try {
       await microservicesApi.deleteTicket(ticketId);
       setTickets((prev) => prev.filter((t) => t.id !== ticketId));
+      if (activeTicketCommentIdRef.current === ticketId) {
+        activeTicketCommentIdRef.current = null;
+        setActiveTicketCommentId(null);
+      }
       toast.success(`Chamado ${protocol || ''} excluído com sucesso.`);
       loadDomainData();
     } catch (err) {
@@ -476,13 +659,27 @@ const ServiceDeskHub = () => {
     activeTicketCommentIdRef.current = ticketId;
     setActiveTicketCommentId(ticketId);
     setLoadingCommentsId(ticketId);
+    setUnreadTicketsMap((prev) => {
+      if (!prev[ticketId]) return prev;
+      const next = { ...prev };
+      delete next[ticketId];
+      return next;
+    });
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      window.requestAnimationFrame(() => {
+        chatPanelWrapperRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+      });
+    }
     try {
       const detail = await microservicesApi.getTicketById(ticketId);
       if (reqSeq !== commentsReqSeqRef.current || activeTicketCommentIdRef.current !== ticketId) {
         return;
       }
-      if (detail?.comments) {
-        setTicketCommentsMap((prev) => ({ ...prev, [ticketId]: detail.comments }));
+      if (detail) {
+        setTicketDetailMap((prev) => ({ ...prev, [ticketId]: detail }));
+        if (detail.comments) {
+          setTicketCommentsMap((prev) => ({ ...prev, [ticketId]: detail.comments }));
+        }
       }
     } catch (err) {
       if (reqSeq === commentsReqSeqRef.current && activeTicketCommentIdRef.current === ticketId) {
@@ -495,24 +692,83 @@ const ServiceDeskHub = () => {
     }
   };
 
-  const handleSendTicketComment = async (ticketId) => {
-    const text = ticketCommentText.trim();
-    if (!text) return;
+  const handleSendTicketComment = async (ticketId, payload) => {
+    const cleanMessage =
+      typeof payload === 'string' ? payload.trim() : String(payload?.message || '').trim();
+    const cleanAttachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
+    if (!cleanMessage && cleanAttachments.length === 0) return false;
     try {
-      const added = await microservicesApi.addTicketComment(ticketId, text);
+      const added = await microservicesApi.addTicketComment(ticketId, {
+        message: cleanMessage,
+        attachments: cleanAttachments,
+      });
       if (added) {
-        setTicketCommentsMap((prev) => ({
-          ...prev,
-          [ticketId]: [...(prev[ticketId] || []), added],
-        }));
+        setTicketCommentsMap((prev) => {
+          const cur = prev[ticketId] || [];
+          if (cur.some((cm) => cm.id === added.id)) return prev;
+          return { ...prev, [ticketId]: [...cur, added] };
+        });
+        setTickets((prev) =>
+          prev.map((tk) =>
+            tk.id === ticketId
+              ? {
+                  ...tk,
+                  comments_count: Number(tk.comments_count || 0) + 1,
+                  attachments_count:
+                    Number(tk.attachments_count || 0) + (added.attachments?.length || 0),
+                  last_message_at: added.created_at,
+                  last_message_preview:
+                    added.message?.trim() || (added.attachments?.length ? '📷 Imagem anexada' : ''),
+                }
+              : tk,
+          ),
+        );
       }
-      toast.success('Mensagem enviada e sincronizada instantaneamente com o colaborador.');
-      setTicketCommentText('');
       loadDomainData();
+      return true;
     } catch (err) {
       toast.error(err.message);
+      return false;
     }
   };
+
+  const handleTypingForTicket = useCallback((ticket, isTyping) => {
+    if (!ticket?.id) return;
+    wsRef.current?.sendTicketTyping?.({
+      ticketId: ticket.id,
+      requesterEmail: ticket.requester_email || '',
+      isTyping,
+    });
+  }, []);
+
+  const findDeviceForTicket = useCallback(
+    (tk) => {
+      if (!tk?.asset_tag) return null;
+      const needle = String(tk.asset_tag).toUpperCase().trim();
+      const found = (fleet.devices || []).find(
+        (d) => String(d.assetTag || d.internalId || '').toUpperCase().trim() === needle,
+      );
+      if (found) return found;
+      return {
+        assetTag: tk.asset_tag,
+        hostname: tk.asset_tag,
+        loggedUser: tk.requester_name || tk.requester_email || 'Colaborador',
+      };
+    },
+    [fleet.devices],
+  );
+
+  const selectedActiveTicket = useMemo(() => {
+    if (!activeTicketCommentId) return null;
+    const fromList = tickets.find((t) => t.id === activeTicketCommentId);
+    const detailed = ticketDetailMap[activeTicketCommentId];
+    if (!fromList && !detailed) return null;
+    return {
+      ...(detailed || {}),
+      ...(fromList || {}),
+      attachments: detailed?.attachments || fromList?.attachments || [],
+    };
+  }, [activeTicketCommentId, tickets, ticketDetailMap]);
 
   const handleCreateNewTerm = async (e) => {
     e.preventDefault();
@@ -1326,7 +1582,11 @@ const ServiceDeskHub = () => {
                     return (
                       <div
                         key={tk.id}
-                        className="surface-card p-4 space-y-3 hover:border-slate-300 dark:hover:border-zinc-700 transition-colors"
+                        className={`surface-card p-4 space-y-3 transition-all ${
+                          activeTicketCommentId === tk.id
+                            ? 'ring-2 ring-brand/50 border-brand/40'
+                            : 'hover:border-slate-300 dark:hover:border-zinc-700'
+                        }`}
                       >
                         {/* Linha 1: Protocolo, Tag, Categoria, Prioridade com Dot, Status */}
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1334,6 +1594,11 @@ const ServiceDeskHub = () => {
                             <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-900 text-white dark:bg-zinc-800 border border-slate-700 dark:border-zinc-700">
                               {tk.protocol}
                             </span>
+                            {unreadTicketsMap[tk.id] > 0 && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-brand text-brand-fg text-[10px] font-bold">
+                                +{unreadTicketsMap[tk.id]} nova
+                              </span>
+                            )}
                             {tk.asset_tag && (
                               <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 flex items-center gap-1">
                                 <Laptop size={12} />
@@ -1343,6 +1608,15 @@ const ServiceDeskHub = () => {
                             {tk.category && (
                               <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
                                 {CATEGORY_NAMES[tk.category] || tk.category}
+                              </span>
+                            )}
+                            {Number(tk.attachments_count) > 0 && (
+                              <span
+                                title={`${tk.attachments_count} foto(s)/print(s) anexado(s)`}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300"
+                              >
+                                <ImageIcon size={11} />
+                                {tk.attachments_count}
                               </span>
                             )}
                           </div>
@@ -1366,13 +1640,22 @@ const ServiceDeskHub = () => {
                           </div>
                         </div>
 
-                        {/* Linha 2: Título e Descrição */}
+                        {/* Linha 2: Título, Descrição e Última Mensagem do Chat */}
                         <div>
                           <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-50 leading-snug">
                             {tk.title}
                           </h3>
-                          <p className="mt-1 text-xs text-slate-600 dark:text-zinc-400 leading-relaxed line-clamp-3">
-                            {tk.description}
+                          <p className="mt-1 text-xs text-slate-600 dark:text-zinc-400 leading-relaxed line-clamp-2">
+                            {tk.last_message_preview ? (
+                              <>
+                                <span className="font-semibold text-slate-700 dark:text-zinc-300">
+                                  Última msg:{' '}
+                                </span>
+                                {tk.last_message_preview}
+                              </>
+                            ) : (
+                              tk.description
+                            )}
                           </p>
                         </div>
 
@@ -1469,82 +1752,18 @@ const ServiceDeskHub = () => {
                             type="button"
                             onClick={() => handleToggleTicketComments(tk.id)}
                             aria-expanded={activeTicketCommentId === tk.id}
-                            className="min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold tabular-nums text-slate-600 dark:text-zinc-300 hover:text-brand-aa hover:bg-slate-50 dark:hover:bg-zinc-900 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                            className={`min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold tabular-nums transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                              activeTicketCommentId === tk.id
+                                ? 'bg-brand text-brand-fg shadow-xs'
+                                : 'text-slate-700 dark:text-zinc-200 hover:text-brand-aa hover:bg-slate-50 dark:hover:bg-zinc-900 border border-slate-200 dark:border-zinc-800'
+                            }`}
                           >
                             <MessageSquare size={13} />
                             <span>
                               Diálogo Técnico ({ticketCommentsMap[tk.id]?.length ?? tk.comments_count ?? 0})
                             </span>
-                            {activeTicketCommentId === tk.id ? (
-                              <ChevronUp size={13} />
-                            ) : (
-                              <ChevronDown size={13} />
-                            )}
                           </button>
                         </div>
-
-                        {/* Technical Dialog Drawer */}
-                        {activeTicketCommentId === tk.id && (
-                          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800 space-y-2.5">
-                            {loadingCommentsId === tk.id ? (
-                              <p className="text-xs text-slate-500 dark:text-zinc-400 italic py-1">
-                                Carregando histórico de mensagens…
-                              </p>
-                            ) : (ticketCommentsMap[tk.id] || tk.comments || []).length === 0 ? (
-                              <p className="text-xs text-slate-500 dark:text-zinc-400 italic py-1">
-                                Nenhuma mensagem registrada neste chamado até o momento.
-                              </p>
-                            ) : (
-                              <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                                {(ticketCommentsMap[tk.id] || tk.comments || []).map((cm) => (
-                                  <div
-                                    key={cm.id}
-                                    className="rounded-lg bg-slate-50 dark:bg-zinc-900/70 border border-slate-200/80 dark:border-zinc-800 p-2.5 text-xs"
-                                  >
-                                    <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-zinc-400 mb-1">
-                                      <span className="font-bold text-slate-800 dark:text-zinc-200">
-                                        {cm.author_name || cm.author_email}
-                                      </span>
-                                      <span className="tabular-nums">{formatRelativeTime(cm.created_at)}</span>
-                                    </div>
-                                    <p className="text-slate-700 dark:text-zinc-300 leading-relaxed">
-                                      {cm.message}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            <div className="flex gap-2">
-                              <label htmlFor={`ticket-comment-input-${tk.id}`} className="sr-only">
-                                Mensagem técnica para o chamado {tk.protocol}
-                              </label>
-                              <input
-                                id={`ticket-comment-input-${tk.id}`}
-                                name="ticketComment"
-                                type="text"
-                                value={ticketCommentText}
-                                onChange={(e) => setTicketCommentText(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleSendTicketComment(tk.id);
-                                }}
-                                placeholder="Digite uma mensagem técnica para o solicitante…"
-                                className="flex-1 min-h-[44px] rounded-lg border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-xs text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleSendTicketComment(tk.id)}
-                                className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-bold text-brand-fg hover:bg-brand-dark active:opacity-90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-                              >
-                                <Send size={12} />
-                                <span>Enviar</span>
-                              </button>
-                            </div>
-                            <p className="text-xs text-slate-500 dark:text-zinc-400">
-                              A mensagem é transmitida imediatamente ao Portal do Colaborador.
-                            </p>
-                          </div>
-                        )}
                       </div>
                     );
                   })
@@ -1552,8 +1771,38 @@ const ServiceDeskHub = () => {
               </div>
             </div>
 
-            {/* Right Column: Telemetry Fleet, Terms, Live Feed */}
-            <div className="lg:col-span-5 space-y-5">
+            {/* Right Column: Live Ticket Chat Panel + Telemetry Fleet, Terms, Live Feed */}
+            <div ref={chatPanelWrapperRef} className="lg:col-span-5 space-y-5">
+              {selectedActiveTicket && (
+                <TicketChatPanel
+                  ticket={selectedActiveTicket}
+                  comments={
+                    ticketCommentsMap[selectedActiveTicket.id] ||
+                    selectedActiveTicket.comments ||
+                    []
+                  }
+                  loading={loadingCommentsId === selectedActiveTicket.id}
+                  wsStatus={wsStatus}
+                  typingUser={typingByTicket[selectedActiveTicket.id] || null}
+                  matchingDevice={
+                    selectedActiveTicket.asset_tag
+                      ? findDeviceForTicket(selectedActiveTicket)
+                      : null
+                  }
+                  onClose={() => {
+                    activeTicketCommentIdRef.current = null;
+                    setActiveTicketCommentId(null);
+                  }}
+                  onSendMessage={(payload) =>
+                    handleSendTicketComment(selectedActiveTicket.id, payload)
+                  }
+                  onTyping={(isTyping) => handleTypingForTicket(selectedActiveTicket, isTyping)}
+                  onUpdateStatus={(nextStatus, notes) =>
+                    handleResolveTicket(selectedActiveTicket.id, nextStatus, notes)
+                  }
+                  onOpenRemote={(dev) => setRemoteModalDevice(dev)}
+                />
+              )}
               {/* Fleet Telemetry (RMM) */}
               <div className="surface-card p-4 space-y-3">
                 <div className="flex items-center justify-between">
@@ -2060,7 +2309,53 @@ const ServiceDeskHub = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateNewTicket} className="space-y-4">
+            <form
+              onSubmit={handleCreateNewTicket}
+              onPaste={handleNewTicketPaste}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setModalDropActive(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setModalDropActive(false);
+              }}
+              onDrop={async (e) => {
+                e.preventDefault();
+                setModalDropActive(false);
+                if (e.dataTransfer?.files?.length) {
+                  await handleNewTicketFiles(e.dataTransfer.files);
+                }
+              }}
+              className="space-y-4"
+            >
+              {/* Atalhos Rápidos em 1 clique */}
+              <div>
+                <span className="block text-[11px] font-bold text-slate-600 dark:text-zinc-300 mb-1.5 uppercase tracking-wider">
+                  Atalhos rápidos
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {TICKET_QUICK_TEMPLATES.map((tpl) => (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      onClick={() =>
+                        setNewTicketForm((p) => ({
+                          ...p,
+                          title: tpl.title,
+                          description: tpl.description,
+                          category: tpl.category,
+                          priority: tpl.priority,
+                        }))
+                      }
+                      className="rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-zinc-200 hover:border-brand hover:text-brand-aa transition-colors"
+                    >
+                      {tpl.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div>
                 <label
                   htmlFor="new-ticket-title"
@@ -2143,6 +2438,7 @@ const ServiceDeskHub = () => {
                     id="new-ticket-asset-tag"
                     name="assetTag"
                     type="text"
+                    list="servicedesk-fleet-tags"
                     value={newTicketForm.assetTag}
                     onChange={(e) =>
                       setNewTicketForm((p) => ({ ...p, assetTag: e.target.value }))
@@ -2150,6 +2446,17 @@ const ServiceDeskHub = () => {
                     placeholder="Ex: NTB-001"
                     className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3.5 py-2.5 text-xs sm:text-sm font-mono text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand uppercase"
                   />
+                  <datalist id="servicedesk-fleet-tags">
+                    {(fleet.devices || []).map((dev, idx) => {
+                      const tagValue = dev.assetTag || dev.internalId || dev.device_key || dev.hostname;
+                      if (!tagValue) return null;
+                      return (
+                        <option key={dev.id || tagValue || idx} value={tagValue}>
+                          {dev.hostname || tagValue} ({dev.loggedUser || dev.os_version || 'Estação'})
+                        </option>
+                      );
+                    })}
+                  </datalist>
                 </div>
 
                 <div>
@@ -2183,7 +2490,7 @@ const ServiceDeskHub = () => {
                 <textarea
                   id="new-ticket-description"
                   name="description"
-                  required
+                  required={newTicketAttachments.length === 0}
                   rows={3}
                   value={newTicketForm.description}
                   onChange={(e) =>
@@ -2192,6 +2499,78 @@ const ServiceDeskHub = () => {
                   placeholder="Descreva o sintoma observado, mensagem de erro ou equipamento afetado…"
                   className="w-full rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 p-3 text-xs sm:text-sm text-slate-900 dark:text-zinc-50 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand resize-none"
                 />
+              </div>
+
+              {/* Anexo de Fotos e Prints (Ctrl+V / arrastar / selecionar) */}
+              <div className="space-y-2">
+                <span className="block text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider">
+                  Fotos ou Prints de Evidência (Opcional, até {MAX_TICKET_ATTACHMENTS})
+                </span>
+                <input
+                  ref={newTicketFileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="sr-only"
+                  onChange={async (e) => {
+                    await handleNewTicketFiles(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+                <div
+                  className={`rounded-xl border-2 border-dashed p-3 transition-colors space-y-2 ${
+                    modalDropActive
+                      ? 'border-brand bg-brand/10'
+                      : 'border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900/70'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={
+                        processingModalImages ||
+                        newTicketAttachments.length >= MAX_TICKET_ATTACHMENTS
+                      }
+                      onClick={() => newTicketFileInputRef.current?.click()}
+                      className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:border-brand disabled:opacity-50"
+                    >
+                      <Paperclip size={13} />
+                      <span>Anexar print / foto</span>
+                    </button>
+                    <span className="text-[11px] text-slate-500 dark:text-zinc-400">
+                      ou cole um print aqui com Ctrl+V
+                    </span>
+                  </div>
+
+                  {newTicketAttachments.length > 0 && (
+                    <div className="grid grid-cols-4 gap-2">
+                      {newTicketAttachments.map((att) => (
+                        <div
+                          key={att.id}
+                          className="relative rounded-lg overflow-hidden border border-slate-200 dark:border-zinc-700 aspect-square"
+                        >
+                          <img
+                            src={att.dataUrl}
+                            alt={att.name}
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            aria-label={`Remover ${att.name}`}
+                            onClick={() =>
+                              setNewTicketAttachments((prev) =>
+                                prev.filter((item) => item.id !== att.id),
+                              )
+                            }
+                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-slate-900/85 text-white flex items-center justify-center hover:bg-rose-600"
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100 dark:border-zinc-800">
@@ -2205,7 +2584,7 @@ const ServiceDeskHub = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingTicket}
+                  disabled={submittingTicket || processingModalImages}
                   className="min-h-[44px] rounded-xl bg-brand hover:bg-brand-dark px-4 py-2 text-xs font-bold text-brand-fg shadow-md active:opacity-90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   {submittingTicket ? (

@@ -1,6 +1,6 @@
 // src/pages/ServiceDeskHub.test.jsx
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ServiceDeskHub from './ServiceDeskHub';
 import { ConfirmProvider } from '../components/ConfirmDialog';
@@ -290,5 +290,164 @@ describe('ServiceDeskHub (Integração Console React 19 <-> Malha Fastify)', () 
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('permite aplicar atalho rápido e anexar imagem no modal de novo chamado', async () => {
+    const user = { id: 'u-1', name: 'TI Operações', role: 'owner', tenantId: 'tenant-corp' };
+    setGatewaySession('jwt-test-token', user);
+
+    render(<ServiceDeskHub />);
+    expect(await screen.findByText('CHM-2026-0001')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Novo Chamado'));
+    expect(await screen.findByText('Novo Chamado Técnico')).toBeInTheDocument();
+
+    // Aplica template em 1 clique
+    fireEvent.click(screen.getByRole('button', { name: 'VPN / Acesso' }));
+    const titleInput = screen.getByPlaceholderText(/Falha na conexão VPN corporativa/i);
+    expect(titleInput.value).toBe('Falha na conexão VPN corporativa');
+
+    // Anexa print PNG no modal
+    const modal = screen.getByRole('dialog');
+    const fileInput = modal.querySelector('input[type="file"]');
+    const tinyPngBytes = Uint8Array.from(
+      atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='),
+      (c) => c.charCodeAt(0),
+    );
+    const pngFile = new File([tinyPngBytes], 'vpn-erro.png', { type: 'image/png' });
+    fireEvent.change(fileInput, { target: { files: [pngFile] } });
+
+    expect(await screen.findByAltText(/vpn-erro/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Abrir Chamado/i }));
+
+    await waitFor(() => {
+      expect(microservicesApi.createTicket).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Falha na conexão VPN corporativa',
+          category: 'network',
+          attachments: expect.arrayContaining([
+            expect.objectContaining({
+              dataUrl: expect.stringMatching(/^data:image\/(png|jpeg);base64,/),
+            }),
+          ]),
+        }),
+      );
+    });
+  });
+
+  it('abre chat em tempo real no TicketChatPanel, exibe indicador digitando e envia mensagem com print', async () => {
+    const user = { id: 'u-1', name: 'TI Operações', role: 'owner', tenantId: 'tenant-corp' };
+    setGatewaySession('jwt-test-token', user);
+
+    const samplePng =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+    let capturedHandlers = null;
+    vi.spyOn(microservicesApi, 'openNexusDeskSocket').mockImplementation((_token, handlers) => {
+      capturedHandlers = handlers;
+      handlers?.onStatus?.('connected');
+      handlers?.onFrame?.({ event: 'welcome', role: 'owner' });
+      return {
+        ping: vi.fn(),
+        close: vi.fn(),
+        pushLiveTelemetry: vi.fn(),
+        pushRemoteControl: vi.fn(),
+        sendTicketTyping: vi.fn(),
+      };
+    });
+
+    vi.spyOn(microservicesApi, 'getTicketById').mockResolvedValue({
+      id: 'tkt-1',
+      protocol: 'CHM-2026-0001',
+      asset_tag: 'NTB-001',
+      requester_name: 'Karen Matos',
+      requester_email: 'karen.matos@empresa.com.br',
+      department: 'Financeiro',
+      title: 'Lentidão na VPN corporativa',
+      description: 'Oscilação no túnel WireGuard.',
+      category: 'network',
+      status: 'open',
+      priority: 'high',
+      attachments: [{ id: 'att-open-1', name: 'print-abertura.png', dataUrl: samplePng, sizeBytes: 120 }],
+      comments: [],
+    });
+
+    const addCommentSpy = vi.spyOn(microservicesApi, 'addTicketComment').mockResolvedValue({
+      id: 'cm-99',
+      ticket_id: 'tkt-1',
+      author_name: 'TI Operações',
+      author_email: 'ti@empresa.com.br',
+      author_role: 'owner',
+      message: 'Analisando seu túnel agora.',
+      attachments: [],
+      created_at: new Date().toISOString(),
+    });
+
+    render(
+      <ConfirmProvider>
+        <ServiceDeskHub />
+      </ConfirmProvider>,
+    );
+
+    expect(await screen.findByText('CHM-2026-0001')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Diálogo Técnico/i }));
+
+    expect(await screen.findByAltText('print-abertura.png')).toBeInTheDocument();
+
+    // Simula evento WebSocket de colaborador digitando
+    act(() => {
+      capturedHandlers?.onFrame?.({
+        event: 'ticket.typing',
+        data: {
+          ticketId: 'tkt-1',
+          senderName: 'Karen Matos',
+          senderEmail: 'karen.matos@empresa.com.br',
+          senderRole: 'collaborator',
+          isTyping: true,
+        },
+      });
+    });
+
+    expect(await screen.findByText(/Karen Matos está digitando/i)).toBeInTheDocument();
+
+    // Simula mensagem recebida com print via WebSocket
+    act(() => {
+      capturedHandlers?.onFrame?.({
+        event: 'ticket.commented',
+        data: {
+          commentId: 'cm-ws-1',
+          ticketId: 'tkt-1',
+          protocol: 'CHM-2026-0001',
+          authorName: 'Karen Matos',
+          authorEmail: 'karen.matos@empresa.com.br',
+          authorRole: 'collaborator',
+          message: 'Acabou de travar aqui de novo.',
+          attachments: [{ id: 'att-ws-1', name: 'tela-travada.png', dataUrl: samplePng, sizeBytes: 240 }],
+          createdAt: new Date().toISOString(),
+        },
+      });
+    });
+
+    const chatPanel = screen.getByRole('region', {
+      name: /Atendimento em tempo real do chamado CHM-2026-0001/i,
+    });
+    expect(await within(chatPanel).findByText('Acabou de travar aqui de novo.')).toBeInTheDocument();
+    expect(within(chatPanel).getByAltText('tela-travada.png')).toBeInTheDocument();
+
+    // Envia resposta no chat
+    const chatInput = within(chatPanel).getByLabelText('Mensagem do atendimento');
+    fireEvent.change(chatInput, { target: { value: 'Analisando seu túnel agora.' } });
+    fireEvent.click(within(chatPanel).getByRole('button', { name: 'Enviar mensagem no chat' }));
+
+    await waitFor(() => {
+      expect(addCommentSpy).toHaveBeenCalledWith('tkt-1', {
+        message: 'Analisando seu túnel agora.',
+        attachments: [],
+      });
+    });
+
+    expect(await within(chatPanel).findByText('Analisando seu túnel agora.')).toBeInTheDocument();
   });
 });

@@ -424,3 +424,47 @@ export function sanitizeText(value, maxLength = 500) {
     .trim()
     .slice(0, maxLength);
 }
+
+const ALLOWED_IMAGE_DATA_URL_RE = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/i;
+const MIME_FROM_DATA_URL_RE = /^data:(image\/(?:png|jpeg|jpg|webp|gif));base64,/i;
+
+/**
+ * Sanitizes image attachments encoded as base64 Data URLs for tickets and chat comments.
+ * Rejects SVG and non-raster payloads to prevent stored XSS and enforces payload bounds.
+ */
+export function sanitizeTicketAttachments(
+  rawList,
+  { maxItems = 4, maxDataUrlLength = 520_000 } = {},
+) {
+  if (!Array.isArray(rawList) || rawList.length === 0) return [];
+  const sanitized = [];
+
+  for (const item of rawList.slice(0, maxItems)) {
+    if (!item || typeof item !== 'object') continue;
+    const rawUrl = typeof item.dataUrl === 'string' ? item.dataUrl.trim() : '';
+    if (!rawUrl || rawUrl.length > maxDataUrlLength) continue;
+    if (!ALLOWED_IMAGE_DATA_URL_RE.test(rawUrl)) continue;
+
+    const mimeMatch = rawUrl.match(MIME_FROM_DATA_URL_RE);
+    const detectedMime = (mimeMatch ? mimeMatch[1] : 'image/jpeg').toLowerCase();
+    const normalizedMime = detectedMime === 'image/jpg' ? 'image/jpeg' : detectedMime;
+    const rawName = sanitizeText(item.name || 'evidencia.jpg', 120) || 'evidencia.jpg';
+    const rawId = sanitizeText(item.id || '', 64);
+    const approxBytes = Math.floor((rawUrl.length * 3) / 4);
+    const declaredSize = Number(item.sizeBytes);
+    const sizeBytes =
+      Number.isFinite(declaredSize) && declaredSize > 0
+        ? Math.min(Math.round(declaredSize), 1_000_000)
+        : approxBytes;
+
+    sanitized.push({
+      id: rawId || `att-${sanitized.length + 1}`,
+      name: rawName,
+      mimeType: normalizedMime,
+      sizeBytes,
+      dataUrl: rawUrl,
+    });
+  }
+
+  return sanitized;
+}

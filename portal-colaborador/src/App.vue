@@ -149,6 +149,8 @@ const loadError = ref('');
 const wsState = ref('disconnected');
 const liveBanner = ref('');
 const preselectedTag = ref('');
+const latestTicketEvent = ref(null);
+const unreadTicketMessages = ref(0);
 
 const emailInputRef = ref(null);
 const passwordInputRef = ref(null);
@@ -324,12 +326,19 @@ const termsSummary = computed(() => {
 const portalTabs = computed(() => [
   { id: 'custody', label: `Meus equipamentos (${assets.value.length})` },
   { id: 'terms', label: 'Termos de responsabilidade', badge: pendingTermsCount.value },
-  { id: 'tickets', label: `Central de chamados (${tickets.value.length})` },
+  {
+    id: 'tickets',
+    label: `Central de chamados (${tickets.value.length})`,
+    badge: unreadTicketMessages.value,
+  },
 ]);
 
 function selectTab(tabId) {
   if (!VALID_TABS.includes(tabId)) return;
   activeTab.value = tabId;
+  if (tabId === 'tickets') {
+    unreadTicketMessages.value = 0;
+  }
 }
 
 function onTabKeydown(event) {
@@ -382,6 +391,10 @@ function scheduleBackgroundRefresh() {
   }, 1500);
 }
 
+function sendTicketTyping(payload) {
+  streamHandle?.sendTicketTyping(payload);
+}
+
 function startWebSocket() {
   if (streamHandle) streamHandle.disconnect();
   if (!session.value?.token) return;
@@ -391,6 +404,28 @@ function startWebSocket() {
     (frame) => {
       const evt = String(frame?.event || '');
       if (!evt || evt === 'welcome' || evt === 'pong') return;
+
+      if (evt.startsWith('ticket.')) {
+        latestTicketEvent.value = {
+          event: evt,
+          data: frame?.data || {},
+          timestamp: frame?.timestamp || new Date().toISOString(),
+          seq: Date.now() + Math.random(),
+        };
+        if (evt === 'ticket.typing') {
+          return;
+        }
+        const senderEmail = String(frame?.data?.authorEmail || '').toLowerCase().trim();
+        const myEmail = String(session.value?.user?.email || '').toLowerCase().trim();
+        if (evt === 'ticket.commented' && senderEmail && senderEmail === myEmail) {
+          scheduleBackgroundRefresh();
+          return;
+        }
+        if (evt === 'ticket.commented' && activeTab.value !== 'tickets') {
+          unreadTicketMessages.value += 1;
+        }
+      }
+
       const isBusinessEvent =
         evt.startsWith('ticket.') ||
         evt.startsWith('term.') ||
@@ -399,7 +434,10 @@ function startWebSocket() {
         evt === 'cluster.sync';
       if (!isBusinessEvent) return;
 
-      liveBanner.value = `Atualização recebida em tempo real (${evt}) via NexusDesk`;
+      liveBanner.value =
+        evt === 'ticket.commented'
+          ? `Nova mensagem no chamado ${frame?.data?.protocol || ''} de ${frame?.data?.authorName || 'TI'}`
+          : `Atualização recebida em tempo real (${evt}) via NexusDesk`;
       scheduleBackgroundRefresh();
       clearTimeout(bannerTimer);
       bannerTimer = setTimeout(() => {
@@ -480,6 +518,8 @@ function handleLogout(reason = '') {
   tickets.value = [];
   wsState.value = 'disconnected';
   liveBanner.value = '';
+  latestTicketEvent.value = null;
+  unreadTicketMessages.value = 0;
   loginForm.password = '';
   showPassword.value = false;
   fieldErrors.email = '';
@@ -1181,10 +1221,15 @@ onBeforeUnmount(() => {
           :loading="loading"
           :error="loadError"
           :user-department="session.user.department || 'Geral'"
+          :user-email="session.user.email || ''"
+          :ws-state="wsState"
+          :live-event="latestTicketEvent"
           :preselected-asset-tag="preselectedTag"
           @retry="loadWorkspaceData"
           @clear-preselected="preselectedTag = ''"
           @created="loadWorkspaceData"
+          @send-typing="sendTicketTyping"
+          @sync-tickets="loadWorkspaceData({ background: true })"
         />
       </div>
     </main>

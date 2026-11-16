@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS tickets_svc.tickets (
     description TEXT NOT NULL,
     assigned_tech_name VARCHAR(160),
     resolution_notes TEXT,
+    attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
     sla_due_at TIMESTAMPTZ NOT NULL,
     resolved_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -121,9 +122,16 @@ CREATE TABLE IF NOT EXISTS tickets_svc.ticket_comments (
     author_name VARCHAR(160) NOT NULL,
     author_email VARCHAR(180) NOT NULL,
     author_role VARCHAR(32) NOT NULL,
-    message TEXT NOT NULL,
+    message TEXT NOT NULL DEFAULT '',
+    attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE tickets_svc.tickets
+    ADD COLUMN IF NOT EXISTS attachments JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+ALTER TABLE tickets_svc.ticket_comments
+    ADD COLUMN IF NOT EXISTS attachments JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_tickets_tenant_status ON tickets_svc.tickets(tenant_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tickets_requester ON tickets_svc.tickets(tenant_id, requester_email);

@@ -59,7 +59,7 @@ export async function buildApiGateway(opts = {}) {
 
   const app = Fastify({
     logger: opts.logger ?? false,
-    bodyLimit: 1_048_576,
+    bodyLimit: 4_194_304,
     trustProxy: true,
     forceCloseConnections: true,
   });
@@ -93,7 +93,7 @@ export async function buildApiGateway(opts = {}) {
   });
 
   await app.register(websocket, {
-    options: { maxPayload: 512 * 1024 },
+    options: { maxPayload: 4 * 1024 * 1024 },
   });
 
   // Correlation ID distribuído em todas as respostas
@@ -597,7 +597,10 @@ export async function buildApiGateway(opts = {}) {
     }
 
     const pendingMessages = [];
-    const upstream = new WebSocket(upstreamWsUrl, { headers: upstreamHeaders });
+    const upstream = new WebSocket(upstreamWsUrl, {
+      headers: upstreamHeaders,
+      maxPayload: 4 * 1024 * 1024,
+    });
 
     upstream.on('open', () => {
       while (pendingMessages.length > 0 && upstream.readyState === WebSocket.OPEN) {

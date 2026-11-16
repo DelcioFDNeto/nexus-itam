@@ -95,6 +95,19 @@ const normalizeHistoryRow = (r) =>
       }
     : null;
 
+const normalizeAttachmentArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
 const normalizeTicketRow = (r) => {
   if (!r) return null;
   const out = {
@@ -104,8 +117,22 @@ const normalizeTicketRow = (r) => {
     created_at: toIso(r.created_at),
     updated_at: toIso(r.updated_at),
   };
+  if (r.attachments !== undefined) {
+    out.attachments = normalizeAttachmentArray(r.attachments);
+  }
+  if (r.attachments_count !== undefined) {
+    out.attachments_count = Number(r.attachments_count);
+  } else if (Array.isArray(out.attachments)) {
+    out.attachments_count = out.attachments.length;
+  }
   if (r.comments_count !== undefined) {
     out.comments_count = Number(r.comments_count);
+  }
+  if (r.last_message_at !== undefined) {
+    out.last_message_at = toIso(r.last_message_at);
+  }
+  if (r.last_message_preview !== undefined) {
+    out.last_message_preview = r.last_message_preview || '';
   }
   return out;
 };
@@ -114,6 +141,7 @@ const normalizeCommentRow = (r) =>
   r
     ? {
         ...r,
+        attachments: normalizeAttachmentArray(r.attachments),
         created_at: toIso(r.created_at),
       }
     : null;
@@ -1929,11 +1957,34 @@ export const ticketsRepo = {
           if (priority && t.priority !== priority) return false;
           return true;
         })
-        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
-        .map((t) => ({
-          ...t,
-          comments_count: mem.ticketComments.filter((c) => c.ticket_id === t.id).length,
-        }));
+        .map((t) => {
+          const comments = mem.ticketComments
+            .filter((c) => c.ticket_id === t.id)
+            .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+          const lastComment = comments[comments.length - 1] || null;
+          const attachmentsCount =
+            (Array.isArray(t.attachments) ? t.attachments.length : 0) +
+            comments.reduce(
+              (acc, cm) => acc + (Array.isArray(cm.attachments) ? cm.attachments.length : 0),
+              0,
+            );
+          const { attachments: _omitListAttachments, ...rest } = t;
+          return {
+            ...rest,
+            attachments_count: attachmentsCount,
+            comments_count: comments.length,
+            last_message_at: lastComment ? lastComment.created_at : null,
+            last_message_preview: lastComment
+              ? String(lastComment.message || '').trim() ||
+                (lastComment.attachments?.length ? '📷 Imagem anexada' : '')
+              : '',
+          };
+        })
+        .sort((a, b) =>
+          String(b.last_message_at || b.updated_at || b.created_at).localeCompare(
+            String(a.last_message_at || a.updated_at || a.created_at),
+          ),
+        );
     }
 
     const clean = canonicalTenantId(tenantId);
@@ -1953,11 +2004,29 @@ export const ticketsRepo = {
     }
 
     const { rows } = await pool.query(
-      `SELECT t.*,
-              (SELECT COUNT(*)::int FROM tickets_svc.ticket_comments c WHERE c.ticket_id = t.id) AS comments_count
+      `SELECT t.id, t.protocol, t.tenant_id, t.requester_name, t.requester_email,
+              t.department, t.asset_id, t.asset_tag, t.category, t.priority,
+              t.status, t.title, t.description, t.assigned_tech_name,
+              t.resolution_notes, t.sla_due_at, t.resolved_at,
+              t.created_at, t.updated_at,
+              COALESCE(jsonb_array_length(t.attachments), 0)::int
+                + COALESCE((SELECT SUM(jsonb_array_length(c.attachments)) FROM tickets_svc.ticket_comments c WHERE c.ticket_id = t.id), 0)::int AS attachments_count,
+              (SELECT COUNT(*)::int FROM tickets_svc.ticket_comments c WHERE c.ticket_id = t.id) AS comments_count,
+              (SELECT c.created_at FROM tickets_svc.ticket_comments c WHERE c.ticket_id = t.id ORDER BY c.created_at DESC LIMIT 1) AS last_message_at,
+              (SELECT COALESCE(
+                        NULLIF(TRIM(c.message), ''),
+                        CASE WHEN jsonb_array_length(c.attachments) > 0 THEN '📷 Imagem anexada' ELSE '' END
+                      )
+               FROM tickets_svc.ticket_comments c
+               WHERE c.ticket_id = t.id
+               ORDER BY c.created_at DESC
+               LIMIT 1) AS last_message_preview
        FROM tickets_svc.tickets t
        WHERE ${clauses.join(' AND ')}
-       ORDER BY t.created_at DESC`,
+       ORDER BY GREATEST(
+         t.updated_at,
+         COALESCE((SELECT MAX(c.created_at) FROM tickets_svc.ticket_comments c WHERE c.ticket_id = t.id), t.created_at)
+       ) DESC`,
       params,
     );
     return rows.map(normalizeTicketRow);
@@ -1969,8 +2038,13 @@ export const ticketsRepo = {
       if (!tk) return null;
       const comments = mem.ticketComments
         .filter((c) => c.ticket_id === ticketId && matchTenant(c.tenant_id, tenantId))
-        .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
-      return { ...tk, comments };
+        .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+        .map(normalizeCommentRow);
+      return {
+        ...normalizeTicketRow(tk),
+        attachments: normalizeAttachmentArray(tk.attachments),
+        comments,
+      };
     }
     if (!isUuid(ticketId)) return null;
     const clean = canonicalTenantId(tenantId);
@@ -1994,6 +2068,7 @@ export const ticketsRepo = {
     const priority = payload.priority || 'medium';
     const slaHours = SLA_HOURS[priority] || 24;
     const slaDueIso = new Date(now.getTime() + slaHours * 3_600_000).toISOString();
+    const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
 
     if (!USE_PG) {
       let protocol = generateTicketProtocol(now, 0);
@@ -2014,6 +2089,7 @@ export const ticketsRepo = {
         status: 'open',
         title: payload.title,
         description: payload.description,
+        attachments,
         assigned_tech_name: null,
         resolution_notes: null,
         sla_due_at: slaDueIso,
@@ -2022,7 +2098,7 @@ export const ticketsRepo = {
         updated_at: now.toISOString(),
       };
       mem.tickets.push(created);
-      return created;
+      return normalizeTicketRow(created);
     }
 
     for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -2030,8 +2106,8 @@ export const ticketsRepo = {
       try {
         const { rows } = await pool.query(
           `INSERT INTO tickets_svc.tickets
-           (protocol, tenant_id, requester_name, requester_email, department, asset_id, asset_tag, category, priority, status, title, description, sla_due_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'open',$10,$11,$12)
+           (protocol, tenant_id, requester_name, requester_email, department, asset_id, asset_tag, category, priority, status, title, description, attachments, sla_due_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'open',$10,$11,$12::jsonb,$13)
            RETURNING *`,
           [
             protocol,
@@ -2045,6 +2121,7 @@ export const ticketsRepo = {
             priority,
             payload.title,
             payload.description,
+            JSON.stringify(attachments),
             slaDueIso,
           ],
         );
@@ -2093,8 +2170,10 @@ export const ticketsRepo = {
     return normalizeTicketRow(rows[0]);
   },
 
-  async addComment(tenantId, ticketId, author, message) {
+  async addComment(tenantId, ticketId, author, message, attachments = []) {
     const nowIso = new Date().toISOString();
+    const cleanMessage = message ?? '';
+    const cleanAttachments = Array.isArray(attachments) ? attachments : [];
     if (!USE_PG) {
       const tk = mem.tickets.find((t) => t.id === ticketId && matchTenant(t.tenant_id, tenantId));
       if (!tk) return null;
@@ -2105,11 +2184,13 @@ export const ticketsRepo = {
         author_name: author.name || author.email,
         author_email: author.email.toLowerCase(),
         author_role: author.role,
-        message,
+        message: cleanMessage,
+        attachments: cleanAttachments,
         created_at: nowIso,
       };
       mem.ticketComments.push(cm);
-      return cm;
+      tk.updated_at = nowIso;
+      return normalizeCommentRow(cm);
     }
 
     if (!isUuid(ticketId)) return null;
@@ -2122,10 +2203,19 @@ export const ticketsRepo = {
 
     const { rows } = await pool.query(
       `INSERT INTO tickets_svc.ticket_comments
-       (ticket_id, tenant_id, author_name, author_email, author_role, message)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [ticketId, tenantId, author.name || author.email, author.email.toLowerCase(), author.role, message],
+       (ticket_id, tenant_id, author_name, author_email, author_role, message, attachments)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING *`,
+      [
+        ticketId,
+        tenantId,
+        author.name || author.email,
+        author.email.toLowerCase(),
+        author.role,
+        cleanMessage,
+        JSON.stringify(cleanAttachments),
+      ],
     );
+    await pool.query('UPDATE tickets_svc.tickets SET updated_at = NOW() WHERE id = $1', [ticketId]);
     return normalizeCommentRow(rows[0]);
   },
 

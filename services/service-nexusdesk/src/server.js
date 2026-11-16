@@ -50,7 +50,7 @@ export async function buildNexusDeskService(opts = {}) {
 
   const app = Fastify({
     logger: opts.logger ?? false,
-    bodyLimit: 1_048_576,
+    bodyLimit: 4_194_304,
     forceCloseConnections: true,
   });
 
@@ -165,7 +165,7 @@ export async function buildNexusDeskService(opts = {}) {
   await app.register(helmet, { global: true, contentSecurityPolicy: false });
   await app.register(cors, { origin: true });
   await app.register(websocket, {
-    options: { maxPayload: 512 * 1024 },
+    options: { maxPayload: 4 * 1024 * 1024 },
   });
 
   // Captura rawBody em /internal/events para verificação HMAC exata
@@ -514,6 +514,7 @@ export async function buildNexusDeskService(opts = {}) {
           socket,
           tenantId: canonicalTenantId(claims.tenantId),
           userEmail: claims.email,
+          userName: claims.name || claims.email,
           role: claims.role,
           clientType: request.query?.client || 'web-console',
           connectedAt: new Date().toISOString(),
@@ -696,6 +697,40 @@ export async function buildNexusDeskService(opts = {}) {
               sender: session.userEmail,
               timestamp: new Date().toISOString(),
               data: state,
+            },
+            socket,
+          );
+          return;
+        }
+
+        // Indicador "digitando..." em tempo real entre Portal do Colaborador e Console TI
+        if (action === 'ticket.typing') {
+          const ticketId = sanitizeText(msg.ticketId || msg.data?.ticketId || '', 64);
+          if (!ticketId) return;
+          const isTyping = Boolean(msg.isTyping ?? msg.data?.isTyping ?? true);
+          const safeRequesterEmail =
+            session.role === 'collaborator'
+              ? String(session.userEmail || '').toLowerCase().trim()
+              : sanitizeText(msg.requesterEmail || msg.data?.requesterEmail || '', 180)
+                  .toLowerCase()
+                  .trim();
+
+          broadcastToTenant(
+            session.tenantId,
+            {
+              protocol: 'nexusdesk-ws/3.0',
+              event: 'ticket.typing',
+              tenantId: canonicalTenantId(session.tenantId),
+              sender: session.userEmail,
+              timestamp: new Date().toISOString(),
+              data: {
+                ticketId,
+                requesterEmail: safeRequesterEmail,
+                senderEmail: String(session.userEmail || '').toLowerCase(),
+                senderName: sanitizeText(session.userName || session.userEmail || '', 160),
+                senderRole: session.role,
+                isTyping,
+              },
             },
             socket,
           );

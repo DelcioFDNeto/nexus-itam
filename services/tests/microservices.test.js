@@ -818,4 +818,178 @@ describe('Nexus ITAM v3.0 — Malha de Microsserviços, Segurança Zero-Trust e 
     });
     expect(revokeRes.status).toBe(200);
   });
+
+  it('13. [Tickets Rich Media & Live Chat] aceita fotos/prints PNG/JPG, rejeita SVG XSS, permite mensagem somente com imagem e transmite typing/anexos via WebSocket', async () => {
+    const samplePng =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+    // 1. Rejeita SVG (XSS) na abertura do chamado
+    const svgRejectRes = await fetch(`${cluster.gatewayUrl}/api/v1/tickets`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${colabToken}`,
+      },
+      body: JSON.stringify({
+        title: 'Erro com tentativa SVG',
+        description: 'Tentando anexar imagem SVG insegura',
+        category: 'Sistemas & Softwares',
+        priority: 'medium',
+        attachments: [
+          {
+            name: 'xss.svg',
+            dataUrl: 'data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9ImFsZXJ0KDEpIj48L3N2Zz4=',
+          },
+        ],
+      }),
+    });
+    expect(svgRejectRes.status).toBe(400);
+
+    // 2. Abre chamado com foto/print PNG válido
+    const createRes = await fetch(`${cluster.gatewayUrl}/api/v1/tickets`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${colabToken}`,
+      },
+      body: JSON.stringify({
+        title: 'Erro na emissão do ERP com print',
+        description: 'Segue captura da tela com erro ao emitir nota.',
+        category: 'Sistemas & Softwares',
+        priority: 'high',
+        attachments: [{ name: 'erro-erp.png', dataUrl: samplePng }],
+      }),
+    });
+    expect(createRes.status).toBe(201);
+    const createdTicket = await createRes.json();
+    expect(createdTicket.attachments).toHaveLength(1);
+    expect(createdTicket.attachments[0].mimeType).toBe('image/png');
+
+    // 3. Envia mensagem no chat apenas com imagem (sem texto) e verifica listagem/preview
+    const imgOnlyCommentRes = await fetch(
+      `${cluster.gatewayUrl}/api/v1/tickets/${createdTicket.id}/comments`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${colabToken}`,
+        },
+        body: JSON.stringify({
+          message: '',
+          attachments: [{ name: 'segundo-print.png', dataUrl: samplePng }],
+        }),
+      },
+    );
+    expect(imgOnlyCommentRes.status).toBe(201);
+    const imgOnlyComment = await imgOnlyCommentRes.json();
+    expect(imgOnlyComment.attachments).toHaveLength(1);
+    expect(imgOnlyComment.message).toBe('');
+
+    const listAfterImg = await fetch(`${cluster.gatewayUrl}/api/v1/tickets`, {
+      headers: { authorization: `Bearer ${colabToken}` },
+    });
+    const listBody = await listAfterImg.json();
+    const listedTicket = (listBody.items || []).find((t) => t.id === createdTicket.id);
+    expect(listedTicket).toBeDefined();
+    expect(listedTicket.attachments_count).toBeGreaterThanOrEqual(2);
+    expect(listedTicket.last_message_preview).toBe('📷 Imagem anexada');
+
+    // 4. WebSocket em tempo real: typing + resposta do admin com print
+    const colabWs = new WebSocket(
+      `${cluster.wsUrl}?token=${encodeURIComponent(colabToken)}&client=portal-chat`,
+    );
+    const adminWs = new WebSocket(
+      `${cluster.wsUrl}?token=${encodeURIComponent(adminToken)}&client=console-chat`,
+    );
+
+    const adminFrames = [];
+    const colabFrames = [];
+
+    await Promise.all([
+      new Promise((resolve) => {
+        adminWs.on('message', (raw) => {
+          const f = JSON.parse(String(raw));
+          adminFrames.push(f);
+          if (f.event === 'welcome') resolve();
+        });
+      }),
+      new Promise((resolve) => {
+        colabWs.on('message', (raw) => {
+          const f = JSON.parse(String(raw));
+          colabFrames.push(f);
+          if (f.event === 'welcome') resolve();
+        });
+      }),
+    ]);
+
+    try {
+      // Colaborador envia typing
+      colabWs.send(
+        JSON.stringify({
+          action: 'ticket.typing',
+          ticketId: createdTicket.id,
+          requesterEmail: 'spoof@other.com', // deve ser ignorado/sobrescrito pelo servidor
+          isTyping: true,
+        }),
+      );
+
+      const typingFrame = await new Promise((resolve, reject) => {
+        const deadline = setTimeout(() => {
+          clearInterval(check);
+          reject(new Error('Timeout esperando ticket.typing'));
+        }, 5000);
+        const check = setInterval(() => {
+          const found = adminFrames.find(
+            (f) => f.event === 'ticket.typing' && f.data?.ticketId === createdTicket.id,
+          );
+          if (found) {
+            clearInterval(check);
+            clearTimeout(deadline);
+            resolve(found);
+          }
+        }, 40);
+      });
+      expect(typingFrame.data.isTyping).toBe(true);
+      expect(typingFrame.data.requesterEmail).toBe(createdTicket.requester_email);
+
+      // Admin responde com mensagem + print e colaborador recebe com anexo via WebSocket
+      const replyRes = await fetch(
+        `${cluster.gatewayUrl}/api/v1/tickets/${createdTicket.id}/comments`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken}`,
+          },
+          body: JSON.stringify({
+            message: 'Ajustei a permissão, veja este print de validação.',
+            attachments: [{ name: 'validacao-ti.png', dataUrl: samplePng }],
+          }),
+        },
+      );
+      expect(replyRes.status).toBe(201);
+
+      const commentedFrame = await new Promise((resolve, reject) => {
+        const deadline = setTimeout(() => {
+          clearInterval(check);
+          reject(new Error('Timeout esperando ticket.commented'));
+        }, 5000);
+        const check = setInterval(() => {
+          const found = colabFrames.find(
+            (f) => f.event === 'ticket.commented' && f.data?.ticketId === createdTicket.id,
+          );
+          if (found) {
+            clearInterval(check);
+            clearTimeout(deadline);
+            resolve(found);
+          }
+        }, 40);
+      });
+      expect(commentedFrame.data.attachments).toHaveLength(1);
+      expect(commentedFrame.data.authorEmail).toBeTruthy();
+    } finally {
+      colabWs.close();
+      adminWs.close();
+    }
+  });
 });

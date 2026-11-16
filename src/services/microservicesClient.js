@@ -300,11 +300,24 @@ export const microservicesApi = {
       method: 'PATCH',
       body: payload,
     }),
-  addTicketComment: (ticketId, message) =>
-    gatewayRequest(`/api/v1/tickets/${encodeURIComponent(ticketId)}/comments`, {
+  addTicketComment: (ticketId, messageOrPayload, attachments = []) => {
+    const body =
+      typeof messageOrPayload === 'object' && messageOrPayload !== null
+        ? {
+            message: messageOrPayload.message || '',
+            attachments: Array.isArray(messageOrPayload.attachments)
+              ? messageOrPayload.attachments
+              : [],
+          }
+        : {
+            message: messageOrPayload || '',
+            attachments: Array.isArray(attachments) ? attachments : [],
+          };
+    return gatewayRequest(`/api/v1/tickets/${encodeURIComponent(ticketId)}/comments`, {
       method: 'POST',
-      body: { message },
-    }),
+      body,
+    });
+  },
   deleteTicket: (ticketId) =>
     gatewayRequest(`/api/v1/tickets/${encodeURIComponent(ticketId)}`, {
       method: 'DELETE',
@@ -456,6 +469,20 @@ export const microservicesApi = {
       pushRemoteControl(data) {
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ action: 'remote.control', data }));
+          return true;
+        }
+        return false;
+      },
+      sendTicketTyping({ ticketId, requesterEmail, isTyping = true }) {
+        if (ws && ws.readyState === WebSocket.OPEN && ticketId) {
+          ws.send(
+            JSON.stringify({
+              action: 'ticket.typing',
+              ticketId,
+              requesterEmail,
+              isTyping: Boolean(isTyping),
+            }),
+          );
           return true;
         }
         return false;

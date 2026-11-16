@@ -132,11 +132,24 @@ export const portalApi = {
       method: 'POST',
       body: payload,
     }),
-  addTicketComment: (id, message) =>
-    request(`/api/v1/tickets/${id}/comments`, {
+  addTicketComment: (id, messageOrPayload, attachments = []) => {
+    const body =
+      typeof messageOrPayload === 'object' && messageOrPayload !== null
+        ? {
+            message: messageOrPayload.message || '',
+            attachments: Array.isArray(messageOrPayload.attachments)
+              ? messageOrPayload.attachments
+              : [],
+          }
+        : {
+            message: messageOrPayload || '',
+            attachments: Array.isArray(attachments) ? attachments : [],
+          };
+    return request(`/api/v1/tickets/${id}/comments`, {
       method: 'POST',
-      body: { message },
-    }),
+      body,
+    });
+  },
 
   // API 3 (REST) — Termos Jurídicos CLT & Verificação Criptográfica
   listMyTerms: () => request('/api/v1/compliance/terms'),
@@ -257,6 +270,19 @@ export const portalApi = {
         if (ws?.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ action: 'ping', id: `manual-${Date.now()}` }));
         }
+      },
+      sendTicketTyping({ ticketId, isTyping = true }) {
+        if (ws?.readyState === WebSocket.OPEN && ticketId) {
+          ws.send(
+            JSON.stringify({
+              action: 'ticket.typing',
+              ticketId,
+              isTyping: Boolean(isTyping),
+            }),
+          );
+          return true;
+        }
+        return false;
       },
       disconnect() {
         closedManually = true;
