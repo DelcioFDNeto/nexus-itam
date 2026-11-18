@@ -1,4 +1,4 @@
-# Nexus IT Asset Manager (ITAM) v2.2 🚀
+# Nexus IT Asset Manager (ITAM) v3.0 🚀
 
 > **Sistema Corporativo de Gestão de Ativos de TI, Licenciamento, Auditoria e Inventário Automatizado.**
 
