@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import PortalIcon from './PortalIcon.vue';
 import { getStoredSession, portalApi } from '../services/nexusApi';
-import { evaluateCellValue, evaluateSheetFormulas } from '../../../src/utils/sheetFormulaEngine';
+import { evaluateCellValue, evaluateSheetFormulas } from '../utils/sheetFormulaEngine.js';
 
 const props = defineProps({
   user: { type: Object, default: () => ({}) },
