@@ -50,6 +50,15 @@ services:
       NEXUS_INTERNAL_SECRET: ${NEXUS_INTERNAL_SECRET:?Defina NEXUS_INTERNAL_SECRET forte no .env.vps}
       NEXUS_COMPLIANCE_SECRET: ${NEXUS_COMPLIANCE_SECRET:?Defina NEXUS_COMPLIANCE_SECRET forte no .env.vps}
 
+  service-storage:
+    mem_limit: 384m
+    logging: *default-logging
+    environment:
+      NEXUS_JWT_SECRET: ${NEXUS_JWT_SECRET:?Defina NEXUS_JWT_SECRET forte no .env.vps}
+      NEXUS_INTERNAL_SECRET: ${NEXUS_INTERNAL_SECRET:?Defina NEXUS_INTERNAL_SECRET forte no .env.vps}
+      NEXUS_COMPLIANCE_SECRET: ${NEXUS_COMPLIANCE_SECRET:?Defina NEXUS_COMPLIANCE_SECRET forte no .env.vps}
+      NEXUS_STORAGE_MASTER_KEY: ${NEXUS_STORAGE_MASTER_KEY:?Defina NEXUS_STORAGE_MASTER_KEY forte no .env.vps}
+
   api-gateway:
     mem_limit: 384m
     logging: *default-logging
