@@ -36,6 +36,7 @@ import { can, isSuperadmin } from '../utils/permissions';
 import { hasFeature } from '../utils/entitlements';
 import { microservicesApi } from '../services/microservicesClient';
 import { evaluateCellValue, evaluateSheetFormulas } from '../utils/sheetFormulaEngine';
+import VpsOnboardingTutorial from '../components/cloud/VpsOnboardingTutorial';
 
 function formatBytes(bytes) {
   const num = Number(bytes || 0);
@@ -911,7 +912,18 @@ const CloudVaultHub = () => {
 
       {/* TAB 1: CONEXÃO & TELEMETRIA VPS */}
       {activeTab === 'connection' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="space-y-6">
+          <VpsOnboardingTutorial
+            providerType={connForm.providerType}
+            isConfigured={Boolean(connStatus && connStatus.configured !== false && (connStatus.id || connStatus.endpointUrl || connStatus.host))}
+            isConnected={(healthInfo?.status || connStatus?.status) === 'connected'}
+            hasFolders={nodes.length > 0}
+            onSelectProvider={(drv) => setConnForm((p) => ({ ...p, providerType: drv }))}
+            onOpenExplorerTab={() => setActiveTab('explorer')}
+            onOpenAclTab={() => setActiveTab('acl')}
+          />
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
@@ -930,7 +942,7 @@ const CloudVaultHub = () => {
             )}
 
             <form onSubmit={handleSaveConnection} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label htmlFor="vps-provider-type" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
                     Provedor / Driver VPS
@@ -961,6 +973,25 @@ const CloudVaultHub = () => {
                     value={connForm.rootPath}
                     onChange={(e) => setConnForm((p) => ({ ...p, rootPath: e.target.value }))}
                     placeholder="/srv/nexus-vault"
+                    className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="vps-quota-gb" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                    Capacidade Reservada (GB)
+                  </label>
+                  <input
+                    id="vps-quota-gb"
+                    type="number"
+                    min={1}
+                    max={102400}
+                    disabled={!canConnect}
+                    value={Math.max(1, Math.round(Number(connForm.quotaBytes || 53687091200) / (1024 * 1024 * 1024)))}
+                    onChange={(e) => {
+                      const gb = Math.max(1, Number(e.target.value || 1));
+                      setConnForm((p) => ({ ...p, quotaBytes: gb * 1024 * 1024 * 1024 }));
+                    }}
                     className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs text-slate-900 dark:text-white"
                   />
                 </div>
@@ -1008,19 +1039,35 @@ const CloudVaultHub = () => {
                       className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs"
                     />
                   </div>
-                  <div className="sm:col-span-3">
-                    <label htmlFor="vps-pass" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
-                      Senha ou Chave Privada Ed25519/RSA
-                    </label>
-                    <input
-                      id="vps-pass"
-                      type="password"
-                      disabled={!canConnect}
-                      value={connForm.password}
-                      onChange={(e) => setConnForm((p) => ({ ...p, password: e.target.value }))}
-                      placeholder="••••••••"
-                      className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs"
-                    />
+                  <div className="sm:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="vps-pass" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                        Senha SSH (opcional se usar Chave)
+                      </label>
+                      <input
+                        id="vps-pass"
+                        type="password"
+                        disabled={!canConnect}
+                        value={connForm.password}
+                        onChange={(e) => setConnForm((p) => ({ ...p, password: e.target.value }))}
+                        placeholder="••••••••"
+                        className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="vps-private-key" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                        Chave Privada OpenSSH / PEM (opcional)
+                      </label>
+                      <textarea
+                        id="vps-private-key"
+                        rows={2}
+                        disabled={!canConnect}
+                        value={connForm.privateKey}
+                        onChange={(e) => setConnForm((p) => ({ ...p, privateKey: e.target.value }))}
+                        placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                        className="w-full rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs font-mono"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -1043,7 +1090,7 @@ const CloudVaultHub = () => {
                   </div>
                   <div>
                     <label htmlFor="vps-hmac" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
-                      Token HMAC-SHA256
+                      Token HMAC-SHA256 (preenchido pelo Script)
                     </label>
                     <input
                       id="vps-hmac"
@@ -1051,18 +1098,18 @@ const CloudVaultHub = () => {
                       disabled={!canConnect}
                       value={connForm.hmacToken}
                       onChange={(e) => setConnForm((p) => ({ ...p, hmacToken: e.target.value }))}
-                      placeholder="nsn_••••••••"
+                      placeholder="Preservado automaticamente ao gerar script"
                       className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs"
                     />
                   </div>
                 </div>
               )}
 
-              {(connForm.providerType === 's3' || connForm.providerType === 'webdav') && (
+              {connForm.providerType === 's3' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label htmlFor="s3-endpoint" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
-                      Endpoint S3 / WebDAV
+                      Endpoint S3 / MinIO / R2
                     </label>
                     <input
                       id="s3-endpoint"
@@ -1070,7 +1117,7 @@ const CloudVaultHub = () => {
                       disabled={!canConnect}
                       value={connForm.endpointUrl}
                       onChange={(e) => setConnForm((p) => ({ ...p, endpointUrl: e.target.value }))}
-                      placeholder="https://s3.empresa.com.br"
+                      placeholder="https://minio.empresa.com.br"
                       className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs"
                     />
                   </div>
@@ -1085,6 +1132,81 @@ const CloudVaultHub = () => {
                       value={connForm.bucket}
                       onChange={(e) => setConnForm((p) => ({ ...p, bucket: e.target.value }))}
                       placeholder="nexus-vault"
+                      className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="s3-access-key" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                      Access Key ID
+                    </label>
+                    <input
+                      id="s3-access-key"
+                      type="text"
+                      disabled={!canConnect}
+                      value={connForm.accessKey}
+                      onChange={(e) => setConnForm((p) => ({ ...p, accessKey: e.target.value }))}
+                      placeholder="AKIA..."
+                      className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="s3-secret-key" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                      Secret Access Key
+                    </label>
+                    <input
+                      id="s3-secret-key"
+                      type="password"
+                      disabled={!canConnect}
+                      value={connForm.secretKey}
+                      onChange={(e) => setConnForm((p) => ({ ...p, secretKey: e.target.value }))}
+                      placeholder="••••••••"
+                      className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {connForm.providerType === 'webdav' && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label htmlFor="s3-endpoint" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                      Endpoint WebDAV / Nextcloud
+                    </label>
+                    <input
+                      id="s3-endpoint"
+                      type="text"
+                      disabled={!canConnect}
+                      value={connForm.endpointUrl}
+                      onChange={(e) => setConnForm((p) => ({ ...p, endpointUrl: e.target.value }))}
+                      placeholder="https://nuvem.empresa.com.br/remote.php/dav/files/usuario"
+                      className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="webdav-user" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                      Usuário WebDAV
+                    </label>
+                    <input
+                      id="webdav-user"
+                      type="text"
+                      disabled={!canConnect}
+                      value={connForm.username}
+                      onChange={(e) => setConnForm((p) => ({ ...p, username: e.target.value }))}
+                      placeholder="usuario"
+                      className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="webdav-pass" className="block text-xs font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                      Senha de Aplicativo
+                    </label>
+                    <input
+                      id="webdav-pass"
+                      type="password"
+                      disabled={!canConnect}
+                      value={connForm.password}
+                      onChange={(e) => setConnForm((p) => ({ ...p, password: e.target.value }))}
+                      placeholder="••••••••"
                       className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs"
                     />
                   </div>
@@ -1199,6 +1321,7 @@ const CloudVaultHub = () => {
                 ))
               )}
             </div>
+          </div>
           </div>
         </div>
       )}
