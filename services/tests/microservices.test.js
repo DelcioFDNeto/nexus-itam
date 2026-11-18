@@ -38,7 +38,7 @@ describe('Nexus ITAM v3.0 — Malha de Microsserviços, Segurança Zero-Trust e 
 
     const body = await res.json();
     expect(body.overallStatus).toBe('healthy');
-    expect(body.microservices).toHaveLength(4);
+    expect(body.microservices).toHaveLength(5);
     expect(body.microservices.every((s) => s.status === 'healthy')).toBe(true);
 
     const specRes = await fetch(`${cluster.gatewayUrl}/openapi.json`);

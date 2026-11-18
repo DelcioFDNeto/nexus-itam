@@ -700,3 +700,13 @@ export function sanitizeTicketAttachments(
 
   return sanitized;
 }
+
+export function maskVaultCredentials(plainObj) {
+  const out = {};
+  if (!plainObj || typeof plainObj !== 'object') return out;
+  for (const [key, value] of Object.entries(plainObj)) {
+    out[key] = value === undefined || value === null || value === '' ? null : '********';
+  }
+  return out;
+}
+
