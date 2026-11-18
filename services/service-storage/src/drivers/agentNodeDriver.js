@@ -24,12 +24,18 @@ export function signAgentNodeHeaders({ hmacToken, method, pathWithQuery, rawBody
 }
 
 export function createAgentNodeDriver(connection, credentials = {}) {
-  const baseUrl = String(
+  const rawEndpoint = String(
     connection.endpoint_url ||
       connection.endpointUrl ||
       credentials.endpointUrl ||
       (connection.host ? `http://${connection.host}:${connection.port || 9443}` : ''),
-  ).replace(/\/+$/, '');
+  )
+    .trim()
+    .replace(/\/+$/, '');
+  const baseUrl =
+    rawEndpoint && !/^https?:\/\//i.test(rawEndpoint) && !rawEndpoint.includes('://')
+      ? `http://${rawEndpoint}`
+      : rawEndpoint;
   const hmacToken = String(credentials.hmacToken || credentials.token || '');
 
   function resolveRemotePath(virtualPath) {

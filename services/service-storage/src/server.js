@@ -36,6 +36,7 @@ import {
 } from '../../shared/security.js';
 import { resolveStorageDriver } from './drivers/driverRegistry.js';
 import { parseHttpByteRange } from './drivers/sftpDriver.js';
+import { buildAgentInstallScript } from './services/installScriptBuilder.js';
 import {
   VALID_ACCESS_LEVELS,
   VALID_TARGET_TYPES,
@@ -487,7 +488,11 @@ export async function buildStorageService(opts = {}) {
 
     const incomingCreds = body.credentials && typeof body.credentials === 'object' ? body.credentials : {};
     const isUnmaskedSecret = (val) =>
-      val !== undefined && val !== null && !String(val).includes('••••') && !String(val).includes('***');
+      val !== undefined &&
+      val !== null &&
+      String(val).trim() !== '' &&
+      !String(val).includes('••••') &&
+      !String(val).includes('***');
     const mergedCreds = {
       ...currentCreds,
     };
@@ -620,8 +625,9 @@ export async function buildStorageService(opts = {}) {
     }
 
     const quotaBytes = Number(body.quotaBytes ?? 53_687_091_200);
-    const hmacToken = `nsn_${crypto.randomBytes(24).toString('hex')}`;
-    const tokenPrefix = `${hmacToken.slice(0, 10)}...`;
+    const safeQuota = Number.isFinite(quotaBytes) && quotaBytes > 0 ? Math.trunc(quotaBytes) : 53_687_091_200;
+    const port = body.port !== undefined && body.port !== null && body.port !== '' ? Number(body.port) : 9443;
+    const rotateToken = body.rotateToken === true;
 
     const existing = await storageRepo.getConnection(user.tenantId);
     let existingCreds = {};
@@ -633,37 +639,49 @@ export async function buildStorageService(opts = {}) {
       }
     }
 
-    const activeHmacToken = existingCreds.hmacToken || hmacToken;
-    if (!existing) {
+    const freshToken = `nsn_${crypto.randomBytes(24).toString('hex')}`;
+    const hasReusableToken =
+      !rotateToken &&
+      typeof existingCreds.hmacToken === 'string' &&
+      /^[a-zA-Z0-9._-]{12,256}$/.test(existingCreds.hmacToken.trim());
+    const activeHmacToken = hasReusableToken ? existingCreds.hmacToken.trim() : freshToken;
+    const tokenPrefix = `${activeHmacToken.slice(0, 10)}...`;
+
+    const installCommand = buildAgentInstallScript({
+      rootPath,
+      quotaBytes: safeQuota,
+      hmacToken: activeHmacToken,
+      port,
+    });
+
+    if (!existing || rotateToken || !existingCreds.hmacToken) {
       await storageRepo.upsertConnection(user.tenantId, {
-        providerType: 'agent_node',
-        label: 'Nexus Storage Node 1-Click',
-        rootPath,
-        quotaBytes: Number.isFinite(quotaBytes) && quotaBytes > 0 ? quotaBytes : 53_687_091_200,
+        providerType: existing && !rotateToken ? existing.provider_type : 'agent_node',
+        label: existing?.label || 'Nexus Storage Node 1-Click',
+        host: existing?.host || null,
+        port: existing?.port ?? port,
+        username: existing?.username || null,
+        rootPath: existing?.root_path || rootPath,
+        endpointUrl: existing?.endpoint_url || null,
+        bucket: existing?.bucket || null,
+        region: existing?.region || 'us-east-1',
+        quotaBytes: existing?.quota_bytes !== undefined ? Number(existing.quota_bytes) : safeQuota,
         encryptedCredentials: encryptVaultCredentials({
           ...existingCreds,
           hmacToken: activeHmacToken,
         }),
+        status: existing?.status || 'unconfigured',
         createdByEmail: user.email,
       });
     }
 
-    const installCommand = [
-      '#!/usr/bin/env bash',
-      'set -euo pipefail',
-      `export NEXUS_VAULT_ROOT="${rootPath}"`,
-      `export NEXUS_VAULT_QUOTA_BYTES="${quotaBytes}"`,
-      `export NEXUS_NODE_HMAC_TOKEN="${hmacToken}"`,
-      'mkdir -p "$NEXUS_VAULT_ROOT"/{Corporativo-Publico,Setores,Cofre-TI-Infra/Termos,Chamados,Espaco-Pessoal,.nexus_versions,.nexus_trash}',
-      'chmod 750 "$NEXUS_VAULT_ROOT"',
-      'echo "[Nexus Storage Node] Diretório confinado inicializado em $NEXUS_VAULT_ROOT"',
-    ].join('\n');
-
     return {
       ok: true,
       tokenPrefix,
+      rotated: !hasReusableToken && Boolean(existingCreds.hmacToken),
       rootPath,
-      quotaBytes,
+      quotaBytes: safeQuota,
+      port,
       script: installCommand,
       command: installCommand,
       installCommand,

@@ -321,6 +321,15 @@ const CloudVaultHub = () => {
       return;
     }
     try {
+      const credentials = {};
+      const isPlainSecret = (v) =>
+        typeof v === 'string' && v.trim() !== '' && !v.includes('*') && !v.includes('••••');
+      if (isPlainSecret(connForm.password)) credentials.password = connForm.password;
+      if (isPlainSecret(connForm.privateKey)) credentials.privateKey = connForm.privateKey;
+      if (isPlainSecret(connForm.hmacToken)) credentials.hmacToken = connForm.hmacToken.trim();
+      if (isPlainSecret(connForm.accessKey)) credentials.accessKey = connForm.accessKey;
+      if (isPlainSecret(connForm.secretKey)) credentials.secretKey = connForm.secretKey;
+
       const payload = {
         providerType: connForm.providerType,
         label: connForm.label,
@@ -328,17 +337,11 @@ const CloudVaultHub = () => {
         port: Number(connForm.port || 22),
         username: connForm.username,
         rootPath: connForm.rootPath,
-        endpointUrl: connForm.endpointUrl,
+        endpointUrl: String(connForm.endpointUrl || '').trim(),
         bucket: connForm.bucket,
         region: connForm.region,
         quotaBytes: Number(connForm.quotaBytes || 53687091200),
-        credentials: {
-          password: connForm.password,
-          privateKey: connForm.privateKey,
-          hmacToken: connForm.hmacToken,
-          accessKey: connForm.accessKey,
-          secretKey: connForm.secretKey,
-        },
+        credentials,
       };
       const res = await microservicesApi.saveStorageConnection(payload);
       setConnStatus(res?.connection || res);
@@ -374,16 +377,35 @@ const CloudVaultHub = () => {
     }
   };
 
-  const handleGenerateInstallScript = async () => {
+  const handleGenerateInstallScript = async (rotateToken = false) => {
     try {
       const res = await microservicesApi.generateStorageInstallScript({
         rootPath: connForm.rootPath,
         quotaBytes: connForm.quotaBytes,
+        port: 9443,
+        ...(rotateToken === true ? { rotateToken: true } : {}),
       });
       setInstallScriptData(res);
-      toast.success('Script 1-Click do Nexus Storage Node gerado com token HMAC.');
+      toast.success(
+        rotateToken === true
+          ? 'Novo token HMAC gerado e script 1-Click atualizado.'
+          : 'Script 1-Click do Nexus Storage Node gerado com token HMAC.',
+      );
     } catch (err) {
       toast.error(err?.message || 'Falha ao gerar script 1-Click.');
+    }
+  };
+
+  const handleCopyInstallScript = async () => {
+    const text = installScriptData?.script || installScriptData?.installCommand;
+    if (!text) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        toast.success('Script copiado para a área de transferência.');
+      }
+    } catch {
+      toast.error('Não foi possível copiar automaticamente; selecione e copie o bloco abaixo.');
     }
   };
 
@@ -1015,7 +1037,7 @@ const CloudVaultHub = () => {
                       disabled={!canConnect}
                       value={connForm.endpointUrl}
                       onChange={(e) => setConnForm((p) => ({ ...p, endpointUrl: e.target.value }))}
-                      placeholder="https://vps.empresa.com.br:9443"
+                      placeholder="http://IP-DA-VPS:9443"
                       className="w-full min-h-[42px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs"
                     />
                   </div>
@@ -1100,7 +1122,7 @@ const CloudVaultHub = () => {
                 <button
                   type="button"
                   disabled={!canConnect}
-                  onClick={handleGenerateInstallScript}
+                  onClick={() => handleGenerateInstallScript(false)}
                   className="min-h-[42px] px-4 py-2 rounded-xl border border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300 text-xs font-bold flex items-center gap-1.5 disabled:opacity-40"
                 >
                   <Terminal size={14} />
@@ -1110,11 +1132,32 @@ const CloudVaultHub = () => {
             </form>
 
             {installScriptData && (
-              <div className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-900 text-emerald-300 p-4 text-xs font-mono space-y-2">
-                <div className="flex items-center justify-between text-zinc-400">
-                  <span>Script 1-Click • Token: {installScriptData.tokenPrefix}</span>
+              <div className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-900 text-emerald-300 p-4 text-xs font-mono space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-zinc-300">
+                  <span>Script 1-Click (Node + systemd + HMAC) • Token: {installScriptData.tokenPrefix}</span>
+                  <div className="flex items-center gap-2 font-sans">
+                    <button
+                      type="button"
+                      onClick={handleCopyInstallScript}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-200 hover:bg-emerald-600/30 font-semibold flex items-center gap-1"
+                    >
+                      <Copy size={12} />
+                      <span>Copiar Script</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleGenerateInstallScript(true)}
+                      className="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-400/40 text-amber-200 hover:bg-amber-500/25 font-semibold flex items-center gap-1"
+                    >
+                      <RefreshCw size={12} />
+                      <span>Rotacionar Token</span>
+                    </button>
+                  </div>
                 </div>
-                <pre className="overflow-x-auto whitespace-pre-wrap">{installScriptData.script || installScriptData.installCommand}</pre>
+                <p className="font-sans text-[11px] text-zinc-400">
+                  1) Execute na VPS como root. 2) Preencha o Endpoint exibido no terminal (ex: http://IP-DA-VPS:9443), clique em Salvar Credenciais VPS e Diagnosticar Nó VPS.
+                </p>
+                <pre className="max-h-72 overflow-auto whitespace-pre-wrap select-all">{installScriptData.script || installScriptData.installCommand}</pre>
               </div>
             )}
           </div>
