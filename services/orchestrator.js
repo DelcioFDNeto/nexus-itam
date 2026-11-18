@@ -9,6 +9,7 @@ import { buildAssetsService } from './service-assets/src/server.js';
 import { buildTicketsService } from './service-tickets/src/server.js';
 import { buildComplianceService } from './service-compliance/src/server.js';
 import { buildNexusDeskService } from './service-nexusdesk/src/server.js';
+import { buildStorageService } from './service-storage/src/server.js';
 import { buildApiGateway } from './api-gateway/src/server.js';
 
 export async function startAllMicroservices({
@@ -22,15 +23,19 @@ export async function startAllMicroservices({
     tickets: basePort + 2,
     compliance: basePort + 3,
     nexusdesk: basePort + 4,
+    storage: basePort + 5,
   };
 
   process.env.NEXUSDESK_SERVICE_URL = `http://127.0.0.1:${ports.nexusdesk}`;
+  process.env.COMPLIANCE_SERVICE_URL = `http://127.0.0.1:${ports.compliance}`;
+  process.env.STORAGE_SERVICE_URL = `http://127.0.0.1:${ports.storage}`;
 
-  const [assetsApp, ticketsApp, complianceApp, nexusdeskApp] = await Promise.all([
+  const [assetsApp, ticketsApp, complianceApp, nexusdeskApp, storageApp] = await Promise.all([
     buildAssetsService({ logger }),
     buildTicketsService({ logger }),
     buildComplianceService({ logger }),
     buildNexusDeskService({ logger }),
+    buildStorageService({ logger }),
   ]);
 
   await Promise.all([
@@ -38,6 +43,7 @@ export async function startAllMicroservices({
     ticketsApp.listen({ host, port: ports.tickets }),
     complianceApp.listen({ host, port: ports.compliance }),
     nexusdeskApp.listen({ host, port: ports.nexusdesk }),
+    storageApp.listen({ host, port: ports.storage }),
   ]);
 
   const gatewayApp = await buildApiGateway({
@@ -46,6 +52,7 @@ export async function startAllMicroservices({
     ticketsUrl: `http://127.0.0.1:${ports.tickets}`,
     complianceUrl: `http://127.0.0.1:${ports.compliance}`,
     nexusdeskUrl: `http://127.0.0.1:${ports.nexusdesk}`,
+    storageUrl: `http://127.0.0.1:${ports.storage}`,
   });
 
   await gatewayApp.listen({ host, port: ports.gateway });
@@ -57,6 +64,7 @@ export async function startAllMicroservices({
       ticketsApp.close(),
       complianceApp.close(),
       nexusdeskApp.close(),
+      storageApp.close(),
     ]);
   };
 

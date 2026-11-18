@@ -42,6 +42,7 @@ const rank = (role) => {
 /** O papel do usuario e igual ou superior ao minimo exigido? */
 export const hasRole = (user, minimumRole) => {
   if (!user?.role) return false;
+  if (user.role === 'superadmin' && !isSuperadmin(user)) return false;
   return rank(user.role) >= rank(minimumRole);
 };
 
@@ -75,6 +76,11 @@ export const CAPABILITIES = {
   'agent:read': 'manager',
   'agent:remote': 'manager',
   'agent:manage': 'admin',
+  // Cloud Vault & Conector VPS (Zero-Knowledge LGPD: superadmin bloqueado no cofre).
+  'cloud:connect': 'admin',
+  'cloud:acl': 'manager',
+  'cloud:write': 'operator',
+  'cloud:read': 'viewer',
   'users:manage': 'admin',
   'settings:read': 'admin',
   // Identidade visual, termo juridico e campos da empresa: so o owner.
@@ -93,15 +99,31 @@ export const CAPABILITIES = {
  * empresa, que e a controladora (LGPD); o Nexus e operador e nao le nem
  * comanda maquinas de clientes. Espelha a secao AGENTE ITAM de firestore.rules.
  */
-export const TENANT_ONLY_CAPABILITIES = new Set(['agent:read', 'agent:remote', 'agent:manage']);
+export const TENANT_ONLY_CAPABILITIES = new Set([
+  'agent:read',
+  'agent:remote',
+  'agent:manage',
+  'cloud:connect',
+  'cloud:acl',
+  'cloud:write',
+  'cloud:read',
+]);
+
+export const COLLABORATOR_CAPABILITIES = new Set(['cloud:read']);
 
 export const can = (user, capability) => {
-  if (isSuperadmin(user)) return !TENANT_ONLY_CAPABILITIES.has(capability);
   const required = CAPABILITIES[capability];
   if (!required) return false;
+  if (isSuperadmin(user)) return !TENANT_ONLY_CAPABILITIES.has(capability);
+  if (user?.role === 'superadmin') return false;
   if (required === 'superadmin') return false;
+  if (user?.role === 'collaborator') {
+    return COLLABORATOR_CAPABILITIES.has(capability);
+  }
   return hasRole(user, required);
 };
+
+export const hasPermission = can;
 
 /**
  * Papeis que `actor` pode atribuir a membros da propria empresa.

@@ -113,6 +113,7 @@ const NexusPlansManager = () => {
     contracts: true,
     audit: true,
     import: true,
+    cloud_storage: false,
   });
 
   const modalTitleId = useId();
@@ -333,6 +334,7 @@ const NexusPlansManager = () => {
         billingCycle: editing.billingCycle || 'monthly',
         whitelabel: Boolean(editing.features?.whitelabel),
         agentIntegration: Boolean(editing.features?.agent),
+        cloudStorage: Boolean(editing.features?.cloud_storage),
         features: editing.features,
       });
       if (!isMountedRef.current) return;

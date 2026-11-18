@@ -629,8 +629,14 @@ function parseCpuLabel(rawSpecs) {
             <h3
               class="text-base sm:text-lg font-bold text-slate-900 dark:text-[#fafafa] group-hover:text-brand-text-light dark:group-hover:text-brand-text-dark transition-colors leading-snug break-words"
             >
-              {{ asset.model || 'Modelo não especificado' }}
+              {{ asset.model || asset.hostname || 'Modelo não especificado' }}
             </h3>
+            <p
+              v-if="asset.hostname && asset.model && asset.hostname !== asset.model"
+              class="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5"
+            >
+              Hostname: {{ asset.hostname }}
+            </p>
             <p
               v-if="asset.purchase_value || asset.purchaseValue || asset.valor"
               class="text-xs font-medium text-slate-600 dark:text-slate-300 mt-1"

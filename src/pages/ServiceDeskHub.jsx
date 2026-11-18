@@ -26,6 +26,7 @@ import {
   Ticket,
   Trash2,
   TrendingUp,
+  UploadCloud,
   User,
   X,
   Zap,
@@ -39,6 +40,8 @@ import {
   resolvePortalUrl,
 } from '../services/microservicesClient';
 import { useAuth } from '../contexts/AuthContext';
+import { hasPermission } from '../utils/permissions';
+import { hasPlanFeature } from '../utils/entitlements';
 import { useConfirm } from '../components/ConfirmDialog';
 import RemoteControlModal from '../components/RemoteControlModal';
 import TicketChatPanel from '../components/servicedesk/TicketChatPanel';
@@ -161,6 +164,17 @@ const ServiceDeskHub = () => {
 
   const [isNewTermModalOpen, setIsNewTermModalOpen] = useState(false);
   const [submittingTerm, setSubmittingTerm] = useState(false);
+  const [archivingTicketIds, setArchivingTicketIds] = useState({});
+  const [archivingTermIds, setArchivingTermIds] = useState({});
+  const archivingTicketRef = useRef(new Set());
+  const archivingTermRef = useRef(new Set());
+  const canArchiveToVps = useMemo(() => {
+    const actor = currentUser || gatewaySession?.user;
+    if (!actor) return false;
+    const role = String(actor.role || '').toLowerCase();
+    if (role === 'superadmin' || role === 'viewer' || actor.tenantId === 'nexus-master') return false;
+    return hasPermission(actor, 'cloud:write') && hasPlanFeature(actor, 'cloud_storage');
+  }, [currentUser, gatewaySession?.user]);
   const [newTermForm, setNewTermForm] = useState({
     termType: 'entrega',
     employeeName: '',
@@ -860,6 +874,46 @@ const ServiceDeskHub = () => {
       loadDomainData();
     } catch (err) {
       toast.error(err.message || 'Falha ao remover termo.');
+    }
+  };
+
+  const handleArchiveTicketToVps = async (ticketId, protocol) => {
+    if (!canArchiveToVps || archivingTicketRef.current.has(ticketId)) return;
+    archivingTicketRef.current.add(ticketId);
+    setArchivingTicketIds((prev) => ({ ...prev, [ticketId]: true }));
+    try {
+      const res = await microservicesApi.archiveTicketToVps(ticketId);
+      const destPath = res?.folderPath || `/Chamados/${protocol || ticketId}/`;
+      toast.success(`Chamado arquivado na VPS em ${destPath}`);
+    } catch (err) {
+      toast.error(err?.message || 'Falha ao arquivar chamado na VPS.');
+    } finally {
+      archivingTicketRef.current.delete(ticketId);
+      setArchivingTicketIds((prev) => {
+        const next = { ...prev };
+        delete next[ticketId];
+        return next;
+      });
+    }
+  };
+
+  const handleArchiveCltTermToVps = async (termId, employeeName) => {
+    if (!canArchiveToVps || archivingTermRef.current.has(termId)) return;
+    archivingTermRef.current.add(termId);
+    setArchivingTermIds((prev) => ({ ...prev, [termId]: true }));
+    try {
+      const res = await microservicesApi.archiveTermToVps(termId);
+      const destPath = res?.virtualPath || res?.folderPath || `/Cofre-TI-Infra/Termos/termo-${termId}.txt`;
+      toast.success(`Termo de ${employeeName || 'custódia'} arquivado na VPS em ${destPath}`);
+    } catch (err) {
+      toast.error(err?.message || 'Falha ao arquivar termo na VPS.');
+    } finally {
+      archivingTermRef.current.delete(termId);
+      setArchivingTermIds((prev) => {
+        const next = { ...prev };
+        delete next[termId];
+        return next;
+      });
     }
   };
 
@@ -1737,6 +1791,19 @@ const ServiceDeskHub = () => {
                                 <span>NexusDesk ({tk.asset_tag})</span>
                               </button>
                             )}
+                            {canArchiveToVps && (
+                              <button
+                                type="button"
+                                onClick={() => handleArchiveTicketToVps(tk.id, tk.protocol)}
+                                disabled={Boolean(archivingTicketIds[tk.id])}
+                                className="min-h-[44px] inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-xs font-bold text-slate-700 dark:text-zinc-200 hover:border-brand/40 hover:text-brand-aa transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Arquivar cópia na VPS (/Chamados)"
+                                aria-label={`Arquivar cópia na VPS do chamado ${tk.protocol || tk.title}`}
+                              >
+                                <UploadCloud size={13} />
+                                <span>{archivingTicketIds[tk.id] ? 'Arquivando...' : 'Arquivar cópia na VPS'}</span>
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => handleDeleteTicket(tk.id, tk.protocol)}
@@ -1974,6 +2041,19 @@ const ServiceDeskHub = () => {
                           >
                             <ShieldCheck size={15} />
                           </button>
+                          {tm.status === 'signed' && canArchiveToVps && (
+                            <button
+                              type="button"
+                              onClick={() => handleArchiveCltTermToVps(tm.id, tm.employee_name)}
+                              disabled={Boolean(archivingTermIds[tm.id])}
+                              className="min-h-[44px] px-2.5 inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-bold text-slate-700 dark:text-zinc-200 hover:text-brand-aa hover:border-brand/40 transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Arquivar cópia na VPS (/Cofre-TI-Infra/Termos)"
+                              aria-label={`Arquivar cópia na VPS do termo de ${tm.employee_name}`}
+                            >
+                              <UploadCloud size={14} />
+                              <span>{archivingTermIds[tm.id] ? 'Arquivando...' : 'Arquivar cópia na VPS'}</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleDeleteTerm(tm.id, tm.employee_name)}

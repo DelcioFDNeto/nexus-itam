@@ -214,9 +214,47 @@ export async function gatewayRequest(path, options = {}) {
   }
 
   if (!isJson) {
-    throw new Error('Resposta inesperada do servidor (esperado JSON do API Gateway).');
+    const arrayBuf = await response.arrayBuffer();
+    return {
+      ok: true,
+      status: response.status,
+      contentType,
+      contentDisposition: response.headers?.get?.('content-disposition') || '',
+      blob: new Blob([arrayBuf], { type: contentType || 'application/octet-stream' }),
+      arrayBuffer: arrayBuf,
+    };
   }
 
+  return payload;
+}
+
+async function gatewayMultipartOrBinaryRequest(path, { method = 'POST', body, headers = {} } = {}) {
+  let session = getGatewaySession();
+  if (!session?.token) {
+    session = await ensureGatewaySession();
+  }
+  const reqHeaders = {
+    ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+    ...headers,
+  };
+  const response = await fetch(`${getGatewayBaseUrl()}${path}`, {
+    method,
+    headers: reqHeaders,
+    body,
+  });
+  const contentType = response.headers?.get?.('content-type') || '';
+  const isJson = contentType.includes('application/json');
+  const payload = isJson ? await response.json().catch(() => ({})) : {};
+  if (!response.ok) {
+    const err = new Error(payload.message || `Erro HTTP ${response.status} no API Gateway`);
+    err.status = response.status;
+    err.code = payload.error || `HTTP_${response.status}`;
+    throw err;
+  }
+  if (!isJson) {
+    const arrayBuf = await response.arrayBuffer();
+    return new Blob([arrayBuf], { type: contentType || 'application/octet-stream' });
+  }
   return payload;
 }
 
@@ -322,6 +360,11 @@ export const microservicesApi = {
     gatewayRequest(`/api/v1/tickets/${encodeURIComponent(ticketId)}`, {
       method: 'DELETE',
     }),
+  archiveTicketToVps: (ticketId) =>
+    gatewayRequest(`/api/v1/tickets/${encodeURIComponent(ticketId)}/archive-vps`, {
+      method: 'POST',
+      body: {},
+    }),
 
   // API 3 (REST) — Compliance CLT & Hash-Chain (`service-compliance`)
   listTerms: () => gatewayRequest('/api/v1/compliance/terms'),
@@ -338,8 +381,162 @@ export const microservicesApi = {
     gatewayRequest(`/api/v1/compliance/terms/${encodeURIComponent(termId)}`, {
       method: 'DELETE',
     }),
+  archiveTermToVps: (termId) =>
+    gatewayRequest(`/api/v1/compliance/terms/${encodeURIComponent(termId)}/archive-vps`, {
+      method: 'POST',
+      body: {},
+    }),
   listAuditChain: () => gatewayRequest('/api/v1/compliance/audit'),
   verifyAuditChain: () => gatewayRequest('/api/v1/compliance/audit/verify-chain'),
+
+  // API 6 (REST) — Nexus Cloud Vault & Conector Híbrido VPS (`service-storage`)
+  getStorageConnection: () => gatewayRequest('/api/v1/storage/connection'),
+  saveStorageConnection: (payload) =>
+    gatewayRequest('/api/v1/storage/connection', { method: 'PUT', body: payload }),
+  testStorageConnection: (payload = {}) =>
+    gatewayRequest('/api/v1/storage/connection/test', { method: 'POST', body: payload }),
+  generateStorageInstallScript: (payload = {}) =>
+    gatewayRequest('/api/v1/storage/connection/install-script', { method: 'POST', body: payload }),
+  initializeStorageVault: () =>
+    gatewayRequest('/api/v1/storage/initialize', { method: 'POST', body: {} }),
+  getStorageHealth: () => gatewayRequest('/api/v1/storage/health'),
+  getStorageQuota: () => gatewayRequest('/api/v1/storage/quota'),
+
+  listStorageNodes: (params = {}) => {
+    if (typeof params === 'string') {
+      return gatewayRequest(`/api/v1/storage/nodes?parentId=${encodeURIComponent(params)}`);
+    }
+    const clean = Object.fromEntries(
+      Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== ''),
+    );
+    const qs = new URLSearchParams(clean).toString();
+    return gatewayRequest(`/api/v1/storage/nodes${qs ? `?${qs}` : ''}`);
+  },
+  createStorageFolder: (payload) =>
+    gatewayRequest('/api/v1/storage/folders', { method: 'POST', body: payload }),
+  uploadStorageFile: (fileOrFormData, options = {}) => {
+    if (typeof FormData !== 'undefined' && fileOrFormData instanceof FormData) {
+      return gatewayMultipartOrBinaryRequest('/api/v1/storage/upload', {
+        method: 'POST',
+        body: fileOrFormData,
+      });
+    }
+    const form = new FormData();
+    if (options.parentId) form.append('parentId', String(options.parentId));
+    if (options.fileName) form.append('fileName', String(options.fileName));
+    form.append('conflictPolicy', options.conflictPolicy || 'version');
+    if (fileOrFormData instanceof Blob) {
+      form.append('file', fileOrFormData, options.fileName || fileOrFormData.name || 'arquivo.bin');
+    } else if (fileOrFormData && typeof fileOrFormData === 'object' && fileOrFormData.file) {
+      if (fileOrFormData.parentId) form.set('parentId', String(fileOrFormData.parentId));
+      if (fileOrFormData.fileName) form.set('fileName', String(fileOrFormData.fileName));
+      if (fileOrFormData.conflictPolicy) form.set('conflictPolicy', String(fileOrFormData.conflictPolicy));
+      form.append(
+        'file',
+        fileOrFormData.file,
+        fileOrFormData.fileName || fileOrFormData.file.name || 'arquivo.bin',
+      );
+    }
+    return gatewayMultipartOrBinaryRequest('/api/v1/storage/upload', {
+      method: 'POST',
+      body: form,
+    });
+  },
+  downloadStorageFile: (nodeId) =>
+    gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/download`),
+  previewStorageFile: (nodeId) =>
+    gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/preview`),
+  downloadStorageZip: (nodeIds = []) =>
+    gatewayRequest('/api/v1/storage/nodes/download-zip', {
+      method: 'POST',
+      body: { nodeIds },
+    }),
+  updateStorageNode: (nodeId, payload) =>
+    gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}`, {
+      method: 'PATCH',
+      body: payload,
+    }),
+  copyStorageNode: (nodeId, payload = {}) =>
+    gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/copy`, {
+      method: 'POST',
+      body: payload,
+    }),
+  deleteStorageNode: (nodeId) =>
+    gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}`, {
+      method: 'DELETE',
+    }),
+  listStorageVersions: (nodeId) =>
+    gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/versions`),
+  restoreStorageVersion: (nodeId, versionNumber) =>
+    gatewayRequest(
+      `/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/versions/${encodeURIComponent(versionNumber)}/restore`,
+      { method: 'POST', body: {} },
+    ),
+  lockStorageNode: (nodeId) =>
+    gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/lock`, {
+      method: 'POST',
+      body: {},
+    }),
+  unlockStorageNode: (nodeId) =>
+    gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/lock`, {
+      method: 'DELETE',
+    }),
+  listStorageTrash: () => gatewayRequest('/api/v1/storage/trash'),
+  restoreStorageTrash: (nodeId, payload = {}) =>
+    gatewayRequest(`/api/v1/storage/trash/${encodeURIComponent(nodeId)}/restore`, {
+      method: 'POST',
+      body: payload,
+    }),
+  purgeStorageTrash: (nodeId) =>
+    gatewayRequest(`/api/v1/storage/trash/${encodeURIComponent(nodeId)}`, {
+      method: 'DELETE',
+    }),
+  purgeExpiredStorageTrash: (retentionDays = 30) =>
+    gatewayRequest('/api/v1/storage/trash/purge-expired', {
+      method: 'POST',
+      body: { retentionDays },
+    }),
+  getStorageNodeAcl: (nodeId) =>
+    gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/acl`),
+  saveStorageNodeAcl: (nodeId, rulesOrPayload) => {
+    const body = Array.isArray(rulesOrPayload)
+      ? { rules: rulesOrPayload }
+      : rulesOrPayload?.rules
+        ? rulesOrPayload
+        : { rules: [rulesOrPayload] };
+    return gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/acl`, {
+      method: 'PUT',
+      body,
+    });
+  },
+  deleteStorageNodeAcl: (nodeId, aclId) =>
+    gatewayRequest(
+      `/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/acl/${encodeURIComponent(aclId)}`,
+      { method: 'DELETE' },
+    ),
+  listStorageShareLinks: () => gatewayRequest('/api/v1/storage/links'),
+  createStorageShareLink: (payload) =>
+    gatewayRequest('/api/v1/storage/links', { method: 'POST', body: payload }),
+  revokeStorageShareLink: (linkId) =>
+    gatewayRequest(`/api/v1/storage/links/${encodeURIComponent(linkId)}`, { method: 'DELETE' }),
+
+  // Nexus Sheets Live REST
+  createSheet: (payload) =>
+    gatewayRequest('/api/v1/storage/sheets', { method: 'POST', body: payload }),
+  getSheet: (sheetId) => gatewayRequest(`/api/v1/storage/sheets/${encodeURIComponent(sheetId)}`),
+  saveSheet: (sheetId, payload) =>
+    gatewayRequest(`/api/v1/storage/sheets/${encodeURIComponent(sheetId)}/save`, {
+      method: 'POST',
+      body: payload,
+    }),
+  exportSheet: (sheetId, format = 'xlsx') =>
+    gatewayRequest(
+      `/api/v1/storage/sheets/${encodeURIComponent(sheetId)}/export?format=${encodeURIComponent(format)}`,
+    ),
+  getSheetHistory: (sheetId, cellRef) =>
+    gatewayRequest(
+      `/api/v1/storage/sheets/${encodeURIComponent(sheetId)}/history${cellRef ? `?cellRef=${encodeURIComponent(cellRef)}` : ''}`,
+    ),
 
   // API 4 (REST) — Telemetria RMM (`service-nexusdesk`)
   getFleetTelemetry: () => gatewayRequest('/api/v1/telemetry/fleet'),
@@ -483,6 +680,65 @@ export const microservicesApi = {
               isTyping: Boolean(isTyping),
             }),
           );
+          return true;
+        }
+        return false;
+      },
+      joinSheet(fileId) {
+        if (ws && ws.readyState === WebSocket.OPEN && fileId) {
+          ws.send(JSON.stringify({ action: 'sheet.join', fileId }));
+          return true;
+        }
+        return false;
+      },
+      leaveSheet(fileId) {
+        if (ws && ws.readyState === WebSocket.OPEN && fileId) {
+          ws.send(JSON.stringify({ action: 'sheet.leave', fileId }));
+          return true;
+        }
+        return false;
+      },
+      sendSheetCursor({ fileId, tab = 'Planilha1', cell = 'A1', range }) {
+        if (ws && ws.readyState === WebSocket.OPEN && fileId) {
+          ws.send(JSON.stringify({ action: 'sheet.cursor', fileId, tab, cell, range: range || cell }));
+          return true;
+        }
+        return false;
+      },
+      sendSheetCellPatch({ fileId, tab = 'Planilha1', cell, value, formula, baseRev }) {
+        if (ws && ws.readyState === WebSocket.OPEN && fileId && cell) {
+          ws.send(
+            JSON.stringify({
+              action: 'sheet.cell.patch',
+              fileId,
+              tab,
+              cell,
+              value,
+              formula,
+              baseRev,
+            }),
+          );
+          return true;
+        }
+        return false;
+      },
+      sendSheetFormatPatch({ fileId, tab = 'Planilha1', cell, style, freezeRow }) {
+        if (ws && ws.readyState === WebSocket.OPEN && fileId) {
+          ws.send(JSON.stringify({ action: 'sheet.format.patch', fileId, tab, cell, style, freezeRow }));
+          return true;
+        }
+        return false;
+      },
+      sendSheetTabAdd({ fileId, tabName }) {
+        if (ws && ws.readyState === WebSocket.OPEN && fileId && tabName) {
+          ws.send(JSON.stringify({ action: 'sheet.tab.add', fileId, tabName }));
+          return true;
+        }
+        return false;
+      },
+      sendSheetTabRename({ fileId, oldName, tabName }) {
+        if (ws && ws.readyState === WebSocket.OPEN && fileId && tabName) {
+          ws.send(JSON.stringify({ action: 'sheet.tab.rename', fileId, oldName, tabName }));
           return true;
         }
         return false;

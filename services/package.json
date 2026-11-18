@@ -20,7 +20,9 @@
     "@fastify/websocket": "^11.2.0",
     "fastify": "^5.2.1",
     "pg": "^8.13.3",
-    "ws": "^8.18.1"
+    "ssh2": "^1.17.0",
+    "ws": "^8.18.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "vitest": "^4.1.8"

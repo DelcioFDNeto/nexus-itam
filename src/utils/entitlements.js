@@ -31,6 +31,7 @@ export const FEATURES = [
   { id: 'contracts', label: 'Contratos & SLAs', description: 'Contratos recorrentes de TI, renovações e SLAs.', module: true, category: 'governance', defaultPrice: 49 },
   { id: 'audit', label: 'Auditoria com QR Code', description: 'Conferência física de inventário por local com leitura móvel.', module: true, category: 'governance', defaultPrice: 39 },
   { id: 'import', label: 'Importação em massa', description: 'Ingestão de planilhas Excel/CSV e JSON.', category: 'operations', defaultPrice: 29 },
+  { id: 'cloud_storage', label: 'Cloud Vault & Conector VPS', description: 'Cofre corporativo de arquivos na sua VPS com ACL granular e planilhas Nexus Sheets Live.', planKey: 'cloudStorage', module: true, category: 'infrastructure', defaultPrice: 79 },
 ];
 
 export const FEATURE_IDS = FEATURES.map((f) => f.id);
@@ -93,6 +94,7 @@ export const DEFAULT_PLANS = {
     maxUsers: 10,
     whitelabel: false,
     agentIntegration: false,
+    cloudStorage: false,
     monthlyPrice: 199,
   },
   pro: {
@@ -102,6 +104,7 @@ export const DEFAULT_PLANS = {
     maxUsers: 50,
     whitelabel: false,
     agentIntegration: true,
+    cloudStorage: true,
     monthlyPrice: 499,
   },
   enterprise: {
@@ -111,6 +114,7 @@ export const DEFAULT_PLANS = {
     maxUsers: UNLIMITED,
     whitelabel: true,
     agentIntegration: true,
+    cloudStorage: true,
     monthlyPrice: 1299,
   },
 };
@@ -322,7 +326,7 @@ export const resolveEntitlements = ({ tenant = null, plan = null } = {}) => {
 
   const planId = String(tenant.plan).toLowerCase();
   const customFallback = planId === CUSTOM_PLAN_ID
-    ? { id: CUSTOM_PLAN_ID, name: 'Plano Sob Medida', maxAssets: 100, maxUsers: 10, whitelabel: false, agentIntegration: true, monthlyPrice: 199 }
+    ? { id: CUSTOM_PLAN_ID, name: 'Plano Sob Medida', maxAssets: 100, maxUsers: 10, whitelabel: false, agentIntegration: true, cloudStorage: false, monthlyPrice: 199 }
     : null;
   const base = { ...(customFallback || DEFAULT_PLANS[planId] || DEFAULT_PLANS.starter), ...(plan || {}) };
   const overrides = tenant.overrides && typeof tenant.overrides === 'object' ? tenant.overrides : {};
@@ -386,6 +390,8 @@ export const hasFeature = (user, featureId) => {
   if (!features) return true;
   return features[featureId] !== false;
 };
+
+export const hasPlanFeature = hasFeature;
 
 /** Modulo oculto pelo proprio inquilino em Configuracoes? */
 export const isModuleHidden = (user, moduleId) =>

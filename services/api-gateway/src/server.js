@@ -42,7 +42,25 @@ export async function buildApiGateway(opts = {}) {
     tickets: opts.ticketsUrl || process.env.TICKETS_SERVICE_URL || 'http://127.0.0.1:8002',
     compliance: opts.complianceUrl || process.env.COMPLIANCE_SERVICE_URL || 'http://127.0.0.1:8003',
     nexusdesk: opts.nexusdeskUrl || process.env.NEXUSDESK_SERVICE_URL || 'http://127.0.0.1:8004',
+    storage: opts.storageUrl || process.env.STORAGE_SERVICE_URL || 'http://127.0.0.1:8005',
   };
+
+  function isCloudStorageEntitled(contract) {
+    if (!contract) return true;
+    const planId = String(contract.plan || 'enterprise').toLowerCase().trim();
+    const overrides = contract.overrides && typeof contract.overrides === 'object' ? contract.overrides : {};
+    const featOverride = overrides.features?.cloud_storage ?? overrides.cloud_storage;
+    if (typeof featOverride === 'boolean') return featOverride;
+
+    const customContract =
+      contract.customContract && typeof contract.customContract === 'object' ? contract.customContract : {};
+    if (customContract.enabled && typeof customContract.features?.cloud_storage === 'boolean') {
+      return customContract.features.cloud_storage;
+    }
+
+    if (planId === 'pro' || planId === 'enterprise') return true;
+    return false;
+  }
 
   const allowedOriginsEnv = (
     process.env.CORS_ALLOWED_ORIGINS ||
@@ -59,9 +77,16 @@ export async function buildApiGateway(opts = {}) {
 
   const app = Fastify({
     logger: opts.logger ?? false,
-    bodyLimit: 4_194_304,
+    bodyLimit: 110 * 1024 * 1024,
     trustProxy: true,
     forceCloseConnections: true,
+  });
+
+  app.addContentTypeParser('multipart/form-data', { parseAs: 'buffer' }, (_req, body, done) => {
+    done(null, body);
+  });
+  app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => {
+    done(null, body);
   });
 
   await app.register(helmet, {
@@ -73,12 +98,14 @@ export async function buildApiGateway(opts = {}) {
   await app.register(cors, {
     origin: corsOrigin,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
+      allowedHeaders: [
       'Content-Type',
       'Authorization',
       'X-Agent-Token',
       'X-Tenant-Id',
       'X-Request-Id',
+      'Range',
+      'X-Share-Password',
     ],
     credentials: true,
   });
@@ -157,15 +184,16 @@ export async function buildApiGateway(opts = {}) {
   }
 
   app.get('/health', async () => {
-    const [db, assets, tickets, compliance, nexusdesk] = await Promise.all([
+    const [db, assets, tickets, compliance, nexusdesk, storage] = await Promise.all([
       checkDbHealth(),
       probeUpstream('service-assets', upstreams.assets),
       probeUpstream('service-tickets', upstreams.tickets),
       probeUpstream('service-compliance', upstreams.compliance),
       probeUpstream('service-nexusdesk', upstreams.nexusdesk),
+      probeUpstream('service-storage', upstreams.storage),
     ]);
 
-    const services = [assets, tickets, compliance, nexusdesk];
+    const services = [assets, tickets, compliance, nexusdesk, storage];
     const allHealthy =
       db.status === 'healthy' && services.every((s) => s.status === 'healthy');
 
@@ -491,9 +519,17 @@ export async function buildApiGateway(opts = {}) {
     if (request.headers['content-type']) {
       forwardHeaders['content-type'] = request.headers['content-type'];
     }
+    if (request.headers.range || request.headers.Range) {
+      forwardHeaders.range = request.headers.range || request.headers.Range;
+    }
+    if (request.headers['x-share-password']) {
+      forwardHeaders['x-share-password'] = String(request.headers['x-share-password']);
+    }
 
-    // Suporte híbrido para M2M X-Agent-Token no endpoint de heartbeat e Relay de sessão NexusDesk
-    if (options.allowRelaySession && !request.headers.authorization) {
+    // Suporte híbrido para M2M X-Agent-Token, rotas públicas de share e Relay de sessão NexusDesk
+    if (options.allowPublicShare) {
+      // Sem autenticação JWT obrigatória para /api/v1/storage/share/:token
+    } else if (options.allowRelaySession && !request.headers.authorization) {
       if (request.headers['x-tenant-id']) {
         forwardHeaders['x-tenant-id'] = String(request.headers['x-tenant-id']);
       }
@@ -514,25 +550,55 @@ export async function buildApiGateway(opts = {}) {
         });
       }
 
+      if (options.requireFeature === 'cloud_storage') {
+        if (String(claims.role || '').toLowerCase() === 'superadmin' || claims.tenantId === 'nexus-master') {
+          return reply.code(403).send({
+            error: 'ZERO_KNOWLEDGE_RESTRICTED',
+            message: 'Superadmin bloqueado por Zero-Knowledge LGPD no módulo Cloud Vault.',
+            requestId: request.correlationId,
+          });
+        }
+        const contract = await authRepo.getTenantContract(claims.tenantId);
+        if (contract && !isCloudStorageEntitled(contract)) {
+          return reply.code(403).send({
+            error: 'FEATURE_NOT_IN_PLAN',
+            message: 'O módulo Nexus Cloud Vault & Conector VPS não está habilitado no plano atual desta empresa.',
+            requestId: request.correlationId,
+          });
+        }
+      }
+
       const signedHeaders = signGatewayContext({
         userId: claims.sub,
         email: claims.email,
         name: claims.name,
         role: claims.role,
         tenantId: claims.tenantId,
+        department: claims.department || '',
         requestId: request.correlationId,
       });
       Object.assign(forwardHeaders, signedHeaders);
     }
 
     const hasBody = !['GET', 'HEAD'].includes(request.method) && request.body !== undefined;
+    let serializedBody;
+    if (hasBody) {
+      if (Buffer.isBuffer(request.body)) {
+        serializedBody = request.body;
+      } else if (typeof request.body === 'string') {
+        serializedBody = request.body;
+      } else {
+        serializedBody = JSON.stringify(request.body);
+      }
+    }
+
     let response;
     try {
       response = await fetch(targetUrl, {
         method: request.method,
         headers: forwardHeaders,
-        body: hasBody ? JSON.stringify(request.body) : undefined,
-        signal: AbortSignal.timeout(15_000),
+        body: serializedBody,
+        signal: AbortSignal.timeout(25_000),
       });
     } catch (err) {
       return reply.code(502).send({
@@ -542,10 +608,24 @@ export async function buildApiGateway(opts = {}) {
       });
     }
 
-    const text = await response.text();
+    const rawBuf = Buffer.from(await response.arrayBuffer());
     reply.code(response.status);
-    reply.header('content-type', response.headers.get('content-type') || 'application/json');
-    return reply.send(text);
+    for (const hName of [
+      'content-type',
+      'content-disposition',
+      'content-range',
+      'accept-ranges',
+      'cache-control',
+      'x-content-type-options',
+      'content-security-policy',
+    ]) {
+      const val = response.headers.get(hName);
+      if (val) reply.header(hName, val);
+    }
+    if (!response.headers.get('content-type')) {
+      reply.header('content-type', 'application/json');
+    }
+    return reply.send(rawBuf);
   }
 
   // Proxy Rotas — API 1 (Assets)
@@ -573,6 +653,17 @@ export async function buildApiGateway(opts = {}) {
   );
   app.all('/api/v1/telemetry/*', (req, rep) =>
     forwardToMicroservice(upstreams.nexusdesk, req, rep),
+  );
+
+  // Proxy Rotas — API 6 (Nexus Cloud Vault & Conector VPS)
+  app.all('/api/v1/storage/share/:token', (req, rep) =>
+    forwardToMicroservice(upstreams.storage, req, rep, { allowPublicShare: true }),
+  );
+  app.all('/api/v1/storage', (req, rep) =>
+    forwardToMicroservice(upstreams.storage, req, rep, { requireFeature: 'cloud_storage' }),
+  );
+  app.all('/api/v1/storage/*', (req, rep) =>
+    forwardToMicroservice(upstreams.storage, req, rep, { requireFeature: 'cloud_storage' }),
   );
 
   // ---------------------------------------------------------------------------

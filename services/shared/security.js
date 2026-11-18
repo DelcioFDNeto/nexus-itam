@@ -12,6 +12,7 @@
 // =============================================================================
 
 import crypto from 'node:crypto';
+import path from 'node:path';
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 
@@ -21,7 +22,7 @@ const resolveSecret = (envNames, devFallback) => {
     const val = process.env[name];
     if (val && val.trim().length >= 24) return val.trim();
   }
-  if (IS_PROD) {
+  if (IS_PROD || process.env.NODE_ENV === 'production') {
     throw new Error(
       `[SECURITY FATAL] Variável ${candidates[0]} ausente ou menor que 24 caracteres em produção.`,
     );
@@ -43,6 +44,106 @@ export const COMPLIANCE_SIGNING_SECRET = () =>
     ['NEXUS_COMPLIANCE_SECRET', 'LEGAL_SIGNING_SECRET'],
     'nexus-itam-clt-compliance-hmac-seal-2026-key',
   );
+
+const DEV_STORAGE_MASTER_FALLBACK = 'nexus-itam-dev-storage-vault-master-key-2026-v1';
+
+export function resolveStorageMasterKey(masterKeyOverride) {
+  if (masterKeyOverride !== undefined && masterKeyOverride !== null) {
+    if (Buffer.isBuffer(masterKeyOverride)) {
+      if (masterKeyOverride.length === 32) return masterKeyOverride;
+      if (masterKeyOverride.length >= 24) {
+        return crypto.createHash('sha256').update(masterKeyOverride).digest();
+      }
+      const err = new Error('Chave mestra de armazenamento inválida (mínimo 24 bytes).');
+      err.code = 'INVALID_STORAGE_MASTER_KEY';
+      err.statusCode = 500;
+      throw err;
+    }
+    const trimmed = String(masterKeyOverride).trim();
+    if (trimmed.length < 24) {
+      const err = new Error('Chave mestra de armazenamento inválida (mínimo 24 caracteres).');
+      err.code = 'INVALID_STORAGE_MASTER_KEY';
+      err.statusCode = 500;
+      throw err;
+    }
+    return crypto.createHash('sha256').update(trimmed, 'utf8').digest();
+  }
+
+  const secret = resolveSecret(
+    ['NEXUS_STORAGE_MASTER_KEY', 'STORAGE_MASTER_KEY', 'NEXUS_VAULT_SECRET'],
+    DEV_STORAGE_MASTER_FALLBACK,
+  );
+  return crypto.createHash('sha256').update(secret, 'utf8').digest();
+}
+
+export function encryptVaultCredentials(plainObj, masterKeyOverride) {
+  if (plainObj === null || typeof plainObj !== 'object' || Array.isArray(plainObj)) {
+    const err = new Error('Payload de credenciais inválido (esperado objeto JSON).');
+    err.code = 'VAULT_ENCRYPT_INVALID_INPUT';
+    err.statusCode = 400;
+    throw err;
+  }
+  const key = resolveStorageMasterKey(masterKeyOverride);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(plainObj), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `v1:${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+export function decryptVaultCredentials(ciphertext, masterKeyOverride) {
+  if (typeof ciphertext !== 'string') {
+    const err = new Error('Ciphertext de credenciais inválido.');
+    err.code = 'VAULT_CIPHERTEXT_INVALID';
+    err.statusCode = 400;
+    throw err;
+  }
+  const parts = ciphertext.split(':');
+  if (parts.length !== 4) {
+    const err = new Error('Formato de ciphertext de credenciais inválido.');
+    err.code = 'VAULT_CIPHERTEXT_INVALID';
+    err.statusCode = 400;
+    throw err;
+  }
+  const [version, ivHex, tagHex, cipherHex] = parts;
+  if (
+    version !== 'v1' ||
+    !/^[0-9a-f]{24}$/i.test(ivHex) ||
+    !/^[0-9a-f]{32}$/i.test(tagHex) ||
+    !/^[0-9a-f]+$/i.test(cipherHex) ||
+    cipherHex.length % 2 !== 0
+  ) {
+    const err = new Error('Estrutura hexadecimal de ciphertext inválida.');
+    err.code = 'VAULT_CIPHERTEXT_INVALID';
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const key = resolveStorageMasterKey(masterKeyOverride);
+  try {
+    const decipher = crypto.createDecipheriv(
+      'aes-256-gcm',
+      key,
+      Buffer.from(ivHex, 'hex'),
+      { authTagLength: 16 },
+    );
+    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    const plainJson = Buffer.concat([
+      decipher.update(Buffer.from(cipherHex, 'hex')),
+      decipher.final(),
+    ]).toString('utf8');
+    const parsed = JSON.parse(plainJson);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Decrypted payload is not a JSON object');
+    }
+    return parsed;
+  } catch {
+    const err = new Error('Falha ao decifrar credenciais do cofre (chave inválida ou payload adulterado).');
+    err.code = 'VAULT_DECRYPT_FAILED';
+    err.statusCode = 500;
+    throw err;
+  }
+}
 
 // -----------------------------------------------------------------------------
 // 1. Password Hashing (Scrypt + Timing-Safe Verification)
@@ -172,15 +273,27 @@ export function verifyJwt(token) {
 // -----------------------------------------------------------------------------
 // 3. Zero-Trust Inter-Service Gateway Signature (Anti-Spoofing)
 // -----------------------------------------------------------------------------
-export function signGatewayContext({ userId, email, name, role, tenantId, requestId }) {
+const safeDecodeURIComponent = (str) => {
+  try {
+    return decodeURIComponent(str);
+  } catch {
+    return str;
+  }
+};
+
+export function signGatewayContext({ userId, email, name, role, tenantId, requestId, department }) {
   const timestamp = String(Date.now());
-  const canonical = `${userId}|${email}|${role}|${tenantId}|${requestId}|${timestamp}`;
+  const hasDept = department !== undefined && department !== null && String(department).trim() !== '';
+  const encodedDept = hasDept ? encodeURIComponent(String(department).trim()) : '';
+  const canonical = hasDept
+    ? `${userId}|${email}|${role}|${tenantId}|${encodedDept}|${requestId}|${timestamp}`
+    : `${userId}|${email}|${role}|${tenantId}|${requestId}|${timestamp}`;
   const sig = crypto
     .createHmac('sha256', INTERNAL_GATEWAY_SECRET())
     .update(canonical)
     .digest('hex');
 
-  return {
+  const headers = {
     'x-user-id': String(userId),
     'x-user-email': String(email),
     'x-user-name': encodeURIComponent(String(name || '')),
@@ -190,6 +303,10 @@ export function signGatewayContext({ userId, email, name, role, tenantId, reques
     'x-gateway-timestamp': timestamp,
     'x-gateway-signature': sig,
   };
+  if (hasDept) {
+    headers['x-user-department'] = encodedDept;
+  }
+  return headers;
 }
 
 export function verifyGatewayOrJwt(request) {
@@ -210,8 +327,12 @@ export function verifyGatewayOrJwt(request) {
     const role = request.headers['x-user-role'] || '';
     const tenantId = request.headers['x-tenant-id'] || '';
     const requestId = request.headers['x-request-id'] || '';
+    const hasDeptHeader = Object.prototype.hasOwnProperty.call(request.headers, 'x-user-department');
+    const rawDept = hasDeptHeader ? String(request.headers['x-user-department'] ?? '') : '';
 
-    const canonical = `${userId}|${email}|${role}|${tenantId}|${requestId}|${gwTs}`;
+    const canonical = hasDeptHeader
+      ? `${userId}|${email}|${role}|${tenantId}|${rawDept}|${requestId}|${gwTs}`
+      : `${userId}|${email}|${role}|${tenantId}|${requestId}|${gwTs}`;
     const expected = crypto
       .createHmac('sha256', INTERNAL_GATEWAY_SECRET())
       .update(canonical)
@@ -228,9 +349,10 @@ export function verifyGatewayOrJwt(request) {
     return {
       sub: userId,
       email,
-      name: decodeURIComponent(rawName),
+      name: safeDecodeURIComponent(rawName),
       role,
       tenantId,
+      department: hasDeptHeader ? safeDecodeURIComponent(rawDept) : '',
     };
   }
 
@@ -394,25 +516,135 @@ export function verifyAgentToken(rawToken, expectedHash) {
 }
 
 // -----------------------------------------------------------------------------
-// 6. RBAC Guard & Input Sanitization
+// 6. RBAC Guard, Zero-Knowledge LGPD, Path Confinement & Input Sanitization
 // -----------------------------------------------------------------------------
 export const ROLE_HIERARCHY = {
   collaborator: 10,
   viewer: 20,
   operator: 30,
+  member: 35,
   manager: 40,
   admin: 50,
   owner: 60,
 };
+
+export function isZeroKnowledgeRestricted(user) {
+  return Boolean(user && String(user.role || '').toLowerCase() === 'superadmin');
+}
+
+export function assertZeroKnowledgeAllowed(user) {
+  if (isZeroKnowledgeRestricted(user)) {
+    const err = new Error(
+      'Acesso negado (LGPD Zero-Knowledge): superadmin não pode acessar dados, credenciais ou arquivos do cofre de clientes.',
+    );
+    err.code = 'ZERO_KNOWLEDGE_RESTRICTED';
+    err.statusCode = 403;
+    throw err;
+  }
+}
 
 export function requireRoles(user, allowedRoles) {
   if (!user || !allowedRoles.includes(user.role)) {
     const err = new Error(
       `Acesso negado (RBAC): papel '${user?.role || 'anônimo'}' não possui permissão para esta operação.`,
     );
+    if (isZeroKnowledgeRestricted(user)) {
+      err.code = 'ZERO_KNOWLEDGE_RESTRICTED';
+    }
     err.statusCode = 403;
     throw err;
   }
+}
+
+const throwTraversalBlocked = (reason) => {
+  const err = new Error(`Caminho bloqueado por segurança (Path Traversal): ${reason}`);
+  err.code = 'PATH_TRAVERSAL_BLOCKED';
+  err.statusCode = 400;
+  throw err;
+};
+
+const assertNoTraversalTokens = (raw) => {
+  if (typeof raw !== 'string') {
+    throwTraversalBlocked('caminho deve ser string.');
+  }
+  if (raw.includes('\0')) {
+    throwTraversalBlocked('null byte detectado.');
+  }
+  if (raw.includes('\\')) {
+    throwTraversalBlocked('separador backslash não permitido.');
+  }
+  if (/^[a-zA-Z]:/.test(raw.trim())) {
+    throwTraversalBlocked('prefixo de drive Windows não permitido.');
+  }
+  if (/%(?:25)*(?:2e|2f|5c|00)/i.test(raw)) {
+    throwTraversalBlocked('sequência codificada suspeita detectada.');
+  }
+
+  let current = raw;
+  for (let i = 0; i < 3; i += 1) {
+    let decoded;
+    try {
+      decoded = decodeURIComponent(current);
+    } catch {
+      break;
+    }
+    if (decoded === current) break;
+    if (
+      decoded.includes('\0') ||
+      decoded.includes('\\') ||
+      /^[a-zA-Z]:/.test(decoded.trim())
+    ) {
+      throwTraversalBlocked('sequência codificada maliciosa detectada.');
+    }
+    const decodedSegments = decoded.split('/');
+    if (decodedSegments.some((seg) => seg === '..' || seg === '.')) {
+      throwTraversalBlocked('segmento relativo codificado não permitido.');
+    }
+    current = decoded;
+  }
+};
+
+export function normalizeVirtualVaultPath(virtualPath = '/') {
+  if (virtualPath === undefined || virtualPath === null) return '/';
+  if (typeof virtualPath !== 'string') {
+    throwTraversalBlocked('caminho virtual inválido.');
+  }
+  const trimmed = virtualPath.trim();
+  if (trimmed === '') return '/';
+  assertNoTraversalTokens(trimmed);
+
+  const segments = trimmed.split('/');
+  const cleanSegments = [];
+  for (const seg of segments) {
+    if (!seg) continue;
+    if (seg === '..' || seg === '.') {
+      throwTraversalBlocked(`segmento '${seg}' não permitido.`);
+    }
+    cleanSegments.push(seg);
+  }
+  return cleanSegments.length === 0 ? '/' : `/${cleanSegments.join('/')}`;
+}
+
+export function resolveSafeVaultPath(rootPath, virtualPath = '/') {
+  if (typeof rootPath !== 'string' || rootPath.trim().length === 0) {
+    throwTraversalBlocked('diretório raiz inválido.');
+  }
+  const trimmedRoot = rootPath.trim();
+  assertNoTraversalTokens(trimmedRoot);
+  if (trimmedRoot.split('/').some((seg) => seg === '..' || seg === '.')) {
+    throwTraversalBlocked('diretório raiz contém segmento relativo.');
+  }
+
+  const safeRoot = path.posix.resolve('/', trimmedRoot);
+  const canonicalVirtual = normalizeVirtualVaultPath(virtualPath);
+  const rel = canonicalVirtual.slice(1);
+  const resolved = rel ? path.posix.resolve(safeRoot, rel) : safeRoot;
+
+  const rootPrefix = safeRoot === '/' ? '/' : `${safeRoot}/`;
+  if (resolved !== safeRoot && !resolved.startsWith(rootPrefix)) {
+    throwTraversalBlocked('fuga do diretório raiz bloqueada.');
+  }
+  return resolved;
 }
 
 export function sanitizeText(value, maxLength = 500) {

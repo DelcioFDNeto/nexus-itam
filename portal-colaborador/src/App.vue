@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import CustodyAssetsPanel from './components/CustodyAssetsPanel.vue';
+import CorporateCloudDrive from './components/CorporateCloudDrive.vue';
 import PortalIcon from './components/PortalIcon.vue';
 import ResponsibilityTerms from './components/ResponsibilityTerms.vue';
 import SupportTicketDesk from './components/SupportTicketDesk.vue';
@@ -17,7 +18,7 @@ import {
 const { isDark, toggleTheme, applyBranding } = useTheme();
 
 const WHITELABEL_STORAGE_KEY = 'nexus_portal_whitelabel_v3';
-const VALID_TABS = ['custody', 'terms', 'tickets'];
+const VALID_TABS = ['custody', 'terms', 'tickets', 'cloud'];
 
 function readInitialTab() {
   try {
@@ -150,6 +151,7 @@ const wsState = ref('disconnected');
 const liveBanner = ref('');
 const preselectedTag = ref('');
 const latestTicketEvent = ref(null);
+const latestSheetEvent = ref(null);
 const unreadTicketMessages = ref(0);
 
 const emailInputRef = ref(null);
@@ -331,6 +333,7 @@ const portalTabs = computed(() => [
     label: `Central de chamados (${tickets.value.length})`,
     badge: unreadTicketMessages.value,
   },
+  { id: 'cloud', label: 'Arquivos & Nuvem' },
 ]);
 
 function selectTab(tabId) {
@@ -404,6 +407,16 @@ function startWebSocket() {
     (frame) => {
       const evt = String(frame?.event || '');
       if (!evt || evt === 'welcome' || evt === 'pong') return;
+
+      if (evt.startsWith('sheet.')) {
+        latestSheetEvent.value = {
+          event: evt,
+          data: frame?.data || {},
+          timestamp: frame?.timestamp || new Date().toISOString(),
+          seq: Date.now() + Math.random(),
+        };
+        return;
+      }
 
       if (evt.startsWith('ticket.')) {
         latestTicketEvent.value = {
@@ -665,7 +678,8 @@ onBeforeUnmount(() => {
             :aria-pressed="isDark"
             @click="toggleTheme"
           >
-            <PortalIcon :name="isDark ? 'sun' : 'moon'" :size="18" />
+            <PortalIcon v-if="isDark" name="sun" :size="18" />
+          <PortalIcon v-else name="moon" :size="18" />
           </button>
 
           <!-- User Badge & Logout -->
@@ -929,7 +943,8 @@ onBeforeUnmount(() => {
                     :title="showPassword ? 'Ocultar senha' : 'Exibir senha'"
                     @click="showPassword = !showPassword"
                   >
-                    <PortalIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
+                    <PortalIcon v-if="showPassword" name="eye-off" :size="18" />
+                    <PortalIcon v-else name="eye" :size="18" />
                   </button>
                 </div>
                 <p
@@ -1230,6 +1245,23 @@ onBeforeUnmount(() => {
           @created="loadWorkspaceData"
           @send-typing="sendTicketTyping"
           @sync-tickets="loadWorkspaceData({ background: true })"
+        />
+      </div>
+
+      <div
+        v-show="activeTab === 'cloud'"
+        id="panel-cloud"
+        role="tabpanel"
+        aria-labelledby="tab-cloud"
+        data-section-title="Arquivos & Nuvem"
+        :aria-hidden="activeTab !== 'cloud'"
+      >
+        <CorporateCloudDrive
+          :user="session.user"
+          :user-email="session.user.email || ''"
+          :user-department="session.user.department || 'Geral'"
+          :ws-state="wsState"
+          :live-sheet-event="latestSheetEvent"
         />
       </div>
     </main>

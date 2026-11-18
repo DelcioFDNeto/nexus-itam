@@ -36,6 +36,17 @@ const formatBrl = (value) =>
     maximumFractionDigits: 2,
   }).format(Number(value) || 0);
 
+const CUSTOM_PLAN_FALLBACK = {
+  id: CUSTOM_PLAN_ID,
+  name: 'Plano Sob Medida',
+  maxAssets: 100,
+  maxUsers: 10,
+  whitelabel: false,
+  agentIntegration: true,
+  cloudStorage: false,
+  monthlyPrice: 199,
+};
+
 const normalizeInitialFeatures = (initialOverrides = {}, basePlan = null) => {
   const result = {};
   FEATURES.forEach((f) => {
@@ -70,7 +81,7 @@ const deriveBuilderState = ({
   const initialBasePlan =
     plans?.[normalizedInitialPlanId] ||
     DEFAULT_PLANS[normalizedInitialPlanId] ||
-    null;
+    (normalizedInitialPlanId === CUSTOM_PLAN_ID ? CUSTOM_PLAN_FALLBACK : null);
 
   const initialAssetsRaw =
     initialOverrides?.maxAssets !== undefined

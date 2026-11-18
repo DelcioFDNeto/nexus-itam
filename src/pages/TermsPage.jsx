@@ -16,7 +16,10 @@ import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { useTermPrinter } from '../hooks/useTermPrinter';
 import { cancelTransfer, getTerm, listTerms } from '../services/termService';
-import { can } from '../utils/permissions';
+import { loadSignedCopy } from '../services/termFileService';
+import { microservicesApi } from '../services/microservicesClient';
+import { can, hasPermission } from '../utils/permissions';
+import { hasPlanFeature } from '../utils/entitlements';
 import { captureFocusTarget, restoreFocusSafely, trapFocusWithin } from '../utils/focusTrap';
 import { isTopmostModal } from '../utils/modalStack';
 import { useConfirm } from '../components/ConfirmDialog';
@@ -292,6 +295,14 @@ const TermsPage = () => {
   const { overdueDays } = resolveTermOptions(settings);
   const canIssue = can(currentUser, 'terms:issue');
   const canCancel = can(currentUser, 'terms:cancel');
+  const canArchiveToVps = useMemo(() => {
+    if (!currentUser) return false;
+    const role = String(currentUser.role || '').toLowerCase();
+    if (role === 'superadmin' || role === 'viewer' || currentUser.tenantId === 'nexus-master') return false;
+    return hasPermission(currentUser, 'cloud:write') && hasPlanFeature(currentUser, 'cloud_storage');
+  }, [currentUser]);
+  const [archivingTermIds, setArchivingTermIds] = useState({});
+  const archivingTermRef = useRef(new Set());
 
   const [terms, setTerms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -399,6 +410,63 @@ const TermsPage = () => {
     }
   };
 
+  const handleArchiveTermToVps = async (term) => {
+    if (!term || !canArchiveToVps || archivingTermRef.current.has(term.id)) return;
+    archivingTermRef.current.add(term.id);
+    setArchivingTermIds((prev) => ({ ...prev, [term.id]: true }));
+    try {
+      const fileName = term.signedCopy?.name || `${term.number || term.id}.pdf`;
+      let destPath = `/Cofre-TI-Infra/Termos/${fileName}`;
+      const blob = await loadSignedCopy(term.signedCopy);
+
+      let parentId = 'node-termos';
+      try {
+        const nodesRes = await microservicesApi.listStorageNodes();
+        const items = nodesRes?.items || nodesRes?.nodes || [];
+        let cofreNode = items.find((n) => (n.virtual_path || n.virtualPath) === '/Cofre-TI-Infra');
+        if (!cofreNode && typeof microservicesApi.createStorageFolder === 'function') {
+          const createdCofre = await microservicesApi.createStorageFolder({
+            parentId: null,
+            name: 'Cofre-TI-Infra',
+            departmentScope: 'TI',
+          });
+          cofreNode = createdCofre?.node || createdCofre?.folder || createdCofre;
+        }
+        let termosNode = items.find((n) => (n.virtual_path || n.virtualPath) === '/Cofre-TI-Infra/Termos');
+        if (!termosNode && cofreNode?.id && typeof microservicesApi.createStorageFolder === 'function') {
+          const createdTermos = await microservicesApi.createStorageFolder({
+            parentId: cofreNode.id,
+            name: 'Termos',
+            departmentScope: 'TI',
+          });
+          termosNode = createdTermos?.node || createdTermos?.folder || createdTermos;
+        }
+        if (termosNode?.id) {
+          parentId = termosNode.id;
+        }
+      } catch {
+        /* Proceed with upload even if folder listing fails */
+      }
+
+      const upRes = await microservicesApi.uploadStorageFile(blob, {
+        parentId,
+        fileName,
+        conflictPolicy: 'version',
+      });
+      destPath = upRes?.virtualPath || upRes?.node?.virtualPath || destPath;
+      toast.success(`Cópia de ${term.number || term.id} arquivada na VPS em ${destPath}`);
+    } catch (error) {
+      toast.error(error?.message || 'Falha ao arquivar termo na VPS.');
+    } finally {
+      archivingTermRef.current.delete(term.id);
+      setArchivingTermIds((prev) => {
+        const next = { ...prev };
+        delete next[term.id];
+        return next;
+      });
+    }
+  };
+
   const rowActions = (term, detailed = false) => {
     const open = OPEN_TERM_STATUSES.includes(term.status);
     return (
@@ -406,6 +474,16 @@ const TermsPage = () => {
         <ActionButton icon={Printer} label="Imprimir termo" onClick={() => printTerm(term)}>{detailed ? 'Imprimir' : ''}</ActionButton>
         {term.signedCopy && (
           <ActionButton icon={FileCheck2} label="Ver termo assinado" onClick={() => setModal({ type: 'viewer', term })}>{detailed ? 'Ver assinado' : ''}</ActionButton>
+        )}
+        {canArchiveToVps && term.status === 'assinado' && term.signedCopy && (
+          <ActionButton
+            icon={UploadCloud}
+            label={`Arquivar cópia na VPS (${term.number})`}
+            onClick={() => handleArchiveTermToVps(term)}
+            disabled={busyId === term.id || Boolean(archivingTermIds[term.id])}
+          >
+            {archivingTermIds[term.id] ? 'Arquivando...' : 'Arquivar cópia na VPS'}
+          </ActionButton>
         )}
         {canIssue && canAttachSignedCopy(term) && (
           <ActionButton icon={Paperclip} tone={open ? 'primary' : 'default'} onClick={() => setModal({ type: 'conclude', term })} disabled={busyId === term.id}>

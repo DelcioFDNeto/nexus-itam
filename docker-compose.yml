@@ -22,7 +22,10 @@ x-microservice-common: &microservice-common
     NEXUS_JWT_SECRET: ${NEXUS_JWT_SECRET:-nexus-dev-jwt-secret-change-in-vps-production-2026}
     NEXUS_INTERNAL_SECRET: ${NEXUS_INTERNAL_SECRET:-nexus-dev-gateway-hmac-secret-change-in-vps-2026}
     NEXUS_COMPLIANCE_SECRET: ${NEXUS_COMPLIANCE_SECRET:-nexus-dev-clt-legal-hmac-secret-change-in-vps-2026}
+    NEXUS_STORAGE_MASTER_KEY: ${NEXUS_STORAGE_MASTER_KEY:-nexus-itam-dev-storage-vault-master-key-2026-v1}
     NEXUSDESK_SERVICE_URL: http://service-nexusdesk:8004
+    COMPLIANCE_SERVICE_URL: http://service-compliance:8003
+    STORAGE_SERVICE_URL: http://service-storage:8005
 
 services:
   # ---------------------------------------------------------------------------
@@ -107,6 +110,21 @@ services:
       - nexus-mesh
 
   # ---------------------------------------------------------------------------
+  # Microsserviço 5 — API 6 (REST): Nexus Cloud Vault & Conector Híbrido VPS
+  # ---------------------------------------------------------------------------
+  service-storage:
+    <<: *microservice-common
+    environment:
+      <<: *microservice-env
+      PORT: 8005
+      SERVICE_ENTRY: service-storage/src/server.js
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nexus-mesh
+
+  # ---------------------------------------------------------------------------
   # Edge API Gateway Zero-Trust (Única ponte entre nexus-edge e nexus-mesh)
   # ---------------------------------------------------------------------------
   api-gateway:
@@ -119,6 +137,7 @@ services:
       TICKETS_SERVICE_URL: http://service-tickets:8002
       COMPLIANCE_SERVICE_URL: http://service-compliance:8003
       NEXUSDESK_SERVICE_URL: http://service-nexusdesk:8004
+      STORAGE_SERVICE_URL: http://service-storage:8005
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
     ports:
       - "${EXPOSE_HOST_IP:-0.0.0.0}:8000:8000"
@@ -132,6 +151,8 @@ services:
       service-compliance:
         condition: service_started
       service-nexusdesk:
+        condition: service_started
+      service-storage:
         condition: service_started
     networks:
       - nexus-edge

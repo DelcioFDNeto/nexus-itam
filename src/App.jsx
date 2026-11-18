@@ -74,6 +74,7 @@ const NexusUserManager = lazy(() => import('./pages/NexusUserManager'));
 const NexusPlansManager = lazy(() => import('./pages/NexusPlansManager'));
 const TermsPage = lazy(() => import('./pages/TermsPage'));
 const ServiceDeskHub = lazy(() => import('./pages/ServiceDeskHub'));
+const CloudVaultHub = lazy(() => import('./pages/CloudVaultHub'));
 const CollaboratorAssetsPage = lazy(() => import('./pages/CollaboratorAssetsPage'));
 const CollaboratorAccessManager = lazy(() => import('./pages/CollaboratorAccessManager'));
 const PlanContractPage = lazy(() => import('./pages/PlanContractPage'));
@@ -146,6 +147,7 @@ function App() {
               {/* --- Administracao do inquilino --- */}
               <Route path="/agent" element={<AppRoute element={<AgentManager />} capability="agent:manage" feature="agent" />} />
               <Route path="/service-desk" element={<AppRoute element={<ServiceDeskHub />} capability="assets:read" />} />
+              <Route path="/cloud-vault" element={<AppRoute element={<CloudVaultHub />} capability="cloud:read" feature="cloud_storage" />} />
               <Route path="/import" element={<AppRoute element={<ImportData />} capability="assets:import" feature="import" />} />
               <Route path="/settings" element={<AppRoute element={<SettingsPage />} capability="settings:read" />} />
               <Route path="/plano" element={<AppRoute element={<PlanContractPage />} capability="settings:read" />} />

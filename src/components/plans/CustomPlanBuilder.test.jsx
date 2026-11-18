@@ -217,4 +217,26 @@ describe('CustomPlanBuilder', () => {
     expect(screen.getByLabelText(/Cota de Ativos de TI Monitorados/i)).toHaveValue(750);
     expect(screen.getByText(/Alterações não salvas/i)).toBeInTheDocument();
   });
+
+  it('alinha defaults do plano custom sem overrides com resolveEntitlements (cloud_storage e whitelabel desmarcados)', () => {
+    render(
+      <CustomPlanBuilder
+        mode="tenant"
+        plans={DEFAULT_PLANS}
+        pricing={DEFAULT_PRICING_MATRIX}
+        initialPlanId="custom"
+        initialOverrides={{}}
+        usage={{ assets: 10, users: 2 }}
+        onApplyContract={vi.fn()}
+      />,
+    );
+
+    const cloudSwitch = screen.getByRole('switch', { name: /Cloud Vault & Conector VPS/i });
+    const whitelabelSwitch = screen.getByRole('switch', { name: /Whitelabel completo/i });
+    const agentSwitch = screen.getByRole('switch', { name: /Agente ITAM & RMM/i });
+
+    expect(cloudSwitch).toHaveAttribute('aria-checked', 'false');
+    expect(whitelabelSwitch).toHaveAttribute('aria-checked', 'false');
+    expect(agentSwitch).toHaveAttribute('aria-checked', 'true');
+  });
 });

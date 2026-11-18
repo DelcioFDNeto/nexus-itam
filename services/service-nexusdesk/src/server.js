@@ -10,14 +10,21 @@ import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import { pathToFileURL } from 'node:url';
-import { authRepo, canonicalTenantId, checkDbHealth, initDatabase, telemetryRepo } from '../../shared/db.js';
+import { authRepo, canonicalTenantId, checkDbHealth, initDatabase, storageRepo, telemetryRepo } from '../../shared/db.js';
 import {
+  isZeroKnowledgeRestricted,
   requireRoles,
   sanitizeText,
+  signInternalEvent,
   verifyGatewayOrJwt,
   verifyInternalEvent,
   verifyJwt,
 } from '../../shared/security.js';
+import {
+  canAccessLevelPerform,
+  resolveEffectiveNodeAccess,
+} from '../../service-storage/src/services/aclService.js';
+import { normalizeWorkbookTabs } from '../../service-storage/src/services/sheetCodec.js';
 
 function canCollaboratorReceiveEvent(peerEmail, envelope) {
   const email = String(peerEmail || '').toLowerCase().trim();
@@ -29,6 +36,14 @@ function canCollaboratorReceiveEvent(peerEmail, envelope) {
   // Colaboradores nunca recebem frames de telemetria RMM ou controle remoto
   if (eventName.startsWith('telemetry.') || eventName.startsWith('remote.')) {
     return false;
+  }
+
+  // Coedição de planilhas em tempo real (Nexus Sheets Live): entregue aos membros da sala da planilha
+  if (eventName.startsWith('sheet.')) {
+    if (Array.isArray(data.allowedPeerEmails)) {
+      return data.allowedPeerEmails.some((e) => String(e || '').toLowerCase().trim() === email);
+    }
+    return true;
   }
 
   // Isolamento LGPD por titular nos eventos de domínio
@@ -57,9 +72,177 @@ export async function buildNexusDeskService(opts = {}) {
   // Salas multi-tenant isoladas em memória para streaming WebSocket em tempo real
   // Map<tenantId, Set<{ socket, userEmail, role, clientType, connectedAt }>>
   const tenantRooms = new Map();
+  // Salas de coedição de planilhas em tempo real (Nexus Sheets Live)
+  // Map<`${tenantId}:${fileId}`, { tenantId, fileId, peers: Set<session>, tabs, rev, dirty, timer, pendingHistory: [], lastActor: null }>
+  const sheetRooms = new Map();
   // Relay de sessões remotas em memória (zero latência de banco para frames e inputs)
   // Map<`${canonicalTenantId}_${deviceKey}`, { sessionId, status, mode, quality, viewerSeenAt, inputEvents, updatedAt }>
   const remoteSessions = new Map();
+
+  function buildSheetRoomKey(tenantId, fileId) {
+    return `${canonicalTenantId(tenantId)}:${String(fileId || '').trim()}`;
+  }
+
+  function broadcastToSheetRoom(room, eventName, dataPayload, excludeSocket = null) {
+    if (!room || !room.peers) return 0;
+    const allowedPeerEmails = Array.from(room.peers).map((p) => p.userEmail);
+    let delivered = 0;
+    for (const peer of room.peers) {
+      if (excludeSocket && peer.socket === excludeSocket) continue;
+      const env = {
+        protocol: 'nexusdesk-ws/3.0',
+        event: eventName,
+        tenantId: room.tenantId,
+        timestamp: new Date().toISOString(),
+        data: {
+          ...dataPayload,
+          allowedPeerEmails,
+        },
+      };
+      if (peer.role === 'collaborator' && !canCollaboratorReceiveEvent(peer.userEmail, env)) {
+        continue;
+      }
+      if (peer.socket.readyState === 1) {
+        const cleanData = { ...dataPayload };
+        peer.socket.send(
+          JSON.stringify({
+            protocol: 'nexusdesk-ws/3.0',
+            event: eventName,
+            tenantId: room.tenantId,
+            timestamp: env.timestamp,
+            data: cleanData,
+          }),
+        );
+        delivered += 1;
+      }
+    }
+    return delivered;
+  }
+
+  function broadcastSheetPresence(room) {
+    if (!room) return;
+    const peersList = Array.from(room.peers).map((p) => ({
+      email: p.userEmail,
+      userEmail: p.userEmail,
+      name: p.userName || p.userEmail,
+      role: p.role,
+      accessLevel: p.sheetAccessMap?.get(room.fileId) || 'editor',
+      clientType: p.clientType,
+    }));
+    broadcastToSheetRoom(room, 'sheet.presence', {
+      fileId: room.fileId,
+      peers: peersList,
+      rev: room.rev,
+    });
+  }
+
+  async function flushSheetRoomAutoSave(room) {
+    if (!room || !room.dirty) return;
+    if (room.timer) {
+      clearTimeout(room.timer);
+      room.timer = null;
+    }
+    room.dirty = false;
+    const pendingHistory = room.pendingHistory.splice(0, room.pendingHistory.length);
+    const actor = room.lastActor || { email: 'ws-autosave@nexus.local', name: 'AutoSave' };
+
+    const storageUrl = process.env.STORAGE_SERVICE_URL || 'http://127.0.0.1:8005';
+    const bodyObj = {
+      tenantId: room.tenantId,
+      fileId: room.fileId,
+      rev: room.rev,
+      user: actor,
+      tabs: room.tabs,
+      cellHistoryEntries: pendingHistory,
+    };
+    const bodyStr = JSON.stringify(bodyObj);
+
+    try {
+      const res = await fetch(`${storageUrl}/internal/storage/sheets/autosave`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...signInternalEvent(bodyStr),
+        },
+        body: bodyStr,
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        const saved = await res.json().catch(() => ({}));
+        room.rev = Number(saved.rev ?? room.rev);
+        broadcastToSheetRoom(room, 'sheet.saved', {
+          fileId: room.fileId,
+          rev: room.rev,
+          version: saved.version,
+          savedAt: saved.savedAt || new Date().toISOString(),
+        });
+        return;
+      }
+    } catch {
+      /* fallback below */
+    }
+
+    // Direct storageRepo fallback if HTTP call failed
+    try {
+      const savedSession = await storageRepo.upsertSheetSession(room.tenantId, room.fileId, {
+        workbookJson: { sheets: room.tabs, tabs: room.tabs },
+        lastSavedByEmail: actor.email,
+        force: true,
+      });
+      if (pendingHistory.length > 0) {
+        await storageRepo.appendSheetCellHistory(
+          room.tenantId,
+          room.fileId,
+          pendingHistory.map((h) => ({
+            rev: room.rev,
+            tabName: h.tabName || 'Planilha1',
+            cellRef: h.cellRef,
+            oldValue: h.oldValue,
+            newValue: h.newValue,
+            oldFormula: h.oldFormula,
+            newFormula: h.newFormula,
+            actorEmail: h.actorEmail,
+            actorName: h.actorName,
+          })),
+        );
+      }
+      broadcastToSheetRoom(room, 'sheet.saved', {
+        fileId: room.fileId,
+        rev: room.rev,
+        savedAt: savedSession.updated_at || new Date().toISOString(),
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function scheduleSheetRoomAutoSave(room) {
+    room.dirty = true;
+    if (room.timer) {
+      clearTimeout(room.timer);
+    }
+    room.timer = setTimeout(() => {
+      flushSheetRoomAutoSave(room);
+    }, 1800);
+  }
+
+  async function removeSessionFromAllSheetRooms(session) {
+    if (!session) return;
+    for (const [key, room] of sheetRooms.entries()) {
+      if (room.peers.has(session)) {
+        room.peers.delete(session);
+        if (room.peers.size === 0) {
+          if (room.dirty) {
+            await flushSheetRoomAutoSave(room);
+          }
+          if (room.timer) clearTimeout(room.timer);
+          sheetRooms.delete(key);
+        } else {
+          broadcastSheetPresence(room);
+        }
+      }
+    }
+  }
 
   function upsertRemoteControlState(tenantId, payload = {}) {
     const cleanTenant = canonicalTenantId(tenantId);
@@ -516,8 +699,10 @@ export async function buildNexusDeskService(opts = {}) {
           userEmail: claims.email,
           userName: claims.name || claims.email,
           role: claims.role,
+          department: claims.department || 'Geral',
           clientType: request.query?.client || 'web-console',
           connectedAt: new Date().toISOString(),
+          sheetAccessMap: new Map(),
         };
       } else if (claimedTenant && request.query?.client === 'nexusdesk-viewer') {
         session = {
@@ -736,6 +921,331 @@ export async function buildNexusDeskService(opts = {}) {
           );
           return;
         }
+
+        // =====================================================================
+        // NEXUS SHEETS LIVE — Coedição Colaborativa em Tempo Real via WebSocket
+        // =====================================================================
+        if (typeof action === 'string' && action.startsWith('sheet.')) {
+          const fileId = sanitizeText(msg.fileId || msg.data?.fileId || '', 64);
+          if (!fileId) {
+            socket.send(
+              JSON.stringify({
+                protocol: 'nexusdesk-ws/3.0',
+                event: 'sheet.error',
+                message: 'fileId obrigatório em eventos sheet.*',
+              }),
+            );
+            return;
+          }
+
+          const userCtx = {
+            id: session.userEmail,
+            email: session.userEmail,
+            name: session.userName || session.userEmail,
+            role: session.role,
+            tenantId: session.tenantId,
+            department: session.department || 'Geral',
+          };
+
+          if (isZeroKnowledgeRestricted(userCtx)) {
+            socket.send(
+              JSON.stringify({
+                protocol: 'nexusdesk-ws/3.0',
+                event: 'sheet.error',
+                error: 'ZERO_KNOWLEDGE_RESTRICTED',
+                message: 'Superadmin bloqueado por Zero-Knowledge LGPD.',
+              }),
+            );
+            return;
+          }
+
+          const node = await storageRepo.getNodeById(session.tenantId, fileId);
+          if (!node || node.is_trashed) {
+            socket.send(
+              JSON.stringify({
+                protocol: 'nexusdesk-ws/3.0',
+                event: 'sheet.error',
+                error: 'SHEET_NOT_FOUND',
+                message: 'Planilha não encontrada neste tenant.',
+              }),
+            );
+            return;
+          }
+
+          const effectiveAccess = await resolveEffectiveNodeAccess(session.tenantId, userCtx, node);
+          if (!canAccessLevelPerform(effectiveAccess, 'preview', { user: userCtx, node })) {
+            socket.send(
+              JSON.stringify({
+                protocol: 'nexusdesk-ws/3.0',
+                event: 'sheet.error',
+                error: 'FORBIDDEN',
+                message: 'Sem permissão para acessar esta planilha.',
+              }),
+            );
+            return;
+          }
+
+          const roomKey = buildSheetRoomKey(session.tenantId, fileId);
+          let room = sheetRooms.get(roomKey);
+          if (!room) {
+            const dbSession = await storageRepo.getSheetSession(session.tenantId, fileId);
+            const initialTabs = normalizeWorkbookTabs(
+              dbSession?.workbook_json?.sheets || dbSession?.workbook_json?.tabs || [],
+            );
+            room = {
+              tenantId: session.tenantId,
+              fileId,
+              peers: new Set(),
+              tabs: initialTabs,
+              rev: Number(dbSession?.rev ?? dbSession?.revision ?? 1),
+              dirty: false,
+              timer: null,
+              pendingHistory: [],
+              lastActor: userCtx,
+            };
+            sheetRooms.set(roomKey, room);
+          }
+
+          if (!session.sheetAccessMap) session.sheetAccessMap = new Map();
+          session.sheetAccessMap.set(fileId, effectiveAccess);
+
+          if (action === 'sheet.join') {
+            room.peers.add(session);
+            broadcastSheetPresence(room);
+            return;
+          }
+
+          if (action === 'sheet.leave') {
+            room.peers.delete(session);
+            if (room.peers.size === 0 && room.dirty) {
+              await flushSheetRoomAutoSave(room);
+            } else {
+              broadcastSheetPresence(room);
+            }
+            return;
+          }
+
+          if (action === 'sheet.cursor') {
+            room.peers.add(session);
+            const tab = sanitizeText(msg.tab || msg.data?.tab || 'Planilha1', 64);
+            const cell = sanitizeText(msg.cell || msg.data?.cell || 'A1', 16).toUpperCase();
+            const range = msg.range || msg.data?.range || cell;
+            broadcastToSheetRoom(
+              room,
+              'sheet.cursor',
+              {
+                fileId,
+                tab,
+                cell,
+                range,
+                email: session.userEmail,
+                userEmail: session.userEmail,
+                userName: session.userName || session.userEmail,
+              },
+              socket,
+            );
+            return;
+          }
+
+          // Write mutations require editor/full_control + cloud:write + not locked by another user
+          if (['sheet.cell.patch', 'sheet.format.patch', 'sheet.tab.add', 'sheet.tab.rename'].includes(action)) {
+            if (!canAccessLevelPerform(effectiveAccess, 'write', { user: userCtx, node })) {
+              socket.send(
+                JSON.stringify({
+                  protocol: 'nexusdesk-ws/3.0',
+                  event: 'sheet.error',
+                  error: 'READ_ONLY_ACCESS',
+                  message: 'Permissão somente leitura (viewer_online/reader) nesta planilha.',
+                }),
+              );
+              return;
+            }
+
+            const lockedBy = node.locked_by_email || node.lockedByEmail || null;
+            if (lockedBy && String(lockedBy).toLowerCase() !== String(session.userEmail || '').toLowerCase()) {
+              socket.send(
+                JSON.stringify({
+                  protocol: 'nexusdesk-ws/3.0',
+                  event: 'sheet.error',
+                  error: 'NODE_LOCKED',
+                  message: `Planilha bloqueada para edição por ${lockedBy}.`,
+                }),
+              );
+              return;
+            }
+
+            room.peers.add(session);
+            room.lastActor = userCtx;
+
+            if (action === 'sheet.cell.patch') {
+              const tabName = sanitizeText(msg.tab || msg.data?.tab || 'Planilha1', 64);
+              const cellRef = sanitizeText(msg.cell || msg.data?.cell || '', 16).toUpperCase();
+              if (!cellRef || !/^[A-Z]{1,3}\d{1,6}$/.test(cellRef)) {
+                socket.send(
+                  JSON.stringify({
+                    protocol: 'nexusdesk-ws/3.0',
+                    event: 'sheet.error',
+                    message: 'Referência de célula inválida em sheet.cell.patch.',
+                  }),
+                );
+                return;
+              }
+
+              const value = msg.value !== undefined ? msg.value : msg.data?.value;
+              const formula = msg.formula !== undefined ? msg.formula : msg.data?.formula;
+
+              let targetTab = room.tabs.find((t) => t.name === tabName);
+              if (!targetTab) {
+                targetTab = { name: tabName, freezeRow: 0, cells: {} };
+                room.tabs.push(targetTab);
+              }
+
+              const prevCell = targetTab.cells?.[cellRef] || {};
+              const oldVal = prevCell.v !== undefined ? String(prevCell.v ?? '') : null;
+              const oldForm = prevCell.f ? String(prevCell.f) : null;
+
+              const nextCell = { ...prevCell };
+              if (formula !== undefined && formula !== null && String(formula).trim() !== '') {
+                const fStr = String(formula).trim();
+                nextCell.f = fStr.startsWith('=') ? fStr : `=${fStr}`;
+                nextCell.v = value ?? null;
+              } else if (typeof value === 'string' && value.trim().startsWith('=')) {
+                nextCell.f = value.trim();
+                nextCell.v = null;
+              } else {
+                delete nextCell.f;
+                nextCell.v = value;
+              }
+              targetTab.cells[cellRef] = nextCell;
+
+              room.tabs = normalizeWorkbookTabs(room.tabs);
+              room.rev += 1;
+
+              const evalTab = room.tabs.find((t) => t.name === tabName) || room.tabs[0];
+              const evalCell = evalTab?.cells?.[cellRef] || nextCell;
+
+              room.pendingHistory.push({
+                tabName,
+                cellRef,
+                oldValue: oldVal,
+                newValue: evalCell.v !== undefined && evalCell.v !== null ? String(evalCell.v) : null,
+                oldFormula: oldForm,
+                newFormula: evalCell.f || null,
+                actorEmail: session.userEmail,
+                actorName: session.userName || session.userEmail,
+              });
+
+              const savedSess = await storageRepo.upsertSheetSession(session.tenantId, fileId, {
+                workbookJson: { sheets: room.tabs, tabs: room.tabs },
+                lastSavedByEmail: session.userEmail,
+                force: true,
+              });
+              room.rev = Number(savedSess.rev ?? room.rev);
+
+              broadcastToSheetRoom(room, 'sheet.cell.patch', {
+                fileId,
+                tab: tabName,
+                cell: cellRef,
+                value: evalCell.computed !== undefined ? evalCell.computed : evalCell.v,
+                formula: evalCell.f || null,
+                rev: room.rev,
+                actorEmail: session.userEmail,
+                actorName: session.userName || session.userEmail,
+              });
+
+              scheduleSheetRoomAutoSave(room);
+              return;
+            }
+
+            if (action === 'sheet.format.patch') {
+              const tabName = sanitizeText(msg.tab || msg.data?.tab || 'Planilha1', 64);
+              const cellRef = sanitizeText(msg.cell || msg.data?.cell || 'A1', 16).toUpperCase();
+              const style = msg.style || msg.data?.style || {};
+              const freezeRow = msg.freezeRow ?? msg.data?.freezeRow;
+
+              let targetTab = room.tabs.find((t) => t.name === tabName);
+              if (!targetTab) {
+                targetTab = { name: tabName, freezeRow: 0, cells: {} };
+                room.tabs.push(targetTab);
+              }
+              if (freezeRow !== undefined) {
+                targetTab.freezeRow = Number(freezeRow) || 0;
+              }
+              if (cellRef && style && typeof style === 'object') {
+                const prev = targetTab.cells[cellRef] || { v: '' };
+                targetTab.cells[cellRef] = {
+                  ...prev,
+                  style: { ...(prev.style || {}), ...style },
+                };
+              }
+              const savedSess = await storageRepo.upsertSheetSession(session.tenantId, fileId, {
+                workbookJson: { sheets: room.tabs, tabs: room.tabs },
+                lastSavedByEmail: session.userEmail,
+                force: true,
+              });
+              room.rev = Number(savedSess.rev ?? room.rev);
+
+              broadcastToSheetRoom(room, 'sheet.format.patch', {
+                fileId,
+                tab: tabName,
+                cell: cellRef,
+                style,
+                freezeRow: targetTab.freezeRow,
+                rev: room.rev,
+                actorEmail: session.userEmail,
+              });
+              scheduleSheetRoomAutoSave(room);
+              return;
+            }
+
+            if (action === 'sheet.tab.add') {
+              const tabName = sanitizeText(msg.tabName || msg.data?.tabName || `Planilha${room.tabs.length + 1}`, 64);
+              if (!room.tabs.some((t) => t.name === tabName)) {
+                room.tabs.push({ name: tabName, freezeRow: 0, cells: {} });
+              }
+              const savedSess = await storageRepo.upsertSheetSession(session.tenantId, fileId, {
+                workbookJson: { sheets: room.tabs, tabs: room.tabs },
+                lastSavedByEmail: session.userEmail,
+                force: true,
+              });
+              room.rev = Number(savedSess.rev ?? room.rev);
+
+              broadcastToSheetRoom(room, 'sheet.tab.add', {
+                fileId,
+                tabName,
+                rev: room.rev,
+                actorEmail: session.userEmail,
+              });
+              scheduleSheetRoomAutoSave(room);
+              return;
+            }
+
+            if (action === 'sheet.tab.rename') {
+              const oldName = sanitizeText(msg.oldName || msg.data?.oldName || '', 64);
+              const tabName = sanitizeText(msg.tabName || msg.data?.tabName || '', 64);
+              const found = room.tabs.find((t) => t.name === oldName);
+              if (found && tabName) {
+                found.name = tabName;
+              }
+              const savedSess = await storageRepo.upsertSheetSession(session.tenantId, fileId, {
+                workbookJson: { sheets: room.tabs, tabs: room.tabs },
+                lastSavedByEmail: session.userEmail,
+                force: true,
+              });
+              room.rev = Number(savedSess.rev ?? room.rev);
+
+              broadcastToSheetRoom(room, 'sheet.tab.rename', {
+                fileId,
+                oldName,
+                tabName,
+                rev: room.rev,
+                actorEmail: session.userEmail,
+              });
+              scheduleSheetRoomAutoSave(room);
+              return;
+            }
+          }
+        }
       } catch {
         socket.send(
           JSON.stringify({
@@ -748,7 +1258,10 @@ export async function buildNexusDeskService(opts = {}) {
     });
 
     socket.on('close', () => {
-      if (session) removeClientFromRoom(session.tenantId, session);
+      if (session) {
+        removeClientFromRoom(session.tenantId, session);
+        removeSessionFromAllSheetRooms(session);
+      }
     });
   });
 

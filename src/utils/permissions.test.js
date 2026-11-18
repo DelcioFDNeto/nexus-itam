@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  assignableRoles, can, canManageMember, hasRole, hasValidTenant, isSuperadmin, isTenantAdmin, TENANT_ROLES,
+  assignableRoles, can, canManageMember, COLLABORATOR_CAPABILITIES, hasRole, hasValidTenant, isSuperadmin, isTenantAdmin, TENANT_ONLY_CAPABILITIES, TENANT_ROLES,
 } from './permissions';
 
 const user = (role, tenantId = 'acme-1234') => ({ role, tenantId });
@@ -149,5 +149,89 @@ describe('canManageMember', () => {
 
   it('owner gerencia outros owners', () => {
     expect(canManageMember(owner, { id: 'o2', role: 'owner', tenantId: 'acme-1234' })).toBe(true);
+  });
+});
+
+describe('Cloud Vault RBAC & Zero-Knowledge LGPD', () => {
+  it('cloud:connect exige admin ou owner', () => {
+    expect(can(user('owner'), 'cloud:connect')).toBe(true);
+    expect(can(user('admin'), 'cloud:connect')).toBe(true);
+    expect(can(user('manager'), 'cloud:connect')).toBe(false);
+    expect(can(user('member'), 'cloud:connect')).toBe(false);
+    expect(can(user('operator'), 'cloud:connect')).toBe(false);
+    expect(can(user('viewer'), 'cloud:connect')).toBe(false);
+    expect(can(user('collaborator'), 'cloud:connect')).toBe(false);
+  });
+
+  it('cloud:acl exige manager ou superior', () => {
+    expect(can(user('owner'), 'cloud:acl')).toBe(true);
+    expect(can(user('admin'), 'cloud:acl')).toBe(true);
+    expect(can(user('manager'), 'cloud:acl')).toBe(true);
+    expect(can(user('member'), 'cloud:acl')).toBe(false);
+    expect(can(user('operator'), 'cloud:acl')).toBe(false);
+    expect(can(user('viewer'), 'cloud:acl')).toBe(false);
+    expect(can(user('collaborator'), 'cloud:acl')).toBe(false);
+  });
+
+  it('cloud:write exige operator ou superior', () => {
+    expect(can(user('owner'), 'cloud:write')).toBe(true);
+    expect(can(user('admin'), 'cloud:write')).toBe(true);
+    expect(can(user('manager'), 'cloud:write')).toBe(true);
+    expect(can(user('member'), 'cloud:write')).toBe(true);
+    expect(can(user('operator'), 'cloud:write')).toBe(true);
+    expect(can(user('viewer'), 'cloud:write')).toBe(false);
+    expect(can(user('collaborator'), 'cloud:write')).toBe(false);
+  });
+
+  it('cloud:read libera viewer+ e collaborator (Portal do Colaborador)', () => {
+    expect(COLLABORATOR_CAPABILITIES.has('cloud:read')).toBe(true);
+    ['collaborator', 'viewer', 'operator', 'member', 'manager', 'admin', 'owner'].forEach((role) => {
+      expect(can(user(role), 'cloud:read')).toBe(true);
+    });
+  });
+
+  it('collaborator nao sofre escalonamento de privilegio fora de cloud:read', () => {
+    const colab = user('collaborator');
+    expect(can(colab, 'assets:read')).toBe(false);
+    expect(can(colab, 'terms:read')).toBe(false);
+    expect(can(colab, 'nao:existe')).toBe(false);
+    expect(hasRole(colab, 'viewer')).toBe(false);
+    expect(isTenantAdmin(colab)).toBe(false);
+    expect(assignableRoles(colab)).toEqual([]);
+  });
+
+  it('superadmin sofre bloqueio Zero-Knowledge LGPD em todas as capacidades cloud:*', () => {
+    const master = { role: 'superadmin', tenantId: 'nexus-master' };
+    ['cloud:connect', 'cloud:acl', 'cloud:write', 'cloud:read'].forEach((cap) => {
+      expect(TENANT_ONLY_CAPABILITIES.has(cap)).toBe(true);
+      expect(can(master, cap)).toBe(false);
+    });
+  });
+
+  it('superadmin plantado em tenant comum nao recebe nenhuma capacidade nem papel administrativo', () => {
+    const planted = { role: 'superadmin', tenantId: 'acme-1' };
+    [
+      'cloud:connect',
+      'cloud:acl',
+      'cloud:write',
+      'cloud:read',
+      'agent:read',
+      'assets:read',
+      'settings:write',
+      'plans:manage',
+      'tenant:manage',
+    ].forEach((cap) => {
+      expect(can(planted, cap)).toBe(false);
+    });
+    expect(isTenantAdmin(planted)).toBe(false);
+    expect(hasRole(planted, 'viewer')).toBe(false);
+    expect(hasRole(planted, 'owner')).toBe(false);
+    expect(isSuperadmin(planted)).toBe(false);
+    expect(assignableRoles(planted)).toEqual([]);
+  });
+
+  it('superadmin master tambem recebe false para capacidade inexistente', () => {
+    const master = { role: 'superadmin', tenantId: 'nexus-master' };
+    expect(can(master, 'nonexistent:cap')).toBe(false);
   });
 });

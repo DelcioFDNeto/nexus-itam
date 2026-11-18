@@ -16,6 +16,7 @@ COPY service-assets ./service-assets
 COPY service-tickets ./service-tickets
 COPY service-compliance ./service-compliance
 COPY service-nexusdesk ./service-nexusdesk
+COPY service-storage ./service-storage
 COPY orchestrator.js ./orchestrator.js
 
 ENV NODE_ENV=production

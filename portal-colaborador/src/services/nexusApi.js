@@ -73,9 +73,10 @@ export function clearStoredSession() {
 
 async function request(path, options = {}) {
   const session = getStoredSession();
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers = {
     Accept: 'application/json',
-    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(!isFormData && options.body ? { 'Content-Type': 'application/json' } : {}),
     ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
     ...(options.headers || {}),
   };
@@ -83,13 +84,12 @@ async function request(path, options = {}) {
   const res = await fetch(`${GATEWAY_BASE_URL}${path}`, {
     ...options,
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: isFormData ? options.body : options.body ? JSON.stringify(options.body) : undefined,
   });
 
   const contentType = res.headers.get('content-type') || '';
-  const data = contentType.includes('application/json')
-    ? await res.json().catch(() => ({}))
-    : {};
+  const isJson = contentType.includes('application/json');
+  const data = isJson ? await res.json().catch(() => ({})) : {};
 
   if (res.status === 401 && path !== '/api/v1/auth/login') {
     clearStoredSession();
@@ -97,11 +97,22 @@ async function request(path, options = {}) {
   }
 
   if (!res.ok) {
-    throw new Error(data.message || `Falha na requisição (${res.status})`);
+    const err = new Error(data.message || `Falha na requisição (${res.status})`);
+    err.status = res.status;
+    err.code = data.error || `HTTP_${res.status}`;
+    throw err;
   }
 
-  if (!contentType.includes('application/json')) {
-    throw new Error('Resposta inesperada do API Gateway (verifique a conectividade da VPS).');
+  if (!isJson) {
+    const arrayBuffer = await res.arrayBuffer();
+    return {
+      ok: true,
+      status: res.status,
+      contentType,
+      contentDisposition: res.headers.get('content-disposition') || '',
+      blob: new Blob([arrayBuffer], { type: contentType || 'application/octet-stream' }),
+      arrayBuffer,
+    };
   }
 
   return data;
@@ -158,6 +169,65 @@ export const portalApi = {
       method: 'POST',
     }),
   verifyTermIntegrity: (id) => request(`/api/v1/compliance/terms/${id}/verify`),
+
+  // API 6 (REST) — Arquivos & Nuvem Corporativa (`service-storage`)
+  getStorageHealth: () => request('/api/v1/storage/health'),
+  getStorageQuota: () => request('/api/v1/storage/quota'),
+  listStorageNodes: (params = {}) => {
+    if (!params || typeof params === 'string') {
+      const qs =
+        params && params !== 'force-401-not-used' ? `?parentId=${encodeURIComponent(params)}` : '';
+      return request(`/api/v1/storage/nodes${qs}`);
+    }
+    const clean = Object.fromEntries(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''),
+    );
+    const qs = new URLSearchParams(clean).toString();
+    return request(`/api/v1/storage/nodes${qs ? `?${qs}` : ''}`);
+  },
+  createStorageFolder: (payload) =>
+    request('/api/v1/storage/folders', { method: 'POST', body: payload }),
+  uploadStorageFile: (fileOrFormData, options = {}) => {
+    if (typeof FormData !== 'undefined' && fileOrFormData instanceof FormData) {
+      return request('/api/v1/storage/upload', { method: 'POST', body: fileOrFormData });
+    }
+    const form = new FormData();
+    if (options.parentId) form.append('parentId', String(options.parentId));
+    if (options.fileName) form.append('fileName', String(options.fileName));
+    form.append('conflictPolicy', options.conflictPolicy || 'version');
+    if (fileOrFormData instanceof Blob) {
+      form.append('file', fileOrFormData, options.fileName || fileOrFormData.name || 'upload.bin');
+    } else if (fileOrFormData?.file) {
+      if (fileOrFormData.parentId) form.set('parentId', String(fileOrFormData.parentId));
+      if (fileOrFormData.fileName) form.set('fileName', String(fileOrFormData.fileName));
+      form.append('file', fileOrFormData.file, fileOrFormData.fileName || fileOrFormData.file.name || 'upload.bin');
+    }
+    return request('/api/v1/storage/upload', { method: 'POST', body: form });
+  },
+  downloadStorageFile: (nodeId) =>
+    request(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/download`),
+  previewStorageFile: (nodeId) =>
+    request(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/preview`),
+  deleteStorageNode: (nodeId) =>
+    request(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}`, { method: 'DELETE' }),
+  renameStorageNode: (nodeId, name) =>
+    request(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}`, {
+      method: 'PATCH',
+      body: { name },
+    }),
+  createSheet: (payload) =>
+    request('/api/v1/storage/sheets', { method: 'POST', body: payload }),
+  getSheet: (sheetId) =>
+    request(`/api/v1/storage/sheets/${encodeURIComponent(sheetId)}`),
+  saveSheet: (sheetId, payload) =>
+    request(`/api/v1/storage/sheets/${encodeURIComponent(sheetId)}/save`, {
+      method: 'POST',
+      body: payload,
+    }),
+  exportSheet: (sheetId, format = 'xlsx') =>
+    request(`/api/v1/storage/sheets/${encodeURIComponent(sheetId)}/export?format=${encodeURIComponent(format)}`),
+  getSheetHistory: (sheetId) =>
+    request(`/api/v1/storage/sheets/${encodeURIComponent(sheetId)}/history`),
 
   // API 5 (NÃO-REST) — Conexão WebSocket Bidirecional Full-Duplex com Backoff & Watchdog
   connectRealtimeStream(token, onFrame, onStatusChange, onReconnected) {
@@ -280,6 +350,55 @@ export const portalApi = {
               isTyping: Boolean(isTyping),
             }),
           );
+          return true;
+        }
+        return false;
+      },
+      joinSheet(fileId) {
+        if (ws?.readyState === WebSocket.OPEN && fileId) {
+          ws.send(JSON.stringify({ action: 'sheet.join', fileId }));
+          return true;
+        }
+        return false;
+      },
+      leaveSheet(fileId) {
+        if (ws?.readyState === WebSocket.OPEN && fileId) {
+          ws.send(JSON.stringify({ action: 'sheet.leave', fileId }));
+          return true;
+        }
+        return false;
+      },
+      sendSheetCursor({ fileId, tab = 'Planilha1', cell = 'A1', range }) {
+        if (ws?.readyState === WebSocket.OPEN && fileId) {
+          ws.send(JSON.stringify({ action: 'sheet.cursor', fileId, tab, cell, range: range || cell }));
+          return true;
+        }
+        return false;
+      },
+      sendSheetCellPatch({ fileId, tab = 'Planilha1', cell, value, formula, baseRev }) {
+        if (ws?.readyState === WebSocket.OPEN && fileId && cell) {
+          ws.send(JSON.stringify({ action: 'sheet.cell.patch', fileId, tab, cell, value, formula, baseRev }));
+          return true;
+        }
+        return false;
+      },
+      sendSheetFormatPatch({ fileId, tab = 'Planilha1', cell, style, freezeRow }) {
+        if (ws?.readyState === WebSocket.OPEN && fileId) {
+          ws.send(JSON.stringify({ action: 'sheet.format.patch', fileId, tab, cell, style, freezeRow }));
+          return true;
+        }
+        return false;
+      },
+      sendSheetTabAdd({ fileId, tabName }) {
+        if (ws?.readyState === WebSocket.OPEN && fileId && tabName) {
+          ws.send(JSON.stringify({ action: 'sheet.tab.add', fileId, tabName }));
+          return true;
+        }
+        return false;
+      },
+      sendSheetTabRename({ fileId, oldName, tabName }) {
+        if (ws?.readyState === WebSocket.OPEN && fileId && tabName) {
+          ws.send(JSON.stringify({ action: 'sheet.tab.rename', fileId, oldName, tabName }));
           return true;
         }
         return false;

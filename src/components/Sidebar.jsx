@@ -6,7 +6,7 @@ import {
   Users, LogOut, ClipboardCheck, X, ShieldCheck, Layers, Globe,
   FolderGit2, Settings, ChevronLeft, ChevronRight, ChevronDown,
   Search, Activity, UserCog, Building2, Moon, Sun, FileSignature, KeyRound, CreditCard,
-  RefreshCw, Shield, Boxes, Network, Smartphone,
+  RefreshCw, Shield, Boxes, Network, Smartphone, HardDrive,
 } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../contexts/AuthContext';
@@ -234,6 +234,7 @@ const Sidebar = ({
         items: [
           { path: '/agent', icon: Activity, label: 'NexusDesk & RMM', badge: `v${AGENT_VERSION.slice(0, 3)}`, cap: 'agent:manage', feature: 'agent' },
           { path: '/service-desk', icon: Network, label: 'Service Desk & APIs', badge: '5 APIs', cap: 'assets:read' },
+          { path: '/cloud-vault', icon: HardDrive, label: 'Cloud Vault & VPS', badge: 'API 6', cap: 'cloud:read', feature: 'cloud_storage' },
           { path: '/audit', icon: ClipboardCheck, label: 'Auditoria QR Code', cap: 'audit:run', feature: 'audit' },
         ],
       },
@@ -290,7 +291,7 @@ const Sidebar = ({
     } catch {
       /* modo privado */
     }
-    return {};
+    return { telemetry: true };
   });
 
   // Alterna expansão da seção na cascata

@@ -8,12 +8,14 @@ import Fastify from 'fastify';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import { pathToFileURL } from 'node:url';
-import { checkDbHealth, initDatabase, ticketsRepo } from '../../shared/db.js';
+import { checkDbHealth, complianceRepo, initDatabase, ticketsRepo } from '../../shared/db.js';
 import { publishDomainEvent } from '../../shared/eventBus.js';
 import {
+  assertZeroKnowledgeAllowed,
   requireRoles,
   sanitizeText,
   sanitizeTicketAttachments,
+  signInternalEvent,
   verifyGatewayOrJwt,
 } from '../../shared/security.js';
 
@@ -321,6 +323,170 @@ export async function buildTicketsService(opts = {}) {
       return reply.code(201).send(comment);
     },
   );
+
+  // ---------------------------------------------------------------------------
+  // POST /api/v1/tickets/:id/archive-vps — Arquiva Chamado + Anexos na VPS
+  // ---------------------------------------------------------------------------
+  app.post('/api/v1/tickets/:id/archive-vps', async (request, reply) => {
+    const user = verifyGatewayOrJwt(request);
+    assertZeroKnowledgeAllowed(user, 'Arquivamento de Chamados na VPS');
+    requireRoles(user, ['owner', 'admin', 'manager', 'operator']);
+
+    const ticket = await ticketsRepo.findById(user.tenantId, request.params.id);
+    if (!ticket) {
+      return reply.code(404).send({ error: 'NOT_FOUND', message: 'Chamado não encontrado.' });
+    }
+
+    const comments = Array.isArray(ticket.comments) ? ticket.comments : [];
+    const summaryText = [
+      '========================================================================',
+      `NEXUS ITAM — DOSSIÊ DE CHAMADO TÉCNICO (${ticket.protocol})`,
+      '========================================================================',
+      `ID:               ${ticket.id}`,
+      `Protocolo:        ${ticket.protocol}`,
+      `Título:           ${ticket.title}`,
+      `Status:           ${ticket.status}`,
+      `Prioridade:       ${ticket.priority}`,
+      `Categoria:        ${ticket.category || 'Suporte Técnico'}`,
+      `Departamento:     ${ticket.department || 'Corporativo'}`,
+      `Ativo (Tag):      ${ticket.asset_tag || 'N/A'}`,
+      `Solicitante:      ${ticket.requester_name} <${ticket.requester_email}>`,
+      `Técnico Resp.:    ${ticket.assigned_tech_name || 'N/A'}`,
+      `Notas Resolução:  ${ticket.resolution_notes || 'N/A'}`,
+      '------------------------------------------------------------------------',
+      'DESCRIÇÃO ORIGINAL:',
+      ticket.description || '',
+      '------------------------------------------------------------------------',
+      'HISTÓRICO DE ATENDIMENTO E COMENTÁRIOS:',
+      ...(comments.length > 0
+        ? comments.map(
+            (c, idx) =>
+              `  [${idx + 1}] ${c.author_name} (${c.author_email}): ${c.message || '(anexo)'}`,
+          )
+        : ['  (Sem comentários registrados)']),
+      '========================================================================',
+    ].join('\n');
+
+    const filesToArchive = [
+      {
+        name: `resumo-${ticket.protocol}.txt`,
+        mimeType: 'text/plain; charset=utf-8',
+        contentBase64: Buffer.from(summaryText, 'utf8').toString('base64'),
+      },
+    ];
+
+    const extractAttachmentBuffer = (att, prefix, idx) => {
+      if (!att || !att.dataUrl) return null;
+      const m = /^data:([^;]+);base64,(.+)$/i.exec(String(att.dataUrl));
+      if (!m) return null;
+      const mimeType = m[1].trim();
+      const b64 = m[2].trim();
+      const rawName = String(att.name || `${prefix}-${idx}.png`).replace(/[^a-zA-Z0-9._-]/g, '_');
+      return {
+        name: rawName,
+        mimeType,
+        contentBase64: b64,
+      };
+    };
+
+    const ticketAtts = Array.isArray(ticket.attachments) ? ticket.attachments : [];
+    ticketAtts.forEach((att, idx) => {
+      const parsed = extractAttachmentBuffer(att, 'anexo-abertura', idx + 1);
+      if (parsed) filesToArchive.push(parsed);
+    });
+
+    comments.forEach((c, cIdx) => {
+      const cAtts = Array.isArray(c.attachments) ? c.attachments : [];
+      cAtts.forEach((att, aIdx) => {
+        const parsed = extractAttachmentBuffer(att, `comentario-${cIdx + 1}`, aIdx + 1);
+        if (parsed) filesToArchive.push(parsed);
+      });
+    });
+
+    const storageUrl =
+      process.env.STORAGE_SERVICE_URL || 'http://127.0.0.1:8005';
+    const bodyStr = JSON.stringify({
+      tenantId: user.tenantId,
+      actor: user,
+      folderSegments: ['Chamados', ticket.protocol],
+      files: filesToArchive,
+    });
+
+    const headers = {
+      'content-type': 'application/json',
+      ...signInternalEvent(bodyStr),
+    };
+
+    const res = await fetch(`${storageUrl}/internal/storage/archive`, {
+      method: 'POST',
+      headers,
+      body: bodyStr,
+      signal: AbortSignal.timeout(10_000),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return reply.code(res.status).send({
+        error: data.error || 'ARCHIVE_FAILED',
+        message: data.message || 'Falha ao arquivar chamado na VPS.',
+      });
+    }
+
+    // Record compliance audit log via /internal/audit or complianceRepo fallback
+    const complianceUrl = process.env.COMPLIANCE_SERVICE_URL;
+    let recordedAudit = false;
+    if (complianceUrl) {
+      try {
+        const auditBody = JSON.stringify({
+          tenantId: user.tenantId,
+          actorEmail: user.email,
+          actorRole: user.role,
+          action: 'TICKET_ARCHIVED_TO_VPS',
+          resourceType: 'ticket',
+          resourceId: ticket.id,
+          payload: {
+            protocol: ticket.protocol,
+            folderPath: `/Chamados/${ticket.protocol}/`,
+            filesCount: filesToArchive.length,
+          },
+        });
+        const auditRes = await fetch(`${complianceUrl}/internal/audit`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...signInternalEvent(auditBody),
+          },
+          body: auditBody,
+          signal: AbortSignal.timeout(2500),
+        });
+        if (auditRes.ok) recordedAudit = true;
+      } catch {
+        recordedAudit = false;
+      }
+    }
+    if (!recordedAudit) {
+      await complianceRepo.appendAuditLog(user.tenantId, {
+        actorEmail: user.email,
+        actorRole: user.role,
+        action: 'TICKET_ARCHIVED_TO_VPS',
+        resourceType: 'ticket',
+        resourceId: ticket.id,
+        payload: {
+          protocol: ticket.protocol,
+          folderPath: `/Chamados/${ticket.protocol}/`,
+          filesCount: filesToArchive.length,
+        },
+      });
+    }
+
+    return reply.code(200).send({
+      archived: true,
+      ticketId: ticket.id,
+      protocol: ticket.protocol,
+      folderPath: `/Chamados/${ticket.protocol}/`,
+      files: data.files || filesToArchive.map((f) => f.name),
+      nodes: data.nodes || [],
+    });
+  });
 
   // ---------------------------------------------------------------------------
   // DELETE /api/v1/tickets/:id — Exclusão administrativa de chamado (Owner/Admin/Manager)

@@ -40,6 +40,7 @@ const TENANT_PAGES = [
   { name: 'Licenças', path: '/licenses', cap: 'licenses:write', feature: 'licenses' },
   { name: 'Contratos', path: '/services', cap: 'contracts:write', feature: 'contracts' },
   { name: 'Agente ITAM', path: '/agent', cap: 'agent:manage', feature: 'agent' },
+  { name: 'Cloud Vault & Conector VPS', path: '/cloud-vault', cap: 'cloud:read', feature: 'cloud_storage' },
   { name: 'Importação', path: '/import', cap: 'assets:import', feature: 'import' },
   { name: 'Acessos', path: '/users', cap: 'users:manage' },
   { name: 'Plano e contrato personalizado', path: '/plano', cap: 'settings:read' },
@@ -315,7 +316,6 @@ const GlobalSearch = ({ isOpen, onClose, returnFocusRef }) => {
             id="global-search-input"
             name="globalSearch"
             type="text"
-            role="combobox"
             aria-autocomplete="list"
             aria-expanded={results.length > 0}
             aria-activedescendant={results[cursor] ? `gs-${results[cursor].key}` : undefined}

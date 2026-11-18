@@ -1,14 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_PLANS,
+  DEFAULT_PRICING_MATRIX,
   FEATURE_IDS,
+  MODULE_IDS,
   UNLIMITED,
+  buildCustomContractPayload,
+  calculateCustomPlanQuote,
   formatUsage,
   hasFeature,
   isModuleEnabled,
   isTenantBlocked,
   isUserBlocked,
   resolveEntitlements,
+  sanitizePricingMatrix,
   usageRatio,
   usageTone,
   withinLimit,
@@ -143,5 +148,86 @@ describe('status que cortam acesso', () => {
   it('usuario suspenso', () => {
     expect(isUserBlocked('suspended')).toBe(true);
     expect(isUserBlocked('active')).toBe(false);
+  });
+});
+
+describe('modulo comercial cloud_storage', () => {
+  const withFeatures = (features, extra = {}) => ({
+    role: 'owner',
+    tenantId: 'acme-1234',
+    entitlements: { features },
+    ...extra,
+  });
+
+  it('registra cloud_storage como modulo de infraestrutura e na matriz de precos', () => {
+    expect(FEATURE_IDS).toContain('cloud_storage');
+    expect(MODULE_IDS).toContain('cloud_storage');
+    expect(DEFAULT_PRICING_MATRIX.featurePrices.cloud_storage).toBe(79);
+    expect(
+      sanitizePricingMatrix({ featurePrices: { cloud_storage: -10 } }).featurePrices.cloud_storage,
+    ).toBe(DEFAULT_PRICING_MATRIX.featurePrices.cloud_storage);
+  });
+
+  it('bloqueia no Starter/desconhecido e inclui no Pro/Enterprise', () => {
+    expect(resolveEntitlements({ tenant: { plan: 'starter' } }).features.cloud_storage).toBe(false);
+    expect(resolveEntitlements({ tenant: { plan: 'PLATINUM' } }).features.cloud_storage).toBe(false);
+    expect(resolveEntitlements({ tenant: { plan: 'pro' } }).features.cloud_storage).toBe(true);
+    expect(resolveEntitlements({ tenant: { plan: 'enterprise' } }).features.cloud_storage).toBe(true);
+  });
+
+  it('funciona como add-on opcional no plano sob medida e via override', () => {
+    expect(resolveEntitlements({ tenant: { plan: 'custom' } }).features.cloud_storage).toBe(false);
+
+    const baseQuote = calculateCustomPlanQuote({ features: {} });
+    const withCloudQuote = calculateCustomPlanQuote({ features: { cloud_storage: true } });
+    const breakdownItem = withCloudQuote.moduleBreakdown.find((m) => m.id === 'cloud_storage');
+    expect(breakdownItem?.enabled).toBe(true);
+    expect(breakdownItem?.cost).toBe(DEFAULT_PRICING_MATRIX.featurePrices.cloud_storage);
+    expect(withCloudQuote.modulesCost).toBeGreaterThan(baseQuote.modulesCost);
+
+    const contractWith = buildCustomContractPayload({
+      planId: 'custom',
+      features: { cloud_storage: true },
+    });
+    expect(contractWith.overrides.features.cloud_storage).toBe(true);
+    expect(
+      resolveEntitlements({ tenant: { status: 'active', ...contractWith } }).features.cloud_storage,
+    ).toBe(true);
+
+    const contractWithout = buildCustomContractPayload({
+      planId: 'custom',
+      features: { cloud_storage: false },
+    });
+    expect(contractWithout.overrides.features.cloud_storage).toBe(false);
+    expect(
+      resolveEntitlements({ tenant: { status: 'active', ...contractWithout } }).features.cloud_storage,
+    ).toBe(false);
+
+    expect(
+      resolveEntitlements({
+        tenant: { plan: 'starter', overrides: { features: { cloud_storage: true } } },
+      }).features.cloud_storage,
+    ).toBe(true);
+  });
+
+  it('respeita hasFeature, isModuleEnabled e visibilidade comercial do superadmin', () => {
+    expect(hasFeature(withFeatures({ cloud_storage: false }), 'cloud_storage')).toBe(false);
+    expect(hasFeature(withFeatures({ cloud_storage: true }), 'cloud_storage')).toBe(true);
+    expect(
+      isModuleEnabled(
+        withFeatures({ cloud_storage: true }, { hiddenModules: ['cloud_storage'] }),
+        'cloud_storage',
+      ),
+    ).toBe(false);
+    expect(
+      hasFeature(
+        {
+          role: 'superadmin',
+          tenantId: 'nexus-master',
+          entitlements: { features: { cloud_storage: false } },
+        },
+        'cloud_storage',
+      ),
+    ).toBe(true);
   });
 });
