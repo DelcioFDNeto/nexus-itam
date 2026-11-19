@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import CustodyAssetsPanel from './components/CustodyAssetsPanel.vue';
 import CorporateCloudDrive from './components/CorporateCloudDrive.vue';
+import FirstAccessTour from './components/FirstAccessTour.vue';
 import PortalIcon from './components/PortalIcon.vue';
 import ResponsibilityTerms from './components/ResponsibilityTerms.vue';
 import SupportTicketDesk from './components/SupportTicketDesk.vue';
@@ -18,6 +19,7 @@ import {
 const { isDark, toggleTheme, applyBranding } = useTheme();
 
 const WHITELABEL_STORAGE_KEY = 'nexus_portal_whitelabel_v3';
+const TOUR_STORAGE_PREFIX = 'nexus_portal_tour_v1';
 const VALID_TABS = ['custody', 'terms', 'tickets', 'cloud'];
 
 function readInitialTab() {
@@ -153,6 +155,74 @@ const preselectedTag = ref('');
 const latestTicketEvent = ref(null);
 const latestSheetEvent = ref(null);
 const unreadTicketMessages = ref(0);
+const showFirstAccessTour = ref(false);
+const tourIsReplay = ref(false);
+const tourCheckedUserKey = ref('');
+
+function getTourStorageKey(user) {
+  if (!user) return '';
+  const tenant = String(user.tenantId || user.tenant_id || 'default').toLowerCase().trim();
+  const identity = String(user.email || user.id || user.sub || '').toLowerCase().trim();
+  if (!identity) return '';
+  return `${TOUR_STORAGE_PREFIX}:${tenant}:${identity}`;
+}
+
+function hasSeenFirstAccessTour(user) {
+  const key = getTourStorageKey(user);
+  if (!key) return true;
+  try {
+    return Boolean(localStorage.getItem(key));
+  } catch {
+    return true;
+  }
+}
+
+function markFirstAccessTourSeen(user, status = 'completed') {
+  const key = getTourStorageKey(user);
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify({ status, seenAt: new Date().toISOString() }));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+function maybeLaunchFirstAccessTour(user) {
+  const key = getTourStorageKey(user);
+  if (!key || tourCheckedUserKey.value === key) return;
+  tourCheckedUserKey.value = key;
+
+  let tourParam = '';
+  try {
+    tourParam = new URLSearchParams(window.location.search).get('tour') || '';
+  } catch {
+    tourParam = '';
+  }
+
+  if (tourParam === '0') return;
+  if (tourParam === '1' || !hasSeenFirstAccessTour(user)) {
+    tourIsReplay.value = tourParam === '1' && hasSeenFirstAccessTour(user);
+    showFirstAccessTour.value = true;
+  }
+}
+
+function openTourReplay() {
+  tourIsReplay.value = true;
+  showFirstAccessTour.value = true;
+}
+
+function handleTourClose({ reason = 'skipped' } = {}) {
+  markFirstAccessTourSeen(session.value?.user, reason);
+  showFirstAccessTour.value = false;
+}
+
+function handleTourComplete({ targetTab = 'custody' } = {}) {
+  markFirstAccessTourSeen(session.value?.user, 'completed');
+  showFirstAccessTour.value = false;
+  if (targetTab && VALID_TABS.includes(targetTab)) {
+    selectTab(targetTab);
+  }
+}
 
 const emailInputRef = ref(null);
 const passwordInputRef = ref(null);
@@ -508,6 +578,7 @@ async function handleLogin() {
     syncTabQuery(activeTab.value);
     await loadWorkspaceData();
     startWebSocket();
+    maybeLaunchFirstAccessTour(session.value?.user);
     authStatusMessage.value = 'Sessão iniciada.';
   } catch (err) {
     authError.value = err.message || 'Falha ao autenticar no portal.';
@@ -533,6 +604,8 @@ function handleLogout(reason = '') {
   liveBanner.value = '';
   latestTicketEvent.value = null;
   unreadTicketMessages.value = 0;
+  showFirstAccessTour.value = false;
+  tourCheckedUserKey.value = '';
   loginForm.password = '';
   showPassword.value = false;
   fieldErrors.email = '';
@@ -567,6 +640,7 @@ onMounted(async () => {
       await loadWorkspaceData();
       if (session.value?.token) {
         startWebSocket();
+        maybeLaunchFirstAccessTour(session.value?.user);
       }
     } catch (err) {
       if (session.value?.token) {
@@ -577,6 +651,7 @@ onMounted(async () => {
             loadError.value = profileErr;
           }
           startWebSocket();
+          maybeLaunchFirstAccessTour(session.value?.user);
         }
       }
     }
@@ -668,6 +743,20 @@ onBeforeUnmount(() => {
               {{ wsState === 'connected' ? 'Tempo real ativo' : 'Sincronizando…' }}
             </span>
           </div>
+
+          <!-- Guided Tour Replay Button -->
+          <button
+            v-if="session?.user"
+            type="button"
+            data-testid="portal-replay-tour-btn"
+            class="min-h-[44px] px-3 py-2 rounded-xl border border-brand-ring/35 bg-brand/10 hover:bg-brand/15 text-brand-text-light dark:text-brand-text-dark active:scale-[0.98] text-xs font-semibold transition-colors cursor-pointer inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+            title="Reabrir tour guiado do portal"
+            aria-label="Abrir tour guiado do portal"
+            @click="openTourReplay"
+          >
+            <PortalIcon name="compass" :size="16" />
+            <span class="hidden lg:inline">Tour Guiado</span>
+          </button>
 
           <!-- Theme Toggle Switch -->
           <button
@@ -1071,7 +1160,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Employee Dashboard Quick Summary -->
-      <div class="grid gap-3.5 sm:grid-cols-3">
+      <div data-tour="summary-cards" class="grid gap-3.5 sm:grid-cols-3">
         <!-- Equipamentos sob custódia -->
         <div class="station-panel p-4 flex items-center justify-between gap-3 border-l-4 border-l-brand-ring">
           <div class="min-w-0">
@@ -1285,5 +1374,20 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </footer>
+    <!-- First-Access Guided Tour for Collaborators -->
+    <FirstAccessTour
+      v-if="session?.user"
+      :open="showFirstAccessTour"
+      :user-name="session.user.name || ''"
+      :company-name="companyName"
+      :department="session.user.department || ''"
+      :assets-count="assets.length"
+      :pending-terms-count="pendingTermsCount"
+      :open-tickets-count="openTicketsCount"
+      :is-replay="tourIsReplay"
+      @select-tab="selectTab"
+      @close="handleTourClose"
+      @complete="handleTourComplete"
+    />
   </div>
 </template>
