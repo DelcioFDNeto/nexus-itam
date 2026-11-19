@@ -83,18 +83,9 @@ const parseAssetNumericValue = (raw) => {
   return Number.isFinite(num) && num >= 0 ? num : 0;
 };
 
-const resolveAssignedEmail = (assetData, employeesList = []) => {
-  const explicit = String(assetData?.assignedToEmail || assetData?.assignedEmail || '').trim().toLowerCase();
-  if (explicit) return explicit;
-  const holder = String(assetData?.assignedTo || '').trim();
-  if (!holder || !Array.isArray(employeesList) || employeesList.length === 0) return null;
-
-  if (assetData?.employeeId) {
-    const byId = employeesList.find((e) => e?.id === assetData.employeeId && e?.email);
-    if (byId?.email) return String(byId.email).trim().toLowerCase();
-  }
-
-  const matches = employeesList.filter(
+const findUniqueEmailByHolder = (people = [], holder = '') => {
+  if (!holder || !Array.isArray(people) || people.length === 0) return null;
+  const matches = people.filter(
     (e) => e?.email && e?.name && isMatchingHolder(e.name, holder),
   );
   if (matches.length === 1) {
@@ -107,6 +98,39 @@ const resolveAssignedEmail = (assetData, employeesList = []) => {
     return String(exact[0].email).trim().toLowerCase();
   }
   return null;
+};
+
+const resolveAssignedEmail = (assetData, employeesList = []) => {
+  const explicit = String(assetData?.assignedToEmail || assetData?.assignedEmail || '')
+    .trim()
+    .toLowerCase();
+  const holder = String(assetData?.assignedTo || '').trim();
+  if (!holder) return explicit || null;
+
+  const people = Array.isArray(employeesList) ? employeesList : [];
+  const portalUsers = people.filter((e) => e?.isPortalUser && e?.email);
+  const hrEmployees = people.filter((e) => !e?.isPortalUser && e?.email);
+
+  // Se o e-mail explícito pertence a uma conta real do Portal/Gateway (ex: desambiguação de homônimos), preserva-o
+  if (explicit && (portalUsers.length === 0 || portalUsers.some((u) => String(u.email).trim().toLowerCase() === explicit))) {
+    return explicit;
+  }
+
+  // Contas reais do Portal/Gateway têm prioridade máxima sobre e-mails antigos do cadastro RH
+  const portalMatch = findUniqueEmailByHolder(portalUsers, holder);
+  if (portalMatch) return portalMatch;
+
+  if (explicit) return explicit;
+
+  // Só usa `employeeId` se o cadastro ainda corresponder ao responsável atual (evita IDs residuais pós-movimentação)
+  if (assetData?.employeeId) {
+    const byId = people.find(
+      (e) => e?.id === assetData.employeeId && e?.email && (!e?.name || isMatchingHolder(e.name, holder)),
+    );
+    if (byId?.email) return String(byId.email).trim().toLowerCase();
+  }
+
+  return findUniqueEmailByHolder(hrEmployees, holder);
 };
 
 export const mapReactAssetToGateway = (assetData, employeesList = []) => {
@@ -223,12 +247,13 @@ export const syncTenantAssetsToPortal = async (
     ]);
 
     const mergedPeople = [
-      ...(Array.isArray(firestoreEmployees) ? firestoreEmployees : []),
       ...((gatewayUsersRes?.items || []).map((u) => ({
         id: u.id,
         name: u.name,
         email: u.email,
+        isPortalUser: true,
       }))),
+      ...(Array.isArray(firestoreEmployees) ? firestoreEmployees : []),
     ];
 
     return await syncAssetsToPortalGateway(assetsList, mergedPeople, { silent });
@@ -581,6 +606,7 @@ export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema'
   const updateData = {
     assignedTo: holder,
     assignedToEmail: holder ? (moveData.newEmail ? String(moveData.newEmail).trim().toLowerCase() : '') : '',
+    employeeId: holder ? (moveData.newEmployeeId || '') : '',
     clientCpf: holder ? moveData.newCpf || '' : '',
     location: moveData.newLocation,
     status,

@@ -1019,8 +1019,8 @@ describe('Nexus ITAM v3.0 — Malha de Microsserviços, Segurança Zero-Trust e 
           status: 'Em Uso',
           location: 'Belém',
           department: 'Tecnologia & Operações',
-          assignedToName: 'Délcio Farias',
-          assignedToEmail: null,
+          assignedToName: 'Délcio Farias Dias Neto',
+          assignedToEmail: 'shiadmti@gmail.com',
           purchaseValue: 4200,
         },
         {

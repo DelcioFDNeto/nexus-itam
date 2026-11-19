@@ -2135,6 +2135,9 @@ export const assetsRepo = {
     if (!Array.isArray(rawItems) || rawItems.length === 0) return [];
     const targetTenantId = canonicalTenantId(tenantId) || tenantId;
     const tenantUsers = await authRepo.listTenantUsers(targetTenantId).catch(() => []);
+    const portalEmailSet = new Set(
+      tenantUsers.map((u) => String(u?.email || '').trim().toLowerCase()).filter(Boolean),
+    );
     const nowIso = new Date().toISOString();
 
     // Deduplica por tag patrimonial dentro do lote (última ocorrência vence)
@@ -2162,8 +2165,11 @@ export const assetsRepo = {
           ? String(raw.assignedToEmail).trim().toLowerCase().slice(0, 180)
           : null;
 
-      if (!retired && !assignedToEmail && assignedToName) {
-        assignedToEmail = resolveUniqueEmailByHolderName(assignedToName, tenantUsers);
+      if (!retired && assignedToName && (!assignedToEmail || !portalEmailSet.has(assignedToEmail))) {
+        const portalEmail = resolveUniqueEmailByHolderName(assignedToName, tenantUsers);
+        if (portalEmail) {
+          assignedToEmail = portalEmail;
+        }
       }
 
       const rawVal = Number(raw.purchaseValue ?? 0);

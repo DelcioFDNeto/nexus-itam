@@ -30,7 +30,7 @@ export const usePortalAssetsSync = () => {
   useEffect(() => {
     if (!enabled || !tenantId) return undefined;
     let cancelled = false;
-    const storageKey = `nexus_portal_assets_synced_${tenantId}`;
+    const storageKey = `nexus_portal_assets_synced_v2_${tenantId}`;
 
     const shouldRunNow = () => {
       try {

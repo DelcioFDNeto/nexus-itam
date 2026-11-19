@@ -2,9 +2,16 @@
 
 const BRAZILIAN_STOP_WORDS = new Set(['de', 'da', 'do', 'dos', 'das', 'e']);
 
+const normalizeName = (raw) =>
+  String(raw || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
 /**
  * Compara dois nomes (ex: nome do colaborador no cadastro vs nome no ativo sob custódia)
- * com suporte a nomes compostos, sobrenomes intermediários e preposições da língua portuguesa.
+ * com suporte a nomes compostos, sobrenomes intermediários, acentos e preposições da língua portuguesa.
  *
  * Exemplo:
  * - "Délcio Farias" casa com "Délcio Farias Dias Neto"
@@ -14,8 +21,9 @@ const BRAZILIAN_STOP_WORDS = new Set(['de', 'da', 'do', 'dos', 'das', 'e']);
  */
 export const isMatchingHolder = (name1, name2) => {
   if (!name1 || !name2) return false;
-  const n1 = String(name1).trim().toLowerCase();
-  const n2 = String(name2).trim().toLowerCase();
+  const n1 = normalizeName(name1);
+  const n2 = normalizeName(name2);
+  if (!n1 || !n2) return false;
   if (n1 === n2) return true;
 
   const rawWords1 = n1.split(/\s+/).filter(Boolean);

@@ -18,6 +18,7 @@ import { getEmployees, getSectors } from '../services/employeeService';
 import { syncTenantAssetsToPortal } from '../services/assetService';
 import { microservicesApi, resolvePortalUrl } from '../services/microservicesClient';
 import { buildBrandedPortalUrl } from '../utils/portalBranding';
+import { isMatchingHolder } from '../utils/employeeMatching';
 import CollaboratorAccessWorkspace from '../components/portal/CollaboratorAccessWorkspace';
 
 /**
@@ -95,9 +96,14 @@ const CollaboratorAccessManager = () => {
     const active = collaborators.filter((u) => u.active !== false).length;
     const suspended = collaborators.length - active;
     const portalEmailSet = new Set(portalUsers.map((u) => String(u.email || '').toLowerCase().trim()));
-    const pendingFromHr = employees.filter(
-      (e) => e.email && !portalEmailSet.has(String(e.email).toLowerCase().trim()),
-    ).length;
+    const pendingFromHr = employees.filter((e) => {
+      if (!e.email) return false;
+      if (portalEmailSet.has(String(e.email).toLowerCase().trim())) return false;
+      if (e.name && portalUsers.some((u) => u?.name && isMatchingHolder(u.name, e.name))) {
+        return false;
+      }
+      return true;
+    }).length;
 
     return { total: collaborators.length, active, suspended, pendingFromHr };
   }, [portalUsers, employees]);

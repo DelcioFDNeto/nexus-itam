@@ -221,4 +221,44 @@ describe('CollaboratorAccessManager', () => {
       );
     });
   });
+
+  it('oculta colaborador da sugestão "sem acesso" quando o mesmo nome já possui conta ativa no Portal com outro e-mail', async () => {
+    getEmployees.mockResolvedValueOnce([
+      {
+        id: 'emp-delcio-legacy',
+        name: 'Délcio Farias',
+        email: 'shiadmti@gmail.com',
+        sector: 'TI',
+        role: 'Proprietário',
+      },
+      {
+        id: 'emp-marina',
+        name: 'Marina Silva',
+        email: 'marina.silva@empresa.com.br',
+        sector: 'Vendas',
+        role: 'Consultora',
+      },
+    ]);
+    microservicesApi.listUsers.mockResolvedValueOnce({
+      items: [
+        {
+          id: 'u-owner-1',
+          name: 'Délcio Farias',
+          email: 'ti@shineraybysabel.com.br',
+          role: 'owner',
+          department: 'Tecnologia & Operações',
+          active: true,
+        },
+      ],
+    });
+
+    render(
+      <MemoryRouter>
+        <CollaboratorAccessManager />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('button', { name: /Marina Silva/i })).toBeInTheDocument();
+    expect(screen.queryByText(/shiadmti@gmail\.com/i)).not.toBeInTheDocument();
+  });
 });

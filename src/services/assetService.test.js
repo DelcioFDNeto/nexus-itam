@@ -279,6 +279,34 @@ describe('assetService (atomic writeBatch)', () => {
     );
     expect(retired.assignedToName).toBeNull();
     expect(retired.assignedToEmail).toBeNull();
+
+    // Prioriza conta real do Portal/Gateway sobre e-mail legado do RH e ignora employeeId residual
+    const mixedPeople = [
+      { id: 'u-owner', name: 'Délcio Farias', email: 'ti@shineraybysabel.com.br', isPortalUser: true },
+      { id: 'emp-legacy', name: 'Délcio Farias', email: 'shiadmti@gmail.com' },
+    ];
+    const delcioAsset = mapReactAssetToGateway(
+      {
+        internalId: 'SHL-BEL-NTB-001',
+        model: 'Galaxy Book 2',
+        assignedTo: 'Délcio Farias Dias Neto',
+        employeeId: 'emp-legacy',
+        assignedToEmail: 'shiadmti@gmail.com',
+      },
+      mixedPeople,
+    );
+    expect(delcioAsset.assignedToEmail).toBe('ti@shineraybysabel.com.br');
+
+    const danilloAssetWithStaleId = mapReactAssetToGateway(
+      {
+        internalId: 'SHL-BEL-NTB-016',
+        model: 'Lenovo V15',
+        assignedTo: 'Danillo Sabel Portal',
+        employeeId: 'emp-legacy',
+      },
+      mixedPeople,
+    );
+    expect(danilloAssetWithStaleId.assignedToEmail).toBeNull();
   });
 
   it('syncAssetsToPortalGateway envia lote mapeado para microservicesApi.syncAssetsBatch', async () => {

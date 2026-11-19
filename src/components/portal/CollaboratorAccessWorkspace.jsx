@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import { microservicesApi, resolvePortalUrl } from '../../services/microservicesClient';
 import { generateRandomSecurePassword } from '../../utils/passwords';
 import { buildBrandedPortalUrl } from '../../utils/portalBranding';
+import { isMatchingHolder } from '../../utils/employeeMatching';
 import { useConfirm } from '../ConfirmDialog';
 import {
   captureFocusTarget,
@@ -120,12 +121,32 @@ const CollaboratorAccessWorkspace = ({
     [portalUsers],
   );
 
+  const hasPortalAccount = (emp) => {
+    if (!emp) return false;
+    const empEmail = String(emp.email || '').toLowerCase().trim();
+    if (empEmail && portalEmails.has(empEmail)) return true;
+    return Boolean(
+      emp.name &&
+        (portalUsers || []).some((u) => u?.name && isMatchingHolder(u.name, emp.name)),
+    );
+  };
+
   const unprovisionedEmployees = useMemo(
+    () => (employees || []).filter((emp) => emp.email && !hasPortalAccount(emp)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [employees, portalEmails, portalUsers],
+  );
+
+  const selectableHrEmployees = useMemo(
     () =>
-      (employees || []).filter(
-        (emp) => emp.email && !portalEmails.has(String(emp.email).toLowerCase().trim()),
-      ),
-    [employees, portalEmails],
+      (employees || []).filter((emp) => {
+        if (!emp.email) return false;
+        const cleanEmail = String(emp.email).toLowerCase().trim();
+        if (portalEmails.has(cleanEmail)) return true;
+        return !hasPortalAccount(emp);
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [employees, portalEmails, portalUsers],
   );
 
   const collaboratorsOnly = useMemo(
@@ -398,7 +419,7 @@ const CollaboratorAccessWorkspace = ({
             </div>
           </div>
 
-          {employees.some((emp) => emp.email) && (
+          {selectableHrEmployees.length > 0 && (
             <div>
               <label htmlFor="portal-emp-picker" className="block text-xs font-bold uppercase text-slate-500 dark:text-zinc-400 mb-1">
                 Importar rapidamente da equipe cadastrada
@@ -408,19 +429,17 @@ const CollaboratorAccessWorkspace = ({
                 name="employeePicker"
                 defaultValue=""
                 onChange={(e) => {
-                  const found = employees.find((emp) => emp.id === e.target.value);
+                  const found = selectableHrEmployees.find((emp) => emp.id === e.target.value);
                   if (found) fillFromEmployee(found);
                 }}
                 className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-[#18181b] text-xs font-semibold text-slate-800 dark:text-[#fafafa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
                 <option value="">Selecionar colaborador com e-mail cadastrado…</option>
-                {employees
-                  .filter((emp) => emp.email)
-                  .map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.name} — {emp.email} {portalEmails.has(emp.email.toLowerCase()) ? '(Já possui acesso)' : ''}
-                    </option>
-                  ))}
+                {selectableHrEmployees.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.name} — {emp.email} {hasPortalAccount(emp) ? '(Já possui acesso)' : ''}
+                  </option>
+                ))}
               </select>
             </div>
           )}

@@ -22,6 +22,7 @@ const MoveAssetModalBody = ({ onClose, asset, onConfirm }) => {
     newLocation: '',
     newResponsible: asset?.assignedTo || '',
     newEmail: asset?.assignedToEmail || asset?.assignedEmail || '',
+    newEmployeeId: asset?.employeeId || '',
     newCpf: '',
     date: today(),
     reason: ''
@@ -133,6 +134,7 @@ const MoveAssetModalBody = ({ onClose, asset, onConfirm }) => {
       ...formData,
       newResponsible: selectedName,
       newEmail: emp?.email ? String(emp.email).trim().toLowerCase() : '',
+      newEmployeeId: emp?.id || '',
       newCpf: emp?.cpf || '',
     });
   };
@@ -259,7 +261,14 @@ const MoveAssetModalBody = ({ onClose, asset, onConfirm }) => {
                     name="customResponsible"
                     aria-label="Nome do novo responsável"
                     value={formData.newResponsible}
-                    onChange={(e) => setFormData({...formData, newResponsible: e.target.value})}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        newResponsible: e.target.value,
+                        newEmail: '',
+                        newEmployeeId: '',
+                      })
+                    }
                     className={`${fieldCls} mt-2 animate-slide-down`}
                     placeholder="Ou digite o nome manualmente…"
                   />
