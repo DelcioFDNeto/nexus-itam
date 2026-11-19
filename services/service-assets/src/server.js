@@ -8,7 +8,13 @@ import Fastify from 'fastify';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import { pathToFileURL } from 'node:url';
-import { assetsRepo, authRepo, checkDbHealth, initDatabase } from '../../shared/db.js';
+import {
+  assetsRepo,
+  authRepo,
+  checkDbHealth,
+  initDatabase,
+  isAssetAssignedToUser,
+} from '../../shared/db.js';
 import { publishDomainEvent } from '../../shared/eventBus.js';
 import { requireRoles, sanitizeText, verifyGatewayOrJwt } from '../../shared/security.js';
 import { generateSequentialTag } from '../../shared/tagEngine.js';
@@ -46,25 +52,29 @@ export async function buildAssetsService(opts = {}) {
   });
 
   // ---------------------------------------------------------------------------
-  // GET /api/v1/assets — Listagem multi-tenant (Colaborador vê apenas sua custódia)
+  // GET /api/v1/assets — Listagem multi-tenant (Colaborador ou ?mine=1 vê apenas sua custódia)
   // ---------------------------------------------------------------------------
   app.get('/api/v1/assets', async (request) => {
     const user = verifyGatewayOrJwt(request);
-    const { status, type, search, assignedToEmail } = request.query || {};
+    const { status, type, search, assignedToEmail, mine } = request.query || {};
 
-    // Row-Level Role Isolation: colaborador só enxerga seus próprios ativos
-    const enforcedEmail =
-      user.role === 'collaborator'
-        ? user.email
-        : assignedToEmail
-          ? String(assignedToEmail)
-          : undefined;
+    const wantsMine = mine === '1' || mine === 'true' || mine === true;
+    const isPersonalScope = user.role === 'collaborator' || wantsMine;
+
+    // Row-Level Role Isolation: colaborador (ou portal com ?mine=1) só enxerga seus próprios ativos
+    const enforcedEmail = isPersonalScope
+      ? user.email
+      : assignedToEmail
+        ? String(assignedToEmail)
+        : undefined;
+    const enforcedName = isPersonalScope ? user.name || undefined : undefined;
 
     const items = await assetsRepo.list(user.tenantId, {
       status: status ? sanitizeText(status, 40) : undefined,
       type: type ? sanitizeText(type, 64) : undefined,
       search: search ? sanitizeText(search, 120) : undefined,
       assignedToEmail: enforcedEmail,
+      assignedToName: enforcedName,
     });
 
     return {
@@ -73,6 +83,90 @@ export async function buildAssetsService(opts = {}) {
       items,
     };
   });
+
+  // ---------------------------------------------------------------------------
+  // POST /api/v1/assets/sync — Sincronização idempotente em lote (Console <-> Portal)
+  // ---------------------------------------------------------------------------
+  app.post(
+    '/api/v1/assets/sync',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['items'],
+          properties: {
+            items: {
+              type: 'array',
+              minItems: 0,
+              maxItems: 500,
+              items: {
+                type: 'object',
+                required: ['internalId'],
+                properties: {
+                  internalId: { type: 'string', minLength: 1, maxLength: 64 },
+                  type: { type: 'string', maxLength: 64 },
+                  brand: { type: 'string', maxLength: 80 },
+                  model: { type: 'string', maxLength: 120 },
+                  serialNumber: { type: ['string', 'null'], maxLength: 120 },
+                  status: { type: 'string', maxLength: 40 },
+                  location: { type: ['string', 'null'], maxLength: 120 },
+                  department: { type: ['string', 'null'], maxLength: 120 },
+                  assignedToName: { type: ['string', 'null'], maxLength: 160 },
+                  assignedToEmail: { type: ['string', 'null'], maxLength: 180 },
+                  purchaseValue: { type: 'number', minimum: 0 },
+                  specs: { type: 'object' },
+                },
+                additionalProperties: false,
+              },
+            },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request) => {
+      const user = verifyGatewayOrJwt(request);
+      requireRoles(user, ['owner', 'admin', 'manager', 'operator']);
+
+      const rawItems = Array.isArray(request.body?.items) ? request.body.items : [];
+      const sanitized = rawItems
+        .map((item) => {
+          const internalId = sanitizeText(item.internalId || '', 64).toUpperCase();
+          if (!internalId) return null;
+          return {
+            internalId,
+            type: sanitizeText(item.type || 'Equipamento', 64) || 'Equipamento',
+            brand: sanitizeText(item.brand || 'Geral', 80) || 'Geral',
+            model: sanitizeText(item.model || 'Equipamento', 120) || 'Equipamento',
+            serialNumber: item.serialNumber ? sanitizeText(item.serialNumber, 120) : null,
+            status: item.status ? sanitizeText(item.status, 40) : undefined,
+            location: item.location ? sanitizeText(item.location, 120) : undefined,
+            department: item.department ? sanitizeText(item.department, 120) : undefined,
+            assignedToName: item.assignedToName ? sanitizeText(item.assignedToName, 160) : null,
+            assignedToEmail: item.assignedToEmail ? sanitizeText(item.assignedToEmail, 180) : null,
+            purchaseValue: typeof item.purchaseValue === 'number' ? item.purchaseValue : 0,
+            specs: item.specs && typeof item.specs === 'object' ? item.specs : {},
+          };
+        })
+        .filter(Boolean);
+
+      const synced = await assetsRepo.upsertManyByInternalId(user.tenantId, sanitized, user);
+
+      if (synced.length > 0) {
+        await publishDomainEvent('asset.updated', user.tenantId, {
+          action: 'sync',
+          syncedCount: synced.length,
+          actor: user.email,
+        });
+      }
+
+      return {
+        tenantId: user.tenantId,
+        synced: synced.length,
+        items: synced,
+      };
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // GET /api/v1/assets/next-tag — Motor inteligente de Tag Patrimonial Sequencial
@@ -108,7 +202,7 @@ export async function buildAssetsService(opts = {}) {
 
     if (
       user.role === 'collaborator' &&
-      String(asset.assigned_to_email || '').toLowerCase() !== user.email.toLowerCase()
+      !isAssetAssignedToUser(asset, { email: user.email, name: user.name })
     ) {
       return reply.code(403).send({
         error: 'FORBIDDEN',

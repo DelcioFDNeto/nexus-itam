@@ -1742,15 +1742,86 @@ export const authRepo = {
 // =============================================================================
 // 2. Repositório de Ativos (`assets_svc`)
 // =============================================================================
+const BRAZILIAN_HOLDER_STOP_WORDS = new Set(['de', 'da', 'do', 'dos', 'das', 'e']);
+const RETIRED_ASSET_STATUSES = new Set(['baixado', 'descartado', 'vendido']);
+
+function normalizeHolderName(raw) {
+  return String(raw || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+export function isMatchingHolderName(name1, name2) {
+  const n1 = normalizeHolderName(name1);
+  const n2 = normalizeHolderName(name2);
+  if (!n1 || !n2) return false;
+  if (n1 === n2) return true;
+
+  const words1 = n1.split(' ').filter((w) => w && !BRAZILIAN_HOLDER_STOP_WORDS.has(w));
+  const words2 = n2.split(' ').filter((w) => w && !BRAZILIAN_HOLDER_STOP_WORDS.has(w));
+  if (words1.length === 0 || words2.length === 0) return false;
+
+  const [shorter, longer] = words1.length <= words2.length ? [words1, words2] : [words2, words1];
+  if (shorter.length >= 2) {
+    return shorter.every((w) => longer.includes(w));
+  }
+  if (shorter.length === 1 && shorter[0].length >= 3) {
+    return longer[0] === shorter[0];
+  }
+  return false;
+}
+
+/**
+ * Verifica se um ativo pertence à custódia de um usuário.
+ * - Quando `assigned_to_email` está preenchido, exige igualdade estrita de e-mail
+ *   (evita colisão entre homônimos).
+ * - Quando `assigned_to_email` está vazio/nulo (ativos legados/sincronizados só por nome),
+ *   aplica correspondência segura de nome completo/composto sem acentos.
+ */
+export function isAssetAssignedToUser(asset, { email, name } = {}) {
+  if (!asset) return false;
+  const assetEmail = String(asset.assigned_to_email || '').trim().toLowerCase();
+  const userEmail = String(email || '').trim().toLowerCase();
+
+  if (assetEmail) {
+    return Boolean(userEmail && assetEmail === userEmail);
+  }
+
+  const assetName = String(asset.assigned_to_name || '').trim();
+  const userName = String(name || '').trim();
+  if (!assetName || !userName) return false;
+  return isMatchingHolderName(userName, assetName);
+}
+
+function resolveUniqueEmailByHolderName(holderName, tenantUsers = []) {
+  if (!holderName || !Array.isArray(tenantUsers) || tenantUsers.length === 0) return null;
+  const matches = tenantUsers.filter(
+    (u) => u && u.email && u.name && isMatchingHolderName(u.name, holderName),
+  );
+  if (matches.length === 1) {
+    return String(matches[0].email).trim().toLowerCase();
+  }
+  const exact = matches.filter(
+    (u) => normalizeHolderName(u.name) === normalizeHolderName(holderName),
+  );
+  if (exact.length === 1) {
+    return String(exact[0].email).trim().toLowerCase();
+  }
+  return null;
+}
+
 export const assetsRepo = {
-  async list(tenantId, { status, type, search, assignedToEmail } = {}) {
+  async list(tenantId, { status, type, search, assignedToEmail, assignedToName } = {}) {
     if (!USE_PG) {
       return mem.assets
         .filter((a) => {
           if (!matchTenant(a.tenant_id, tenantId)) return false;
           if (
-            assignedToEmail &&
-            String(a.assigned_to_email || '').toLowerCase() !== assignedToEmail.toLowerCase()
+            (assignedToEmail || assignedToName) &&
+            !isAssetAssignedToUser(a, { email: assignedToEmail, name: assignedToName })
           ) {
             return false;
           }
@@ -1769,9 +1840,18 @@ export const assetsRepo = {
     const clean = canonicalTenantId(tenantId);
     const params = [tenantId, clean];
     const clauses = ['(tenant_id = $1 OR tenant_id = $2)'];
-    if (assignedToEmail) {
+    if (assignedToEmail && assignedToName) {
+      params.push(assignedToEmail.toLowerCase());
+      clauses.push(
+        `(LOWER(assigned_to_email) = $${params.length} OR (COALESCE(TRIM(assigned_to_email), '') = '' AND COALESCE(TRIM(assigned_to_name), '') <> ''))`,
+      );
+    } else if (assignedToEmail) {
       params.push(assignedToEmail.toLowerCase());
       clauses.push(`LOWER(assigned_to_email) = $${params.length}`);
+    } else if (assignedToName) {
+      clauses.push(
+        `COALESCE(TRIM(assigned_to_email), '') = '' AND COALESCE(TRIM(assigned_to_name), '') <> ''`,
+      );
     }
     if (status) {
       params.push(status);
@@ -1792,7 +1872,13 @@ export const assetsRepo = {
       `SELECT * FROM assets_svc.assets WHERE ${clauses.join(' AND ')} ORDER BY created_at DESC`,
       params,
     );
-    return rows.map(normalizeAssetRow);
+    const mapped = rows.map(normalizeAssetRow);
+    if (assignedToName) {
+      return mapped.filter((row) =>
+        isAssetAssignedToUser(row, { email: assignedToEmail, name: assignedToName }),
+      );
+    }
+    return mapped;
   },
 
   async findById(tenantId, assetId) {
@@ -2043,6 +2129,177 @@ export const assetsRepo = {
       },
       actor,
     );
+  },
+
+  async upsertManyByInternalId(tenantId, rawItems = [], actor = {}) {
+    if (!Array.isArray(rawItems) || rawItems.length === 0) return [];
+    const targetTenantId = canonicalTenantId(tenantId) || tenantId;
+    const tenantUsers = await authRepo.listTenantUsers(targetTenantId).catch(() => []);
+    const nowIso = new Date().toISOString();
+
+    // Deduplica por tag patrimonial dentro do lote (última ocorrência vence)
+    const dedupMap = new Map();
+    for (const raw of rawItems) {
+      if (!raw || typeof raw !== 'object') continue;
+      const internalId = String(raw.internalId || '').trim().toUpperCase().slice(0, 64);
+      if (!internalId) continue;
+
+      const status = String(
+        raw.status || (raw.assignedToEmail || raw.assignedToName ? 'Em Uso' : 'Disponível'),
+      )
+        .trim()
+        .slice(0, 40) || 'Disponível';
+      const retired = RETIRED_ASSET_STATUSES.has(status.toLowerCase());
+
+      const assignedToName = retired
+        ? null
+        : raw.assignedToName
+          ? String(raw.assignedToName).trim().slice(0, 160)
+          : null;
+      let assignedToEmail = retired
+        ? null
+        : raw.assignedToEmail
+          ? String(raw.assignedToEmail).trim().toLowerCase().slice(0, 180)
+          : null;
+
+      if (!retired && !assignedToEmail && assignedToName) {
+        assignedToEmail = resolveUniqueEmailByHolderName(assignedToName, tenantUsers);
+      }
+
+      const rawVal = Number(raw.purchaseValue ?? 0);
+      const purchaseValue = Number.isFinite(rawVal) && rawVal >= 0 ? rawVal : 0;
+
+      dedupMap.set(internalId, {
+        internalId,
+        type: String(raw.type || 'Equipamento').trim().slice(0, 64) || 'Equipamento',
+        brand: String(raw.brand || 'Geral').trim().slice(0, 80) || 'Geral',
+        model: String(raw.model || 'Equipamento').trim().slice(0, 120) || 'Equipamento',
+        serialNumber: raw.serialNumber ? String(raw.serialNumber).trim().slice(0, 120) : null,
+        status,
+        location: String(raw.location || 'Matriz - TI').trim().slice(0, 120) || 'Matriz - TI',
+        department: String(raw.department || 'Estoque TI').trim().slice(0, 120) || 'Estoque TI',
+        assignedToName,
+        assignedToEmail,
+        purchaseValue,
+        specs: raw.specs && typeof raw.specs === 'object' && !Array.isArray(raw.specs) ? raw.specs : {},
+      });
+    }
+
+    const items = Array.from(dedupMap.values());
+    if (items.length === 0) return [];
+
+    if (!USE_PG) {
+      const results = [];
+      for (const item of items) {
+        const idx = mem.assets.findIndex(
+          (a) => matchTenant(a.tenant_id, targetTenantId) && a.internal_id.toUpperCase() === item.internalId,
+        );
+        if (idx >= 0) {
+          const existing = mem.assets[idx];
+          const updated = {
+            ...existing,
+            type: item.type,
+            brand: item.brand,
+            model: item.model,
+            serial_number: item.serialNumber ?? existing.serial_number,
+            status: item.status,
+            location: item.location,
+            department: item.department,
+            assigned_to_name: item.assignedToName,
+            assigned_to_email: item.assignedToEmail,
+            purchase_value: item.purchaseValue,
+            specs: { ...(existing.specs || {}), ...item.specs },
+            updated_at: nowIso,
+          };
+          mem.assets[idx] = updated;
+          results.push(updated);
+        } else {
+          const created = {
+            id: crypto.randomUUID(),
+            tenant_id: targetTenantId,
+            internal_id: item.internalId,
+            type: item.type,
+            brand: item.brand,
+            model: item.model,
+            serial_number: item.serialNumber,
+            status: item.status,
+            location: item.location,
+            department: item.department,
+            assigned_to_name: item.assignedToName,
+            assigned_to_email: item.assignedToEmail,
+            purchase_value: item.purchaseValue,
+            specs: item.specs,
+            created_at: nowIso,
+            updated_at: nowIso,
+          };
+          mem.assets.push(created);
+          mem.assetHistory.push({
+            id: crypto.randomUUID(),
+            tenant_id: targetTenantId,
+            asset_id: created.id,
+            action: 'ATIVO_SINCRONIZADO',
+            actor_name: actor.name || actor.email || 'Sistema',
+            actor_email: actor.email || null,
+            details: `Ativo ${created.internal_id} (${created.brand} ${created.model}) sincronizado com o Portal.`,
+            created_at: nowIso,
+          });
+          results.push(created);
+        }
+      }
+      return results;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const results = [];
+      for (const item of items) {
+        const { rows } = await client.query(
+          `INSERT INTO assets_svc.assets
+           (tenant_id, internal_id, type, brand, model, serial_number, status, location, department, assigned_to_name, assigned_to_email, purchase_value, specs)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)
+           ON CONFLICT (tenant_id, internal_id) DO UPDATE SET
+             type = EXCLUDED.type,
+             brand = EXCLUDED.brand,
+             model = EXCLUDED.model,
+             serial_number = COALESCE(EXCLUDED.serial_number, assets_svc.assets.serial_number),
+             status = EXCLUDED.status,
+             location = EXCLUDED.location,
+             department = EXCLUDED.department,
+             assigned_to_name = EXCLUDED.assigned_to_name,
+             assigned_to_email = EXCLUDED.assigned_to_email,
+             purchase_value = EXCLUDED.purchase_value,
+             specs = COALESCE(assets_svc.assets.specs, '{}'::jsonb) || EXCLUDED.specs,
+             updated_at = NOW()
+           RETURNING *`,
+          [
+            targetTenantId,
+            item.internalId,
+            item.type,
+            item.brand,
+            item.model,
+            item.serialNumber,
+            item.status,
+            item.location,
+            item.department,
+            item.assignedToName,
+            item.assignedToEmail,
+            item.purchaseValue,
+            JSON.stringify(item.specs || {}),
+          ],
+        );
+        if (rows[0]) {
+          results.push(normalizeAssetRow(rows[0]));
+        }
+      }
+      await client.query('COMMIT');
+      return results;
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   },
 };
 

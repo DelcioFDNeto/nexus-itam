@@ -87,6 +87,7 @@ const AssetForm = () => {
     status: 'Em Uso',
     location: localStorage.getItem('itam_last_location') || '',
     assignedTo: '',
+    assignedToEmail: '',
     clientCpf: '',
     sector: '',
     vendedor: '',
@@ -166,6 +167,7 @@ const AssetForm = () => {
               status: data.status || 'Em Uso',
               location: data.location || '',
               assignedTo: data.assignedTo || '',
+              assignedToEmail: data.assignedToEmail || data.assignedEmail || '',
               clientCpf: data.clientCpf || '',
               sector: data.sector || '',
               vendedor: data.vendedor || '',
@@ -281,7 +283,14 @@ const AssetForm = () => {
     const selectedName = e.target.value;
     setIsDirty(true);
     if (!selectedName) {
-      setFormData((prev) => ({ ...prev, assignedTo: '', clientCpf: '', sector: '', employeeId: '' }));
+      setFormData((prev) => ({
+        ...prev,
+        assignedTo: '',
+        assignedToEmail: '',
+        clientCpf: '',
+        sector: '',
+        employeeId: '',
+      }));
       return;
     }
     const emp = employees.find((ep) => ep.name === selectedName);
@@ -289,13 +298,14 @@ const AssetForm = () => {
       setFormData((prev) => ({
         ...prev,
         assignedTo: emp.name,
+        assignedToEmail: emp.email ? String(emp.email).trim().toLowerCase() : '',
         clientCpf: emp.cpf || '',
         sector: emp.sector || '',
         location: emp.branch || prev.location,
         employeeId: emp.id,
       }));
     } else {
-      setFormData((prev) => ({ ...prev, assignedTo: selectedName }));
+      setFormData((prev) => ({ ...prev, assignedTo: selectedName, assignedToEmail: '' }));
     }
   };
 
@@ -450,6 +460,7 @@ const AssetForm = () => {
           internalId: '',
           serialNumber: '',
           assignedTo: '',
+          assignedToEmail: '',
           clientCpf: '',
           employeeId: '',
           sector: '',
@@ -990,6 +1001,7 @@ const AssetForm = () => {
                   setFormData((prev) => ({
                     ...prev,
                     assignedTo: e.target.value,
+                    assignedToEmail: '',
                     employeeId: '',
                   }));
                 }}

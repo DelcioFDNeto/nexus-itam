@@ -992,4 +992,139 @@ describe('Nexus ITAM v3.0 — Malha de Microsserviços, Segurança Zero-Trust e 
       adminWs.close();
     }
   });
+
+  it('15. [API 1 - Sync & Portal Custody] POST /api/v1/assets/sync é idempotente, resolve e-mail pelo nome e ?mine=1 isola custódia de owner e colaborador', async () => {
+    // Colaborador não tem permissão para disparar sync em lote
+    const colabSyncRes = await fetch(`${cluster.gatewayUrl}/api/v1/assets/sync`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${colabToken}`,
+      },
+      body: JSON.stringify({
+        items: [{ internalId: 'SHL-FORBIDDEN-001', type: 'Notebook', brand: 'Dell', model: 'XPS' }],
+      }),
+    });
+    expect(colabSyncRes.status).toBe(403);
+
+    // Owner sincroniza lote vindo do Firestore (sem e-mail explícito, apenas assignedToName)
+    const syncPayload = {
+      items: [
+        {
+          internalId: 'SHL-BEL-NTB-901',
+          type: 'Notebook',
+          brand: 'Samsung',
+          model: 'Galaxy Book 2',
+          serialNumber: '0AC49QCX407574M',
+          status: 'Em Uso',
+          location: 'Belém',
+          department: 'Tecnologia & Operações',
+          assignedToName: 'Délcio Farias',
+          assignedToEmail: null,
+          purchaseValue: 4200,
+        },
+        {
+          internalId: 'SHL-BEL-NTB-902',
+          type: 'Notebook',
+          brand: 'Lenovo',
+          model: 'ThinkPad E14',
+          status: 'Em Uso',
+          location: 'Belém',
+          assignedToName: 'Karen Matos',
+          assignedToEmail: null,
+        },
+        {
+          internalId: 'SHL-BEL-NTB-903',
+          type: 'Notebook',
+          brand: 'HP',
+          model: 'ProBook 450',
+          status: 'Em Uso',
+          assignedToName: 'Outro Funcionario Inexistente',
+          assignedToEmail: null,
+        },
+        {
+          internalId: 'SHL-BEL-NTB-904',
+          type: 'Notebook',
+          brand: 'Acer',
+          model: 'Aspire 5',
+          status: 'Baixado',
+          assignedToName: 'Délcio Farias',
+          assignedToEmail: 'ti@shineraybysabel.com.br',
+        },
+      ],
+    };
+
+    const syncRes = await fetch(`${cluster.gatewayUrl}/api/v1/assets/sync`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${ownerToken}`,
+      },
+      body: JSON.stringify(syncPayload),
+    });
+    expect(syncRes.status).toBe(200);
+    const syncData = await syncRes.json();
+    expect(syncData.synced).toBe(4);
+
+    const syncedDelcio = syncData.items.find((i) => i.internal_id === 'SHL-BEL-NTB-901');
+    expect(syncedDelcio.assigned_to_email).toBe('ti@shineraybysabel.com.br');
+
+    const syncedKaren = syncData.items.find((i) => i.internal_id === 'SHL-BEL-NTB-902');
+    expect(syncedKaren.assigned_to_email).toBe('karen.matos@shineraybysabel.com.br');
+
+    // Ativo baixado nunca mantém custódia ativa
+    const syncedRetired = syncData.items.find((i) => i.internal_id === 'SHL-BEL-NTB-904');
+    expect(syncedRetired.assigned_to_name).toBeNull();
+    expect(syncedRetired.assigned_to_email).toBeNull();
+
+    // Re-sync do mesmo internalId é 100% idempotente (atualiza in-place sem duplicar)
+    const reSyncRes = await fetch(`${cluster.gatewayUrl}/api/v1/assets/sync`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${ownerToken}`,
+      },
+      body: JSON.stringify({
+        items: [{ ...syncPayload.items[0], location: 'Matriz Belém - TI' }],
+      }),
+    });
+    expect(reSyncRes.status).toBe(200);
+    const reSyncData = await reSyncRes.json();
+    expect(reSyncData.items[0].id).toBe(syncedDelcio.id);
+    expect(reSyncData.items[0].location).toBe('Matriz Belém - TI');
+
+    // GET /api/v1/assets?mine=1 para owner (Portal Vue) retorna SOMENTE a custódia do próprio Délcio
+    const ownerMineRes = await fetch(`${cluster.gatewayUrl}/api/v1/assets?mine=1`, {
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(ownerMineRes.status).toBe(200);
+    const ownerMine = await ownerMineRes.json();
+    const ownerMineTags = ownerMine.items.map((a) => a.internal_id);
+    expect(ownerMineTags).toContain('SHL-BEL-NTB-901');
+    expect(ownerMineTags).not.toContain('SHL-BEL-NTB-902'); // da Karen
+    expect(ownerMineTags).not.toContain('SHL-BEL-NTB-903'); // de terceiro
+    expect(ownerMineTags).not.toContain('SHL-BEL-NTB-904'); // baixado
+
+    // GET /api/v1/assets sem ?mine=1 para owner continua retornando todos os ativos da empresa
+    const ownerAllRes = await fetch(`${cluster.gatewayUrl}/api/v1/assets`, {
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    const ownerAll = await ownerAllRes.json();
+    expect(ownerAll.items.map((a) => a.internal_id)).toContain('SHL-BEL-NTB-902');
+    expect(ownerAll.items.map((a) => a.internal_id)).toContain('SHL-BEL-NTB-903');
+
+    // Colaboradora Karen com ?mine=1 vê SHL-BEL-NTB-902 e continua bloqueada de ver ativo do Délcio
+    const colabMineRes = await fetch(`${cluster.gatewayUrl}/api/v1/assets?mine=1`, {
+      headers: { authorization: `Bearer ${colabToken}` },
+    });
+    const colabMine = await colabMineRes.json();
+    expect(colabMine.items.map((a) => a.internal_id)).toContain('SHL-BEL-NTB-902');
+    expect(colabMine.items.map((a) => a.internal_id)).not.toContain('SHL-BEL-NTB-901');
+
+    const colabForbiddenDetail = await fetch(
+      `${cluster.gatewayUrl}/api/v1/assets/${syncedDelcio.id}`,
+      { headers: { authorization: `Bearer ${colabToken}` } },
+    );
+    expect(colabForbiddenDetail.status).toBe(403);
+  });
 });

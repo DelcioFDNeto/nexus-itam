@@ -62,6 +62,7 @@ export const updateEmployee = async (id, updatedData, oldName = null, tenantId =
 
   let updatedAssetsCount = 0;
   const newName = updatedData?.name?.trim();
+  const newEmail = updatedData?.email ? String(updatedData.email).trim().toLowerCase() : null;
   if (oldName && newName && oldName.trim() !== newName && tenantId) {
     const assetsQuery = query(
       collection(db, 'assets'),
@@ -76,6 +77,7 @@ export const updateEmployee = async (id, updatedData, oldName = null, tenantId =
         snap.docs.slice(i, i + CHUNK).forEach((d) => {
           batch.update(d.ref, {
             assignedTo: newName,
+            ...(newEmail ? { assignedToEmail: newEmail } : {}),
             updatedAt: serverTimestamp()
           });
         });

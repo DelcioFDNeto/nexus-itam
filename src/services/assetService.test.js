@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { 
   getAllAssets, createAsset, updateAsset, deleteAsset, 
-  moveAsset, writeOffAsset, reactivateAsset, registerMaintenance 
+  moveAsset, writeOffAsset, reactivateAsset, registerMaintenance,
+  mapReactAssetToGateway, syncAssetsToPortalGateway
 } from './assetService';
+import { microservicesApi } from './microservicesClient';
 import { getDocs, getDoc, writeBatch } from 'firebase/firestore';
 
 const mockBatch = {
@@ -237,5 +239,74 @@ describe('assetService (atomic writeBatch)', () => {
       defect: 'Tela piscando'
     });
     expect(mockBatch.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('mapReactAssetToGateway preserva marca/modelo, resolve e-mail pelo colaborador e limpa custódia de baixados', () => {
+    const employees = [
+      { id: 'emp-1', name: 'Délcio Farias', email: 'ti@shineraybysabel.com.br' },
+    ];
+
+    const mapped = mapReactAssetToGateway(
+      {
+        internalId: 'shl-bel-ntb-001',
+        type: 'Notebook',
+        brand: 'Samsung',
+        model: 'Galaxy Book 2',
+        serialNumber: '0AC49QCX407574M',
+        status: 'Em Uso',
+        assignedTo: 'Délcio Farias',
+        valor: '3.500,50',
+      },
+      employees,
+    );
+
+    expect(mapped.internalId).toBe('SHL-BEL-NTB-001');
+    expect(mapped.brand).toBe('Samsung');
+    expect(mapped.model).toBe('Galaxy Book 2');
+    expect(mapped.assignedToName).toBe('Délcio Farias');
+    expect(mapped.assignedToEmail).toBe('ti@shineraybysabel.com.br');
+    expect(mapped.purchaseValue).toBe(3500.5);
+
+    const retired = mapReactAssetToGateway(
+      {
+        internalId: 'SHL-BEL-NTB-002',
+        model: 'Dell Latitude',
+        status: 'Baixado',
+        assignedTo: 'Délcio Farias',
+        assignedToEmail: 'ti@shineraybysabel.com.br',
+      },
+      employees,
+    );
+    expect(retired.assignedToName).toBeNull();
+    expect(retired.assignedToEmail).toBeNull();
+  });
+
+  it('syncAssetsToPortalGateway envia lote mapeado para microservicesApi.syncAssetsBatch', async () => {
+    const syncSpy = vi
+      .spyOn(microservicesApi, 'syncAssetsBatch')
+      .mockResolvedValueOnce({ synced: 1 });
+
+    const res = await syncAssetsToPortalGateway(
+      [
+        {
+          id: 'doc-1',
+          internalId: 'SHL-BEL-NTB-001',
+          type: 'Notebook',
+          model: 'Galaxy Book 2',
+          assignedTo: 'Délcio Farias',
+        },
+      ],
+      [{ id: 'emp-1', name: 'Délcio Farias', email: 'ti@shineraybysabel.com.br' }],
+      { silent: false },
+    );
+
+    expect(res.synced).toBe(1);
+    expect(syncSpy).toHaveBeenCalledTimes(1);
+    expect(syncSpy.mock.calls[0][0][0]).toMatchObject({
+      internalId: 'SHL-BEL-NTB-001',
+      assignedToName: 'Délcio Farias',
+      assignedToEmail: 'ti@shineraybysabel.com.br',
+    });
+    syncSpy.mockRestore();
   });
 });

@@ -401,7 +401,13 @@ export const AuthProvider = ({ children }) => {
     let active = true;
 
     const hydrateFromGateway = (gwSession) => {
-      if (!gwSession?.token || gwSession?.user?.role === 'collaborator') return false;
+      if (
+        !gwSession?.token ||
+        gwSession.mode === 'bridge' ||
+        gwSession?.user?.role === 'collaborator'
+      ) {
+        return false;
+      }
       const appUser = buildGatewayAppUser(gwSession.user);
       setCurrentUser(appUser);
       setLoading(false);

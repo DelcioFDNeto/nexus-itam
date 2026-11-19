@@ -40,6 +40,7 @@ vi.mock('../services/employeeService', () => ({
 vi.mock('../services/assetService', () => ({
   getAssets: vi.fn(),
   getAssetsAssignedTo: vi.fn(),
+  syncTenantAssetsToPortal: vi.fn().mockResolvedValue({ synced: 0, total: 0 }),
 }));
 
 describe('EmployeeManager & Gerador de Senhas Seguras (Portal do Colaborador)', () => {

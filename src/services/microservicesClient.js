@@ -11,6 +11,7 @@
 
 const TOKEN_STORAGE_KEY = 'nexus_ms_gateway_jwt';
 const USER_STORAGE_KEY = 'nexus_ms_gateway_user';
+const MODE_STORAGE_KEY = 'nexus_ms_gateway_mode';
 const OWNER_GATEWAY_EMAIL = 'ti@shineraybysabel.com.br';
 const OWNER_GATEWAY_SECRET = 'Shineray@2026!';
 
@@ -107,19 +108,22 @@ export function getGatewaySession() {
     const token = sessionStorage.getItem(TOKEN_STORAGE_KEY);
     const rawUser = sessionStorage.getItem(USER_STORAGE_KEY);
     if (!token || !rawUser) return null;
-    return { token, user: JSON.parse(rawUser) };
+    const mode = sessionStorage.getItem(MODE_STORAGE_KEY) || 'primary';
+    return { token, user: JSON.parse(rawUser), mode };
   } catch {
     return null;
   }
 }
 
 export function isGatewayActiveSession() {
-  return Boolean(getGatewaySession()?.token);
+  const session = getGatewaySession();
+  return Boolean(session?.token && session.mode !== 'bridge');
 }
 
-export function setGatewaySession(token, user) {
+export function setGatewaySession(token, user, { mode = 'primary' } = {}) {
   sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
   sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+  sessionStorage.setItem(MODE_STORAGE_KEY, mode === 'bridge' ? 'bridge' : 'primary');
   notifySessionListeners();
 }
 
@@ -127,13 +131,15 @@ export function clearGatewaySession() {
   const hadToken = Boolean(sessionStorage.getItem(TOKEN_STORAGE_KEY));
   sessionStorage.removeItem(TOKEN_STORAGE_KEY);
   sessionStorage.removeItem(USER_STORAGE_KEY);
+  sessionStorage.removeItem(MODE_STORAGE_KEY);
   if (hadToken) notifySessionListeners();
 }
 
 /**
- * Garante automaticamente uma sessão JWT válida no API Gateway para o
- * proprietário/TI da Shineray quando uma rota protegida (ex: listagem ou
- * criação de acessos do Portal em EmployeeManager) é acionada sem sessão prévia.
+ * Garante automaticamente uma sessão JWT válida no API Gateway em modo `bridge`
+ * para o proprietário/TI da Shineray quando uma rota protegida (ex: listagem ou
+ * criação de acessos do Portal, Cloud Vault ou sincronização de ativos) é acionada
+ * sem sessão prévia — preservando o Firestore como fonte primária de sessões Firebase.
  */
 export async function ensureGatewaySession() {
   const existing = getGatewaySession();
@@ -156,8 +162,8 @@ export async function ensureGatewaySession() {
       if (!response.ok) return null;
       const data = await response.json().catch(() => ({}));
       if (data?.accessToken && data?.user) {
-        setGatewaySession(data.accessToken, data.user);
-        return { token: data.accessToken, user: data.user };
+        setGatewaySession(data.accessToken, data.user, { mode: 'bridge' });
+        return { token: data.accessToken, user: data.user, mode: 'bridge' };
       }
       return null;
     } catch {
@@ -325,6 +331,11 @@ export const microservicesApi = {
     gatewayRequest(`/api/v1/assets/${encodeURIComponent(assetId)}`, {
       method: 'DELETE',
       body: { reason },
+    }),
+  syncAssetsBatch: (items) =>
+    gatewayRequest('/api/v1/assets/sync', {
+      method: 'POST',
+      body: { items },
     }),
 
   // API 2 (REST) — Central de Chamados (`service-tickets`)

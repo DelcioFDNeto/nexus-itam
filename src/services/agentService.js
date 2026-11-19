@@ -33,6 +33,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { assignLicense, getLicenses, unassignLicense } from './licenseService';
+import { microservicesApi } from './microservicesClient';
 import {
   diffInventory,
   evaluateAgentAlerts,
@@ -287,7 +288,10 @@ export const registerAgentAsset = async (payload, options = {}) => {
     }
     if (!text(current.assignedTo) && inventory.loggedUser && !current.transit) {
       patch.assignedTo = employee?.name || normalizeLogin(inventory.loggedUser);
-      if (employee) patch.employeeId = employee.id;
+      if (employee) {
+        patch.employeeId = employee.id;
+        if (employee.email) patch.assignedToEmail = String(employee.email).trim().toLowerCase();
+      }
     }
     if (!text(current.location) && networkLocation && !current.transit) patch.location = networkLocation.name;
     batch.update(assetRef, patch);
@@ -305,7 +309,7 @@ export const registerAgentAsset = async (payload, options = {}) => {
       status: 'Em Uso',
       location: networkLocation?.name || '',
       assignedTo: employee?.name || (inventory.loggedUser ? normalizeLogin(inventory.loggedUser) : ''),
-      ...(employee ? { employeeId: employee.id } : {}),
+      ...(employee ? { employeeId: employee.id, ...(employee.email ? { assignedToEmail: String(employee.email).trim().toLowerCase() } : {}) } : {}),
       serialNumber: inventory.serialNumber,
       notes: `Cadastrado automaticamente pelo Agente ITAM (${inventory.hostname || 'sem hostname'}).`,
       specs: specsFrom(inventory),
@@ -363,6 +367,35 @@ export const registerAgentAsset = async (payload, options = {}) => {
     const index = ctx.existingAssets.findIndex((a) => a.id === assetRef.id);
     if (index >= 0) ctx.existingAssets[index] = snapshot;
     else ctx.existingAssets.push(snapshot);
+  }
+
+  // Espelha o ativo descoberto/atualizado para o Portal do Colaborador (PostgreSQL via Gateway)
+  if (import.meta.env?.MODE !== 'test') {
+    const syncTag = String(result.internalId || current?.internalId || '').trim().toUpperCase();
+    if (syncTag) {
+      const assignedToName = current?.assignedTo || employee?.name || (inventory.loggedUser ? normalizeLogin(inventory.loggedUser) : '') || null;
+      const assignedToEmail =
+        current?.assignedToEmail ||
+        (employee?.email ? String(employee.email).trim().toLowerCase() : null);
+      void microservicesApi
+        .syncAssetsBatch([
+          {
+            internalId: syncTag,
+            type: current?.type || inventory.type || 'Computador',
+            brand: current?.brand || vendorName(inventory.hardware.manufacturer) || 'Geral',
+            model: current?.model || modelFrom(inventory),
+            serialNumber: current?.serialNumber || inventory.serialNumber || null,
+            status: current?.status || 'Em Uso',
+            location: current?.location || networkLocation?.name || undefined,
+            assignedToName,
+            assignedToEmail,
+            specs: specsFrom(inventory, current?.specs),
+          },
+        ])
+        .catch(() => {
+          /* gateway offline: sincronização completa ocorrerá via Console Admin */
+        });
+    }
   }
 
   return { ...result, alerts: alerts.length, changes: changes.length };

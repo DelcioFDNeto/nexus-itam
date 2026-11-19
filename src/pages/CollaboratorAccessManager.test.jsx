@@ -37,6 +37,10 @@ vi.mock('../services/employeeService', () => ({
   getSectors: vi.fn(),
 }));
 
+vi.mock('../services/assetService', () => ({
+  syncTenantAssetsToPortal: vi.fn().mockResolvedValue({ synced: 3, total: 3 }),
+}));
+
 vi.mock('../services/microservicesClient', () => ({
   resolvePortalUrl: () => 'https://portal.nexusitam.com.br',
   microservicesApi: {
@@ -193,5 +197,28 @@ describe('CollaboratorAccessManager', () => {
       expect(microservicesApi.listUsers).toHaveBeenCalledTimes(2);
     });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('sincroniza ativos com o Portal do Colaborador ao clicar em Sincronizar Ativos', async () => {
+    const { syncTenantAssetsToPortal } = await import('../services/assetService');
+
+    render(
+      <MemoryRouter>
+        <CollaboratorAccessManager />
+      </MemoryRouter>,
+    );
+
+    const syncBtn = await screen.findByRole('button', { name: /Sincronizar Ativos/i });
+    fireEvent.click(syncBtn);
+
+    await waitFor(() => {
+      expect(syncTenantAssetsToPortal).toHaveBeenCalledWith(
+        'tenant-ap3htf6',
+        expect.objectContaining({ silent: false }),
+      );
+      expect(toastMock.success).toHaveBeenCalledWith(
+        '3 ativo(s) sincronizado(s) com o Portal do Colaborador!',
+      );
+    });
   });
 });

@@ -15,6 +15,7 @@ import { usePWA } from '../contexts/PWAContext';
 import { can, isSuperadmin, ROLE_LABELS } from '../utils/permissions';
 import { hasFeature, isModuleEnabled } from '../utils/entitlements';
 import { useAgentAutoSync } from '../hooks/useAgentAutoSync';
+import { usePortalAssetsSync } from '../hooks/usePortalAssetsSync';
 
 const SIDEBAR_KEY = 'sidebar_collapsed';
 const SIDEBAR_WIDTH_KEY = 'nexus_sidebar_width_v1';
@@ -50,6 +51,8 @@ const Layout = ({ children }) => {
   const master = isSuperadmin(currentUser);
   // Aceite automático do Agente ITAM em segundo plano (só admin, se ligado).
   useAgentAutoSync();
+  // Sincronização silenciosa de ativos (Firestore -> Portal do Colaborador / PostgreSQL).
+  usePortalAssetsSync();
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);

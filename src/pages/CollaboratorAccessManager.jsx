@@ -5,6 +5,7 @@ import {
   Copy,
   ExternalLink,
   KeyRound,
+  RefreshCw,
   ShieldCheck,
   UserCheck,
   UserPlus,
@@ -14,6 +15,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { can } from '../utils/permissions';
 import { getEmployees, getSectors } from '../services/employeeService';
+import { syncTenantAssetsToPortal } from '../services/assetService';
 import { microservicesApi, resolvePortalUrl } from '../services/microservicesClient';
 import { buildBrandedPortalUrl } from '../utils/portalBranding';
 import CollaboratorAccessWorkspace from '../components/portal/CollaboratorAccessWorkspace';
@@ -28,6 +30,7 @@ const CollaboratorAccessManager = () => {
   const [employees, setEmployees] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [syncingAssets, setSyncingAssets] = useState(false);
   const [loadError, setLoadError] = useState('');
   const requestSeqRef = useRef(0);
   const isMountedRef = useRef(true);
@@ -108,6 +111,28 @@ const CollaboratorAccessManager = () => {
     }
   };
 
+  const handleSyncAssets = async () => {
+    if (!currentUser?.tenantId || syncingAssets) return;
+    setSyncingAssets(true);
+    try {
+      const res = await syncTenantAssetsToPortal(currentUser.tenantId, {
+        silent: false,
+        employees,
+      });
+      if (res.synced > 0) {
+        toast.success(
+          `${res.synced} ativo(s) sincronizado(s) com o Portal do Colaborador!`,
+        );
+      } else {
+        toast.info('Nenhum ativo encontrado para sincronizar com o Portal.');
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Não foi possível sincronizar os ativos com o Portal.');
+    } finally {
+      if (isMountedRef.current) setSyncingAssets(false);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto pb-24 space-y-6 animate-fade-in">
       {/* HEADER DEDICADO DO GESTOR */}
@@ -133,6 +158,20 @@ const CollaboratorAccessManager = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleSyncAssets}
+              disabled={syncingAssets || !currentUser?.tenantId}
+              title="Envia todos os ativos em custódia para o Portal do Colaborador"
+              className="inline-flex min-h-[44px] items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#18181b] text-xs font-bold text-slate-700 dark:text-zinc-200 hover:border-brand/50 hover:text-brand-aa active:scale-[0.98] transition-colors disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              <RefreshCw
+                size={14}
+                className={syncingAssets ? 'animate-spin' : ''}
+                aria-hidden="true"
+              />
+              <span>{syncingAssets ? 'Sincronizando…' : 'Sincronizar Ativos'}</span>
+            </button>
             <button
               type="button"
               onClick={copyPortalLink}

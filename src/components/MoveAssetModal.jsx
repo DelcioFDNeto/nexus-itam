@@ -21,6 +21,7 @@ const MoveAssetModalBody = ({ onClose, asset, onConfirm }) => {
   const [formData, setFormData] = useState(() => ({
     newLocation: '',
     newResponsible: asset?.assignedTo || '',
+    newEmail: asset?.assignedToEmail || asset?.assignedEmail || '',
     newCpf: '',
     date: today(),
     reason: ''
@@ -128,7 +129,12 @@ const MoveAssetModalBody = ({ onClose, asset, onConfirm }) => {
   const handleResponsibleSelect = (e) => {
     const selectedName = e.target.value;
     const emp = employees.find(ep => ep.name === selectedName);
-    setFormData({ ...formData, newResponsible: selectedName, newCpf: emp?.cpf || '' });
+    setFormData({
+      ...formData,
+      newResponsible: selectedName,
+      newEmail: emp?.email ? String(emp.email).trim().toLowerCase() : '',
+      newCpf: emp?.cpf || '',
+    });
   };
 
   const isCustomResponsible = formData.newResponsible && !employees.find(e => e.name === formData.newResponsible);

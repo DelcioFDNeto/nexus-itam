@@ -10,7 +10,7 @@ import {
   UserCircle, Building2, MapPin, Mail, Save, X, CreditCard, FileSignature, Undo2, RefreshCcw, Laptop,
   KeyRound, AlertCircle
 } from 'lucide-react';
-import { getAssets, getAssetsAssignedTo } from '../services/assetService';
+import { getAssets, getAssetsAssignedTo, syncTenantAssetsToPortal } from '../services/assetService';
 import { isRetired } from '../utils/assetStatus';
 import { isMatchingHolder } from '../utils/employeeMatching';
 import { can } from '../utils/permissions';
@@ -221,7 +221,15 @@ const EmployeeManager = () => {
           console.error('Erro ao carregar setores:', secRes.reason);
         }
         if (assetRes.status === 'fulfilled') {
-          setTenantAssets(assetRes.value || []);
+          const loadedAssets = assetRes.value || [];
+          setTenantAssets(loadedAssets);
+          if (import.meta.env?.MODE !== 'test' && loadedAssets.length > 0 && typeof syncTenantAssetsToPortal === 'function') {
+            void syncTenantAssetsToPortal(tenantId, {
+              silent: true,
+              assets: loadedAssets,
+              employees: empRes.status === 'fulfilled' ? empRes.value || [] : null,
+            });
+          }
         } else {
           console.error('Erro ao carregar ativos para custódia:', assetRes.reason);
         }
@@ -247,7 +255,12 @@ const EmployeeManager = () => {
         if (isRetired(a.status) || a.transit) return false;
         const holder = (a.assignedTo || '').trim();
         if (!holder) return false;
-        return isMatchingHolder(emp.name, holder) || (emp.email && a.assignedEmail && emp.email.toLowerCase() === a.assignedEmail.toLowerCase());
+        return (
+          isMatchingHolder(emp.name, holder) ||
+          (emp.email &&
+            (a.assignedToEmail || a.assignedEmail) &&
+            emp.email.toLowerCase() === String(a.assignedToEmail || a.assignedEmail).toLowerCase())
+        );
       });
     });
     return map;

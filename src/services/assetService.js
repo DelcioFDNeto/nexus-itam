@@ -14,7 +14,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { releaseAssetFromLicenses } from './licenseService';
-import { lifecycleBlocker } from '../utils/assetStatus';
+import { isRetired, lifecycleBlocker } from '../utils/assetStatus';
 import { isGatewayActiveSession, microservicesApi } from './microservicesClient';
 import { isMatchingHolder } from '../utils/employeeMatching';
 
@@ -71,29 +71,85 @@ export const mapGatewayAssetToReact = (row) => {
   };
 };
 
-export const mapReactAssetToGateway = (assetData) => {
+const parseAssetNumericValue = (raw) => {
+  if (typeof raw === 'number') return Number.isFinite(raw) && raw >= 0 ? raw : 0;
+  const cleaned = String(raw ?? '').replace(/[R$\s]/g, '').trim();
+  if (!cleaned) return 0;
+  // Formato brasileiro com vírgula decimal (ex: "3.500,50") vs decimal padrão (ex: "3500.50")
+  const normalized = cleaned.includes(',')
+    ? cleaned.replace(/\./g, '').replace(',', '.')
+    : cleaned;
+  const num = Number(normalized);
+  return Number.isFinite(num) && num >= 0 ? num : 0;
+};
+
+const resolveAssignedEmail = (assetData, employeesList = []) => {
+  const explicit = String(assetData?.assignedToEmail || assetData?.assignedEmail || '').trim().toLowerCase();
+  if (explicit) return explicit;
+  const holder = String(assetData?.assignedTo || '').trim();
+  if (!holder || !Array.isArray(employeesList) || employeesList.length === 0) return null;
+
+  if (assetData?.employeeId) {
+    const byId = employeesList.find((e) => e?.id === assetData.employeeId && e?.email);
+    if (byId?.email) return String(byId.email).trim().toLowerCase();
+  }
+
+  const matches = employeesList.filter(
+    (e) => e?.email && e?.name && isMatchingHolder(e.name, holder),
+  );
+  if (matches.length === 1) {
+    return String(matches[0].email).trim().toLowerCase();
+  }
+  const exact = matches.filter(
+    (e) => String(e.name).trim().toLowerCase() === holder.toLowerCase(),
+  );
+  if (exact.length === 1) {
+    return String(exact[0].email).trim().toLowerCase();
+  }
+  return null;
+};
+
+export const mapReactAssetToGateway = (assetData, employeesList = []) => {
+  const explicitBrand = String(assetData.brand || '').trim();
   const modelStr = String(assetData.model || '').trim();
-  const parts = modelStr.split(/\s+/);
-  const brand = assetData.brand?.trim() || parts[0] || 'Geral';
-  const model = parts.length > 1 ? parts.slice(1).join(' ') : (parts[0] || 'Equipamento');
-  const purchaseValue = Number(
-    String(assetData.valor ?? assetData.purchaseValue ?? 0)
-      .replace(/[R$\s]/g, '')
-      .replace(/\./g, '')
-      .replace(',', '.')
-  ) || 0;
+  let brand = explicitBrand;
+  let model = modelStr;
+  if (!brand) {
+    const parts = modelStr.split(/\s+/).filter(Boolean);
+    brand = parts[0] || 'Geral';
+    model = parts.length > 1 ? parts.slice(1).join(' ') : (parts[0] || 'Equipamento');
+  } else if (model.toLowerCase().startsWith(`${brand.toLowerCase()} `)) {
+    model = model.slice(brand.length).trim() || model;
+  }
+  if (!model) model = 'Equipamento';
+
+  const purchaseValue = parseAssetNumericValue(assetData.valor ?? assetData.purchaseValue ?? 0);
+  const retired = isRetired(assetData.status);
+  const assignedToName = retired
+    ? null
+    : assetData.assignedTo
+      ? String(assetData.assignedTo).trim().slice(0, 160)
+      : null;
+  const assignedToEmail = retired ? null : resolveAssignedEmail(assetData, employeesList);
+  const resolvedInternalId = assetData.internalId
+    ? String(assetData.internalId).trim().toUpperCase().slice(0, 64)
+    : assetData.id
+      ? String(assetData.id).trim().toUpperCase().slice(0, 64)
+      : undefined;
 
   return {
-    internalId: assetData.internalId ? String(assetData.internalId).trim().toUpperCase() : undefined,
-    type: assetData.type || 'Notebook',
+    internalId: resolvedInternalId,
+    type: String(assetData.type || 'Notebook').trim().slice(0, 64) || 'Notebook',
     brand: brand.slice(0, 80),
     model: model.slice(0, 120),
     serialNumber: assetData.serialNumber ? String(assetData.serialNumber).trim().slice(0, 120) : null,
-    status: assetData.status || 'Em Uso',
+    status: assetData.status || (assignedToName ? 'Em Uso' : 'Disponível'),
     location: assetData.location ? String(assetData.location).trim().slice(0, 120) : undefined,
-    department: (assetData.department || assetData.sector) ? String(assetData.department || assetData.sector).trim().slice(0, 120) : undefined,
-    assignedToName: assetData.assignedTo ? String(assetData.assignedTo).trim().slice(0, 160) : null,
-    assignedToEmail: assetData.assignedToEmail ? String(assetData.assignedToEmail).trim().toLowerCase().slice(0, 180) : null,
+    department: (assetData.department || assetData.sector)
+      ? String(assetData.department || assetData.sector).trim().slice(0, 120)
+      : undefined,
+    assignedToName,
+    assignedToEmail: assignedToEmail ? assignedToEmail.slice(0, 180) : null,
     purchaseValue,
     specs: {
       ...(assetData.specs || {}),
@@ -108,6 +164,87 @@ export const mapReactAssetToGateway = (assetData) => {
       warrantyEnd: assetData.warrantyEnd || '',
     },
   };
+};
+
+// --- SINCRONIZAÇÃO CONTÍNUA CONSOLE (FIRESTORE) -> PORTAL DO COLABORADOR (GATEWAY/PG) ---
+
+const SYNC_CHUNK_SIZE = 200;
+
+export const syncAssetsToPortalGateway = async (
+  assetsList = [],
+  employeesList = [],
+  { silent = true } = {},
+) => {
+  if (!Array.isArray(assetsList) || assetsList.length === 0) {
+    return { synced: 0, total: 0 };
+  }
+  const mapped = assetsList
+    .map((asset) => mapReactAssetToGateway(asset, employeesList))
+    .filter((item) => Boolean(item.internalId));
+  if (mapped.length === 0) {
+    return { synced: 0, total: assetsList.length };
+  }
+
+  let totalSynced = 0;
+  try {
+    for (let i = 0; i < mapped.length; i += SYNC_CHUNK_SIZE) {
+      const chunk = mapped.slice(i, i + SYNC_CHUNK_SIZE);
+      const res = await microservicesApi.syncAssetsBatch(chunk);
+      totalSynced += Number(res?.synced ?? chunk.length);
+    }
+    return { synced: totalSynced, total: mapped.length };
+  } catch (err) {
+    if (silent) {
+      console.warn('[assetService] Sincronização de ativos com o Portal indisponível:', err?.message || err);
+      return { synced: totalSynced, total: mapped.length, error: err };
+    }
+    throw err;
+  }
+};
+
+export const syncTenantAssetsToPortal = async (
+  tenantId,
+  { silent = true, assets: preloadedAssets = null, employees: preloadedEmployees = null } = {},
+) => {
+  if (!tenantId) return { synced: 0, total: 0 };
+  try {
+    const [assetsList, firestoreEmployees, gatewayUsersRes] = await Promise.all([
+      preloadedAssets
+        ? Promise.resolve(preloadedAssets)
+        : getDocs(query(assetsCollection, where('tenantId', '==', tenantId))).then((snap) =>
+            snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+          ),
+      preloadedEmployees
+        ? Promise.resolve(preloadedEmployees)
+        : getDocs(query(collection(db, 'employees'), where('tenantId', '==', tenantId)))
+            .then((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+            .catch(() => []),
+      microservicesApi.listUsers().catch(() => ({ items: [] })),
+    ]);
+
+    const mergedPeople = [
+      ...(Array.isArray(firestoreEmployees) ? firestoreEmployees : []),
+      ...((gatewayUsersRes?.items || []).map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+      }))),
+    ];
+
+    return await syncAssetsToPortalGateway(assetsList, mergedPeople, { silent });
+  } catch (err) {
+    if (silent) {
+      console.warn('[assetService] Falha na sincronização de ativos do tenant:', err?.message || err);
+      return { synced: 0, total: 0, error: err };
+    }
+    throw err;
+  }
+};
+
+const mirrorAssetToPortalBackground = (assetData) => {
+  if (import.meta.env?.MODE === 'test') return;
+  if (!assetData?.internalId || isGatewayActiveSession()) return;
+  void syncAssetsToPortalGateway([assetData], [], { silent: true });
 };
 
 // --- LEITURA (READ) ---
@@ -313,6 +450,7 @@ export const createAsset = async (assetData) => {
   });
 
   await batch.commit();
+  mirrorAssetToPortalBackground({ ...assetData, id: assetRef.id });
   return assetRef;
 };
 
@@ -365,6 +503,9 @@ export const updateAsset = async (id, assetData, historyOptions = null) => {
 
   batch.set(historyRef, historyPayload);
   await batch.commit();
+  if (assetData?.internalId) {
+    mirrorAssetToPortalBackground({ ...assetData, id });
+  }
 };
 
 export const deleteAsset = async (id, tenantId, user = 'Sistema') => {
@@ -418,6 +559,7 @@ export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema'
     const updatePayload = {
       location: moveData.newLocation,
       assignedToName: holder || null,
+      assignedToEmail: holder ? (moveData.newEmail ? String(moveData.newEmail).trim().toLowerCase() : null) : null,
       status: holder ? 'Em Uso' : 'Disponível',
       historyNote: `Transferência para ${moveData.newLocation} (${holder || 'Sem responsável'}). Motivo: ${moveData.reason || 'Rotina'}`,
     };
@@ -438,6 +580,7 @@ export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema'
   // 1. Atualiza o Ativo
   const updateData = {
     assignedTo: holder,
+    assignedToEmail: holder ? (moveData.newEmail ? String(moveData.newEmail).trim().toLowerCase() : '') : '',
     clientCpf: holder ? moveData.newCpf || '' : '',
     location: moveData.newLocation,
     status,
@@ -465,6 +608,11 @@ export const moveAsset = async (assetId, currentData, moveData, user = 'Sistema'
 
   batch.set(historyRef, historyLog);
   await batch.commit();
+  mirrorAssetToPortalBackground({
+    ...currentData,
+    ...updateData,
+    id: assetId,
+  });
   return true;
 };
 
@@ -496,6 +644,7 @@ export const writeOffAsset = async (assetId, currentData, writeOff, user = 'Sist
     writeOffResidualValue: writeOff.residualValue || '',
     writeOffBy: user,
     assignedTo: '',
+    assignedToEmail: '',
     employeeId: '',
     clientCpf: '',
     updatedAt: serverTimestamp()
@@ -520,6 +669,13 @@ export const writeOffAsset = async (assetId, currentData, writeOff, user = 'Sist
   });
 
   await batch.commit();
+  mirrorAssetToPortalBackground({
+    ...currentData,
+    id: assetId,
+    status,
+    assignedTo: '',
+    assignedToEmail: '',
+  });
 
   try {
     await releaseAssetFromLicenses(tenantId, assetId);
@@ -572,6 +728,13 @@ export const reactivateAsset = async (assetId, currentData, user = 'Sistema', ne
   });
 
   await batch.commit();
+  mirrorAssetToPortalBackground({
+    ...currentData,
+    id: assetId,
+    status: newStatus,
+    assignedTo: '',
+    assignedToEmail: '',
+  });
   return true;
 };
 
@@ -616,5 +779,12 @@ export const registerMaintenance = async (assetId, maintenanceData, user = 'Sist
 
   batch.set(historyRef, historyLog);
   await batch.commit();
+  if (maintenanceData?.asset) {
+    mirrorAssetToPortalBackground({
+      ...maintenanceData.asset,
+      id: assetId,
+      status: 'Manutenção',
+    });
+  }
   return true;
 };

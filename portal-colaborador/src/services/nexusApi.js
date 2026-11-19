@@ -132,8 +132,8 @@ export const portalApi = {
 
   getProfile: () => request('/api/v1/auth/me'),
 
-  // API 1 (REST) — Ativos sob Custódia
-  listMyAssets: () => request('/api/v1/assets'),
+  // API 1 (REST) — Ativos sob Custódia (mine=1 garante escopo individual também para owner/admin)
+  listMyAssets: () => request('/api/v1/assets?mine=1'),
 
   // API 2 (REST) — Chamados de Suporte
   listMyTickets: () => request('/api/v1/tickets'),
