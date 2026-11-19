@@ -225,6 +225,18 @@ export const portalApi = {
       method: 'POST',
       body: payload,
     }),
+  createStorageDesktopSession: (nodeId) =>
+    request(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/desktop-session`, {
+      method: 'POST',
+      body: {},
+    }),
+  getStorageDesktopSessionStatus: (sessionToken) =>
+    request(`/api/v1/storage/desktop-sessions/${encodeURIComponent(sessionToken)}/status`),
+  closeStorageDesktopSession: (sessionToken) =>
+    request(`/api/v1/storage/desktop-sessions/${encodeURIComponent(sessionToken)}/close`, {
+      method: 'POST',
+      body: {},
+    }),
   createSheet: (payload) =>
     request('/api/v1/storage/sheets', { method: 'POST', body: payload }),
   getSheet: (sheetId) =>

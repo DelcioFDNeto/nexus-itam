@@ -73,10 +73,13 @@ try {
 
 1. Extraia esta pasta e coloque nela o config.json baixado no painel
    (Agente ITAM > Instalar > "Baixar NexusAgent (.ZIP) + config.json").
+   (Para usar apenas a edicao sincronizada do Nexus Vault no Excel/PC,
+    basta extrair e abrir o NexusAgent.exe uma vez.)
 2. Abra o NexusAgent.exe e clique em "Conectar este computador".
    O Windows pede permissao de administrador.
-3. Pronto: o servico "Nexus ITAM Agent" fica rodando e o icone aparece ao lado
-   do relogio. O token sai do config.json assim que a maquina e matriculada.
+3. Pronto: o servico "Nexus ITAM Agent" fica rodando, o protocolo nexusvault://
+   fica ativo para salvar planilhas Excel direto na VPS a cada Ctrl+S e o
+   icone aparece ao lado do relogio.
 
 Para remover: NexusAgent.exe --uninstall (como administrador) ou o script
 "Desinstalar" do painel.

@@ -269,6 +269,21 @@ const normalizeSheetCellHistoryRow = (r) =>
       }
     : null;
 
+const normalizeDesktopEditSessionRow = (r) =>
+  r
+    ? {
+        ...r,
+        sync_count: Number(r.sync_count ?? 0),
+        last_version: Number(r.last_version ?? 1),
+        last_synced_at: toIso(r.last_synced_at),
+        opened_at: toIso(r.opened_at),
+        expires_at: toIso(r.expires_at),
+        closed_at: toIso(r.closed_at),
+        created_at: toIso(r.created_at),
+        updated_at: toIso(r.updated_at),
+      }
+    : null;
+
 let pool = null;
 let initialized = false;
 
@@ -296,6 +311,7 @@ const mem = {
   storageTempLinks: [],
   sheetSessions: [],
   sheetCellHistory: [],
+  desktopEditSessions: [],
   seqCounter: 0,
 };
 
@@ -906,6 +922,7 @@ export function resetMemoryStoreWithSeed() {
   mem.storageTempLinks = [];
   mem.sheetSessions = [];
   mem.sheetCellHistory = [];
+  mem.desktopEditSessions = [];
   mem.seqCounter = seed.auditChain.length;
 }
 
@@ -5443,5 +5460,143 @@ export const storageRepo = {
       params,
     );
     return rows.map(normalizeSheetCellHistoryRow);
+  },
+
+  // ---------------------------------------------------------------------------
+  // 6.8 Desktop Edit Auto-Sync Sessions (Agente Windows / Excel & Apps Nativos)
+  // ---------------------------------------------------------------------------
+  async createDesktopEditSession(
+    tenantId,
+    nodeId,
+    { tokenHash, userEmail, userName = null, userRole = 'collaborator', lastVersion = 1, expiresAt },
+  ) {
+    const clean = requireCleanTenantId(tenantId);
+    if (!isUuid(nodeId)) {
+      const err = new Error('Arquivo inválido.');
+      err.statusCode = 400;
+      throw err;
+    }
+    const nowIso = new Date().toISOString();
+    const expIso = toIso(expiresAt);
+    const safeVer = Math.max(1, Math.round(Number(lastVersion || 1)));
+
+    if (!USE_PG) {
+      const created = {
+        id: crypto.randomUUID(),
+        tenant_id: clean,
+        node_id: nodeId,
+        token_hash: String(tokenHash),
+        user_email: String(userEmail).toLowerCase(),
+        user_name: userName || null,
+        user_role: String(userRole || 'collaborator'),
+        status: 'pending',
+        sync_count: 0,
+        last_version: safeVer,
+        last_synced_at: null,
+        opened_at: null,
+        expires_at: expIso,
+        closed_at: null,
+        created_at: nowIso,
+        updated_at: nowIso,
+      };
+      mem.desktopEditSessions.push(created);
+      return normalizeDesktopEditSessionRow({ ...created });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO storage_svc.desktop_edit_sessions
+       (tenant_id, node_id, token_hash, user_email, user_name, user_role, status, sync_count, last_version, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'pending',0,$7,$8)
+       RETURNING *`,
+      [clean, nodeId, String(tokenHash), String(userEmail).toLowerCase(), userName || null, String(userRole || 'collaborator'), safeVer, expIso],
+    );
+    return normalizeDesktopEditSessionRow(rows[0]);
+  },
+
+  async getDesktopEditSessionByTokenHash(tokenHash) {
+    if (!tokenHash) return null;
+    if (!USE_PG) {
+      const found = mem.desktopEditSessions.find((s) => s.token_hash === String(tokenHash));
+      return found ? normalizeDesktopEditSessionRow({ ...found }) : null;
+    }
+    const { rows } = await pool.query(
+      'SELECT * FROM storage_svc.desktop_edit_sessions WHERE token_hash = $1 LIMIT 1',
+      [String(tokenHash)],
+    );
+    return normalizeDesktopEditSessionRow(rows[0]);
+  },
+
+  async updateDesktopEditSession(sessionId, patch = {}) {
+    if (!isUuid(sessionId)) return null;
+    const nowIso = new Date().toISOString();
+    if (!USE_PG) {
+      const idx = mem.desktopEditSessions.findIndex((s) => s.id === sessionId);
+      if (idx === -1) return null;
+      const prev = mem.desktopEditSessions[idx];
+      const next = {
+        ...prev,
+        status: patch.status !== undefined ? String(patch.status) : prev.status,
+        opened_at: patch.openedAt !== undefined ? toIso(patch.openedAt) : prev.opened_at,
+        sync_count:
+          patch.incrementSync
+            ? Number(prev.sync_count || 0) + 1
+            : patch.syncCount !== undefined
+              ? Math.max(0, Math.round(Number(patch.syncCount)))
+              : prev.sync_count,
+        last_version:
+          patch.lastVersion !== undefined
+            ? Math.max(1, Math.round(Number(patch.lastVersion)))
+            : prev.last_version,
+        last_synced_at:
+          patch.lastSyncedAt !== undefined ? toIso(patch.lastSyncedAt) : prev.last_synced_at,
+        expires_at: patch.expiresAt !== undefined ? toIso(patch.expiresAt) : prev.expires_at,
+        closed_at: patch.closedAt !== undefined ? toIso(patch.closedAt) : prev.closed_at,
+        updated_at: nowIso,
+      };
+      mem.desktopEditSessions[idx] = next;
+      return normalizeDesktopEditSessionRow({ ...next });
+    }
+
+    const sets = ['updated_at = NOW()'];
+    const params = [sessionId];
+    if (patch.status !== undefined) {
+      params.push(String(patch.status));
+      sets.push(`status = $${params.length}`);
+    }
+    if (patch.openedAt !== undefined) {
+      params.push(toIso(patch.openedAt));
+      sets.push(`opened_at = COALESCE(opened_at, $${params.length})`);
+    }
+    if (patch.incrementSync) {
+      sets.push('sync_count = sync_count + 1');
+    } else if (patch.syncCount !== undefined) {
+      params.push(Math.max(0, Math.round(Number(patch.syncCount))));
+      sets.push(`sync_count = $${params.length}`);
+    }
+    if (patch.lastVersion !== undefined) {
+      params.push(Math.max(1, Math.round(Number(patch.lastVersion))));
+      sets.push(`last_version = $${params.length}`);
+    }
+    if (patch.lastSyncedAt !== undefined) {
+      params.push(toIso(patch.lastSyncedAt));
+      sets.push(`last_synced_at = $${params.length}`);
+    }
+    if (patch.expiresAt !== undefined) {
+      params.push(toIso(patch.expiresAt));
+      sets.push(`expires_at = $${params.length}`);
+    }
+    if (patch.closedAt !== undefined) {
+      params.push(toIso(patch.closedAt));
+      sets.push(`closed_at = COALESCE(closed_at, $${params.length})`);
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE storage_svc.desktop_edit_sessions
+       SET ${sets.join(', ')}
+       WHERE id = $1
+       RETURNING *`,
+      params,
+    );
+    return normalizeDesktopEditSessionRow(rows[0]);
   },
 };

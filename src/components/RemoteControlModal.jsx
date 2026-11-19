@@ -101,6 +101,7 @@ export default function RemoteControlModal({
   // Estado da Sessão Remota NexusDesk
   const [sessionMode, setSessionMode] = useState('attended');
   const [quality, setQuality] = useState('low'); // Padrão Turbo para fluidez móvel imediata
+  const [monitorIndex, setMonitorIndex] = useState(0);
   const [sessionId, setSessionId] = useState('');
   const [lastSessionId, setLastSessionId] = useState('');
   const [policy, setPolicy] = useState(DEFAULT_RUNTIME_POLICY);
@@ -162,6 +163,7 @@ export default function RemoteControlModal({
   const lastMouseMoveAtRef = useRef(0);
   const sessionIdRef = useRef('');
   const qualityRef = useRef(quality);
+  const monitorIndexRef = useRef(monitorIndex);
   const wsClientRef = useRef(null);
   const frameTimestampsRef = useRef([]);
   const lastFrameSeqRef = useRef(0);
@@ -407,6 +409,10 @@ export default function RemoteControlModal({
     qualityRef.current = quality;
   }, [quality]);
 
+  useEffect(() => {
+    monitorIndexRef.current = monitorIndex;
+  }, [monitorIndex]);
+
   // Limpa da fila eventos processados
   useEffect(() => {
     const ackSeq = Number(
@@ -500,6 +506,7 @@ export default function RemoteControlModal({
         sessionId,
         status: 'active',
         quality: qualityRef.current,
+        monitorIndex: monitorIndexRef.current,
         targetFps: 30,
       });
       wsClientRef.current?.ping?.();
@@ -917,6 +924,62 @@ export default function RemoteControlModal({
         inputEvents: inputQueueRef.current,
       }).catch(() => {});
       toast.info(`Qualidade alterada para: ${QUALITY_LABELS[newQuality] || newQuality}`);
+    }
+  };
+
+  const remoteMonitorCount = Math.max(
+    1,
+    Number(
+      relayFrame?.monitorCount ||
+      relayFrame?.remoteState?.monitorCount ||
+      liveDevice?.remoteState?.monitorCount ||
+      liveDevice?.capabilities?.multiMonitor ||
+      1,
+    ),
+  );
+
+  const handleMonitorChange = (nextIndex) => {
+    const parsed = Number(nextIndex);
+    monitorIndexRef.current = parsed;
+    setMonitorIndex(parsed);
+    if (sessionId && tenantId && deviceKey) {
+      wsClientRef.current?.pushRemoteControl({
+        deviceKey,
+        sessionId,
+        status: 'active',
+        mode: effectiveMode,
+        quality: qualityRef.current,
+        monitorIndex: parsed,
+        targetFps: 30,
+      });
+      microservicesApi
+        .updateRemoteControlRelay({
+          tenantId,
+          deviceKey,
+          sessionId,
+          status: 'active',
+          mode: effectiveMode,
+          quality: qualityRef.current,
+          monitorIndex: parsed,
+          targetFps: 30,
+        })
+        .catch(() => {});
+      toast.info(parsed === -1 ? 'Exibindo todos os monitores' : `Alternado para Monitor ${parsed + 1}`);
+    }
+  };
+
+  const handlePasteRemoteClipboard = async () => {
+    if (!sessionId || !controlEnabled) return;
+    try {
+      const clipText = await navigator.clipboard.readText();
+      if (!clipText) {
+        toast.info('Sua área de transferência está vazia.');
+        return;
+      }
+      queueInputEvent({ type: 'clipboard', text: clipText.slice(0, 16000) });
+      toast.success('Texto colado no computador remoto!');
+    } catch {
+      toast.error('Permita acesso à área de transferência no navegador ou use o campo de texto abaixo.');
     }
   };
 
@@ -1642,6 +1705,24 @@ export default function RemoteControlModal({
                     <option value="high">Alta Definição (HD)</option>
                   </select>
 
+                  {/* Seletor Multi-Monitor (Agente v3.4+) */}
+                  {remoteMonitorCount > 1 && (
+                    <select
+                      aria-label="Selecionar monitor remoto"
+                      value={monitorIndex}
+                      onChange={(e) => handleMonitorChange(e.target.value)}
+                      className="px-2.5 py-2 min-h-[44px] rounded-lg bg-zinc-800 border border-zinc-700 text-[#fafafa] text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                      title="Alternar monitor do computador remoto"
+                    >
+                      {Array.from({ length: remoteMonitorCount }, (_, idx) => (
+                        <option key={idx} value={idx}>
+                          Monitor {idx + 1}
+                        </option>
+                      ))}
+                      <option value={-1}>Todos ({remoteMonitorCount})</option>
+                    </select>
+                  )}
+
                   {/* Alternador de Controle Ativo */}
                   <button
                     type="button"
@@ -1731,6 +1812,7 @@ export default function RemoteControlModal({
                     { key: 'Win', label: 'Win' },
                     { key: 'Win+D', label: 'Desktop' },
                     { key: 'Win+R', label: 'Executar' },
+                    { key: 'Ctrl+S', label: 'Ctrl+S' },
                     { key: 'Escape', label: 'Esc' },
                     { key: 'Tab', label: 'Tab' },
                     { key: 'Enter', label: 'Enter' },
@@ -1744,6 +1826,17 @@ export default function RemoteControlModal({
                       {item.label}
                     </button>
                   ))}
+
+                  {isSessionActive && controlEnabled && (
+                    <button
+                      type="button"
+                      onClick={handlePasteRemoteClipboard}
+                      className="px-2.5 py-2 min-h-[44px] rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-sky-200 font-semibold text-xs shrink-0 transition-colors active:scale-[0.98]"
+                      title="Colar o texto copiado do seu computador diretamente na tela remota (Ctrl+V)"
+                    >
+                      Colar Texto
+                    </button>
+                  )}
 
                   {isSessionActive && (
                     <button

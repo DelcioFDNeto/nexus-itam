@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import PortalIcon from './PortalIcon.vue';
-import { getStoredSession, portalApi } from '../services/nexusApi';
+import { GATEWAY_BASE_URL, getStoredSession, portalApi } from '../services/nexusApi';
 import { evaluateCellValue, evaluateSheetFormulas } from '../utils/sheetFormulaEngine.js';
 
 const props = defineProps({
@@ -50,6 +50,15 @@ const previewNode = ref(null);
 const previewContentType = ref('');
 const previewObjectUrl = ref(null);
 const previewTextContent = ref(null);
+
+// Desktop Auto-Sync via Agente Windows (`nexusvault://`) + Guia do Colaborador
+const AGENT_DOWNLOAD_URL = 'https://itam-nexus.web.app/downloads/NexusAgent.zip';
+const desktopSyncSession = ref(null);
+const desktopSyncBusy = ref(false);
+const desktopAgentSlowHint = ref(false);
+const showAgentGuide = ref(false);
+let desktopPollTimer = null;
+let desktopHintTimer = null;
 
 // Nexus Sheets Live state (collapsible QoL — auto-expanded when spreadsheet loaded)
 const activeSheetNode = ref(null);
@@ -183,6 +192,132 @@ function closePreview() {
   previewTextContent.value = null;
   previewContentType.value = '';
   previewNode.value = null;
+}
+
+function stopDesktopSyncPolling() {
+  if (desktopPollTimer) {
+    clearInterval(desktopPollTimer);
+    desktopPollTimer = null;
+  }
+  if (desktopHintTimer) {
+    clearTimeout(desktopHintTimer);
+    desktopHintTimer = null;
+  }
+}
+
+function buildVaultProtocolUrl(sessionToken) {
+  const apiBase = String(GATEWAY_BASE_URL || 'https://itam-api-164-152-195-199.sslip.io').replace(/\/$/, '');
+  return `nexusvault://edit?api=${encodeURIComponent(apiBase)}&token=${encodeURIComponent(sessionToken)}`;
+}
+
+function launchVaultProtocol(protocolUrl) {
+  if (typeof document === 'undefined' || !protocolUrl) return;
+  const link = document.createElement('a');
+  link.href = protocolUrl;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => link.remove(), 300);
+}
+
+async function pollDesktopSessionOnce() {
+  const cur = desktopSyncSession.value;
+  if (!cur?.sessionToken) return;
+  try {
+    const st = await portalApi.getStorageDesktopSessionStatus(cur.sessionToken);
+    if (!desktopSyncSession.value || desktopSyncSession.value.sessionToken !== cur.sessionToken) return;
+    const prevSyncCount = Number(desktopSyncSession.value.syncCount || 0);
+    desktopSyncSession.value = {
+      ...desktopSyncSession.value,
+      status: st.status || desktopSyncSession.value.status,
+      syncCount: Number(st.syncCount ?? prevSyncCount),
+      currentVersion: Number(st.currentVersion ?? st.lastVersion ?? desktopSyncSession.value.currentVersion),
+      lastSyncedAt: st.lastSyncedAt || desktopSyncSession.value.lastSyncedAt,
+      openedAt: st.openedAt || desktopSyncSession.value.openedAt,
+      closedAt: st.closedAt || null,
+    };
+    if (st.status === 'opened') {
+      desktopAgentSlowHint.value = false;
+    }
+    if (Number(st.syncCount || 0) > prevSyncCount) {
+      notifySuccess(`"${cur.fileName}" sincronizado automaticamente na VPS (v${st.currentVersion || st.lastVersion}).`);
+      await loadDriveNodes();
+    }
+    if (st.status === 'closed' || st.status === 'expired') {
+      stopDesktopSyncPolling();
+      await loadDriveNodes();
+    }
+  } catch {
+    /* keep polling until user closes */
+  }
+}
+
+async function handleEditOnDesktop(node) {
+  if (!node || isFolder(node) || !canEditNode(node)) return;
+  errorBanner.value = '';
+  desktopSyncBusy.value = true;
+  desktopAgentSlowHint.value = false;
+  stopDesktopSyncPolling();
+  try {
+    const created = await portalApi.createStorageDesktopSession(node.id);
+    const protocolUrl = buildVaultProtocolUrl(created.sessionToken);
+    desktopSyncSession.value = {
+      sessionId: created.sessionId,
+      sessionToken: created.sessionToken,
+      nodeId: node.id,
+      fileName: created.fileName || node.name,
+      currentVersion: Number(created.currentVersion || node.currentVersion || 1),
+      status: 'pending',
+      syncCount: 0,
+      lastSyncedAt: null,
+      openedAt: null,
+      protocolUrl,
+    };
+    launchVaultProtocol(protocolUrl);
+    desktopHintTimer = setTimeout(() => {
+      if (desktopSyncSession.value?.status === 'pending') {
+        desktopAgentSlowHint.value = true;
+      }
+    }, 6500);
+    desktopPollTimer = setInterval(pollDesktopSessionOnce, 2500);
+    await loadDriveNodes();
+  } catch (err) {
+    if (err?.status === 423) {
+      errorBanner.value = err?.message || 'Este arquivo está sendo editado por outro colega no momento.';
+    } else {
+      errorBanner.value = err?.message || 'Não foi possível iniciar a edição sincronizada no computador.';
+    }
+  } finally {
+    desktopSyncBusy.value = false;
+  }
+}
+
+async function handleCloseDesktopSession() {
+  const cur = desktopSyncSession.value;
+  if (!cur?.sessionToken) {
+    desktopSyncSession.value = null;
+    stopDesktopSyncPolling();
+    return;
+  }
+  desktopSyncBusy.value = true;
+  try {
+    await portalApi.closeStorageDesktopSession(cur.sessionToken);
+    stopDesktopSyncPolling();
+    desktopSyncSession.value = null;
+    desktopAgentSlowHint.value = false;
+    notifySuccess(`Sessão de "${cur.fileName}" encerrada e arquivo desbloqueado.`);
+    await loadDriveNodes();
+  } catch (err) {
+    errorBanner.value = err?.message || 'Não foi possível encerrar a sessão.';
+  } finally {
+    desktopSyncBusy.value = false;
+  }
+}
+
+function dismissDesktopSessionModal() {
+  stopDesktopSyncPolling();
+  desktopSyncSession.value = null;
+  desktopAgentSlowHint.value = false;
 }
 
 // Collaborator ACL visibility filter (strictly blocks restricted folders and 'none' nodes)
@@ -536,6 +671,10 @@ function handleExplorerKeydown(event) {
   const tag = String(event.target?.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
   if (event.key === 'Escape') {
+    if (showAgentGuide.value) {
+      showAgentGuide.value = false;
+      return;
+    }
     if (previewNode.value) {
       closePreview();
       return;
@@ -897,6 +1036,9 @@ onMounted(async () => {
       ownWsHandle = portalApi.connectRealtimeStream(stored.token, (frame) => {
         if (String(frame?.event || '').startsWith('sheet.')) {
           handleIncomingSheetFrame(frame);
+        } else if (frame?.event === 'storage.node.synced') {
+          loadDriveNodes();
+          pollDesktopSessionOnce();
         }
       });
     }
@@ -909,6 +1051,7 @@ onBeforeUnmount(() => {
     window.removeEventListener('click', closeContextMenu);
   }
   if (toastTimer) clearTimeout(toastTimer);
+  stopDesktopSyncPolling();
   closePreview();
   if (ownWsHandle) {
     ownWsHandle.disconnect?.();
@@ -1006,6 +1149,16 @@ onBeforeUnmount(() => {
         >
           {{ chip.label }}
         </button>
+
+        <button
+          type="button"
+          data-testid="portal-open-agent-guide"
+          class="px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 inline-flex items-center gap-1"
+          @click="showAgentGuide = true"
+        >
+          <PortalIcon name="monitor" :size="12" />
+          <span>Como editar no Excel</span>
+        </button>
       </div>
     </div>
 
@@ -1055,6 +1208,18 @@ onBeforeUnmount(() => {
 
             <template v-if="selectedNode && canEditNode(selectedNode)">
               <span class="h-5 w-px bg-slate-200 dark:bg-zinc-700 mx-0.5 hidden sm:inline-block" />
+              <button
+                v-if="!isFolder(selectedNode)"
+                type="button"
+                :disabled="desktopSyncBusy"
+                title="Abrir no Excel/programa do computador com salvamento automático na VPS"
+                class="min-h-[34px] px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1 disabled:opacity-50"
+                @click="handleEditOnDesktop(selectedNode)"
+              >
+                <PortalIcon name="monitor" :size="13" />
+                <span>Editar no PC</span>
+              </button>
+
               <button
                 type="button"
                 title="Renomear (F2)"
@@ -1456,6 +1621,19 @@ onBeforeUnmount(() => {
                   <div class="inline-flex items-center gap-1">
                     <template v-if="!isFolder(node)">
                       <button
+                        v-if="canEditNode(node)"
+                        type="button"
+                        :data-testid="`portal-desktop-edit-${node.id}`"
+                        :disabled="desktopSyncBusy"
+                        title="Abrir no Excel, Word ou programa padrão do PC — cada Ctrl+S salva automaticamente na VPS"
+                        class="px-2 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold inline-flex items-center gap-1 hover:opacity-95 disabled:opacity-50"
+                        @click.stop="handleEditOnDesktop(node)"
+                      >
+                        <PortalIcon name="monitor" :size="12" />
+                        <span>Editar no PC</span>
+                      </button>
+
+                      <button
                         type="button"
                         class="px-2 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-[11px] font-semibold inline-flex items-center gap-1"
                         @click.stop="handlePreviewFile(node)"
@@ -1467,11 +1645,12 @@ onBeforeUnmount(() => {
                       <button
                         v-if="isSpreadsheet(node)"
                         type="button"
-                        class="px-2 py-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold inline-flex items-center gap-1"
+                        title="Editor rápido na web (para edição completa com fórmulas e macros, use Editar no PC)"
+                        class="px-2 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 text-[11px] font-semibold inline-flex items-center gap-1"
                         @click.stop="openSheetEditor(node)"
                       >
                         <PortalIcon name="file-spreadsheet" :size="12" />
-                        <span>Planilha</span>
+                        <span>Web</span>
                       </button>
 
                       <button
@@ -1540,6 +1719,14 @@ onBeforeUnmount(() => {
 
               <div v-if="!isFolder(node)" class="flex flex-wrap justify-center gap-1 pt-1">
                 <button
+                  v-if="canEditNode(node)"
+                  type="button"
+                  class="px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-bold"
+                  @click.stop="handleEditOnDesktop(node)"
+                >
+                  Editar no PC
+                </button>
+                <button
                   type="button"
                   class="px-2 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700 text-[10px] font-semibold"
                   @click.stop="handlePreviewFile(node)"
@@ -1582,6 +1769,19 @@ onBeforeUnmount(() => {
       @click.stop
     >
       <template v-if="contextMenu.node">
+        <button
+          v-if="!isFolder(contextMenu.node) && canEditNode(contextMenu.node)"
+          type="button"
+          class="w-full px-3 py-1.5 text-left hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-2"
+          @click="
+            handleEditOnDesktop(contextMenu.node);
+            closeContextMenu();
+          "
+        >
+          <PortalIcon name="monitor" :size="13" />
+          <span>Editar no PC (Auto-Sync)</span>
+        </button>
+
         <button
           type="button"
           class="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-zinc-800 font-bold flex items-center gap-2"
@@ -1770,6 +1970,15 @@ onBeforeUnmount(() => {
 
         <div class="flex items-center gap-1.5">
           <button
+            v-if="activeSheetNode && canEditNode(activeSheetNode)"
+            type="button"
+            class="min-h-[32px] px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1"
+            @click="handleEditOnDesktop(activeSheetNode)"
+          >
+            <PortalIcon name="monitor" :size="13" />
+            <span>Abrir no Excel (Auto-Sync)</span>
+          </button>
+          <button
             v-if="showSheetEditor && activeSheetNode && canDownloadNode(activeSheetNode)"
             type="button"
             class="min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-semibold"
@@ -1865,6 +2074,291 @@ onBeforeUnmount(() => {
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- LIVE DESKTOP AUTO-SYNC MODAL (`nexusvault://` via Agente Windows) -->
+    <div
+      v-if="desktopSyncSession"
+      data-testid="portal-desktop-sync-modal"
+      class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4"
+    >
+      <div
+        class="w-full max-w-lg rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] shadow-2xl overflow-hidden"
+      >
+        <div class="px-5 py-4 border-b border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <PortalIcon name="monitor" :size="18" />
+            </span>
+            <div class="min-w-0">
+              <h4 class="text-sm font-black text-slate-900 dark:text-white truncate">
+                Edição Sincronizada no PC
+              </h4>
+              <p class="text-[11px] text-slate-500 truncate">
+                {{ desktopSyncSession.fileName }}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label="Minimizar acompanhamento"
+            class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-200/70 dark:hover:bg-zinc-800"
+            @click="dismissDesktopSessionModal"
+          >
+            <PortalIcon name="x" :size="16" />
+          </button>
+        </div>
+
+        <div class="p-5 space-y-4 text-xs">
+          <!-- Status Dinâmico em Tempo Real -->
+          <div
+            v-if="desktopSyncSession.status === 'pending'"
+            class="rounded-xl border border-sky-500/30 bg-sky-500/10 p-4 space-y-2"
+          >
+            <div class="flex items-center gap-2 font-bold text-sky-800 dark:text-sky-200">
+              <PortalIcon name="refresh-cw" :size="15" />
+              <span>Chamando o Agente Nexus no seu computador...</span>
+            </div>
+            <p class="text-[11px] text-sky-700 dark:text-sky-300 leading-relaxed">
+              Se o navegador mostrar um aviso perguntando se deseja abrir o <strong>NexusAgent</strong>, marque
+              <strong>"Sempre permitir"</strong> e clique em <strong>Abrir</strong>.
+            </p>
+          </div>
+
+          <div
+            v-else-if="desktopSyncSession.status === 'opened'"
+            class="rounded-xl border border-emerald-500/35 bg-emerald-500/10 p-4 space-y-2"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <span class="inline-flex items-center gap-2 font-bold text-emerald-800 dark:text-emerald-200">
+                <PortalIcon name="check-circle" :size="16" />
+                <span>Arquivo aberto no PC — Auto-Sync Ativo!</span>
+              </span>
+              <span class="px-2 py-0.5 rounded-full bg-emerald-600 text-white font-mono text-[10px] font-bold">
+                v{{ desktopSyncSession.currentVersion }}
+              </span>
+            </div>
+            <p class="text-[11px] text-emerald-700 dark:text-emerald-300 leading-relaxed">
+              Edite normalmente no Excel, Word ou programa padrão. A cada <strong>Ctrl+S</strong>, o Agente salva uma nova versão direto na VPS.
+              Quando você fechar o programa, o cadeado será liberado automaticamente.
+            </p>
+            <div class="pt-1 flex flex-wrap items-center gap-3 text-[11px] font-semibold text-emerald-800 dark:text-emerald-200">
+              <span>Salvamentos sincronizados: <strong>{{ desktopSyncSession.syncCount }}</strong></span>
+              <span v-if="desktopSyncSession.lastSyncedAt">
+                • Último envio: <strong>{{ formatFriendlyDate(desktopSyncSession.lastSyncedAt) }}</strong>
+              </span>
+            </div>
+          </div>
+
+          <div
+            v-else
+            class="rounded-xl border border-emerald-500/35 bg-emerald-500/10 p-4 space-y-1.5"
+          >
+            <div class="flex items-center gap-2 font-bold text-emerald-800 dark:text-emerald-200">
+              <PortalIcon name="check-circle" :size="16" />
+              <span>Edição finalizada e sincronizada na VPS!</span>
+            </div>
+            <p class="text-[11px] text-emerald-700 dark:text-emerald-300">
+              Versão final: <strong>v{{ desktopSyncSession.currentVersion }}</strong> ({{ desktopSyncSession.syncCount }} salvamento(s)).
+              O arquivo já foi desbloqueado para a sua equipe.
+            </p>
+          </div>
+
+          <!-- Aviso útil se o agente demorar > 6.5s para responder -->
+          <div
+            v-if="desktopAgentSlowHint && desktopSyncSession.status === 'pending'"
+            class="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3.5 space-y-2.5"
+          >
+            <div class="flex items-start gap-2 text-amber-800 dark:text-amber-200">
+              <PortalIcon name="alert-triangle" :size="16" class="mt-0.5 shrink-0" />
+              <div class="space-y-1">
+                <p class="font-bold">O arquivo não abriu no seu PC?</p>
+                <p class="text-[11px] leading-relaxed">
+                  Verifique se o ícone <strong>NX (Agente Nexus v3.4+)</strong> está ativo perto do relógio do Windows.
+                  Se ainda não instalou ou estiver em versão antiga, siga o passo a passo rápido de 2 minutos.
+                </p>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-[11px] font-bold inline-flex items-center gap-1"
+                @click="showAgentGuide = true"
+              >
+                <PortalIcon name="info" :size="13" />
+                <span>Ver Passo a Passo do Colaborador</span>
+              </button>
+              <a
+                :href="AGENT_DOWNLOAD_URL"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="px-3 py-1.5 rounded-lg border border-amber-600/40 text-amber-800 dark:text-amber-200 text-[11px] font-bold inline-flex items-center gap-1"
+              >
+                <PortalIcon name="external-link" :size="13" />
+                <span>Obter Agente Windows v3.4</span>
+              </a>
+            </div>
+          </div>
+
+          <!-- Rodapé de ações -->
+          <div class="pt-2 border-t border-slate-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                v-if="desktopSyncSession.status !== 'closed'"
+                type="button"
+                class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 font-bold text-slate-700 dark:text-zinc-200 inline-flex items-center gap-1"
+                @click="launchVaultProtocol(desktopSyncSession.protocolUrl)"
+              >
+                <PortalIcon name="external-link" :size="13" />
+                <span>Abrir novamente</span>
+              </button>
+              <button
+                type="button"
+                class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 font-semibold text-slate-600 dark:text-zinc-300 inline-flex items-center gap-1"
+                @click="showAgentGuide = true"
+              >
+                <PortalIcon name="info" :size="13" />
+                <span>Passo a passo</span>
+              </button>
+            </div>
+
+            <button
+              v-if="desktopSyncSession.status !== 'closed'"
+              type="button"
+              :disabled="desktopSyncBusy"
+              class="px-3.5 py-1.5 rounded-lg bg-rose-600 text-white font-bold inline-flex items-center gap-1 disabled:opacity-50"
+              @click="handleCloseDesktopSession"
+            >
+              <PortalIcon name="unlock" :size="13" />
+              <span>Encerrar e Desbloquear</span>
+            </button>
+            <button
+              v-else
+              type="button"
+              class="px-4 py-1.5 rounded-lg bg-brand text-brand-fg font-bold"
+              @click="dismissDesktopSessionModal"
+            >
+              Concluir
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASSO A PASSO DO COLABORADOR: EDITAR NO EXCEL & PROGRAMAS NATIVOS -->
+    <div
+      v-if="showAgentGuide"
+      data-testid="portal-agent-guide-modal"
+      class="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4"
+      @click="showAgentGuide = false"
+    >
+      <div
+        class="w-full max-w-2xl max-h-[90vh] rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] shadow-2xl overflow-hidden flex flex-col"
+        @click.stop
+      >
+        <div class="px-5 py-4 border-b border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2.5">
+            <span class="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <PortalIcon name="laptop" :size="18" />
+            </span>
+            <div>
+              <h4 class="text-sm font-black text-slate-900 dark:text-white">
+                Como editar planilhas no Excel com salvamento automático na VPS
+              </h4>
+              <p class="text-[11px] text-slate-500">
+                Passo a passo rápido para colaboradores — funciona com Excel, Word, PowerPoint, PDF e qualquer programa do Windows
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label="Fechar guia"
+            class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-200/70 dark:hover:bg-zinc-800"
+            @click="showAgentGuide = false"
+          >
+            <PortalIcon name="x" :size="16" />
+          </button>
+        </div>
+
+        <div class="p-5 overflow-y-auto space-y-4 text-xs">
+          <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-emerald-900 dark:text-emerald-100 leading-relaxed">
+            Com o <strong>Agente Nexus ITAM (v3.4+)</strong> rodando no seu computador, você não precisa ficar baixando e subindo
+            planilhas manualmente: basta clicar em <strong>"Editar no PC"</strong> e usar o <strong>Microsoft Excel real</strong>
+            com todas as suas fórmulas, macros, tabelas dinâmicas e formatações. Cada <strong>Ctrl+S</strong> atualiza automaticamente o arquivo na empresa.
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-3.5 space-y-1.5 bg-slate-50/70 dark:bg-zinc-900/50">
+              <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-brand text-brand-fg font-black text-[11px]">1</span>
+              <h5 class="font-bold text-slate-900 dark:text-white">Confirme o ícone "NX" perto do relógio</h5>
+              <p class="text-[11px] text-slate-600 dark:text-zinc-400 leading-relaxed">
+                Veja no canto inferior direito do Windows se o ícone <strong>NX (Nexus ITAM v3.4+)</strong> está ativo.
+                Se o computador ainda não tem o agente (ou se está trabalhando de casa), clique no botão abaixo para obter o
+                <strong>NexusAgent.zip</strong>, extraia a pasta e abra o <strong>NexusAgent.exe</strong> uma única vez.
+              </p>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-3.5 space-y-1.5 bg-slate-50/70 dark:bg-zinc-900/50">
+              <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-brand text-brand-fg font-black text-[11px]">2</span>
+              <h5 class="font-bold text-slate-900 dark:text-white">Clique em "Editar no PC" no arquivo</h5>
+              <p class="text-[11px] text-slate-600 dark:text-zinc-400 leading-relaxed">
+                Aqui no Portal, clique no botão verde <strong>Editar no PC</strong> na linha da planilha ou documento.
+                Na primeira vez, o navegador exibirá uma janelinha de confirmação: marque <strong>"Sempre permitir"</strong> e clique em <strong>Abrir NexusAgent</strong>.
+              </p>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-3.5 space-y-1.5 bg-slate-50/70 dark:bg-zinc-900/50">
+              <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-brand text-brand-fg font-black text-[11px]">3</span>
+              <h5 class="font-bold text-slate-900 dark:text-white">Edite no Excel e aperte Ctrl+S</h5>
+              <p class="text-[11px] text-slate-600 dark:text-zinc-400 leading-relaxed">
+                O Excel (ou programa padrão do Windows) abrirá o arquivo automaticamente.
+                A cada <strong>Ctrl+S</strong>, o Agente detecta sua alteração, grava uma nova versão na VPS em segundos e mostra um aviso discreto perto do relógio.
+              </p>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-3.5 space-y-1.5 bg-slate-50/70 dark:bg-zinc-900/50">
+              <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-brand text-brand-fg font-black text-[11px]">4</span>
+              <h5 class="font-bold text-slate-900 dark:text-white">Feche o programa para destravar</h5>
+              <p class="text-[11px] text-slate-600 dark:text-zinc-400 leading-relaxed">
+                Enquanto você edita, o arquivo mostra um <strong>cadeado</strong> para impedir que outro colega sobrescreva seu trabalho.
+                Ao fechar o Excel, o Agente confirma o último envio e libera o arquivo automaticamente.
+              </p>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-3.5 space-y-2">
+            <h5 class="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+              <PortalIcon name="shield-check" :size="14" class="text-emerald-600" />
+              <span>Dúvidas frequentes e segurança</span>
+            </h5>
+            <ul class="space-y-1.5 text-[11px] text-slate-600 dark:text-zinc-400 list-disc pl-4">
+              <li><strong>E se a internet oscilar?</strong> O Agente tenta reenviar automaticamente e mantém sua cópia salva no Excel sem perda de dados.</li>
+              <li><strong>Posso recuperar uma versão antiga?</strong> Sim! Cada <strong>Ctrl+S</strong> cria uma versão numerada (v2, v3, v4...) com histórico auditado.</li>
+              <li><strong>Privacidade garantida:</strong> O Agente só acessa o arquivo exato que você clicou em "Editar no PC" — nunca lê suas pastas pessoais.</li>
+              <li><strong>Computador da empresa já tem o Agente antigo?</strong> Peça à equipe de TI para clicar em <em>Atualizar Frota (OTA)</em> no painel para atualizar para a v3.4 sem precisar reinstalar.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="px-5 py-3.5 border-t border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 flex flex-wrap items-center justify-between gap-2">
+          <a
+            :href="AGENT_DOWNLOAD_URL"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1.5 hover:opacity-95"
+          >
+            <PortalIcon name="external-link" :size="14" />
+            <span>Obter Agente Windows v3.4 (.ZIP)</span>
+          </a>
+          <button
+            type="button"
+            class="px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-bold"
+            @click="showAgentGuide = false"
+          >
+            Entendi, fechar guia
+          </button>
         </div>
       </div>
     </div>

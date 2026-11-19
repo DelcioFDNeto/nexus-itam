@@ -481,6 +481,18 @@ export const microservicesApi = {
     gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/lock`, {
       method: 'DELETE',
     }),
+  createStorageDesktopSession: (nodeId) =>
+    gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/desktop-session`, {
+      method: 'POST',
+      body: {},
+    }),
+  getStorageDesktopSessionStatus: (sessionToken) =>
+    gatewayRequest(`/api/v1/storage/desktop-sessions/${encodeURIComponent(sessionToken)}/status`),
+  closeStorageDesktopSession: (sessionToken) =>
+    gatewayRequest(`/api/v1/storage/desktop-sessions/${encodeURIComponent(sessionToken)}/close`, {
+      method: 'POST',
+      body: {},
+    }),
   listStorageTrash: () => gatewayRequest('/api/v1/storage/trash'),
   restoreStorageTrash: (nodeId, payload = {}) =>
     gatewayRequest(`/api/v1/storage/trash/${encodeURIComponent(nodeId)}/restore`, {

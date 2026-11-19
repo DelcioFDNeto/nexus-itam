@@ -30,6 +30,7 @@ import {
   normalizeVirtualVaultPath,
   resolveSafeVaultPath,
   sanitizeText,
+  signInternalEvent,
   verifyGatewayOrJwt,
   verifyInternalEvent,
   verifyPassword,
@@ -2216,6 +2217,404 @@ export async function buildStorageService(opts = {}) {
 
   app.get('/api/v1/storage/share/:token', handlePublicShareAccess);
   app.post('/api/v1/storage/share/:token', handlePublicShareAccess);
+
+  // ---------------------------------------------------------------------------
+  // 6.5 SESSÕES DE EDIÇÃO DESKTOP AUTO-SYNC (`nexusvault://` via Agente Windows)
+  // ---------------------------------------------------------------------------
+  async function emitStorageRealtimeEvent(tenantId, event, data) {
+    const nexusDeskUrl = process.env.NEXUSDESK_SERVICE_URL || 'http://127.0.0.1:8004';
+    const bodyStr = JSON.stringify({
+      event,
+      tenantId,
+      timestamp: new Date().toISOString(),
+      data,
+    });
+    try {
+      await fetch(`${nexusDeskUrl}/internal/events`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...signInternalEvent(bodyStr),
+        },
+        body: bodyStr,
+        signal: AbortSignal.timeout(2500),
+      });
+    } catch {
+      /* best-effort realtime broadcast */
+    }
+  }
+
+  async function resolveDesktopSessionOrThrow(rawToken, { allowClosed = false } = {}) {
+    const cleanToken = String(rawToken || '').trim();
+    if (!cleanToken || !/^nxd_[A-Za-z0-9_-]{24,128}$/.test(cleanToken)) {
+      const err = new Error('Token de sessão desktop inválido.');
+      err.code = 'INVALID_DESKTOP_SESSION';
+      err.statusCode = 400;
+      throw err;
+    }
+    const tokenHash = crypto.createHash('sha256').update(cleanToken, 'utf8').digest('hex');
+    const session = await storageRepo.getDesktopEditSessionByTokenHash(tokenHash);
+    if (!session) {
+      const err = new Error('Sessão de edição desktop não encontrada.');
+      err.code = 'DESKTOP_SESSION_NOT_FOUND';
+      err.statusCode = 404;
+      throw err;
+    }
+    if (!allowClosed) {
+      if (session.closed_at || session.status === 'closed') {
+        const err = new Error('Esta sessão de edição desktop já foi encerrada.');
+        err.code = 'DESKTOP_SESSION_CLOSED';
+        err.statusCode = 410;
+        throw err;
+      }
+      const expMs = new Date(session.expires_at).getTime();
+      if (Number.isNaN(expMs) || expMs <= Date.now()) {
+        const err = new Error('Esta sessão de edição desktop expirou. Abra o arquivo novamente pelo sistema.');
+        err.code = 'DESKTOP_SESSION_EXPIRED';
+        err.statusCode = 410;
+        throw err;
+      }
+    }
+    const node = await storageRepo.getNodeById(session.tenant_id, session.node_id, { includeTrashed: true });
+    if (!node || (!allowClosed && node.is_trashed)) {
+      const err = new Error('Arquivo associado à sessão não está mais disponível.');
+      err.code = 'FILE_UNAVAILABLE';
+      err.statusCode = 410;
+      throw err;
+    }
+    return { session, node };
+  }
+
+  app.post('/api/v1/storage/nodes/:id/desktop-session', async (request, reply) => {
+    const user = authenticateStorageUser(request);
+    requireGlobalCapability(user, 'cloud:read');
+
+    const node = await storageRepo.getNodeById(user.tenantId, request.params.id);
+    if (!node || node.is_trashed) {
+      return reply.code(404).send({ error: 'NOT_FOUND', message: 'Arquivo não encontrado.' });
+    }
+    if ((node.node_type || node.nodeType) === 'folder') {
+      return reply.code(400).send({ error: 'CANNOT_EDIT_FOLDER', message: 'Selecione um arquivo (planilha, documento, etc.) para edição no computador.' });
+    }
+
+    const access = await resolveEffectiveNodeAccess(user.tenantId, user, node);
+    if (!canAccessLevelPerform(access, 'write', { user, node })) {
+      return reply.code(403).send({
+        error: 'FORBIDDEN',
+        message: 'Seu nível de permissão neste arquivo é apenas leitura/visualização. Edição sincronizada requer permissão de editor.',
+      });
+    }
+
+    assertNodeNotLockedByAnother(node, user);
+    await storageRepo.lockNode(user.tenantId, node.id, user.email);
+
+    const rawToken = `nxd_${crypto.randomBytes(28).toString('hex')}`;
+    const tokenHash = crypto.createHash('sha256').update(rawToken, 'utf8').digest('hex');
+    const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
+
+    const created = await storageRepo.createDesktopEditSession(user.tenantId, node.id, {
+      tokenHash,
+      userEmail: user.email,
+      userName: user.name || user.email,
+      userRole: user.role,
+      lastVersion: Number(node.current_version || 1),
+      expiresAt,
+    });
+
+    await recordStorageAudit(user.tenantId, user, {
+      action: 'STORAGE_DESKTOP_SESSION_CREATED',
+      resourceType: 'storage_node',
+      resourceId: node.id,
+      payload: {
+        sessionId: created.id,
+        fileName: node.name,
+        virtualPath: node.virtual_path,
+        expiresAt,
+      },
+    });
+
+    return reply.code(201).send({
+      sessionId: created.id,
+      sessionToken: rawToken,
+      nodeId: node.id,
+      fileName: node.name,
+      virtualPath: node.virtual_path,
+      mimeType: node.mime_type || inferMimeType(node.name),
+      sizeBytes: Number(node.size_bytes || 0),
+      currentVersion: Number(node.current_version || 1),
+      status: created.status,
+      syncCount: 0,
+      lockedByEmail: user.email,
+      expiresAt: created.expires_at,
+    });
+  });
+
+  app.get('/api/v1/storage/desktop-sessions/:token/status', async (request) => {
+    const { session, node } = await resolveDesktopSessionOrThrow(request.params.token, { allowClosed: true });
+    const expMs = new Date(session.expires_at).getTime();
+    const isExpired = !session.closed_at && Number.isFinite(expMs) && expMs <= Date.now();
+    return {
+      sessionId: session.id,
+      nodeId: node.id,
+      fileName: node.name,
+      virtualPath: node.virtual_path,
+      mimeType: node.mime_type || inferMimeType(node.name),
+      sizeBytes: Number(node.size_bytes || 0),
+      currentVersion: Number(node.current_version || 1),
+      sha256Hash: node.sha256_hash || null,
+      userEmail: session.user_email,
+      userName: session.user_name || session.user_email,
+      status: session.closed_at || session.status === 'closed' ? 'closed' : isExpired ? 'expired' : session.status,
+      syncCount: Number(session.sync_count || 0),
+      lastVersion: Number(session.last_version || node.current_version || 1),
+      lastSyncedAt: session.last_synced_at,
+      openedAt: session.opened_at,
+      expiresAt: session.expires_at,
+      closedAt: session.closed_at,
+      lockedByEmail: node.locked_by_email || null,
+    };
+  });
+
+  app.get('/api/v1/storage/desktop-sessions/:token/download', async (request, reply) => {
+    const { session, node } = await resolveDesktopSessionOrThrow(request.params.token);
+    const { driver } = await getConfiguredDriverOrThrow(session.tenant_id);
+    const readRes = await driver.readFile(node.storage_key || node.virtual_path);
+
+    const firstOpen = !session.opened_at;
+    await storageRepo.updateDesktopEditSession(session.id, {
+      status: 'opened',
+      openedAt: session.opened_at || new Date().toISOString(),
+    });
+
+    if (firstOpen) {
+      await recordStorageAudit(
+        session.tenant_id,
+        { email: session.user_email, role: session.user_role, name: session.user_name },
+        {
+          action: 'STORAGE_DESKTOP_SESSION_OPENED',
+          resourceType: 'storage_node',
+          resourceId: node.id,
+          payload: { sessionId: session.id, fileName: node.name, source: 'NexusAgent-DesktopSync' },
+        },
+      );
+    }
+
+    reply.code(200);
+    reply.header('content-type', node.mime_type || inferMimeType(node.name));
+    reply.header(
+      'content-disposition',
+      `attachment; filename="${encodeURIComponent(node.name)}"; filename*=UTF-8''${encodeURIComponent(node.name)}`,
+    );
+    reply.header('x-content-type-options', 'nosniff');
+    return reply.send(readRes.buffer);
+  });
+
+  app.post('/api/v1/storage/desktop-sessions/:token/upload', async (request, reply) => {
+    const { session, node } = await resolveDesktopSessionOrThrow(request.params.token);
+    assertNodeNotLockedByAnother(node, { email: session.user_email });
+
+    let fileBuffer = null;
+    if (Buffer.isBuffer(request.body)) {
+      const ct = String(request.headers['content-type'] || '').toLowerCase();
+      if (ct.includes('multipart/form-data')) {
+        const parsed = parseMultipartFormBuffer(request.body, request.headers['content-type']);
+        fileBuffer = parsed.filePart?.buffer || null;
+      } else {
+        fileBuffer = request.body;
+      }
+    } else if (typeof request.body === 'string') {
+      fileBuffer = Buffer.from(request.body, 'utf8');
+    }
+
+    if (!fileBuffer || fileBuffer.length === 0) {
+      return reply.code(400).send({ error: 'EMPTY_FILE', message: 'Nenhum dado recebido para sincronização.' });
+    }
+    if (fileBuffer.length > 100 * 1024 * 1024) {
+      return reply.code(413).send({ error: 'FILE_TOO_LARGE', message: 'O arquivo excede o limite de 100 MB.' });
+    }
+    assertAllowedFileType(node.name, node.mime_type || inferMimeType(node.name));
+
+    const sha256Hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+    const nowIso = new Date().toISOString();
+    if (node.sha256_hash && node.sha256_hash === sha256Hash) {
+      const updated = await storageRepo.updateDesktopEditSession(session.id, {
+        status: 'opened',
+        lastSyncedAt: nowIso,
+      });
+      return {
+        ok: true,
+        unchanged: true,
+        version: Number(node.current_version || 1),
+        sizeBytes: fileBuffer.length,
+        sha256Hash,
+        syncCount: Number(updated?.sync_count ?? session.sync_count ?? 0),
+        syncedAt: nowIso,
+      };
+    }
+
+    const oldSize = Number(node.size_bytes || 0);
+    const deltaBytes = fileBuffer.length - oldSize;
+    if (deltaBytes > 0) {
+      await storageRepo.reserveQuota(session.tenant_id, deltaBytes);
+    }
+
+    const { conn, driver } = await getConfiguredDriverOrThrow(session.tenant_id);
+    const targetKey = node.storage_key || node.virtual_path;
+    resolveSafeVaultPath(conn.root_path || '/', targetKey);
+
+    try {
+      await driver.writeFile(targetKey, fileBuffer);
+    } catch (writeErr) {
+      if (deltaBytes > 0) {
+        await storageRepo.releaseQuota(session.tenant_id, deltaBytes);
+      }
+      throw writeErr;
+    }
+
+    if (deltaBytes < 0) {
+      await storageRepo.releaseQuota(session.tenant_id, Math.abs(deltaBytes));
+    }
+
+    const nextVersion = Number(node.current_version || 1) + 1;
+    const versionKey = `/.nexus_versions/${node.id}/v${nextVersion}_${node.name}`;
+    try {
+      await driver.writeFile(versionKey, fileBuffer);
+    } catch {
+      /* ignore snapshot failure */
+    }
+
+    await storageRepo.createVersion(session.tenant_id, node.id, {
+      storageKey: versionKey,
+      sizeBytes: fileBuffer.length,
+      sha256Hash,
+      uploadedByEmail: session.user_email,
+      comment: 'Sincronização automática Desktop (Agente Nexus)',
+    });
+
+    await storageRepo.updateNode(session.tenant_id, node.id, {
+      sizeBytes: fileBuffer.length,
+      sha256Hash,
+      currentVersion: nextVersion,
+      updatedByEmail: session.user_email,
+    });
+
+    // Mantém lock e renova expiração da sessão por mais 4h
+    await storageRepo.lockNode(session.tenant_id, node.id, session.user_email);
+    const nextExpiry = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+    const updatedSession = await storageRepo.updateDesktopEditSession(session.id, {
+      status: 'opened',
+      incrementSync: true,
+      lastVersion: nextVersion,
+      lastSyncedAt: nowIso,
+      expiresAt: nextExpiry,
+    });
+
+    await recordStorageAudit(
+      session.tenant_id,
+      { email: session.user_email, role: session.user_role, name: session.user_name },
+      {
+        action: 'STORAGE_DESKTOP_SYNC_SAVED',
+        resourceType: 'storage_node',
+        resourceId: node.id,
+        payload: {
+          sessionId: session.id,
+          fileName: node.name,
+          version: nextVersion,
+          sizeBytes: fileBuffer.length,
+          sha256Hash,
+          source: 'NexusAgent-DesktopSync',
+        },
+      },
+    );
+
+    await emitStorageRealtimeEvent(session.tenant_id, 'storage.node.synced', {
+      nodeId: node.id,
+      fileName: node.name,
+      version: nextVersion,
+      sizeBytes: fileBuffer.length,
+      syncedByEmail: session.user_email,
+      syncedAt: nowIso,
+      action: 'saved',
+    });
+
+    return {
+      ok: true,
+      unchanged: false,
+      version: nextVersion,
+      sizeBytes: fileBuffer.length,
+      sha256Hash,
+      syncCount: Number(updatedSession?.sync_count ?? 1),
+      syncedAt: nowIso,
+    };
+  });
+
+  app.post('/api/v1/storage/desktop-sessions/:token/heartbeat', async (request) => {
+    const { session, node } = await resolveDesktopSessionOrThrow(request.params.token);
+    const nextExpiry = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+    await storageRepo.updateDesktopEditSession(session.id, { expiresAt: nextExpiry });
+    if (!node.locked_by_email || String(node.locked_by_email).toLowerCase() === String(session.user_email).toLowerCase()) {
+      await storageRepo.lockNode(session.tenant_id, node.id, session.user_email);
+    }
+    return { ok: true, status: session.status, expiresAt: nextExpiry };
+  });
+
+  app.post('/api/v1/storage/desktop-sessions/:token/close', async (request) => {
+    const { session, node } = await resolveDesktopSessionOrThrow(request.params.token, { allowClosed: true });
+    if (session.closed_at || session.status === 'closed') {
+      return { ok: true, status: 'closed', alreadyClosed: true, unlocked: false };
+    }
+
+    let unlocked = false;
+    if (
+      node &&
+      !node.is_trashed &&
+      node.locked_by_email &&
+      String(node.locked_by_email).toLowerCase() === String(session.user_email).toLowerCase()
+    ) {
+      await storageRepo.unlockNode(session.tenant_id, node.id, session.user_email, { force: true });
+      unlocked = true;
+    }
+
+    const closedAt = new Date().toISOString();
+    await storageRepo.updateDesktopEditSession(session.id, {
+      status: 'closed',
+      closedAt,
+    });
+
+    await recordStorageAudit(
+      session.tenant_id,
+      { email: session.user_email, role: session.user_role, name: session.user_name },
+      {
+        action: 'STORAGE_DESKTOP_SESSION_CLOSED',
+        resourceType: 'storage_node',
+        resourceId: session.node_id,
+        payload: {
+          sessionId: session.id,
+          fileName: node?.name || null,
+          unlocked,
+          syncCount: Number(session.sync_count || 0),
+          lastVersion: Number(session.last_version || 1),
+        },
+      },
+    );
+
+    await emitStorageRealtimeEvent(session.tenant_id, 'storage.node.synced', {
+      nodeId: session.node_id,
+      fileName: node?.name || null,
+      version: Number(session.last_version || node?.current_version || 1),
+      syncedByEmail: session.user_email,
+      syncedAt: closedAt,
+      action: 'closed',
+    });
+
+    return {
+      ok: true,
+      status: 'closed',
+      unlocked,
+      syncCount: Number(session.sync_count || 0),
+      lastVersion: Number(session.last_version || 1),
+    };
+  });
 
   // ---------------------------------------------------------------------------
   // 7. NEXUS SHEETS LIVE (PLANILHAS COLABORATIVAS EM TEMPO REAL)

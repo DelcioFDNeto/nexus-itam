@@ -57,24 +57,26 @@ using System.Windows.Forms;
 using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Nexus ITAM Agent")]
-[assembly: AssemblyDescription("Agente de inventario, monitoramento e acesso remoto NexusDesk do Nexus ITAM")]
+[assembly: AssemblyDescription("Agente de inventario, monitoramento, acesso remoto NexusDesk e auto-sync Nexus Vault")]
 [assembly: AssemblyCompany("Nexus ITAM")]
-[assembly: AssemblyProduct("Nexus ITAM - NexusDesk")]
+[assembly: AssemblyProduct("Nexus ITAM - NexusDesk & Vault Sync")]
 [assembly: AssemblyCopyright("Nexus ITAM")]
-[assembly: AssemblyVersion("3.3.0.0")]
-[assembly: AssemblyFileVersion("3.3.0.0")]
+[assembly: AssemblyVersion("3.4.0.0")]
+[assembly: AssemblyFileVersion("3.4.0.0")]
 
 namespace NexusITAM
 {
     internal static class AgentInfo
     {
-        public const string Version = "3.3.0";
+        public const string Version = "3.4.0";
         public const string DefaultRelayBase = "https://itam-api-164-152-195-199.sslip.io";
         public const string ServiceName = "NexusITAMAgent";
         public const string ServiceDisplayName = "Nexus ITAM Agent";
         public const string RunValueName = "NexusITAMAgent";
         public const string LegacyTaskName = "NexusITAM_AgentSync";
         public const string SyncEventName = @"Global\NexusITAMSyncNow";
+        public const string VaultEventName = @"Local\NexusITAMVaultOpen";
+        public const string VaultProtocol = "nexusvault";
         public const string ShortcutName = "Nexus ITAM - Suporte.lnk";
         public const string LegacyShortcutName = "Nexus ITAM - Suporte e Agente.lnk";
 
@@ -344,6 +346,8 @@ namespace NexusITAM
         public static string CollectorScript { get { return Path.Combine(DataDir, "NexusAgent.ps1"); } }
         public static string LogDir { get { return Path.Combine(DataDir, "logs"); } }
         public static string InstalledExe { get { return Path.Combine(MachineDir, "NexusAgent.exe"); } }
+        public static string VaultInboxDir { get { return Path.Combine(UserDir, "vault-inbox"); } }
+        public static string VaultSyncDir { get { return Path.Combine(UserDir, "VaultSync"); } }
 
         // Estado de quem executa comandos: o servico grava na pasta da maquina
         // (so SYSTEM/Administradores alteram); a bandeja, no perfil do usuario.
@@ -836,6 +840,95 @@ namespace NexusITAM
             string flat = body.Replace("\r", " ").Replace("\n", " ");
             return flat.Length > 300 ? flat.Substring(0, 300) : flat;
         }
+
+        public static byte[] DownloadBytes(string url, int timeoutMs, out int status, out string errorBody)
+        {
+            status = 0;
+            errorBody = "";
+            try
+            {
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
+                req.Method = "GET";
+                req.Timeout = timeoutMs;
+                req.ReadWriteTimeout = timeoutMs;
+                req.KeepAlive = true;
+                req.UserAgent = "NexusITAM-Agent/" + AgentInfo.Version;
+                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                {
+                    status = (int)resp.StatusCode;
+                    using (Stream stream = resp.GetResponseStream())
+                    using (MemoryStream ms = new MemoryStream())
+                    {
+                        byte[] buf = new byte[65536];
+                        int n;
+                        while ((n = stream.Read(buf, 0, buf.Length)) > 0) ms.Write(buf, 0, n);
+                        return ms.ToArray();
+                    }
+                }
+            }
+            catch (WebException wex)
+            {
+                HttpWebResponse resp = wex.Response as HttpWebResponse;
+                if (resp != null)
+                {
+                    using (resp)
+                    {
+                        status = (int)resp.StatusCode;
+                        using (StreamReader reader = new StreamReader(resp.GetResponseStream(), Encoding.UTF8)) errorBody = reader.ReadToEnd();
+                    }
+                }
+                else
+                {
+                    errorBody = wex.Message;
+                }
+            }
+            catch (Exception ex)
+            {
+                errorBody = ex.Message;
+            }
+            return null;
+        }
+
+        public static HttpResult SendBytes(string method, string url, byte[] data, string contentType, string bearer, int timeoutMs)
+        {
+            HttpResult result = new HttpResult();
+            try
+            {
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
+                req.Method = method;
+                req.Timeout = timeoutMs;
+                req.ReadWriteTimeout = timeoutMs;
+                req.KeepAlive = true;
+                req.ServicePoint.UseNagleAlgorithm = false;
+                req.ServicePoint.Expect100Continue = false;
+                req.UserAgent = "NexusITAM-Agent/" + AgentInfo.Version;
+                if (!string.IsNullOrEmpty(bearer)) req.Headers["Authorization"] = "Bearer " + bearer;
+                if (data != null)
+                {
+                    req.ContentType = contentType;
+                    req.ContentLength = data.Length;
+                    using (Stream stream = req.GetRequestStream()) stream.Write(data, 0, data.Length);
+                }
+                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse()) Read(resp, result);
+            }
+            catch (WebException wex)
+            {
+                HttpWebResponse resp = wex.Response as HttpWebResponse;
+                if (resp != null)
+                {
+                    using (resp) Read(resp, result);
+                }
+                else
+                {
+                    result.Body = wex.Message;
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Body = ex.Message;
+            }
+            return result;
+        }
     }
 
     internal class CloudClient
@@ -975,10 +1068,15 @@ namespace NexusITAM
     {
         public static string Sha256Hex(string text)
         {
+            return Sha256HexBytes(Encoding.UTF8.GetBytes(text ?? ""));
+        }
+
+        public static string Sha256HexBytes(byte[] bytes)
+        {
             using (SHA256 sha = SHA256.Create())
             {
-                byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(text));
-                StringBuilder sb = new StringBuilder();
+                byte[] hash = sha.ComputeHash(bytes ?? new byte[0]);
+                StringBuilder sb = new StringBuilder(64);
                 foreach (byte b in hash) sb.Append(b.ToString("x2", CultureInfo.InvariantCulture));
                 return sb.ToString();
             }
@@ -1359,13 +1457,44 @@ namespace NexusITAM
         private static ImageCodecInfo _jpegCodec;
         private static bool _codecLoaded;
 
-        public static Dictionary<string, object> Capture(string quality, string sessionId, out string signature)
+        public static int MonitorCount
+        {
+            get
+            {
+                try { return Math.Max(1, Screen.AllScreens.Length); }
+                catch { return 1; }
+            }
+        }
+
+        public static Rectangle GetMonitorBounds(int monitorIndex)
+        {
+            try
+            {
+                if (monitorIndex == -1)
+                {
+                    Rectangle virt = SystemInformation.VirtualScreen;
+                    if (virt.Width > 0 && virt.Height > 0) return virt;
+                }
+                Screen[] screens = Screen.AllScreens;
+                if (screens != null && screens.Length > 0)
+                {
+                    if (monitorIndex >= 0 && monitorIndex < screens.Length) return screens[monitorIndex].Bounds;
+                    return screens[0].Bounds;
+                }
+            }
+            catch { }
+            return Screen.PrimaryScreen.Bounds;
+        }
+
+        public static Dictionary<string, object> Capture(string quality, string sessionId, int monitorIndex, out string signature)
         {
             signature = "";
             string cleanQuality = (quality == "low" || quality == "high") ? quality : "balanced";
             try
             {
-                Rectangle bounds = Screen.PrimaryScreen.Bounds;
+                int monCount = MonitorCount;
+                int safeMonitor = (monitorIndex == -1 || (monitorIndex >= 0 && monitorIndex < monCount)) ? monitorIndex : 0;
+                Rectangle bounds = GetMonitorBounds(safeMonitor);
                 int width = 1088;
                 long jpeg = 48L;
                 InterpolationMode interp = InterpolationMode.Bilinear;
@@ -1405,13 +1534,16 @@ namespace NexusITAM
                         {
                             int cx = pt.X - bounds.Left;
                             int cy = pt.Y - bounds.Top;
-                            using (Pen outline = new Pen(Color.FromArgb(220, 15, 23, 42), 2f))
-                            using (SolidBrush fill = new SolidBrush(Color.FromArgb(210, 56, 189, 248)))
+                            if (cx >= 0 && cy >= 0 && cx < bounds.Width && cy < bounds.Height)
                             {
-                                Point[] arrow = { new Point(cx, cy), new Point(cx, cy + 16), new Point(cx + 5, cy + 12), new Point(cx + 11, cy + 11) };
-                                g.SmoothingMode = SmoothingMode.AntiAlias;
-                                g.FillPolygon(fill, arrow);
-                                g.DrawPolygon(outline, arrow);
+                                using (Pen outline = new Pen(Color.FromArgb(220, 15, 23, 42), 2f))
+                                using (SolidBrush fill = new SolidBrush(Color.FromArgb(210, 56, 189, 248)))
+                                {
+                                    Point[] arrow = { new Point(cx, cy), new Point(cx, cy + 16), new Point(cx + 5, cy + 12), new Point(cx + 11, cy + 11) };
+                                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                                    g.FillPolygon(fill, arrow);
+                                    g.DrawPolygon(outline, arrow);
+                                }
                             }
                         }
                     }
@@ -1442,13 +1574,15 @@ namespace NexusITAM
                         }
                         byte[] bytes = ms.ToArray();
                         int byteSize = bytes.Length;
-                        using (MD5 md5 = MD5.Create()) signature = cleanQuality + ":" + width + "x" + height + ":" + Convert.ToBase64String(md5.ComputeHash(bytes));
+                        using (MD5 md5 = MD5.Create()) signature = cleanQuality + ":" + safeMonitor + ":" + width + "x" + height + ":" + Convert.ToBase64String(md5.ComputeHash(bytes));
                         string encoded = Convert.ToBase64String(bytes);
                         Array.Clear(bytes, 0, bytes.Length);
                         int nextSeq = Interlocked.Increment(ref _seq);
                         Dictionary<string, object> frame = new Dictionary<string, object>();
                         frame["sessionId"] = sessionId ?? "";
                         frame["quality"] = cleanQuality;
+                        frame["monitorIndex"] = safeMonitor;
+                        frame["monitorCount"] = monCount;
                         frame["data"] = encoded;
                         frame["width"] = width;
                         frame["height"] = height;
@@ -1483,10 +1617,10 @@ namespace NexusITAM
             return _jpegCodec;
         }
 
-        public static void Input(Dictionary<string, object> ev)
+        public static void Input(Dictionary<string, object> ev, int monitorIndex)
         {
             string type = Json.Str(ev, "type");
-            Rectangle bounds = Screen.PrimaryScreen.Bounds;
+            Rectangle bounds = GetMonitorBounds(monitorIndex);
             double nx = Math.Max(0.0, Math.Min(1.0, Json.Double(ev, "x", 0.5)));
             double ny = Math.Max(0.0, Math.Min(1.0, Json.Double(ev, "y", 0.5)));
             int px = bounds.Left + (int)Math.Round(nx * bounds.Width);
@@ -1525,11 +1659,42 @@ namespace NexusITAM
                     case "text":
                         TypeText(Json.Str(ev, "text"));
                         break;
+                    case "clipboard":
+                        PasteClipboard(Json.Str(ev, "text"));
+                        break;
                 }
             }
             catch (Exception ex)
             {
                 AgentLog.Write("Evento remoto {0} falhou: {1}", type, ex.Message);
+            }
+        }
+
+        private static void PasteClipboard(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            if (text.Length > 16000) text = text.Substring(0, 16000);
+            bool copied = false;
+            Thread sta = new Thread((ThreadStart)delegate
+            {
+                try
+                {
+                    Clipboard.SetText(text);
+                    copied = true;
+                }
+                catch { }
+            });
+            sta.SetApartmentState(ApartmentState.STA);
+            sta.Start();
+            sta.Join(1500);
+            if (copied)
+            {
+                Thread.Sleep(25);
+                Combo(0x11, 0x56);
+            }
+            else
+            {
+                TypeText(text);
             }
         }
 
@@ -1556,6 +1721,7 @@ namespace NexusITAM
                 case "Tab": Combo(0x09); return;
                 case "Escape": Combo(0x1B); return;
                 case "Delete": Combo(0x2E); return;
+                case "Insert": Combo(0x2D); return;
                 case "ArrowUp": Combo(0x26); return;
                 case "ArrowDown": Combo(0x28); return;
                 case "ArrowLeft": Combo(0x25); return;
@@ -1565,16 +1731,39 @@ namespace NexusITAM
                 case "PageUp": Combo(0x21); return;
                 case "PageDown": Combo(0x22); return;
                 case "Space": Combo(0x20); return;
+                case "F1": Combo(0x70); return;
+                case "F2": Combo(0x71); return;
+                case "F3": Combo(0x72); return;
+                case "F4": Combo(0x73); return;
                 case "F5": Combo(0x74); return;
+                case "F6": Combo(0x75); return;
+                case "F7": Combo(0x76); return;
+                case "F8": Combo(0x77); return;
+                case "F9": Combo(0x78); return;
+                case "F10": Combo(0x79); return;
+                case "F11": Combo(0x7A); return;
+                case "F12": Combo(0x7B); return;
                 case "Win": Combo(VK_WIN); return;
                 case "Win+D": Combo(VK_WIN, 0x44); return;
+                case "Win+E": Combo(VK_WIN, 0x45); return;
+                case "Win+L": NativeMethods.LockWorkStation(); return;
                 case "Win+R": Combo(VK_WIN, 0x52); return;
+                case "Win+Tab": Combo(VK_WIN, 0x09); return;
                 case "Alt+Tab": Combo(VK_ALT, 0x09); return;
                 case "Alt+F4": Combo(VK_ALT, 0x73); return;
+                case "Alt+Enter": Combo(VK_ALT, 0x0D); return;
                 case "Ctrl+C": Combo(VK_CTRL, 0x43); return;
                 case "Ctrl+V": Combo(VK_CTRL, 0x56); return;
+                case "Ctrl+X": Combo(VK_CTRL, 0x58); return;
+                case "Ctrl+S": Combo(VK_CTRL, 0x53); return;
                 case "Ctrl+A": Combo(VK_CTRL, 0x41); return;
                 case "Ctrl+Z": Combo(VK_CTRL, 0x5A); return;
+                case "Ctrl+Y": Combo(VK_CTRL, 0x59); return;
+                case "Ctrl+F": Combo(VK_CTRL, 0x46); return;
+                case "Ctrl+P": Combo(VK_CTRL, 0x50); return;
+                case "Ctrl+W": Combo(VK_CTRL, 0x57); return;
+                case "Ctrl+T": Combo(VK_CTRL, 0x54); return;
+                case "Ctrl+Shift+T": Combo(VK_CTRL, VK_SHIFT, 0x54); return;
                 // Ctrl+Alt+Del e reservado ao Windows (SAS): abre o Gerenciador de Tarefas.
                 case "Ctrl+Alt+Del":
                 case "Ctrl+Shift+Esc": Combo(VK_CTRL, VK_SHIFT, 0x1B); return;
@@ -1776,6 +1965,7 @@ namespace NexusITAM
                             "Start-Service -Name 'NexusITAMAgent' -ErrorAction SilentlyContinue\r\n" +
                             "Start-Sleep -Seconds 4\r\n" +
                             "Remove-Item -Path \"$dir\\NexusAgent.old.exe\" -Force -ErrorAction SilentlyContinue\r\n" +
+                            "& \"$dir\\NexusAgent.exe\" --register-protocol | Out-Null\r\n" +
                             "& \"$dir\\NexusAgent.exe\" --once | Out-Null\r\n" +
                             "Remove-Item -Path $stageDir -Recurse -Force -ErrorAction SilentlyContinue\r\n" +
                             "'@ | Set-Content -Path $runner -Encoding UTF8 -Force; " +
@@ -1811,11 +2001,14 @@ namespace NexusITAM
         public string OperatorUid = "";
         public string Mode = "attended";
         public string Quality = "balanced";
+        public int MonitorIndex;
+        public int TargetFps = 20;
         public long LastSeq;
         public DateTime StartedUtc = DateTime.MinValue;
         public DateTime ViewerSeenUtc = DateTime.MinValue;
         public string LastFrameSig = "";
         public DateTime LastFrameAt = DateTime.MinValue;
+        public DateTime LastRelayControlPoll = DateTime.MinValue;
         public bool Dirty;
         public bool FrameVisible;
         public readonly HashSet<string> Decided = new HashSet<string>();
@@ -2267,6 +2460,9 @@ namespace NexusITAM
             caps["service"] = _isService || ServiceRunning();
             caps["remoteAccess"] = _policy.RemoteAccess;
             caps["commands"] = _policy.CommandsEnabled;
+            caps["vaultDesktopSync"] = true;
+            caps["multiMonitor"] = RemoteDesktop.MonitorCount;
+            caps["clipboardPaste"] = true;
             f["capabilities"] = caps;
             f["metrics"] = Telemetry.Metrics();
             f["topProcesses"] = Telemetry.TopProcesses(15);
@@ -2517,6 +2713,9 @@ namespace NexusITAM
             rs["operatorName"] = _session.Operator;
             rs["mode"] = _session.Mode;
             rs["quality"] = _session.Quality;
+            rs["monitorIndex"] = _session.MonitorIndex;
+            rs["monitorCount"] = RemoteDesktop.MonitorCount;
+            rs["targetFps"] = _session.TargetFps;
             rs["lastInputSeq"] = _session.LastSeq;
             rs["policy"] = _policy.RemoteAccess;
             rs["updatedAt"] = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
@@ -2540,10 +2739,28 @@ namespace NexusITAM
             _streamKick.Set();
         }
 
+        private void ApplyMonitorSetting(int monitorIndex)
+        {
+            int monCount = RemoteDesktop.MonitorCount;
+            int safeIndex = (monitorIndex == -1 || (monitorIndex >= 0 && monitorIndex < monCount)) ? monitorIndex : 0;
+            if (safeIndex == _session.MonitorIndex) return;
+            lock (_sync)
+            {
+                _session.MonitorIndex = safeIndex;
+                _session.LastFrameSig = "";
+                _session.LastFrameAt = DateTime.MinValue;
+                _lastFirestoreFrameAt = DateTime.MinValue;
+                _session.Dirty = true;
+            }
+            AgentLog.Write("Monitor da sessao remota alterado para indice {0} (total {1}).", safeIndex, monCount);
+            _streamKick.Set();
+        }
+
         private void ProcessInputEvents(List<object> events)
         {
             if (events == null || events.Count == 0) return;
             bool anyProcessed = false;
+            int activeMonitor = _session.MonitorIndex;
             foreach (object item in events)
             {
                 Dictionary<string, object> ev = item as Dictionary<string, object>;
@@ -2551,7 +2768,7 @@ namespace NexusITAM
                 if (ev == null || seq <= _session.LastSeq) continue;
                 _session.LastSeq = seq;
                 anyProcessed = true;
-                RemoteDesktop.Input(ev);
+                RemoteDesktop.Input(ev, activeMonitor);
             }
             if (anyProcessed)
             {
@@ -2575,6 +2792,15 @@ namespace NexusITAM
                 _session.ViewerSeenUtc = seen.Value;
             }
             ApplyQualitySetting(Json.Str(control, "quality"));
+            if (control.ContainsKey("monitorIndex"))
+            {
+                ApplyMonitorSetting((int)Json.Long(control, "monitorIndex", 0));
+            }
+            if (control.ContainsKey("targetFps"))
+            {
+                int fps = (int)Json.Long(control, "targetFps", 20);
+                _session.TargetFps = Math.Max(8, Math.Min(30, fps));
+            }
             object raw;
             if (control.TryGetValue("inputEvents", out raw))
             {
@@ -2607,6 +2833,7 @@ namespace NexusITAM
                 _session.Mode = Json.Str(rs, "mode") == "unattended" ? "unattended" : "attended";
                 string initialQuality = Json.Str(rs, "quality");
                 _session.Quality = (initialQuality == "low" || initialQuality == "high") ? initialQuality : "balanced";
+                _session.MonitorIndex = (int)Json.Long(rs, "monitorIndex", 0);
                 _session.LastSeq = 0;
                 _session.LastFrameSig = "";
                 _session.LastFrameAt = DateTime.MinValue;
@@ -2649,6 +2876,10 @@ namespace NexusITAM
                 return;
             }
             ApplyQualitySetting(Json.Str(rs, "quality"));
+            if (rs.ContainsKey("monitorIndex"))
+            {
+                ApplyMonitorSetting((int)Json.Long(rs, "monitorIndex", 0));
+            }
 
             object raw;
             if (!rs.TryGetValue("inputEvents", out raw)) return;
@@ -2672,9 +2903,10 @@ namespace NexusITAM
             string q = _session.Quality;
             if (relayActive)
             {
-                if (q == "low") return 110;
-                if (q == "high") return 210;
-                return 150;
+                int requested = _session.TargetFps > 0 ? Math.Max(35, 1000 / Math.Min(30, _session.TargetFps)) : 55;
+                if (q == "low") return Math.Max(45, requested);
+                if (q == "high") return Math.Max(110, requested);
+                return Math.Max(65, requested);
             }
             if (q == "low") return 200;
             if (q == "high") return 340;
@@ -2745,14 +2977,55 @@ namespace NexusITAM
 
             string currentQuality = _session.Quality;
             string currentSessionId = _session.Id;
+            int currentMonitor = _session.MonitorIndex;
             string signature;
-            Dictionary<string, object> frame = RemoteDesktop.Capture(currentQuality, currentSessionId, out signature);
+            Dictionary<string, object> frame = RemoteDesktop.Capture(currentQuality, currentSessionId, currentMonitor, out signature);
             if (frame == null || !_session.Active) return;
 
             bool changed = signature != _session.LastFrameSig;
             bool forceRefresh = (now - _session.LastFrameAt).TotalSeconds >= 4 || !_session.FrameVisible || _session.Dirty;
             if (!changed && !forceRefresh)
             {
+                // Mesmo com a tela parada, consulta rapidamente o Relay VPS (sem enviar imagem)
+                // para executar cliques/teclas do tecnico com latencia minima.
+                if (DateTime.UtcNow >= _relayBackoffUntil && (now - _session.LastRelayControlPoll).TotalMilliseconds >= 140)
+                {
+                    _session.LastRelayControlPoll = now;
+                    try
+                    {
+                        Dictionary<string, object> pollPayload = new Dictionary<string, object>();
+                        pollPayload["tenantId"] = _cred.tenantId;
+                        pollPayload["deviceKey"] = _cred.deviceKey;
+                        pollPayload["sessionId"] = currentSessionId;
+                        pollPayload["frame"] = null;
+                        pollPayload["ackInputSeq"] = _session.LastSeq;
+                        pollPayload["remoteState"] = SessionStateFields();
+                        HttpResult pr = Http.Send(
+                            "POST",
+                            _cfg.RelayBase() + "/api/v1/telemetry/remote-frame",
+                            Json.Serializer.Serialize(pollPayload),
+                            "application/json; charset=utf-8",
+                            null,
+                            1800
+                        );
+                        if (pr.Status >= 200 && pr.Status < 300)
+                        {
+                            relayActive = true;
+                            Dictionary<string, object> resp = Json.ParseObject(pr.Body);
+                            if (resp != null) ApplyRelayControl(Json.Map(resp, "control"));
+                        }
+                        else
+                        {
+                            relayActive = false;
+                            _relayBackoffUntil = DateTime.UtcNow.AddSeconds(8);
+                        }
+                    }
+                    catch
+                    {
+                        relayActive = false;
+                        _relayBackoffUntil = DateTime.UtcNow.AddSeconds(8);
+                    }
+                }
                 return;
             }
 
@@ -2761,11 +3034,13 @@ namespace NexusITAM
             {
                 try
                 {
+                    _session.LastRelayControlPoll = now;
                     Dictionary<string, object> relayPayload = new Dictionary<string, object>();
                     relayPayload["tenantId"] = _cred.tenantId;
                     relayPayload["deviceKey"] = _cred.deviceKey;
                     relayPayload["sessionId"] = currentSessionId;
                     relayPayload["frame"] = frame;
+                    relayPayload["ackInputSeq"] = _session.LastSeq;
                     relayPayload["remoteState"] = SessionStateFields();
                     HttpResult rr = Http.Send(
                         "POST",
@@ -2801,8 +3076,9 @@ namespace NexusITAM
             _session.LastFrameAt = DateTime.UtcNow;
             _session.LastFrameSig = signature;
 
+            // Quando o Relay VPS esta fluido, grava snapshot no Firestore apenas a cada 4s (80% menos cota).
             bool shouldWriteFirestore = !relaySent || !_session.FrameVisible || _session.Dirty ||
-                (DateTime.UtcNow - _lastFirestoreFrameAt).TotalMilliseconds >= 850;
+                (DateTime.UtcNow - _lastFirestoreFrameAt).TotalMilliseconds >= 4000;
 
             if (shouldWriteFirestore && _session.Active)
             {
@@ -2937,6 +3213,703 @@ namespace NexusITAM
             p["logged_user"] = MachineIdentity.LoggedUser(_isService);
             p["uptime_hours"] = Telemetry.UptimeHours();
             return p;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Nexus Vault Desktop Auto-Sync (protocolo nexusvault:// + Excel/Apps)
+    // -------------------------------------------------------------------------
+    internal static class ProtocolRegistrar
+    {
+        private static readonly Regex TokenPattern = new Regex(@"^nxd_[A-Za-z0-9_-]{24,128}$", RegexOptions.Compiled);
+
+        public static void RegisterUser(string exePath)
+        {
+            if (string.IsNullOrEmpty(exePath)) return;
+            try
+            {
+                WriteProtocol(Registry.CurrentUser, @"Software\Classes\" + AgentInfo.VaultProtocol, exePath);
+            }
+            catch (Exception ex)
+            {
+                AgentLog.Write("Registro de protocolo HKCU falhou: {0}", ex.Message);
+            }
+        }
+
+        public static void RegisterMachine(string exePath)
+        {
+            if (string.IsNullOrEmpty(exePath)) return;
+            try
+            {
+                WriteProtocol(Registry.LocalMachine, @"SOFTWARE\Classes\" + AgentInfo.VaultProtocol, exePath);
+            }
+            catch (Exception ex)
+            {
+                AgentLog.Write("Registro de protocolo HKLM falhou: {0}", ex.Message);
+            }
+        }
+
+        public static void Unregister()
+        {
+            try { Registry.LocalMachine.DeleteSubKeyTree(@"SOFTWARE\Classes\" + AgentInfo.VaultProtocol, false); } catch { }
+            try { Registry.CurrentUser.DeleteSubKeyTree(@"Software\Classes\" + AgentInfo.VaultProtocol, false); } catch { }
+        }
+
+        private static void WriteProtocol(RegistryKey root, string subKeyPath, string exePath)
+        {
+            string fullExe = Path.GetFullPath(exePath);
+            using (RegistryKey key = root.CreateSubKey(subKeyPath))
+            {
+                if (key == null) return;
+                key.SetValue("", "URL:Nexus Vault Desktop Sync Protocol");
+                key.SetValue("URL Protocol", "");
+                using (RegistryKey icon = key.CreateSubKey("DefaultIcon"))
+                {
+                    if (icon != null) icon.SetValue("", "\"" + fullExe + "\",0");
+                }
+                using (RegistryKey cmd = key.CreateSubKey(@"shell\open\command"))
+                {
+                    if (cmd != null) cmd.SetValue("", "\"" + fullExe + "\" --vault-open \"%1\"");
+                }
+            }
+        }
+
+        public static bool ParseVaultUri(string rawUri, out string apiBase, out string token)
+        {
+            apiBase = "";
+            token = "";
+            if (string.IsNullOrEmpty(rawUri)) return false;
+            try
+            {
+                Uri uri = new Uri(rawUri.Trim().Trim('"'));
+                if (!string.Equals(uri.Scheme, AgentInfo.VaultProtocol, StringComparison.OrdinalIgnoreCase)) return false;
+                string q = uri.Query ?? "";
+                if (q.StartsWith("?", StringComparison.Ordinal)) q = q.Substring(1);
+                string[] pairs = q.Split('&');
+                foreach (string pair in pairs)
+                {
+                    if (string.IsNullOrEmpty(pair)) continue;
+                    int eq = pair.IndexOf('=');
+                    string k = eq >= 0 ? Uri.UnescapeDataString(pair.Substring(0, eq)) : Uri.UnescapeDataString(pair);
+                    string v = eq >= 0 ? Uri.UnescapeDataString(pair.Substring(eq + 1)) : "";
+                    if (string.Equals(k, "api", StringComparison.OrdinalIgnoreCase)) apiBase = v.Trim().TrimEnd('/');
+                    else if (string.Equals(k, "token", StringComparison.OrdinalIgnoreCase)) token = v.Trim();
+                }
+                if (string.IsNullOrEmpty(apiBase)) apiBase = AgentInfo.DefaultRelayBase;
+                bool safeHost = apiBase.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                    apiBase.StartsWith("http://localhost", StringComparison.OrdinalIgnoreCase) ||
+                    apiBase.StartsWith("http://127.0.0.1", StringComparison.OrdinalIgnoreCase);
+                if (!safeHost) return false;
+                if (!TokenPattern.IsMatch(token)) return false;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static bool EnqueueVaultRequest(string rawUri, out string error)
+        {
+            error = null;
+            string apiBase, token;
+            if (!ParseVaultUri(rawUri, out apiBase, out token))
+            {
+                error = "Link de edicao Nexus Vault invalido ou nao autorizado.";
+                return false;
+            }
+            try
+            {
+                Directory.CreateDirectory(AgentPaths.VaultInboxDir);
+                Dictionary<string, object> payload = new Dictionary<string, object>();
+                payload["apiBase"] = apiBase;
+                payload["token"] = token;
+                payload["queuedAt"] = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
+                string tmpFile = Path.Combine(AgentPaths.VaultInboxDir, "req-" + Guid.NewGuid().ToString("N") + ".json.tmp");
+                string finalFile = tmpFile.Substring(0, tmpFile.Length - 4);
+                File.WriteAllText(tmpFile, Json.Serializer.Serialize(payload), new UTF8Encoding(false));
+                File.Move(tmpFile, finalFile);
+                try
+                {
+                    using (EventWaitHandle ev = EventWaitHandle.OpenExisting(AgentInfo.VaultEventName, EventWaitHandleRights.Modify | EventWaitHandleRights.Synchronize))
+                    {
+                        ev.Set();
+                    }
+                }
+                catch { }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "Falha ao enfileirar abertura no Nexus Vault: " + ex.Message;
+                return false;
+            }
+        }
+    }
+
+    internal class VaultEditJob
+    {
+        public string SessionToken = "";
+        public string ApiBase = "";
+        public string FileName = "";
+        public string LocalPath = "";
+        public string SessionDir = "";
+        public string LastHash = "";
+        public int CurrentVersion = 1;
+        public int SyncCount;
+        public DateTime OpenedUtc = DateTime.UtcNow;
+        public DateTime LastHeartbeatUtc = DateTime.UtcNow;
+        public DateTime LastWriteSeenUtc = DateTime.MinValue;
+        public long LastLengthSeen = -1;
+        public DateTime LastChangeSignalUtc = DateTime.MinValue;
+        public DateTime LastSyncedLocal = DateTime.MinValue;
+        public volatile bool Dirty;
+        public volatile bool Uploading;
+        public volatile bool Closed;
+        public int ClosedStreakSeconds;
+        public Process SpawnedProcess;
+        public FileSystemWatcher Watcher;
+    }
+
+    internal interface IVaultSyncUi
+    {
+        void OnVaultSyncChanged(int activeCount, string summaryLine);
+        void ShowVaultBalloon(string title, string text, ToolTipIcon icon);
+    }
+
+    internal class VaultSyncManager
+    {
+        private readonly IVaultSyncUi _ui;
+        private readonly object _lock = new object();
+        private readonly List<VaultEditJob> _jobs = new List<VaultEditJob>();
+        private EventWaitHandle _inboxEvent;
+        private Thread _worker;
+        private volatile bool _running;
+        private string _lastStatusLine = "Pronto para sincronizar planilhas e documentos no Excel/PC";
+
+        public VaultSyncManager(IVaultSyncUi ui)
+        {
+            _ui = ui;
+        }
+
+        public void Start()
+        {
+            if (_running) return;
+            _running = true;
+            try
+            {
+                Directory.CreateDirectory(AgentPaths.VaultInboxDir);
+                Directory.CreateDirectory(AgentPaths.VaultSyncDir);
+                bool created;
+                _inboxEvent = new EventWaitHandle(false, EventResetMode.AutoReset, AgentInfo.VaultEventName, out created);
+            }
+            catch (Exception ex)
+            {
+                AgentLog.Write("VaultSync init aviso: {0}", ex.Message);
+            }
+            _worker = new Thread(Loop);
+            _worker.IsBackground = true;
+            _worker.Name = "NexusVaultSync";
+            _worker.Start();
+        }
+
+        public void Stop()
+        {
+            _running = false;
+            if (_inboxEvent != null)
+            {
+                try { _inboxEvent.Set(); } catch { }
+            }
+            if (_worker != null) _worker.Join(3000);
+            CloseAllSessions(true);
+            if (_inboxEvent != null)
+            {
+                try { _inboxEvent.Close(); } catch { }
+                _inboxEvent = null;
+            }
+        }
+
+        public int ActiveCount
+        {
+            get { lock (_lock) return _jobs.Count; }
+        }
+
+        public string SummaryLine
+        {
+            get { lock (_lock) return _lastStatusLine; }
+        }
+
+        public void ForceSyncAll()
+        {
+            List<VaultEditJob> snapshot;
+            lock (_lock) snapshot = new List<VaultEditJob>(_jobs);
+            foreach (VaultEditJob job in snapshot)
+            {
+                job.Dirty = true;
+                job.LastChangeSignalUtc = DateTime.UtcNow.AddSeconds(-5);
+            }
+            if (_inboxEvent != null)
+            {
+                try { _inboxEvent.Set(); } catch { }
+            }
+        }
+
+        public void CloseAllSessions(bool silent)
+        {
+            List<VaultEditJob> snapshot;
+            lock (_lock)
+            {
+                snapshot = new List<VaultEditJob>(_jobs);
+                _jobs.Clear();
+            }
+            foreach (VaultEditJob job in snapshot)
+            {
+                FinalizeJob(job, silent);
+            }
+            NotifyUi();
+        }
+
+        public void OpenSyncFolder()
+        {
+            try
+            {
+                Directory.CreateDirectory(AgentPaths.VaultSyncDir);
+                Process.Start(new ProcessStartInfo(AgentPaths.VaultSyncDir) { UseShellExecute = true });
+            }
+            catch { }
+        }
+
+        private void Loop()
+        {
+            AgentLog.Write("Nexus Vault Auto-Sync iniciado.");
+            while (_running)
+            {
+                try
+                {
+                    DrainInbox();
+                    TickJobs();
+                }
+                catch (Exception ex)
+                {
+                    AgentLog.Write("Erro no laco VaultSync: {0}", ex.Message);
+                }
+                if (_inboxEvent != null) _inboxEvent.WaitOne(1200);
+                else Thread.Sleep(1200);
+            }
+        }
+
+        private void DrainInbox()
+        {
+            if (!Directory.Exists(AgentPaths.VaultInboxDir)) return;
+            string[] files = Directory.GetFiles(AgentPaths.VaultInboxDir, "*.json");
+            foreach (string file in files)
+            {
+                try
+                {
+                    string raw = File.ReadAllText(file, Encoding.UTF8);
+                    try { File.Delete(file); } catch { }
+                    Dictionary<string, object> obj = Json.ParseObject(raw);
+                    if (obj == null) continue;
+                    string apiBase = Json.Str(obj, "apiBase");
+                    string token = Json.Str(obj, "token");
+                    if (string.IsNullOrEmpty(apiBase) || string.IsNullOrEmpty(token)) continue;
+                    StartEditJob(apiBase, token);
+                }
+                catch (Exception ex)
+                {
+                    AgentLog.Write("Falha ao processar inbox VaultSync ({0}): {1}", file, ex.Message);
+                }
+            }
+        }
+
+        private static string SanitizeFileName(string name)
+        {
+            string clean = string.IsNullOrEmpty(name) ? "arquivo.bin" : name.Trim();
+            foreach (char c in Path.GetInvalidFileNameChars()) clean = clean.Replace(c, '_');
+            clean = clean.Replace("..", "_");
+            if (string.IsNullOrEmpty(clean)) clean = "arquivo.bin";
+            return clean;
+        }
+
+        private void StartEditJob(string apiBase, string token)
+        {
+            lock (_lock)
+            {
+                foreach (VaultEditJob existing in _jobs)
+                {
+                    if (string.Equals(existing.SessionToken, token, StringComparison.Ordinal))
+                    {
+                        try { Process.Start(new ProcessStartInfo(existing.LocalPath) { UseShellExecute = true }); } catch { }
+                        return;
+                    }
+                }
+            }
+
+            string baseUrl = apiBase.TrimEnd('/') + "/api/v1/storage/desktop-sessions/" + Uri.EscapeDataString(token);
+            HttpResult metaRes = Http.Send("GET", baseUrl + "/status", null, null, null, 20000);
+            if (metaRes.Status != 200)
+            {
+                string msg = "Nao foi possivel abrir o arquivo (HTTP " + metaRes.Status + "). Verifique se a sessao ainda esta ativa.";
+                AgentLog.Write("VaultSync meta falhou: {0} {1}", metaRes.Status, Http.Brief(metaRes.Body));
+                if (_ui != null) _ui.ShowVaultBalloon("Nexus Vault Auto-Sync", msg, ToolTipIcon.Warning);
+                return;
+            }
+
+            Dictionary<string, object> meta = Json.ParseObject(metaRes.Body);
+            string fileName = SanitizeFileName(Json.Str(meta, "fileName"));
+            int currentVersion = (int)Json.Long(meta, "currentVersion", 1);
+
+            int dlStatus;
+            string dlErr;
+            byte[] fileBytes = Http.DownloadBytes(baseUrl + "/download", 60000, out dlStatus, out dlErr);
+            if (dlStatus != 200 || fileBytes == null)
+            {
+                AgentLog.Write("VaultSync download falhou ({0}): {1}", dlStatus, Http.Brief(dlErr));
+                if (_ui != null) _ui.ShowVaultBalloon("Nexus Vault Auto-Sync", "Falha ao baixar '" + fileName + "' da VPS (" + dlStatus + ").", ToolTipIcon.Error);
+                return;
+            }
+
+            string shortId = token.Length > 14 ? token.Substring(4, 10) : Guid.NewGuid().ToString("N").Substring(0, 10);
+            string sessionDir = Path.Combine(AgentPaths.VaultSyncDir, shortId);
+            Directory.CreateDirectory(sessionDir);
+            string localPath = Path.Combine(sessionDir, fileName);
+            File.WriteAllBytes(localPath, fileBytes);
+
+            FileInfo fi = new FileInfo(localPath);
+            VaultEditJob job = new VaultEditJob();
+            job.SessionToken = token;
+            job.ApiBase = apiBase.TrimEnd('/');
+            job.FileName = fileName;
+            job.SessionDir = sessionDir;
+            job.LocalPath = localPath;
+            job.LastHash = Crypto.Sha256HexBytes(fileBytes);
+            job.CurrentVersion = currentVersion;
+            job.OpenedUtc = DateTime.UtcNow;
+            job.LastHeartbeatUtc = DateTime.UtcNow;
+            job.LastWriteSeenUtc = fi.LastWriteTimeUtc;
+            job.LastLengthSeen = fi.Length;
+
+            try
+            {
+                FileSystemWatcher watcher = new FileSystemWatcher(sessionDir);
+                watcher.IncludeSubdirectories = false;
+                watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName | NotifyFilters.CreationTime;
+                FileSystemEventHandler onFs = delegate(object s, FileSystemEventArgs e)
+                {
+                    if (IsTargetFileMatch(e.Name, job.FileName))
+                    {
+                        job.Dirty = true;
+                        job.LastChangeSignalUtc = DateTime.UtcNow;
+                    }
+                };
+                RenamedEventHandler onRename = delegate(object s, RenamedEventArgs e)
+                {
+                    // Microsoft Excel faz Atomic Safe-Save: grava .tmp e renomeia para o nome final!
+                    if (IsTargetFileMatch(e.Name, job.FileName))
+                    {
+                        job.Dirty = true;
+                        job.LastChangeSignalUtc = DateTime.UtcNow;
+                    }
+                };
+                watcher.Changed += onFs;
+                watcher.Created += onFs;
+                watcher.Renamed += onRename;
+                watcher.EnableRaisingEvents = true;
+                job.Watcher = watcher;
+            }
+            catch (Exception ex)
+            {
+                AgentLog.Write("FileSystemWatcher aviso ({0}): {1}", fileName, ex.Message);
+            }
+
+            try
+            {
+                job.SpawnedProcess = Process.Start(new ProcessStartInfo(localPath) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                AgentLog.Write("Falha ao abrir programa padrao para {0}: {1}", fileName, ex.Message);
+                if (_ui != null) _ui.ShowVaultBalloon("Nexus Vault Auto-Sync", "Arquivo baixado, mas nao ha programa padrao para abrir '" + fileName + "'.", ToolTipIcon.Warning);
+            }
+
+            lock (_lock)
+            {
+                _jobs.Add(job);
+                _lastStatusLine = "Editando '" + fileName + "' (v" + currentVersion + ") - Ctrl+S sincroniza na VPS";
+            }
+            AgentLog.Write("VaultSync aberto: {0} -> {1} (v{2}, {3} bytes)", fileName, localPath, currentVersion, fileBytes.Length);
+            NotifyUi();
+            if (_ui != null)
+            {
+                _ui.ShowVaultBalloon("Nexus Vault Auto-Sync", "'" + fileName + "' aberto! Cada Ctrl+S salva automaticamente na VPS.", ToolTipIcon.Info);
+            }
+        }
+
+        private static bool IsTargetFileMatch(string changedName, string targetFileName)
+        {
+            if (string.IsNullOrEmpty(changedName) || string.IsNullOrEmpty(targetFileName)) return false;
+            if (changedName.StartsWith("~$", StringComparison.Ordinal)) return false;
+            if (changedName.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)) return false;
+            return string.Equals(changedName, targetFileName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void TickJobs()
+        {
+            List<VaultEditJob> snapshot;
+            lock (_lock) snapshot = new List<VaultEditJob>(_jobs);
+            if (snapshot.Count == 0) return;
+
+            DateTime now = DateTime.UtcNow;
+            List<VaultEditJob> finished = new List<VaultEditJob>();
+
+            foreach (VaultEditJob job in snapshot)
+            {
+                if (job.Closed)
+                {
+                    finished.Add(job);
+                    continue;
+                }
+
+                // Fallback polling de timestamp/tamanho (garante deteccao mesmo se o FSW perder evento)
+                if (File.Exists(job.LocalPath))
+                {
+                    try
+                    {
+                        FileInfo fi = new FileInfo(job.LocalPath);
+                        if (fi.LastWriteTimeUtc != job.LastWriteSeenUtc || fi.Length != job.LastLengthSeen)
+                        {
+                            job.LastWriteSeenUtc = fi.LastWriteTimeUtc;
+                            job.LastLengthSeen = fi.Length;
+                            job.Dirty = true;
+                            job.LastChangeSignalUtc = now;
+                        }
+                    }
+                    catch { }
+                }
+
+                // Debounce de 1200ms apos o Ctrl+S para aguardar o Excel finalizar gravacao atomica
+                if (job.Dirty && !job.Uploading && (now - job.LastChangeSignalUtc).TotalMilliseconds >= 1200)
+                {
+                    UploadJobIfChanged(job);
+                }
+
+                // Heartbeat a cada 10 min para manter cadeado ativo na VPS enquanto edita
+                if ((now - job.LastHeartbeatUtc).TotalMinutes >= 10)
+                {
+                    job.LastHeartbeatUtc = now;
+                    SendHeartbeat(job);
+                }
+
+                // Deteccao inteligente de fechamento (apos pelo menos 15s de abertura)
+                if ((now - job.OpenedUtc).TotalSeconds >= 15 && !job.Uploading)
+                {
+                    if (IsFileStillOpen(job))
+                    {
+                        job.ClosedStreakSeconds = 0;
+                    }
+                    else
+                    {
+                        job.ClosedStreakSeconds++;
+                        if (job.ClosedStreakSeconds >= 7)
+                        {
+                            finished.Add(job);
+                        }
+                    }
+                }
+            }
+
+            if (finished.Count > 0)
+            {
+                lock (_lock)
+                {
+                    foreach (VaultEditJob f in finished) _jobs.Remove(f);
+                }
+                foreach (VaultEditJob f in finished)
+                {
+                    FinalizeJob(f, false);
+                }
+                NotifyUi();
+            }
+        }
+
+        private static bool IsFileStillOpen(VaultEditJob job)
+        {
+            // 1. Arquivo de bloqueio nativo do Office (~$Nome.xlsx / ~$Doc.docx)
+            try
+            {
+                string ownerLock = Path.Combine(job.SessionDir, "~$" + job.FileName);
+                if (File.Exists(ownerLock)) return true;
+                string[] locks = Directory.GetFiles(job.SessionDir, "~$*");
+                if (locks != null && locks.Length > 0) return true;
+            }
+            catch { }
+
+            // 2. Processo filho ainda rodando (quando nao reaproveitou instancia existente)
+            if (job.SpawnedProcess != null)
+            {
+                try
+                {
+                    if (!job.SpawnedProcess.HasExited) return true;
+                }
+                catch { }
+            }
+
+            // 3. Probe de lock exclusivo do sistema operacional (Excel, Word, CAD, PDF mantem handle aberto)
+            if (!File.Exists(job.LocalPath)) return false;
+            try
+            {
+                using (FileStream fs = new FileStream(job.LocalPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    return false;
+                }
+            }
+            catch (IOException)
+            {
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static byte[] ReadFileBytesWithRetry(string path)
+        {
+            for (int attempt = 0; attempt < 8; attempt++)
+            {
+                try
+                {
+                    if (!File.Exists(path)) return null;
+                    using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    using (MemoryStream ms = new MemoryStream())
+                    {
+                        byte[] buf = new byte[65536];
+                        int n;
+                        while ((n = fs.Read(buf, 0, buf.Length)) > 0) ms.Write(buf, 0, n);
+                        return ms.ToArray();
+                    }
+                }
+                catch
+                {
+                    Thread.Sleep(400);
+                }
+            }
+            return null;
+        }
+
+        private void UploadJobIfChanged(VaultEditJob job)
+        {
+            job.Uploading = true;
+            try
+            {
+                job.Dirty = false;
+                byte[] bytes = ReadFileBytesWithRetry(job.LocalPath);
+                if (bytes == null || bytes.Length == 0) return;
+
+                string hash = Crypto.Sha256HexBytes(bytes);
+                if (string.Equals(hash, job.LastHash, StringComparison.OrdinalIgnoreCase)) return;
+
+                string uploadUrl = job.ApiBase + "/api/v1/storage/desktop-sessions/" + Uri.EscapeDataString(job.SessionToken) + "/upload";
+                HttpResult res = null;
+                for (int attempt = 1; attempt <= 3; attempt++)
+                {
+                    res = Http.SendBytes("POST", uploadUrl, bytes, "application/octet-stream", null, 60000);
+                    if (res.Status >= 200 && res.Status < 300) break;
+                    if (res.Status == 410 || res.Status == 404 || res.Status == 423) break;
+                    Thread.Sleep(attempt * 1500);
+                }
+
+                if (res != null && res.Status >= 200 && res.Status < 300)
+                {
+                    Dictionary<string, object> body = Json.ParseObject(res.Body);
+                    int nextVer = (int)Json.Long(body, "version", job.CurrentVersion + 1);
+                    job.CurrentVersion = nextVer;
+                    job.LastHash = hash;
+                    job.SyncCount++;
+                    job.LastSyncedLocal = DateTime.Now;
+                    string summary = "Salvo na VPS: '" + job.FileName + "' (v" + nextVer + " as " + job.LastSyncedLocal.ToString("HH:mm:ss", CultureInfo.InvariantCulture) + ")";
+                    lock (_lock) _lastStatusLine = summary;
+                    AgentLog.Write("VaultSync {0}", summary);
+                    NotifyUi();
+                    if (_ui != null) _ui.ShowVaultBalloon("Salvo na VPS - Nexus Vault", "'" + job.FileName + "' sincronizado (versao " + nextVer + ").", ToolTipIcon.Info);
+                }
+                else if (res != null && res.Status == 410)
+                {
+                    job.Closed = true;
+                    AgentLog.Write("VaultSync sessao encerrada no servidor para {0}.", job.FileName);
+                }
+                else
+                {
+                    int st = res != null ? res.Status : 0;
+                    AgentLog.Write("VaultSync upload falhou ({0}) para {1}: {2}", st, job.FileName, res != null ? Http.Brief(res.Body) : "");
+                    if (_ui != null) _ui.ShowVaultBalloon("Nexus Vault Auto-Sync", "Falha ao salvar '" + job.FileName + "' na VPS (" + st + "). Sera tentado novamente.", ToolTipIcon.Warning);
+                    job.Dirty = true;
+                    job.LastChangeSignalUtc = DateTime.UtcNow.AddSeconds(5);
+                }
+            }
+            finally
+            {
+                job.Uploading = false;
+            }
+        }
+
+        private void SendHeartbeat(VaultEditJob job)
+        {
+            try
+            {
+                string url = job.ApiBase + "/api/v1/storage/desktop-sessions/" + Uri.EscapeDataString(job.SessionToken) + "/heartbeat";
+                HttpResult r = Http.Send("POST", url, "{}", "application/json; charset=utf-8", null, 15000);
+                if (r.Status == 410) job.Closed = true;
+            }
+            catch { }
+        }
+
+        private void FinalizeJob(VaultEditJob job, bool silent)
+        {
+            if (job.Watcher != null)
+            {
+                try { job.Watcher.EnableRaisingEvents = false; job.Watcher.Dispose(); } catch { }
+                job.Watcher = null;
+            }
+            if (!job.Closed)
+            {
+                UploadJobIfChanged(job);
+                try
+                {
+                    string url = job.ApiBase + "/api/v1/storage/desktop-sessions/" + Uri.EscapeDataString(job.SessionToken) + "/close";
+                    Http.Send("POST", url, "{}", "application/json; charset=utf-8", null, 15000);
+                }
+                catch { }
+                job.Closed = true;
+            }
+            if (job.SpawnedProcess != null)
+            {
+                try { job.SpawnedProcess.Dispose(); } catch { }
+                job.SpawnedProcess = null;
+            }
+            // Limpeza segura do diretorio temporario de sessao
+            try { if (Directory.Exists(job.SessionDir)) Directory.Delete(job.SessionDir, true); } catch { }
+
+            string doneLine = "Edicao finalizada: '" + job.FileName + "' (v" + job.CurrentVersion + ") desbloqueado na VPS";
+            lock (_lock) _lastStatusLine = doneLine;
+            AgentLog.Write("VaultSync finalizado: {0} (v{1}, {2} salvamento(s))", job.FileName, job.CurrentVersion, job.SyncCount);
+            if (!silent && _ui != null)
+            {
+                _ui.ShowVaultBalloon("Nexus Vault - Concluido", "'" + job.FileName + "' salvo e desbloqueado no servidor.", ToolTipIcon.Info);
+            }
+        }
+
+        private void NotifyUi()
+        {
+            if (_ui == null) return;
+            int count;
+            string line;
+            lock (_lock)
+            {
+                count = _jobs.Count;
+                line = _lastStatusLine;
+            }
+            _ui.OnVaultSyncChanged(count, line);
         }
     }
 
@@ -3105,6 +4078,8 @@ namespace NexusITAM
             }
 
             CreateShortcut(target);
+            ProtocolRegistrar.RegisterMachine(target);
+            ProtocolRegistrar.RegisterUser(target);
 
             // Abre a bandeja SEM privilegios de administrador na sessao atual.
             if (launchTray && Environment.UserInteractive && !WindowsIdentity.GetCurrent().IsSystem)
@@ -3186,6 +4161,7 @@ namespace NexusITAM
             {
                 try { File.Delete(Path.Combine(desktop, name)); } catch { }
             }
+            ProtocolRegistrar.Unregister();
             KillOthers();
             // O executavel em uso so sai depois que este processo termina.
             try
@@ -3276,7 +4252,8 @@ namespace NexusITAM
             "- Uso de recursos: CPU, memoria, disco e os processos que mais consomem memoria.\r\n" +
             "- O nome do usuario conectado, para vincular o equipamento ao responsavel.\r\n\r\n" +
             "O que ele NAO faz:\r\n" +
-            "- Nao le seus arquivos, e-mails, conversas ou historico de navegacao.\r\n" +
+            "- Nao le seus arquivos pessoais, e-mails, conversas ou historico de navegacao.\r\n" +
+            "- Na edicao sincronizada do Nexus Vault (Excel/Word/apps), o agente acessa EXCLUSIVAMENTE o arquivo que voce clicou para abrir pelo portal corporativo.\r\n" +
             "- Nao grava sua tela. A tela so e transmitida durante uma sessao de suporte remoto, " +
             "com aviso fixo no topo da tela; voce pode encerrar a sessao a qualquer momento.\r\n\r\n" +
             "Os dados pertencem a empresa onde voce trabalha, que define quem da equipe de TI pode acessa-los. " +
@@ -3471,10 +4448,11 @@ namespace NexusITAM
         }
     }
 
-    public class MainAgentForm : Form, IAgentUi
+    public class MainAgentForm : Form, IAgentUi, IVaultSyncUi
     {
         private readonly AgentConfig _config;
         private readonly AgentEngine _engine;
+        private readonly VaultSyncManager _vaultSync;
         private readonly bool _startHidden;
         private NotifyIcon _tray;
         private Label _badge;
@@ -3487,9 +4465,14 @@ namespace NexusITAM
         private Panel _diskBar;
         private Label _sync;
         private Label _statusLine;
+        private Label _vaultLine;
+        private Button _vaultSyncNowBtn;
+        private Button _vaultCloseAllBtn;
         private Button _connect;
         private SessionIndicator _indicator;
         private MenuItem _endSessionItem;
+        private MenuItem _vaultStatusItem;
+        private MenuItem _vaultCloseItem;
         private bool _started;
         private readonly DateTime _binaryWriteUtc;
 
@@ -3499,6 +4482,7 @@ namespace NexusITAM
             _startHidden = startHidden;
             try { _binaryWriteUtc = File.GetLastWriteTimeUtc(Application.ExecutablePath); } catch { _binaryWriteUtc = DateTime.MinValue; }
             _engine = new AgentEngine(false, config, this);
+            _vaultSync = new VaultSyncManager(this);
             BuildUi();
             BuildTray();
         }
@@ -3510,6 +4494,7 @@ namespace NexusITAM
             if (_started) return;
             _started = true;
             _engine.Start();
+            _vaultSync.Start();
         }
 
         protected override void SetVisibleCore(bool value)
@@ -3543,8 +4528,8 @@ namespace NexusITAM
 
         private void BuildUi()
         {
-            Text = "Nexus ITAM - Agente e NexusDesk";
-            Size = new Size(720, 480);
+            Text = "Nexus ITAM - Agente, NexusDesk & Vault Sync";
+            Size = new Size(720, 555);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -3553,7 +4538,7 @@ namespace NexusITAM
 
             Panel header = new Panel { Dock = DockStyle.Top, Height = 64, BackColor = Ui.Ink };
             header.Controls.Add(Ui.Text("NEXUS ITAM", 14f, true, Color.White, 22, 12));
-            header.Controls.Add(Ui.Text("Inventario, monitoramento e acesso remoto NexusDesk  v" + AgentInfo.Version, 8.5f, false, Color.FromArgb(148, 163, 184), 24, 37));
+            header.Controls.Add(Ui.Text("Inventario, NexusDesk e Auto-Sync Excel/Vault  v" + AgentInfo.Version, 8.5f, false, Color.FromArgb(148, 163, 184), 24, 37));
             _badge = new Label
             {
                 Text = "INICIANDO",
@@ -3601,15 +4586,33 @@ namespace NexusITAM
             _statusLine = new Label { Font = new Font("Segoe UI", 8f), ForeColor = Ui.Muted, Location = new Point(18, 228), Size = new Size(280, 28) };
             right.Controls.Add(_statusLine);
 
-            Button support = Ui.Flat("Pedir suporte a TI", Ui.Brand, Color.White, 20, 356, 340, 42, true);
+            Panel vaultPanel = new Panel { Location = new Point(20, 352), Size = new Size(664, 62), BackColor = Color.White };
+            vaultPanel.Controls.Add(Ui.Text("NEXUS VAULT AUTO-SYNC (EXCEL, WORD E PROGRAMAS DO PC)", 8.5f, true, Color.FromArgb(16, 185, 129), 18, 10));
+            _vaultLine = new Label
+            {
+                Text = "Pronto! Clique em 'Editar no PC' no portal para sincronizar cada Ctrl+S na VPS.",
+                Font = new Font("Segoe UI", 8.5f),
+                ForeColor = Color.FromArgb(51, 65, 85),
+                Location = new Point(18, 30),
+                Size = new Size(410, 24)
+            };
+            _vaultSyncNowBtn = Ui.Flat("Salvar agora", Color.FromArgb(236, 253, 245), Color.FromArgb(5, 150, 105), 436, 16, 104, 30, true);
+            _vaultSyncNowBtn.Enabled = false;
+            _vaultSyncNowBtn.Click += delegate { _vaultSync.ForceSyncAll(); };
+            _vaultCloseAllBtn = Ui.Flat("Desbloquear", Color.White, Color.FromArgb(185, 28, 28), 548, 16, 100, 30, true);
+            _vaultCloseAllBtn.Enabled = false;
+            _vaultCloseAllBtn.Click += delegate { _vaultSync.CloseAllSessions(false); };
+            vaultPanel.Controls.AddRange(new Control[] { _vaultLine, _vaultSyncNowBtn, _vaultCloseAllBtn });
+
+            Button support = Ui.Flat("Pedir suporte a TI", Ui.Brand, Color.White, 20, 428, 340, 42, true);
             support.Font = new Font("Segoe UI", 10f, FontStyle.Bold);
             support.Click += delegate { OpenSupport(); };
-            Button privacy = Ui.Flat("Privacidade", Color.White, Color.FromArgb(51, 65, 85), 374, 356, 150, 42, true);
+            Button privacy = Ui.Flat("Privacidade", Color.White, Color.FromArgb(51, 65, 85), 374, 428, 150, 42, true);
             privacy.Click += delegate { ShowPrivacy(); };
-            Button hide = Ui.Flat("Minimizar", Color.White, Ui.Muted, 534, 356, 150, 42, false);
+            Button hide = Ui.Flat("Minimizar", Color.White, Ui.Muted, 534, 428, 150, 42, false);
             hide.Click += delegate { Hide(); };
 
-            Controls.AddRange(new Control[] { header, left, right, support, privacy, hide });
+            Controls.AddRange(new Control[] { header, left, right, vaultPanel, support, privacy, hide });
 
             System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
             timer.Interval = 2000;
@@ -3672,6 +4675,7 @@ namespace NexusITAM
                 {
                     AgentLog.Write("Binario atualizado em disco detectado; reiniciando bandeja para versao nova.");
                     if (_tray != null) _tray.Visible = false;
+                    _vaultSync.Stop();
                     _engine.Stop();
                     Program.ReleaseTrayLock();
                     try { Process.Start(installed, "--tray"); } catch { }
@@ -3689,6 +4693,12 @@ namespace NexusITAM
             menu.MenuItems.Add("-");
             menu.MenuItems.Add("Pedir suporte a TI...", delegate { OpenSupport(); });
             menu.MenuItems.Add("Sincronizar inventario", delegate { _engine.RequestInventory(); });
+            menu.MenuItems.Add("-");
+            _vaultStatusItem = new MenuItem("Nexus Vault Auto-Sync: pronto", delegate { _vaultSync.OpenSyncFolder(); });
+            _vaultCloseItem = new MenuItem("Finalizar edicoes Vault e desbloquear", delegate { _vaultSync.CloseAllSessions(false); });
+            _vaultCloseItem.Visible = false;
+            menu.MenuItems.Add(_vaultStatusItem);
+            menu.MenuItems.Add(_vaultCloseItem);
             _endSessionItem = new MenuItem("Encerrar acesso remoto", delegate { _engine.EndSessionByUser(); });
             _endSessionItem.Visible = false;
             menu.MenuItems.Add(_endSessionItem);
@@ -3700,6 +4710,7 @@ namespace NexusITAM
                 menu.MenuItems.Add("Sair", delegate
                 {
                     _tray.Visible = false;
+                    _vaultSync.Stop();
                     _engine.Stop();
                     Application.Exit();
                 });
@@ -3730,6 +4741,7 @@ namespace NexusITAM
                 return;
             }
             if (_tray != null) _tray.Visible = false;
+            _vaultSync.Stop();
             base.OnFormClosing(e);
         }
 
@@ -3780,6 +4792,7 @@ namespace NexusITAM
                         {
                             MessageBox.Show(this, "Computador conectado. O agente instalado ja esta em execucao.", "Nexus ITAM", MessageBoxButtons.OK, MessageBoxIcon.Information);
                             _tray.Visible = false;
+                            _vaultSync.Stop();
                             _engine.Stop();
                             // Esta bandeja (portatil) da lugar a instalada, sem privilegios elevados.
                             Program.ReleaseTrayLock();
@@ -3872,6 +4885,33 @@ namespace NexusITAM
         public void LockScreen()
         {
             NativeMethods.LockWorkStation();
+        }
+
+        // ---- IVaultSyncUi ---------------------------------------------------
+
+        public void OnVaultSyncChanged(int activeCount, string summaryLine)
+        {
+            OnUi(delegate
+            {
+                if (_vaultLine != null) _vaultLine.Text = summaryLine;
+                if (_vaultSyncNowBtn != null) _vaultSyncNowBtn.Enabled = activeCount > 0;
+                if (_vaultCloseAllBtn != null) _vaultCloseAllBtn.Enabled = activeCount > 0;
+                if (_vaultStatusItem != null)
+                {
+                    _vaultStatusItem.Text = activeCount > 0
+                        ? string.Format(CultureInfo.InvariantCulture, "Nexus Vault: {0} arquivo(s) em edicao (abrir pasta)", activeCount)
+                        : "Nexus Vault Auto-Sync: pronto";
+                }
+                if (_vaultCloseItem != null) _vaultCloseItem.Visible = activeCount > 0;
+            });
+        }
+
+        public void ShowVaultBalloon(string title, string text, ToolTipIcon icon)
+        {
+            OnUi(delegate
+            {
+                if (_tray != null) _tray.ShowBalloonTip(4000, title, text, icon);
+            });
         }
     }
 
@@ -3972,9 +5012,63 @@ namespace NexusITAM
                 return Installer.Uninstall(AgentConfig.Load(null));
             }
 
+            if (Has(args, "--register-protocol"))
+            {
+                AgentLog.Init("protocol");
+                string targetExe = File.Exists(AgentPaths.InstalledExe) ? AgentPaths.InstalledExe : Application.ExecutablePath;
+                if (Installer.IsAdmin()) ProtocolRegistrar.RegisterMachine(targetExe);
+                ProtocolRegistrar.RegisterUser(targetExe);
+                return 0;
+            }
+
+            if (Has(args, "--vault-open"))
+            {
+                AgentLog.Init("vault-open-" + Environment.UserName);
+                string uriArg = Arg(args, "--vault-open");
+                if (string.IsNullOrEmpty(uriArg))
+                {
+                    for (int i = 0; i < args.Length; i++)
+                    {
+                        if (string.Equals(args[i], "--vault-open", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                        {
+                            uriArg = args[i + 1];
+                            break;
+                        }
+                    }
+                }
+                string err;
+                if (!ProtocolRegistrar.EnqueueVaultRequest(uriArg, out err))
+                {
+                    AgentLog.Write("Vault-open recusado: {0}", err);
+                    if (Environment.UserInteractive)
+                    {
+                        MessageBox.Show(err, "Nexus Vault Auto-Sync", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                    return 2;
+                }
+                // Se a bandeja ja estiver rodando, o evento VaultEventName ja disparou a abertura.
+                // Caso contrario, inicia a bandeja silenciosamente para processar o arquivo agora.
+                bool trayAlreadyRunning;
+                using (Mutex probe = new Mutex(false, "Local\\NexusITAMAgentTray", out trayAlreadyRunning))
+                {
+                    // Se createdNew == true, nenhuma bandeja estava ativa nesta sessao.
+                }
+                if (trayAlreadyRunning)
+                {
+                    try
+                    {
+                        string launchExe = File.Exists(AgentPaths.InstalledExe) ? AgentPaths.InstalledExe : Application.ExecutablePath;
+                        Process.Start(new ProcessStartInfo(launchExe, "--tray") { UseShellExecute = false });
+                    }
+                    catch { }
+                }
+                return 0;
+            }
+
             // Bandeja: uma por sessao de usuario.
             AgentLog.Init("tray-" + Environment.UserName);
             AgentPaths.Resolve();
+            ProtocolRegistrar.RegisterUser(Application.ExecutablePath);
             try { NativeMethods.SetProcessDPIAware(); } catch { }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);

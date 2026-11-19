@@ -366,3 +366,25 @@ CREATE TABLE IF NOT EXISTS storage_svc.sheet_cell_history (
 
 CREATE INDEX IF NOT EXISTS idx_sheet_cell_history_node
     ON storage_svc.sheet_cell_history(tenant_id, node_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS storage_svc.desktop_edit_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id VARCHAR(64) NOT NULL,
+    node_id UUID NOT NULL REFERENCES storage_svc.storage_nodes(id) ON DELETE CASCADE,
+    token_hash VARCHAR(64) UNIQUE NOT NULL,
+    user_email VARCHAR(255) NOT NULL,
+    user_name VARCHAR(160),
+    user_role VARCHAR(32) NOT NULL DEFAULT 'collaborator',
+    status VARCHAR(24) NOT NULL DEFAULT 'pending',
+    sync_count INT NOT NULL DEFAULT 0 CHECK (sync_count >= 0),
+    last_version INT NOT NULL DEFAULT 1 CHECK (last_version >= 1),
+    last_synced_at TIMESTAMPTZ,
+    opened_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ NOT NULL,
+    closed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_desktop_edit_sessions_tenant_node
+    ON storage_svc.desktop_edit_sessions(tenant_id, node_id, created_at DESC);

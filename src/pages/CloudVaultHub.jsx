@@ -38,6 +38,7 @@ import { getGatewayBaseUrl, microservicesApi } from '../services/microservicesCl
 import { evaluateCellValue, evaluateSheetFormulas } from '../utils/sheetFormulaEngine';
 import VpsOnboardingTutorial from '../components/cloud/VpsOnboardingTutorial';
 import WindowsFileExplorer from '../components/cloud/WindowsFileExplorer';
+import { DesktopSyncGuideModal, DesktopSyncStatusModal } from '../components/cloud/DesktopSyncModal';
 
 function triggerBrowserDownload(blob, fileName) {
   if (!blob || typeof window === 'undefined' || typeof URL?.createObjectURL !== 'function') return;
@@ -136,6 +137,12 @@ const CloudVaultHub = () => {
   const [nodeVersions, setNodeVersions] = useState([]);
   const [previewInfo, setPreviewInfo] = useState(null);
   const [uploadingCount, setUploadingCount] = useState(0);
+  const [desktopSyncSession, setDesktopSyncSession] = useState(null);
+  const [desktopSyncBusy, setDesktopSyncBusy] = useState(false);
+  const [desktopSlowHint, setDesktopSlowHint] = useState(false);
+  const [showDesktopGuide, setShowDesktopGuide] = useState(false);
+  const desktopPollRef = useRef(null);
+  const desktopHintRef = useRef(null);
 
   // Tab 3: ACL & Audit
   const [aclNodeId, setAclNodeId] = useState('');
@@ -759,6 +766,121 @@ const CloudVaultHub = () => {
       toast.success('Item expurgado permanentemente e cota liberada.');
     } catch (err) {
       toast.error(err?.message || 'Falha ao expurgar item.');
+    }
+  };
+
+  // Desktop Auto-Sync (`nexusvault://` via Agente Windows)
+  const stopDesktopSyncTimers = useCallback(() => {
+    if (desktopPollRef.current) {
+      clearInterval(desktopPollRef.current);
+      desktopPollRef.current = null;
+    }
+    if (desktopHintRef.current) {
+      clearTimeout(desktopHintRef.current);
+      desktopHintRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => stopDesktopSyncTimers(), [stopDesktopSyncTimers]);
+
+  const launchDesktopProtocolUrl = (protocolUrl) => {
+    if (typeof document === 'undefined' || !protocolUrl) return;
+    const link = document.createElement('a');
+    link.href = protocolUrl;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => link.remove(), 300);
+  };
+
+  const handleEditOnDesktop = async (node) => {
+    if (!node || (node.nodeType || node.node_type || node.type) === 'folder') return;
+    stopDesktopSyncTimers();
+    setDesktopSyncBusy(true);
+    setDesktopSlowHint(false);
+    try {
+      const created = await microservicesApi.createStorageDesktopSession(node.id);
+      const apiBase = String(getGatewayBaseUrl() || '').replace(/\/$/, '');
+      const protocolUrl = `nexusvault://edit?api=${encodeURIComponent(apiBase)}&token=${encodeURIComponent(created.sessionToken)}`;
+      const initial = {
+        sessionId: created.sessionId,
+        sessionToken: created.sessionToken,
+        nodeId: node.id,
+        fileName: created.fileName || node.name,
+        currentVersion: Number(created.currentVersion || node.currentVersion || 1),
+        status: 'pending',
+        syncCount: 0,
+        lastSyncedAt: null,
+        protocolUrl,
+      };
+      setDesktopSyncSession(initial);
+      launchDesktopProtocolUrl(protocolUrl);
+      await loadVaultOverview();
+
+      desktopHintRef.current = setTimeout(() => {
+        setDesktopSyncSession((cur) => {
+          if (cur && cur.sessionToken === created.sessionToken && cur.status === 'pending') {
+            setDesktopSlowHint(true);
+          }
+          return cur;
+        });
+      }, 6500);
+
+      let prevSyncs = 0;
+      desktopPollRef.current = setInterval(async () => {
+        try {
+          const st = await microservicesApi.getStorageDesktopSessionStatus(created.sessionToken);
+          const nextSyncs = Number(st.syncCount ?? prevSyncs);
+          if (st.status === 'opened') setDesktopSlowHint(false);
+          if (nextSyncs > prevSyncs) {
+            prevSyncs = nextSyncs;
+            toast.success(`"${initial.fileName}" salvo automaticamente na VPS (v${st.currentVersion || st.lastVersion}).`);
+            loadVaultOverview();
+          }
+          setDesktopSyncSession((cur) =>
+            cur && cur.sessionToken === created.sessionToken
+              ? {
+                  ...cur,
+                  status: st.status || cur.status,
+                  syncCount: nextSyncs,
+                  currentVersion: Number(st.currentVersion ?? st.lastVersion ?? cur.currentVersion),
+                  lastSyncedAt: st.lastSyncedAt || cur.lastSyncedAt,
+                }
+              : cur,
+          );
+          if (st.status === 'closed' || st.status === 'expired') {
+            stopDesktopSyncTimers();
+            loadVaultOverview();
+          }
+        } catch {
+          /* continue polling */
+        }
+      }, 2500);
+    } catch (err) {
+      toast.error(err?.message || 'Não foi possível abrir o arquivo no computador.');
+    } finally {
+      setDesktopSyncBusy(false);
+    }
+  };
+
+  const handleCloseDesktopSession = async () => {
+    if (!desktopSyncSession?.sessionToken) {
+      stopDesktopSyncTimers();
+      setDesktopSyncSession(null);
+      return;
+    }
+    setDesktopSyncBusy(true);
+    try {
+      await microservicesApi.closeStorageDesktopSession(desktopSyncSession.sessionToken);
+      stopDesktopSyncTimers();
+      toast.success(`Sessão de "${desktopSyncSession.fileName}" encerrada e arquivo desbloqueado.`);
+      setDesktopSyncSession(null);
+      setDesktopSlowHint(false);
+      await loadVaultOverview();
+    } catch (err) {
+      toast.error(err?.message || 'Falha ao encerrar sessão desktop.');
+    } finally {
+      setDesktopSyncBusy(false);
     }
   };
 
@@ -1559,6 +1681,8 @@ const CloudVaultHub = () => {
           onLoadShareLinks={handleLoadShareLinks}
           onCreateShareLink={handleCreateShareLinkForNode}
           onRevokeShareLink={handleRevokeShareLink}
+          onEditOnDesktop={handleEditOnDesktop}
+          onOpenDesktopGuide={() => setShowDesktopGuide(true)}
           uploadingCount={uploadingCount}
         />
       )}
@@ -2068,6 +2192,22 @@ const CloudVaultHub = () => {
           </div>
         </div>
       )}
+
+      <DesktopSyncStatusModal
+        session={desktopSyncSession}
+        busy={desktopSyncBusy}
+        slowHint={desktopSlowHint}
+        onRelaunch={() => launchDesktopProtocolUrl(desktopSyncSession?.protocolUrl)}
+        onOpenGuide={() => setShowDesktopGuide(true)}
+        onCloseSession={handleCloseDesktopSession}
+        onDismiss={() => {
+          stopDesktopSyncTimers();
+          setDesktopSyncSession(null);
+          setDesktopSlowHint(false);
+        }}
+      />
+
+      <DesktopSyncGuideModal open={showDesktopGuide} onClose={() => setShowDesktopGuide(false)} />
     </div>
   );
 };

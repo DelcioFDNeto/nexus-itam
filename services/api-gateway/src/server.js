@@ -106,6 +106,7 @@ export async function buildApiGateway(opts = {}) {
       'X-Request-Id',
       'Range',
       'X-Share-Password',
+      'X-Desktop-Session-Token',
     ],
     credentials: true,
   });
@@ -657,6 +658,9 @@ export async function buildApiGateway(opts = {}) {
 
   // Proxy Rotas — API 6 (Nexus Cloud Vault & Conector VPS)
   app.all('/api/v1/storage/share/:token', (req, rep) =>
+    forwardToMicroservice(upstreams.storage, req, rep, { allowPublicShare: true }),
+  );
+  app.all('/api/v1/storage/desktop-sessions/*', (req, rep) =>
     forwardToMicroservice(upstreams.storage, req, rep, { allowPublicShare: true }),
   );
   app.all('/api/v1/storage', (req, rep) =>

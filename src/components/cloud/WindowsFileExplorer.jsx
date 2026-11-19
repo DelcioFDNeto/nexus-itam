@@ -31,6 +31,7 @@ import {
   Link2,
   List,
   Lock,
+  Monitor,
   MoreVertical,
   Music,
   PanelRight,
@@ -254,6 +255,8 @@ export default function WindowsFileExplorer({
   onLoadShareLinks,
   onCreateShareLink,
   onRevokeShareLink,
+  onEditOnDesktop,
+  onOpenDesktopGuide,
   uploadingCount = 0,
 }) {
   // Windows Explorer view & navigation state
@@ -959,6 +962,19 @@ export default function WindowsFileExplorer({
                 </>
               )}
 
+              {canWrite && primarySelectedNode && !isFolderNode(primarySelectedNode) && onEditOnDesktop && (
+                <button
+                  type="button"
+                  onClick={() => onEditOnDesktop(primarySelectedNode)}
+                  title="Abrir no Excel/Word/app do PC com salvamento automático na VPS (Agente v3.4+)"
+                  aria-label="Editar no PC com Auto-Sync"
+                  className="min-h-[34px] px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:opacity-95 flex items-center gap-1"
+                >
+                  <Monitor size={14} />
+                  <span className="hidden md:inline">Editar no PC</span>
+                </button>
+              )}
+
               {primaryCanDownload && (
                 <button
                   type="button"
@@ -1088,6 +1104,18 @@ export default function WindowsFileExplorer({
           >
             <PanelRight size={14} />
           </button>
+
+          {onOpenDesktopGuide && (
+            <button
+              type="button"
+              onClick={onOpenDesktopGuide}
+              title="Como editar planilhas Excel e arquivos direto no PC com Auto-Sync"
+              className="min-h-[34px] px-2.5 py-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-bold hidden lg:inline-flex items-center gap-1"
+            >
+              <Monitor size={13} />
+              <span>Sync Excel</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -1870,6 +1898,16 @@ export default function WindowsFileExplorer({
                           <span>Visualizar</span>
                         </button>
                       )}
+                      {!folder && canWrite && onEditOnDesktop && (
+                        <button
+                          type="button"
+                          onClick={() => onEditOnDesktop(inspectorNode)}
+                          className="col-span-2 px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 hover:opacity-95"
+                        >
+                          <Monitor size={13} />
+                          <span>Editar no PC (Excel / Auto-Sync)</span>
+                        </button>
+                      )}
                       {!folder && !isViewerOnline && (
                         <button
                           type="button"
@@ -2074,6 +2112,21 @@ export default function WindowsFileExplorer({
                     {folder ? <FolderOpen size={14} className="text-amber-500" /> : <Eye size={14} className="text-brand-aa" />}
                     <span>{folder ? 'Abrir pasta' : kind.isSpreadsheet ? 'Abrir no Editor Ao Vivo' : 'Visualizar'}</span>
                   </button>
+
+                  {!folder && canWrite && onEditOnDesktop && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setContextMenu(null);
+                        onEditOnDesktop(node);
+                      }}
+                      className="w-full px-3 py-1.5 text-left hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 flex items-center gap-2.5 font-bold"
+                    >
+                      <Monitor size={14} />
+                      <span>Editar no PC (Auto-Sync)</span>
+                    </button>
+                  )}
 
                   {!folder && !isViewerOnline && (
                     <button

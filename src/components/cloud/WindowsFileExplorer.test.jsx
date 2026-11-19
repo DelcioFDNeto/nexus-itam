@@ -177,4 +177,23 @@ describe('WindowsFileExplorer (UX Estilo Windows Nativo)', () => {
       expect(onRevokeShareLink).toHaveBeenCalledWith('lnk-1', { purge: false });
     });
   });
+
+  it('aciona Edicao no PC (Auto-Sync via Agente) e Guia Passo a Passo Excel', async () => {
+    const onEditOnDesktop = vi.fn();
+    const onOpenDesktopGuide = vi.fn();
+
+    render(
+      <StatefulHarness
+        onEditOnDesktop={onEditOnDesktop}
+        onOpenDesktopGuide={onOpenDesktopGuide}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('vfs-node-Manual-TI.pdf'));
+    fireEvent.click(screen.getByRole('button', { name: 'Editar no PC com Auto-Sync' }));
+    expect(onEditOnDesktop).toHaveBeenCalledWith(expect.objectContaining({ id: 'doc-1' }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Sync Excel/i }));
+    expect(onOpenDesktopGuide).toHaveBeenCalled();
+  });
 });

@@ -38,11 +38,14 @@ function canCollaboratorReceiveEvent(peerEmail, envelope) {
     return false;
   }
 
-  // Coedição de planilhas em tempo real (Nexus Sheets Live): entregue aos membros da sala da planilha
+  // Coedição de planilhas em tempo real (Nexus Sheets Live) e Sync Desktop
   if (eventName.startsWith('sheet.')) {
     if (Array.isArray(data.allowedPeerEmails)) {
       return data.allowedPeerEmails.some((e) => String(e || '').toLowerCase().trim() === email);
     }
+    return true;
+  }
+  if (eventName === 'storage.node.synced') {
     return true;
   }
 
@@ -275,6 +278,12 @@ export async function buildNexusDeskService(opts = {}) {
     }
     if (payload.targetFps) {
       existing.targetFps = Math.max(10, Math.min(60, Number(payload.targetFps) || 30));
+    }
+    if (payload.monitorIndex !== undefined && payload.monitorIndex !== null) {
+      const mIdx = Number(payload.monitorIndex);
+      if (Number.isInteger(mIdx) && mIdx >= -1 && mIdx <= 15) {
+        existing.monitorIndex = mIdx;
+      }
     }
     if (payload.touchMode) {
       existing.touchMode = sanitizeText(payload.touchMode, 32);
@@ -633,18 +642,20 @@ export async function buildNexusDeskService(opts = {}) {
       state.inputEvents = state.inputEvents.filter((ev) => Number(ev.seq) > ackSeq);
     }
 
-    const delivered = broadcastToTenant(claimedTenant, {
-      protocol: 'nexusdesk-ws/3.0',
-      event: 'remote.frame',
-      tenantId: claimedTenant,
-      timestamp: new Date().toISOString(),
-      data: {
-        deviceKey,
-        sessionId,
-        frame: body.frame || null,
-        remoteState: body.remoteState || null,
-      },
-    });
+    const delivered = body.frame
+      ? broadcastToTenant(claimedTenant, {
+          protocol: 'nexusdesk-ws/3.0',
+          event: 'remote.frame',
+          tenantId: claimedTenant,
+          timestamp: new Date().toISOString(),
+          data: {
+            deviceKey,
+            sessionId,
+            frame: body.frame,
+            remoteState: body.remoteState || null,
+          },
+        })
+      : 0;
 
     return {
       accepted: true,
@@ -654,6 +665,8 @@ export async function buildNexusDeskService(opts = {}) {
         status: state.status,
         mode: state.mode,
         quality: state.quality,
+        targetFps: state.targetFps || 30,
+        monitorIndex: state.monitorIndex ?? 0,
         viewerSeenAt: state.viewerSeenAt,
         inputEvents: state.inputEvents || [],
       },

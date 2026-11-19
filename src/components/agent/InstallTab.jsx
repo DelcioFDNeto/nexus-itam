@@ -62,12 +62,12 @@ const GUIDES = {
 };
 
 const COLLECTS = [
-  'NexusDesk (acesso remoto pelo navegador e celular): tela ao vivo, controle de mouse/teclado, modo trackpad mobile e zoom com pinça, com aceite do colaborador e descarte automático de frames',
+  'Nexus Vault Auto-Sync (v3.4+): abra planilhas Excel (.xlsx/.xlsm), Word e qualquer arquivo do Vault direto no computador — cada Ctrl+S salva e versiona automaticamente na VPS com bloqueio contra conflitos',
+  'NexusDesk (acesso remoto pelo navegador e celular): multi-monitor, colagem direta da área de transferência, tela ao vivo até 22+ FPS via Relay VPS, modo trackpad mobile e aceite do colaborador',
   'Atualização Over-The-Air (OTA): atualize a versão do NexusAgent.exe nas máquinas da empresa em 1 clique direto pelo painel',
-  'Ícone na bandeja: ID NexusDesk de 9 dígitos, uso de CPU/RAM/disco, "Pedir suporte à TI" e transparência de privacidade',
+  'Ícone na bandeja: ID NexusDesk de 9 dígitos, status de sincronização Vault, uso de CPU/RAM/disco, "Pedir suporte à TI" e transparência de privacidade',
   'Serviço do Windows: terminal PowerShell, processos, reiniciar e instalar via winget mesmo sem ninguém logado — tudo auditado',
-  'Hardware completo: fabricante, modelo, processador, memória, discos (serial e SSD/HDD), placa de vídeo e bateria',
-  'Segurança: antivírus, firewall, BitLocker/FileVault, administradores locais e programas instalados com versão',
+  'Hardware & Segurança: fabricante, modelo, processador, memória, discos, antivírus, firewall, BitLocker/FileVault e programas instalados',
 ];
 
 /** Gera e explica os instaladores, atualizacao OTA e o executavel nativo do agente para cada sistema. */
