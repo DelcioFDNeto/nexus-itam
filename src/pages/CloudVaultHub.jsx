@@ -36,8 +36,11 @@ import { can, isSuperadmin } from '../utils/permissions';
 import { hasFeature } from '../utils/entitlements';
 import { getGatewayBaseUrl, microservicesApi } from '../services/microservicesClient';
 import { evaluateCellValue, evaluateSheetFormulas } from '../utils/sheetFormulaEngine';
+import { uploadFolderTreeToVault } from '../utils/folderUpload';
+import { getEmployees } from '../services/employeeService';
 import VpsOnboardingTutorial from '../components/cloud/VpsOnboardingTutorial';
 import WindowsFileExplorer from '../components/cloud/WindowsFileExplorer';
+import FolderPermissionsPanel from '../components/cloud/FolderPermissionsPanel';
 import { DesktopSyncGuideModal, DesktopSyncStatusModal } from '../components/cloud/DesktopSyncModal';
 
 function triggerBrowserDownload(blob, fileName) {
@@ -73,14 +76,6 @@ const DEFAULT_SHEET_TABS = [
     },
   },
 ];
-
-const ACL_LEVEL_LABELS = {
-  none: 'Bloqueado (none)',
-  viewer_online: 'Somente Visualização Online (viewer_online)',
-  reader: 'Leitor + Download (reader)',
-  editor: 'Editor (editor)',
-  full_control: 'Controle Total (full_control)',
-};
 
 const CloudVaultHub = () => {
   const { currentUser } = useAuth();
@@ -137,6 +132,8 @@ const CloudVaultHub = () => {
   const [nodeVersions, setNodeVersions] = useState([]);
   const [previewInfo, setPreviewInfo] = useState(null);
   const [uploadingCount, setUploadingCount] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState(null);
+  const [extractingNodeId, setExtractingNodeId] = useState(null);
   const [desktopSyncSession, setDesktopSyncSession] = useState(null);
   const [desktopSyncBusy, setDesktopSyncBusy] = useState(false);
   const [desktopSlowHint, setDesktopSlowHint] = useState(false);
@@ -144,14 +141,17 @@ const CloudVaultHub = () => {
   const desktopPollRef = useRef(null);
   const desktopHintRef = useRef(null);
 
-  // Tab 3: ACL & Audit
+  // Tab 3: Permissões (ACL) & Audit
   const [aclNodeId, setAclNodeId] = useState('');
   const [aclRules, setAclRules] = useState([]);
-  const [aclForm, setAclForm] = useState({
-    targetType: 'department',
-    targetValue: 'Financeiro',
-    accessLevel: 'editor',
-  });
+  const [aclInheritedRules, setAclInheritedRules] = useState([]);
+  const [aclDefaultPolicy, setAclDefaultPolicy] = useState(null);
+  const [aclLoading, setAclLoading] = useState(false);
+  const [aclSaving, setAclSaving] = useState(false);
+  const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
+  const [portalUsersList, setPortalUsersList] = useState([]);
+  const [hrEmployeesList, setHrEmployeesList] = useState([]);
+  const directoryLoadedRef = useRef(false);
   const [shareLinks, setShareLinks] = useState([]);
   const [showInactiveLinks, setShowInactiveLinks] = useState(false);
   const [shareLinkForm, setShareLinkForm] = useState({
@@ -493,6 +493,104 @@ const CloudVaultHub = () => {
     } finally {
       setUploadingCount(0);
     }
+  };
+
+  const handleUploadFolderTree = async (collected, targetParentId = currentFolderId) => {
+    const files = collected?.files || [];
+    const folderPaths = collected?.folderPaths || [];
+    if (files.length === 0 && folderPaths.length === 0) return;
+
+    setUploadingCount(files.length || folderPaths.length);
+    setUploadProgress({
+      phase: folderPaths.length > 0 ? 'folders' : 'files',
+      current: 0,
+      total: folderPaths.length || files.length,
+      currentName: folderPaths[0] || files[0]?.relativePath || '',
+      filesDone: 0,
+      filesTotal: files.length,
+    });
+
+    try {
+      const summary = await uploadFolderTreeToVault({
+        files,
+        folderPaths,
+        targetParentId: targetParentId || null,
+        existingNodes: nodes,
+        createFolderFn: (payload) => microservicesApi.createStorageFolder(payload),
+        uploadFileFn: (file, opts) => microservicesApi.uploadStorageFile(file, opts),
+        onProgress: (progress) => setUploadProgress(progress),
+      });
+
+      if (summary.filesUploaded > 0 || summary.foldersCreated > 0) {
+        toast.success(
+          `Pasta enviada: ${summary.filesUploaded} arquivo(s) em ${summary.totalFolders || 1} pasta(s) na VPS.`,
+        );
+        await loadVaultOverview();
+      } else if (summary.errors.length === 0) {
+        toast.info('Nenhum arquivo novo encontrado na pasta selecionada.');
+      }
+
+      if (summary.errors.length > 0) {
+        const firstErr = summary.errors[0];
+        toast.warning(
+          `${summary.errors.length} item(ns) falharam no envio (ex.: ${firstErr.path}: ${firstErr.message}).`,
+        );
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Erro ao enviar pasta para a VPS.');
+    } finally {
+      setUploadProgress(null);
+      setUploadingCount(0);
+    }
+  };
+
+  const handleExtractArchive = async (node, options = {}) => {
+    if (!node?.id) return false;
+    setExtractingNodeId(node.id);
+    try {
+      const res = await microservicesApi.extractStorageArchive(node.id, options);
+      await loadVaultOverview();
+
+      const filesCount = Number(res?.filesExtracted || 0);
+      const foldersCount = Number(res?.foldersCreated || 0);
+      toast.success(
+        `"${node.name}" descompactado na VPS: ${filesCount} arquivo(s) e ${foldersCount} pasta(s).`,
+      );
+
+      if (Array.isArray(res?.blockedExecutables) && res.blockedExecutables.length > 0) {
+        toast.warning(
+          `${res.blockedExecutables.length} arquivo(s) executável(is) foram bloqueados automaticamente por segurança.`,
+        );
+      }
+      if (Array.isArray(res?.skipped) && res.skipped.length > 0) {
+        toast.info(`${res.skipped.length} item(ns) já existentes foram ignorados.`);
+      }
+
+      if (options?.mode === 'subfolder' && res?.destinationFolder?.id) {
+        setCurrentFolderId(res.destinationFolder.id);
+        setSelectedNodeIds([]);
+      }
+      return true;
+    } catch (err) {
+      toast.error(err?.message || 'Não foi possível descompactar este arquivo.');
+      return false;
+    } finally {
+      setExtractingNodeId(null);
+    }
+  };
+
+  const handleOpenPermissionsModal = (node) => {
+    if (!canManageAcl) return;
+    if (node?.id) {
+      setAclNodeId(node.id);
+    } else if (!aclNodeId && nodes.length > 0) {
+      const preferred =
+        nodes.find((n) => (n.virtualPath || n.virtual_path) === '/Setores') ||
+        nodes.find((n) => (n.nodeType || n.node_type || n.type) === 'folder') ||
+        nodes[0];
+      if (preferred?.id) setAclNodeId(preferred.id);
+    }
+    setPermissionsModalOpen(true);
   };
 
   const handleRenameNode = async (node, newName) => {
@@ -884,13 +982,64 @@ const CloudVaultHub = () => {
     }
   };
 
-  // Handlers Tab 3: ACL & Audit
+  // Handlers Tab 3: Permissões (ACL) & Audit
+  const directorySectors = useMemo(() => {
+    const set = new Set();
+    for (const u of portalUsersList) {
+      if (u?.department) set.add(String(u.department).trim());
+    }
+    for (const emp of hrEmployeesList) {
+      const s = String(emp?.sector || emp?.department || '').trim();
+      if (s) set.add(s);
+    }
+    for (const n of nodes) {
+      const vPath = String(n?.virtualPath || n?.virtual_path || '');
+      if (vPath.startsWith('/Setores/')) {
+        const seg = vPath.slice('/Setores/'.length).split('/')[0]?.trim();
+        if (seg) set.add(seg);
+      }
+    }
+    for (const d of quotaInfo.byDepartment || []) {
+      if (d?.department && d.department !== 'Geral') set.add(String(d.department).trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [portalUsersList, hrEmployeesList, nodes, quotaInfo.byDepartment]);
+
+  const loadAclDirectoryData = useCallback(async () => {
+    if (!canManageAcl || directoryLoadedRef.current) return;
+    directoryLoadedRef.current = true;
+    const [usersRes, empsRes] = await Promise.all([
+      typeof microservicesApi.listUsers === 'function'
+        ? microservicesApi.listUsers().catch(() => null)
+        : Promise.resolve(null),
+      currentUser?.tenantId ? getEmployees(currentUser.tenantId).catch(() => []) : Promise.resolve([]),
+    ]);
+    const usersArr = usersRes?.users || usersRes?.items || [];
+    if (Array.isArray(usersArr)) setPortalUsersList(usersArr);
+    if (Array.isArray(empsRes)) setHrEmployeesList(empsRes);
+  }, [canManageAcl, currentUser?.tenantId]);
+
+  const loadAclForNode = useCallback(
+    async (targetId) => {
+      if (!targetId || !canManageAcl) return;
+      setAclLoading(true);
+      try {
+        const aclRes = await microservicesApi.getStorageNodeAcl(targetId).catch(() => null);
+        if (aclRes) {
+          setAclRules(aclRes.rules || aclRes.acls || aclRes.items || []);
+          setAclInheritedRules(Array.isArray(aclRes.inheritedRules) ? aclRes.inheritedRules : []);
+          setAclDefaultPolicy(aclRes.defaultPolicy || null);
+        }
+      } finally {
+        setAclLoading(false);
+      }
+    },
+    [canManageAcl],
+  );
+
   const handleLoadAclAndAudit = useCallback(async () => {
     if (aclNodeId && canManageAcl) {
-      const aclRes = await microservicesApi.getStorageNodeAcl(aclNodeId).catch(() => null);
-      if (aclRes) {
-        setAclRules(aclRes.rules || aclRes.acls || aclRes.items || []);
-      }
+      await loadAclForNode(aclNodeId);
     }
     const [linksRes, auditRes, verifyRes] = await Promise.all([
       microservicesApi.listStorageShareLinks().catch(() => null),
@@ -900,42 +1049,80 @@ const CloudVaultHub = () => {
     if (linksRes) setShareLinks(linksRes.links || linksRes.items || []);
     if (auditRes) setAuditEntries(auditRes.items || auditRes.entries || []);
     if (verifyRes) setChainStatus(verifyRes);
-  }, [aclNodeId, canManageAcl]);
+  }, [aclNodeId, canManageAcl, loadAclForNode]);
 
   useEffect(() => {
     if (activeTab === 'acl') {
       handleLoadAclAndAudit();
+      loadAclDirectoryData();
     }
-  }, [activeTab, handleLoadAclAndAudit]);
+  }, [activeTab, handleLoadAclAndAudit, loadAclDirectoryData]);
 
-  const handleSaveAclRule = async (e) => {
-    e?.preventDefault?.();
+  useEffect(() => {
+    if (permissionsModalOpen && aclNodeId) {
+      loadAclForNode(aclNodeId);
+      loadAclDirectoryData();
+    }
+  }, [permissionsModalOpen, aclNodeId, loadAclForNode, loadAclDirectoryData]);
+
+  const handleSaveAclRule = async (nodeIdArg, ruleInputArg) => {
     if (!canManageAcl) {
       toast.error('Permissão insuficiente: requer cloud:acl.');
-      return;
+      return false;
     }
-    const targetNodeId = aclNodeId || nodes[0]?.id;
-    if (!targetNodeId) return;
+    const isSingleArg = nodeIdArg && typeof nodeIdArg === 'object' && !ruleInputArg;
+    const targetNodeId = isSingleArg ? aclNodeId || nodes[0]?.id : nodeIdArg || aclNodeId || nodes[0]?.id;
+    const ruleInput = isSingleArg ? nodeIdArg : ruleInputArg;
+    if (!targetNodeId || !ruleInput?.targetType || !ruleInput?.targetValue || !ruleInput?.accessLevel) {
+      return false;
+    }
+    setAclSaving(true);
     try {
       const res = await microservicesApi.saveStorageNodeAcl(targetNodeId, {
-        rules: [aclForm],
+        rules: [ruleInput],
       });
-      setAclRules(res?.rules || res?.acls || [aclForm]);
-      toast.success('Regra ACL granular aplicada com sucesso.');
+      const returned = res?.rules || res?.acls;
+      if (Array.isArray(returned)) {
+        // Merge safely in case an older mock returns only the newly submitted rule
+        setAclRules((prev) => {
+          if (returned.length >= prev.length) return returned;
+          const byKey = new Map();
+          for (const item of prev) {
+            const key = `${item.targetType || item.target_type}:${String(item.targetValue || item.target_value || '').toLowerCase()}`;
+            byKey.set(key, item);
+          }
+          for (const item of returned) {
+            const key = `${item.targetType || item.target_type}:${String(item.targetValue || item.target_value || '').toLowerCase()}`;
+            byKey.set(key, item);
+          }
+          return Array.from(byKey.values());
+        });
+      } else {
+        await loadAclForNode(targetNodeId);
+      }
+      toast.success('Permissão aplicada com sucesso na pasta.');
+      return true;
     } catch (err) {
-      toast.error(err?.message || 'Falha ao salvar regra ACL.');
+      toast.error(err?.message || 'Falha ao salvar permissão.');
+      return false;
+    } finally {
+      setAclSaving(false);
     }
   };
 
-  const handleDeleteAclRule = async (ruleId) => {
-    const targetNodeId = aclNodeId || nodes[0]?.id;
-    if (!targetNodeId) return;
+  const handleDeleteAclRule = async (nodeIdArg, ruleIdArg) => {
+    const targetNodeId = ruleIdArg ? nodeIdArg || aclNodeId || nodes[0]?.id : aclNodeId || nodes[0]?.id;
+    const ruleId = ruleIdArg || nodeIdArg;
+    if (!targetNodeId || !ruleId) return;
+    setAclSaving(true);
     try {
       await microservicesApi.deleteStorageNodeAcl(targetNodeId, ruleId);
       setAclRules((prev) => prev.filter((r) => r.id !== ruleId));
-      toast.success('Regra ACL removida.');
+      toast.success('Permissão removida.');
     } catch (err) {
-      toast.error(err?.message || 'Falha ao remover regra ACL.');
+      toast.error(err?.message || 'Falha ao remover permissão.');
+    } finally {
+      setAclSaving(false);
     }
   };
 
@@ -1198,7 +1385,7 @@ const CloudVaultHub = () => {
         {[
           { id: 'connection', label: 'Conexão & Telemetria VPS', icon: Server },
           { id: 'explorer', label: 'Explorer VFS (Pastas & Arquivos)', icon: Folder },
-          { id: 'acl', label: 'Matriz ACL & Auditoria SHA-256', icon: ShieldCheck },
+          { id: 'acl', label: 'Permissões (ACL) & Auditoria', icon: ShieldCheck },
           { id: 'sheets', label: 'Nexus Sheets Live', icon: FileSpreadsheet },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -1663,6 +1850,11 @@ const CloudVaultHub = () => {
           onRefresh={loadVaultOverview}
           onCreateFolder={handleCreateFolder}
           onUploadFiles={handleUploadFiles}
+          onUploadFolderTree={handleUploadFolderTree}
+          uploadProgress={uploadProgress}
+          onExtractArchive={handleExtractArchive}
+          extractingNodeId={extractingNodeId}
+          onOpenPermissions={handleOpenPermissionsModal}
           onRenameNode={handleRenameNode}
           onMoveNode={handleMoveNode}
           onCopyNode={handleCopyNode}
@@ -1687,103 +1879,37 @@ const CloudVaultHub = () => {
         />
       )}
 
-      {/* TAB 3: MATRIZ ACL & AUDITORIA SHA-256 */}
+      {/* TAB 3: PERMISSÕES (ACL) & AUDITORIA SHA-256 */}
       {activeTab === 'acl' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] p-5 space-y-4">
-            <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <ShieldCheck size={18} className="text-brand-aa" />
-              <span>Matriz ACL em 5 Níveis &amp; Links Temporários</span>
-            </h2>
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+          {/* Painel Visual & Intuitivo de Permissões das Pastas da VPS */}
+          <div className="xl:col-span-7 rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] p-5">
+            <FolderPermissionsPanel
+              nodes={nodes}
+              selectedNodeId={aclNodeId}
+              onSelectNodeId={setAclNodeId}
+              canManageAcl={canManageAcl}
+              rules={aclRules}
+              inheritedRules={aclInheritedRules}
+              defaultPolicy={aclDefaultPolicy}
+              loading={aclLoading}
+              saving={aclSaving}
+              portalUsers={portalUsersList}
+              employees={hrEmployeesList}
+              sectors={directorySectors}
+              onSaveRule={handleSaveAclRule}
+              onDeleteRule={handleDeleteAclRule}
+            />
+          </div>
 
-            <div>
-              <label htmlFor="acl-node-select" className="block text-xs font-bold mb-1">
-                Pasta ou Arquivo Alvo
-              </label>
-              <select
-                id="acl-node-select"
-                value={aclNodeId}
-                onChange={(e) => setAclNodeId(e.target.value)}
-                className="w-full min-h-[40px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs"
-              >
-                {nodes.map((n) => (
-                  <option key={n.id} value={n.id}>
-                    {n.virtualPath || n.virtual_path || n.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {canManageAcl && (
-              <form onSubmit={handleSaveAclRule} className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <select
-                  aria-label="Tipo de Alvo ACL"
-                  value={aclForm.targetType}
-                  onChange={(e) => setAclForm((p) => ({ ...p, targetType: e.target.value }))}
-                  className="min-h-[40px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-2.5 text-xs"
-                >
-                  <option value="department">Departamento</option>
-                  <option value="role">Papel (Role)</option>
-                  <option value="user">Usuário (E-mail)</option>
-                </select>
-                <input
-                  type="text"
-                  aria-label="Valor do Alvo ACL"
-                  value={aclForm.targetValue}
-                  onChange={(e) => setAclForm((p) => ({ ...p, targetValue: e.target.value }))}
-                  placeholder="Ex: Financeiro ou email@empresa.com"
-                  className="min-h-[40px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-2.5 text-xs"
-                />
-                <select
-                  aria-label="Nível de Acesso ACL"
-                  value={aclForm.accessLevel}
-                  onChange={(e) => setAclForm((p) => ({ ...p, accessLevel: e.target.value }))}
-                  className="min-h-[40px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-2.5 text-xs"
-                >
-                  {Object.entries(ACL_LEVEL_LABELS).map(([k, label]) => (
-                    <option key={k} value={k}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="submit"
-                  className="sm:col-span-3 min-h-[40px] rounded-xl bg-brand text-brand-fg text-xs font-bold"
-                >
-                  Aplicar Regra ACL
-                </button>
-              </form>
-            )}
-
-            <div className="space-y-1.5">
-              {aclRules.map((r, idx) => (
-                <div
-                  key={r.id || idx}
-                  className="flex items-center justify-between text-xs py-2 px-3 rounded-xl bg-slate-50 dark:bg-zinc-900"
-                >
-                  <span>
-                    <strong>{r.targetType || r.target_type}:</strong> {r.targetValue || r.target_value} →{' '}
-                    <span className="font-mono font-bold text-brand-aa">{r.accessLevel || r.access_level}</span>
-                  </span>
-                  {canManageAcl && r.id && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteAclRule(r.id)}
-                      className="text-rose-500 font-bold"
-                    >
-                      Remover
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-
+          {/* Coluna Direita: Links Temporários + Trilha de Auditoria Imutável */}
+          <div className="xl:col-span-5 space-y-6">
             {/* Share link generator & manager */}
-            <div className="pt-3 border-t border-slate-200 dark:border-zinc-800 space-y-3">
+            <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] p-5 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-xs font-bold uppercase text-slate-500 flex items-center gap-1.5">
-                  <Link2 size={14} />
-                  <span>Emitir &amp; Gerenciar Links Temporários</span>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <Link2 size={16} className="text-brand-aa" />
+                  <span>Links Temporários de Compartilhamento</span>
                 </h3>
                 {shareLinks.some((l) => l.revokedAt || l.revoked_at || l.status === 'revoked' || l.status === 'expired') && (
                   <label className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5 cursor-pointer">
@@ -1796,6 +1922,10 @@ const CloudVaultHub = () => {
                   </label>
                 )}
               </div>
+
+              <p className="text-[11px] text-slate-500">
+                Gera um link externo com validade para o item selecionado no painel de permissões ao lado.
+              </p>
 
               <form onSubmit={handleCreateShareLink} className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <input
@@ -1953,39 +2083,39 @@ const CloudVaultHub = () => {
                 );
               })()}
             </div>
-          </div>
 
-          {/* SHA-256 Audit Chain */}
-          <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <Shield size={18} className="text-emerald-500" />
-                <span>Trilha de Auditoria Imutável (SHA-256 Hash-Chain)</span>
-              </h2>
-              <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold">
-                {chainStatus?.intact !== false ? 'Hash-Chain Íntegra' : 'Divergência'}
-              </span>
-            </div>
+            {/* SHA-256 Audit Chain */}
+            <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] p-5 space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <Shield size={16} className="text-emerald-500" />
+                  <span>Trilha de Auditoria Imutável (SHA-256)</span>
+                </h2>
+                <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold shrink-0">
+                  {chainStatus?.intact !== false ? 'Hash-Chain Íntegra' : 'Divergência'}
+                </span>
+              </div>
 
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {auditEntries.length === 0 ? (
-                <p className="text-xs text-slate-500">Nenhum evento de auditoria carregado.</p>
-              ) : (
-                auditEntries.slice(0, 20).map((entry) => (
-                  <div
-                    key={entry.id || entry.seq}
-                    className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-900 text-xs space-y-1"
-                  >
-                    <div className="flex items-center justify-between font-bold">
-                      <span>#{entry.seq} • {entry.action}</span>
-                      <span className="font-mono text-slate-500">{entry.actor_email || entry.actorEmail}</span>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {auditEntries.length === 0 ? (
+                  <p className="text-xs text-slate-500">Nenhum evento de auditoria carregado.</p>
+                ) : (
+                  auditEntries.slice(0, 20).map((entry) => (
+                    <div
+                      key={entry.id || entry.seq}
+                      className="p-2.5 rounded-xl bg-slate-50 dark:bg-zinc-900 text-xs space-y-1"
+                    >
+                      <div className="flex items-center justify-between font-bold gap-2">
+                        <span className="truncate">#{entry.seq} • {entry.action}</span>
+                        <span className="font-mono text-slate-500 truncate">{entry.actor_email || entry.actorEmail}</span>
+                      </div>
+                      <div className="font-mono text-[11px] text-slate-500 truncate">
+                        SHA-256: {entry.entry_hash || entry.entryHash}
+                      </div>
                     </div>
-                    <div className="font-mono text-[11px] text-slate-500 truncate">
-                      SHA-256: {entry.entry_hash || entry.entryHash}
-                    </div>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2208,6 +2338,38 @@ const CloudVaultHub = () => {
       />
 
       <DesktopSyncGuideModal open={showDesktopGuide} onClose={() => setShowDesktopGuide(false)} />
+
+      {/* MODAL DIRETO DE PERMISSÕES (ABERTO PELO BOTÃO / MENU CONTEXTUAL NO EXPLORER) */}
+      {permissionsModalOpen && (
+        <div
+          data-testid="folder-permissions-modal"
+          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setPermissionsModalOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] p-5 shadow-2xl"
+          >
+            <FolderPermissionsPanel
+              nodes={nodes}
+              selectedNodeId={aclNodeId}
+              onSelectNodeId={setAclNodeId}
+              canManageAcl={canManageAcl}
+              rules={aclRules}
+              inheritedRules={aclInheritedRules}
+              defaultPolicy={aclDefaultPolicy}
+              loading={aclLoading}
+              saving={aclSaving}
+              portalUsers={portalUsersList}
+              employees={hrEmployeesList}
+              sectors={directorySectors}
+              onSaveRule={handleSaveAclRule}
+              onDeleteRule={handleDeleteAclRule}
+              onClose={() => setPermissionsModalOpen(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

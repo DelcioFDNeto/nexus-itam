@@ -462,6 +462,11 @@ export const microservicesApi = {
       method: 'POST',
       body: { nodeIds },
     }),
+  extractStorageArchive: (nodeId, payload = {}) =>
+    gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/extract`, {
+      method: 'POST',
+      body: payload,
+    }),
   updateStorageNode: (nodeId, payload) =>
     gatewayRequest(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}`, {
       method: 'PATCH',

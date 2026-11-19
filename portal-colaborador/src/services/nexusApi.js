@@ -225,6 +225,11 @@ export const portalApi = {
       method: 'POST',
       body: payload,
     }),
+  extractStorageArchive: (nodeId, payload = {}) =>
+    request(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/extract`, {
+      method: 'POST',
+      body: payload,
+    }),
   createStorageDesktopSession: (nodeId) =>
     request(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/desktop-session`, {
       method: 'POST',

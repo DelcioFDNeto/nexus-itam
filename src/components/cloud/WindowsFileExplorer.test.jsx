@@ -196,4 +196,75 @@ describe('WindowsFileExplorer (UX Estilo Windows Nativo)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Sync Excel/i }));
     expect(onOpenDesktopGuide).toHaveBeenCalled();
   });
+
+  it('permite enviar pasta inteira sem ZIP, descompactar arquivo .ZIP/.RAR e abrir permissoes da pasta', async () => {
+    const onUploadFolderTree = vi.fn().mockResolvedValue(true);
+    const onExtractArchive = vi.fn().mockResolvedValue(true);
+    const onOpenPermissions = vi.fn();
+
+    const nodesWithArchive = [
+      ...SAMPLE_NODES,
+      {
+        id: 'zip-1',
+        parentId: null,
+        name: 'Documentos-Fiscal.zip',
+        type: 'file',
+        mimeType: 'application/zip',
+        sizeBytes: 40960,
+        virtualPath: '/Documentos-Fiscal.zip',
+        effectiveAccess: 'full_control',
+        updatedAt: '2026-11-18T12:00:00Z',
+      },
+    ];
+
+    render(
+      <StatefulHarness
+        nodes={nodesWithArchive}
+        onUploadFolderTree={onUploadFolderTree}
+        onExtractArchive={onExtractArchive}
+        onOpenPermissions={onOpenPermissions}
+      />,
+    );
+
+    // 1. Enviar Pasta inteira (input webkitdirectory)
+    const folderInput = screen.getByLabelText('Upload de pasta inteira');
+    const nestedFile = new File(['conteudo'], 'nota.pdf', { type: 'application/pdf' });
+    Object.defineProperty(nestedFile, 'webkitRelativePath', {
+      value: 'Fiscal/2026/nota.pdf',
+      configurable: true,
+    });
+    fireEvent.change(folderInput, { target: { files: [nestedFile] } });
+    await waitFor(() => {
+      expect(onUploadFolderTree).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folderPaths: ['Fiscal', 'Fiscal/2026'],
+          files: [expect.objectContaining({ relativePath: 'Fiscal/2026/nota.pdf' })],
+        }),
+        null,
+      );
+    });
+
+    // 2. Descompactar arquivo .ZIP abre modal e envia opcoes corretas
+    fireEvent.click(screen.getByTestId('vfs-node-Documentos-Fiscal.zip'));
+    fireEvent.click(screen.getByRole('button', { name: 'Descompactar arquivo' }));
+    expect(screen.getByTestId('archive-extract-modal')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nome da pasta de destino')).toHaveValue('Documentos-Fiscal');
+
+    fireEvent.click(screen.getByRole('button', { name: /Descompactar Agora/i }));
+    await waitFor(() => {
+      expect(onExtractArchive).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'zip-1' }),
+        expect.objectContaining({
+          mode: 'subfolder',
+          folderName: 'Documentos-Fiscal',
+          conflictPolicy: 'rename',
+        }),
+      );
+    });
+
+    // 3. Botao Permissoes na barra abre painel de permissoes para o item selecionado
+    fireEvent.click(screen.getByTestId('vfs-node-Setores'));
+    fireEvent.click(screen.getByRole('button', { name: 'Gerenciar permissões da pasta' }));
+    expect(onOpenPermissions).toHaveBeenCalledWith(expect.objectContaining({ id: 'f-setores' }));
+  });
 });

@@ -3,6 +3,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import PortalIcon from './PortalIcon.vue';
 import { GATEWAY_BASE_URL, getStoredSession, portalApi } from '../services/nexusApi';
 import { evaluateCellValue, evaluateSheetFormulas } from '../utils/sheetFormulaEngine.js';
+import {
+  collectEntriesFromDataTransfer,
+  collectFilesFromInputList,
+  uploadFolderTreeToVault,
+} from '../utils/folderUpload.js';
 
 const props = defineProps({
   user: { type: Object, default: () => ({}) },
@@ -16,9 +21,18 @@ const props = defineProps({
 const nodes = ref([]);
 const loading = ref(false);
 const uploadingCount = ref(0);
+const uploadProgress = ref(null);
 const errorBanner = ref('');
 const statusToast = ref('');
 const planUpgradeNotice = ref('');
+
+// Archive Extraction Modal (.zip / .rar / .tar / .tar.gz / .tgz)
+const extractModalNode = ref(null);
+const extractMode = ref('subfolder');
+const extractFolderName = ref('');
+const extractConflictPolicy = ref('rename');
+const extractPassword = ref('');
+const extractingNodeId = ref(null);
 
 // Windows Explorer Navigation, Filter & View State
 const currentFolderId = ref(null);
@@ -86,6 +100,7 @@ const remoteCursors = ref({});
 let ownWsHandle = null;
 let toastTimer = null;
 const fileInputEl = ref(null);
+const folderInputEl = ref(null);
 const newFolderInputEl = ref(null);
 
 const ACCESS_LABELS_PT = {
@@ -152,7 +167,17 @@ function isDocumentFile(node) {
 }
 
 function isArchiveFile(node) {
-  return !isFolder(node) && /\.(zip|rar|7z|tar|gz)$/i.test(String(node?.name || ''));
+  return !isFolder(node) && /\.(zip|rar|7z|tar|gz|tgz)$/i.test(String(node?.name || ''));
+}
+
+function isExtractableArchive(node) {
+  return !isFolder(node) && /\.(zip|rar|tar|tgz|tar\.gz)$/i.test(String(node?.name || '').trim());
+}
+
+function stripArchiveExtensionLabel(fileName) {
+  const clean = String(fileName || '').trim();
+  const stripped = clean.replace(/(\.tar\.gz|\.tgz|\.zip|\.rar|\.tar)$/i, '').trim();
+  return stripped || 'Extraido';
 }
 
 function getFileTypeLabel(node) {
@@ -635,6 +660,19 @@ async function handleDropOnPane(event) {
   isExternalDragOver.value = false;
   dragOverFolderId.value = null;
   if (!canWriteInCurrentFolder.value) return;
+
+  const collected = await collectEntriesFromDataTransfer(event.dataTransfer);
+  if (collected.hasDirectories || collected.folderPaths.length > 0) {
+    await uploadFolderTree(collected, currentFolderId.value);
+    return;
+  }
+  if (collected.files.length > 0) {
+    await uploadMultipleFiles(
+      collected.files.map((item) => item.file),
+      currentFolderId.value,
+    );
+    return;
+  }
   const files = Array.from(event.dataTransfer?.files || []);
   if (files.length > 0) {
     await uploadMultipleFiles(files, currentFolderId.value);
@@ -651,19 +689,35 @@ async function handleDropOnFolder(event, targetFolderId) {
   event.stopPropagation();
   dragOverFolderId.value = null;
   isExternalDragOver.value = false;
+
+  const draggedId = event.dataTransfer?.getData('application/x-nexus-portal-node');
+  if (draggedId) {
+    if (draggedId === targetFolderId) return;
+    try {
+      await portalApi.updateStorageNode(draggedId, { parentId: targetFolderId || null });
+      notifySuccess('Item movido para a pasta.');
+      await loadDriveNodes();
+    } catch (err) {
+      errorBanner.value = err?.message || 'Não foi possível mover este item.';
+    }
+    return;
+  }
+
+  const collected = await collectEntriesFromDataTransfer(event.dataTransfer);
+  if (collected.hasDirectories || collected.folderPaths.length > 0) {
+    await uploadFolderTree(collected, targetFolderId);
+    return;
+  }
+  if (collected.files.length > 0) {
+    await uploadMultipleFiles(
+      collected.files.map((item) => item.file),
+      targetFolderId,
+    );
+    return;
+  }
   const files = Array.from(event.dataTransfer?.files || []);
   if (files.length > 0) {
     await uploadMultipleFiles(files, targetFolderId);
-    return;
-  }
-  const draggedId = event.dataTransfer?.getData('application/x-nexus-portal-node');
-  if (!draggedId || draggedId === targetFolderId) return;
-  try {
-    await portalApi.updateStorageNode(draggedId, { parentId: targetFolderId || null });
-    notifySuccess('Item movido para a pasta.');
-    await loadDriveNodes();
-  } catch (err) {
-    errorBanner.value = err?.message || 'Não foi possível mover este item.';
   }
 }
 
@@ -671,6 +725,10 @@ function handleExplorerKeydown(event) {
   const tag = String(event.target?.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
   if (event.key === 'Escape') {
+    if (extractModalNode.value && extractingNodeId.value !== extractModalNode.value.id) {
+      extractModalNode.value = null;
+      return;
+    }
     if (showAgentGuide.value) {
       showAgentGuide.value = false;
       return;
@@ -819,6 +877,115 @@ async function handleUploadFile(event) {
   if (files.length === 0) return;
   await uploadMultipleFiles(files, currentFolderId.value);
   if (event?.target) event.target.value = '';
+}
+
+async function uploadFolderTree(collected, targetFolderId = currentFolderId.value) {
+  const files = collected?.files || [];
+  const folderPaths = collected?.folderPaths || [];
+  if (files.length === 0 && folderPaths.length === 0) return;
+
+  errorBanner.value = '';
+  uploadingCount.value = files.length || folderPaths.length;
+  uploadProgress.value = {
+    phase: folderPaths.length > 0 ? 'folders' : 'files',
+    current: 0,
+    total: folderPaths.length || files.length,
+    currentName: folderPaths[0] || files[0]?.relativePath || '',
+    filesDone: 0,
+    filesTotal: files.length,
+  };
+
+  try {
+    const summary = await uploadFolderTreeToVault({
+      files,
+      folderPaths,
+      targetParentId: targetFolderId || null,
+      existingNodes: nodes.value,
+      createFolderFn: (payload) => portalApi.createStorageFolder(payload),
+      uploadFileFn: (file, opts) => portalApi.uploadStorageFile(file, opts),
+      onProgress: (p) => {
+        uploadProgress.value = p;
+      },
+    });
+
+    if (summary.filesUploaded > 0 || summary.foldersCreated > 0) {
+      await loadDriveNodes();
+      notifySuccess(
+        `Pasta enviada: ${summary.filesUploaded} arquivo(s) em ${summary.totalFolders || 1} pasta(s).`,
+      );
+    }
+    if (summary.errors.length > 0) {
+      const firstErr = summary.errors[0];
+      errorBanner.value = `${summary.errors.length} item(ns) falharam no envio (ex.: ${firstErr.path}: ${firstErr.message}).`;
+    }
+  } catch (err) {
+    errorBanner.value = err?.message || 'Falha ao enviar pasta para a nuvem.';
+  } finally {
+    uploadProgress.value = null;
+    uploadingCount.value = 0;
+  }
+}
+
+async function handleUploadFolder(event) {
+  const collected = collectFilesFromInputList(event?.target?.files || []);
+  if (collected.files.length > 0 || collected.folderPaths.length > 0) {
+    await uploadFolderTree(collected, currentFolderId.value);
+  }
+  if (event?.target) event.target.value = '';
+}
+
+function openExtractModal(node) {
+  if (!node || !isExtractableArchive(node) || !canEditNode(node) || !canDownloadNode(node)) return;
+  contextMenu.value = null;
+  extractModalNode.value = node;
+  extractMode.value = 'subfolder';
+  extractFolderName.value = stripArchiveExtensionLabel(node.name);
+  extractConflictPolicy.value = 'rename';
+  extractPassword.value = '';
+}
+
+async function handleSubmitExtract() {
+  const node = extractModalNode.value;
+  if (!node?.id) return;
+  const cleanName = extractFolderName.value.trim();
+  if (
+    extractMode.value === 'subfolder' &&
+    (!cleanName || cleanName.includes('..') || cleanName.includes('/') || cleanName.includes('\\'))
+  ) {
+    errorBanner.value = 'Informe um nome de pasta válido (sem barras ou "..").';
+    return;
+  }
+
+  errorBanner.value = '';
+  extractingNodeId.value = node.id;
+  try {
+    const res = await portalApi.extractStorageArchive(node.id, {
+      mode: extractMode.value,
+      folderName: extractMode.value === 'subfolder' ? cleanName : undefined,
+      conflictPolicy: extractConflictPolicy.value,
+      password: extractPassword.value || undefined,
+    });
+    extractModalNode.value = null;
+    extractPassword.value = '';
+    await loadDriveNodes();
+
+    const filesCount = Number(res?.filesExtracted || 0);
+    const foldersCount = Number(res?.foldersCreated || 0);
+    const blockedCount = Array.isArray(res?.blockedExecutables) ? res.blockedExecutables.length : 0;
+    notifySuccess(
+      `"${node.name}" descompactado: ${filesCount} arquivo(s) e ${foldersCount} pasta(s)${
+        blockedCount > 0 ? ` (${blockedCount} executável bloqueado por segurança)` : ''
+      }.`,
+    );
+
+    if (extractMode.value === 'subfolder' && res?.destinationFolder?.id) {
+      navigateTo(res.destinationFolder.id);
+    }
+  } catch (err) {
+    errorBanner.value = err?.message || 'Não foi possível descompactar este arquivo.';
+  } finally {
+    extractingNodeId.value = null;
+  }
 }
 
 async function handlePreviewFile(node) {
@@ -1197,6 +1364,24 @@ onBeforeUnmount(() => {
               />
             </label>
 
+            <label
+              title="Enviar uma pasta inteira mantendo todas as subpastas (sem precisar compactar em ZIP ou RAR)"
+              class="min-h-[34px] px-3 py-1 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <PortalIcon name="folder-up" :size="14" />
+              <span>Enviar Pasta</span>
+              <input
+                ref="folderInputEl"
+                type="file"
+                webkitdirectory
+                directory
+                multiple
+                aria-label="Enviar pasta inteira para a nuvem"
+                class="hidden"
+                @change="handleUploadFolder"
+              />
+            </label>
+
             <button
               type="button"
               class="min-h-[34px] px-2.5 py-1 rounded-lg border border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-bold inline-flex items-center gap-1.5"
@@ -1218,6 +1403,18 @@ onBeforeUnmount(() => {
               >
                 <PortalIcon name="monitor" :size="13" />
                 <span>Editar no PC</span>
+              </button>
+
+              <button
+                v-if="!isFolder(selectedNode) && isExtractableArchive(selectedNode) && canDownloadNode(selectedNode)"
+                type="button"
+                :disabled="extractingNodeId === selectedNode.id"
+                title="Descompactar arquivo .ZIP, .RAR ou .TAR diretamente na nuvem"
+                class="min-h-[34px] px-2.5 py-1 rounded-lg bg-amber-600 text-white text-xs font-bold inline-flex items-center gap-1 disabled:opacity-50"
+                @click="openExtractModal(selectedNode)"
+              >
+                <PortalIcon name="package-open" :size="13" />
+                <span>{{ extractingNodeId === selectedNode.id ? 'Extraindo...' : 'Descompactar' }}</span>
               </button>
 
               <button
@@ -1316,6 +1513,37 @@ onBeforeUnmount(() => {
           >
             <PortalIcon name="refresh-cw" :size="13" />
           </button>
+        </div>
+      </div>
+
+      <!-- Folder Upload Progress Bar -->
+      <div
+        v-if="uploadProgress"
+        data-testid="portal-folder-upload-progress"
+        class="px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/25 space-y-1.5 text-xs text-amber-900 dark:text-amber-200"
+      >
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="font-bold inline-flex items-center gap-1.5 min-w-0">
+            <PortalIcon name="folder-up" :size="14" />
+            <span class="truncate">
+              {{
+                uploadProgress.phase === 'folders'
+                  ? `Criando subpastas (${uploadProgress.current}/${uploadProgress.total}): ${uploadProgress.currentName}`
+                  : `Enviando arquivo ${uploadProgress.current}/${uploadProgress.total}: ${uploadProgress.currentName}`
+              }}
+            </span>
+          </span>
+          <span class="font-mono text-[11px] font-bold">
+            {{ uploadProgress.total > 0 ? Math.min(100, Math.round((uploadProgress.current / uploadProgress.total) * 100)) : 0 }}%
+          </span>
+        </div>
+        <div class="w-full h-1.5 rounded-full bg-amber-500/20 overflow-hidden">
+          <div
+            class="h-full rounded-full bg-amber-600 transition-all duration-150"
+            :style="{
+              width: `${uploadProgress.total > 0 ? Math.min(100, Math.round((uploadProgress.current / uploadProgress.total) * 100)) : 5}%`,
+            }"
+          />
         </div>
       </div>
 
@@ -1464,7 +1692,8 @@ onBeforeUnmount(() => {
             class="absolute inset-2 z-20 rounded-xl border-2 border-dashed border-brand bg-brand/10 flex flex-col items-center justify-center gap-2 pointer-events-none"
           >
             <PortalIcon name="upload-cloud" :size="32" />
-            <p class="text-xs font-bold">Solte os arquivos aqui para enviar para esta pasta</p>
+            <p class="text-xs font-bold">Solte arquivos ou pastas inteiras aqui para enviar</p>
+            <p class="text-[11px] text-slate-600 dark:text-zinc-300">Subpastas são criadas automaticamente na nuvem</p>
           </div>
 
           <!-- Inline Create Folder Row -->
@@ -1509,7 +1738,7 @@ onBeforeUnmount(() => {
               }}
             </p>
             <p v-if="canWriteInCurrentFolder && !searchQuery && typeFilter === 'all'" class="text-[11px] text-slate-500">
-              Arraste arquivos do computador para cá ou clique em Enviar Arquivos / Nova Pasta.
+              Arraste arquivos ou pastas inteiras do computador para cá ou clique em Enviar Arquivos, Enviar Pasta ou Nova Pasta.
             </p>
             <button
               v-if="typeFilter !== 'all' || searchQuery"
@@ -1654,6 +1883,19 @@ onBeforeUnmount(() => {
                       </button>
 
                       <button
+                        v-if="canEditNode(node) && canDownloadNode(node) && isExtractableArchive(node)"
+                        type="button"
+                        :data-testid="`portal-extract-${node.id}`"
+                        :disabled="extractingNodeId === node.id"
+                        title="Descompactar arquivo diretamente na nuvem"
+                        class="px-2 py-1 rounded-lg bg-amber-600 text-white text-[11px] font-bold inline-flex items-center gap-1 hover:opacity-95 disabled:opacity-50"
+                        @click.stop="openExtractModal(node)"
+                      >
+                        <PortalIcon name="package-open" :size="12" />
+                        <span>Descompactar</span>
+                      </button>
+
+                      <button
                         v-if="canDownloadNode(node)"
                         type="button"
                         :data-testid="`portal-download-${node.id}`"
@@ -1734,6 +1976,14 @@ onBeforeUnmount(() => {
                   Visualizar
                 </button>
                 <button
+                  v-if="canEditNode(node) && canDownloadNode(node) && isExtractableArchive(node)"
+                  type="button"
+                  class="px-2 py-0.5 rounded-md bg-amber-600 text-white text-[10px] font-bold"
+                  @click.stop="openExtractModal(node)"
+                >
+                  Descompactar
+                </button>
+                <button
                   v-if="canDownloadNode(node)"
                   type="button"
                   :data-testid="`portal-download-${node.id}`"
@@ -1808,6 +2058,16 @@ onBeforeUnmount(() => {
         </button>
 
         <button
+          v-if="!isFolder(contextMenu.node) && canEditNode(contextMenu.node) && canDownloadNode(contextMenu.node) && isExtractableArchive(contextMenu.node)"
+          type="button"
+          class="w-full px-3 py-1.5 text-left hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-bold flex items-center gap-2"
+          @click="openExtractModal(contextMenu.node)"
+        >
+          <PortalIcon name="package-open" :size="13" />
+          <span>Descompactar...</span>
+        </button>
+
+        <button
           v-if="canEditNode(contextMenu.node)"
           type="button"
           class="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center gap-2"
@@ -1860,6 +2120,18 @@ onBeforeUnmount(() => {
         >
           <PortalIcon name="folder-plus" :size="13" />
           <span>Nova Pasta</span>
+        </button>
+        <button
+          v-if="canWriteInCurrentFolder"
+          type="button"
+          class="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+          @click="
+            closeContextMenu();
+            folderInputEl?.click?.();
+          "
+        >
+          <PortalIcon name="folder-up" :size="13" />
+          <span>Enviar Pasta...</span>
         </button>
         <button
           v-if="canWriteInCurrentFolder && clipboard"
@@ -2360,6 +2632,131 @@ onBeforeUnmount(() => {
             Entendi, fechar guia
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- ARCHIVE EXTRACTION MODAL (.ZIP / .RAR / .TAR / .TAR.GZ / .TGZ) -->
+    <div
+      v-if="extractModalNode"
+      data-testid="portal-archive-extract-modal"
+      class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4"
+      @click="extractingNodeId !== extractModalNode.id ? (extractModalNode = null) : null"
+    >
+      <div
+        class="w-full max-w-md rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] p-5 space-y-4 shadow-2xl"
+        @click.stop
+      >
+        <div class="flex items-center justify-between gap-2">
+          <h4 class="text-sm font-black flex items-center gap-2 text-slate-900 dark:text-white">
+            <PortalIcon name="package-open" :size="17" class="text-amber-600" />
+            <span>Descompactar Arquivo na Nuvem</span>
+          </h4>
+          <button
+            type="button"
+            :disabled="extractingNodeId === extractModalNode.id"
+            aria-label="Fechar janela de descompactação"
+            class="p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
+            @click="extractModalNode = null"
+          >
+            <PortalIcon name="x" :size="15" />
+          </button>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs">
+          <p class="font-bold text-slate-900 dark:text-white truncate">{{ extractModalNode.name }}</p>
+          <p class="text-[11px] font-mono text-slate-500">
+            {{ formatBytes(extractModalNode.sizeBytes || extractModalNode.size_bytes) }} • Extração direta na VPS
+          </p>
+        </div>
+
+        <form class="space-y-3 text-xs" @submit.prevent="handleSubmitExtract">
+          <div class="space-y-2">
+            <span class="block font-bold text-slate-700 dark:text-zinc-300">Onde deseja extrair?</span>
+            <label
+              class="flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer"
+              :class="
+                extractMode === 'subfolder'
+                  ? 'border-amber-500 bg-amber-500/10'
+                  : 'border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-900/50'
+              "
+            >
+              <input v-model="extractMode" type="radio" value="subfolder" class="mt-0.5" />
+              <div class="flex-1 min-w-0 space-y-1.5">
+                <span class="font-bold text-slate-900 dark:text-white block">
+                  Extrair em uma nova pasta (recomendado)
+                </span>
+                <input
+                  v-if="extractMode === 'subfolder'"
+                  v-model="extractFolderName"
+                  type="text"
+                  aria-label="Nome da pasta de destino"
+                  placeholder="Nome da pasta de destino"
+                  class="w-full min-h-[34px] px-2.5 rounded-lg border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-xs font-semibold"
+                />
+              </div>
+            </label>
+
+            <label
+              class="flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer"
+              :class="
+                extractMode === 'here'
+                  ? 'border-amber-500 bg-amber-500/10'
+                  : 'border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-900/50'
+              "
+            >
+              <input v-model="extractMode" type="radio" value="here" class="mt-0.5" />
+              <div class="min-w-0">
+                <span class="font-bold text-slate-900 dark:text-white block">Extrair nesta pasta atual</span>
+                <span class="text-[11px] text-slate-500">Extrai diretamente ao lado do arquivo compactado.</span>
+              </div>
+            </label>
+          </div>
+
+          <div>
+            <label class="block font-bold text-slate-700 dark:text-zinc-300 mb-1">
+              Se já existir arquivo com o mesmo nome
+            </label>
+            <select
+              v-model="extractConflictPolicy"
+              class="w-full min-h-[38px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 text-xs font-semibold"
+            >
+              <option value="rename">Renomear cópias automaticamente (seguro)</option>
+              <option value="version">Criar nova versão no arquivo existente</option>
+              <option value="skip">Ignorar arquivos que já existem</option>
+            </select>
+          </div>
+
+          <div v-if="/\.rar$/i.test(String(extractModalNode.name || ''))">
+            <label class="block font-bold text-slate-700 dark:text-zinc-300 mb-1">
+              Senha do arquivo .RAR (opcional)
+            </label>
+            <input
+              v-model="extractPassword"
+              type="password"
+              placeholder="Deixe vazio se não houver senha"
+              class="w-full min-h-[38px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 text-xs"
+            />
+          </div>
+
+          <div class="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              :disabled="extractingNodeId === extractModalNode.id"
+              class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold"
+              @click="extractModalNode = null"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              :disabled="extractingNodeId === extractModalNode.id"
+              class="px-4 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold inline-flex items-center gap-1.5 hover:opacity-95 disabled:opacity-50"
+            >
+              <PortalIcon name="package-open" :size="14" />
+              <span>{{ extractingNodeId === extractModalNode.id ? 'Descompactando...' : 'Descompactar Agora' }}</span>
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </div>

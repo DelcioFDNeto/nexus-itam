@@ -24,6 +24,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  FolderUp,
   HardDrive,
   History,
   Image as ImageIcon,
@@ -34,18 +35,24 @@ import {
   Monitor,
   MoreVertical,
   Music,
+  PackageOpen,
   PanelRight,
   Pencil,
   RefreshCw,
   RotateCcw,
   Scissors,
   Search,
+  ShieldCheck,
   Trash2,
   Unlock,
   UploadCloud,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  collectEntriesFromDataTransfer,
+  collectFilesFromInputList,
+} from '../../utils/folderUpload';
 
 const QUICK_ACCESS_ALIASES = {
   '/Corporativo-Publico': 'Público da Empresa',
@@ -99,6 +106,17 @@ function getNodePath(node) {
 
 function getLockedBy(node) {
   return node?.lockedByEmail || node?.locked_by_email || null;
+}
+
+function isExtractableArchive(node) {
+  if (!node || isFolderNode(node)) return false;
+  return /\.(zip|rar|tar|tgz|tar\.gz)$/i.test(String(node.name || '').trim());
+}
+
+function stripArchiveExtensionLabel(fileName) {
+  const clean = String(fileName || '').trim();
+  const stripped = clean.replace(/(\.tar\.gz|\.tgz|\.zip|\.rar|\.tar)$/i, '').trim();
+  return stripped || 'Extraido';
 }
 
 function getFileKind(node) {
@@ -237,6 +255,11 @@ export default function WindowsFileExplorer({
   onRefresh,
   onCreateFolder,
   onUploadFiles,
+  onUploadFolderTree,
+  uploadProgress = null,
+  onExtractArchive,
+  extractingNodeId = null,
+  onOpenPermissions,
   onRenameNode,
   onMoveNode,
   onCopyNode,
@@ -295,10 +318,27 @@ export default function WindowsFileExplorer({
   const [sharePassword, setSharePassword] = useState('');
   const [createdShareUrl, setCreatedShareUrl] = useState('');
 
+  // Archive Extraction modal (.zip / .rar / .tar / .tar.gz / .tgz)
+  const [extractModalNode, setExtractModalNode] = useState(null);
+  const [extractMode, setExtractMode] = useState('subfolder');
+  const [extractFolderName, setExtractFolderName] = useState('');
+  const [extractConflictPolicy, setExtractConflictPolicy] = useState('rename');
+  const [extractPassword, setExtractPassword] = useState('');
+
   const fileInputRef = useRef(null);
+  const folderInputRef = useRef(null);
   const newFolderInputRef = useRef(null);
   const renameInputRef = useRef(null);
   const explorerRef = useRef(null);
+
+  // Set webkitdirectory/directory imperatively to avoid React unknown-prop warnings
+  useEffect(() => {
+    const el = folderInputRef.current;
+    if (el) {
+      el.setAttribute('webkitdirectory', '');
+      el.setAttribute('directory', '');
+    }
+  }, [canWrite, showTrash]);
 
   // Accessible nodes map
   const accessibleNodes = useMemo(
@@ -646,7 +686,53 @@ export default function WindowsFileExplorer({
     setSharePassword('');
   };
 
-  // Drag & Drop handlers (External OS Files + Internal Move)
+  // Archive Extraction modal
+  const openExtractModal = (node) => {
+    if (!node || !isExtractableArchive(node)) return;
+    setContextMenu(null);
+    setExtractModalNode(node);
+    setExtractMode('subfolder');
+    setExtractFolderName(stripArchiveExtensionLabel(node.name));
+    setExtractConflictPolicy('rename');
+    setExtractPassword('');
+  };
+
+  const handleSubmitExtract = async (e) => {
+    e?.preventDefault?.();
+    if (!extractModalNode || !onExtractArchive) return;
+    const cleanFolderName = extractFolderName.trim();
+    if (extractMode === 'subfolder' && (!cleanFolderName || cleanFolderName.includes('..') || cleanFolderName.includes('/') || cleanFolderName.includes('\\'))) {
+      toast.error('Informe um nome de pasta válido (sem barras ou "..").');
+      return;
+    }
+    const res = await onExtractArchive(extractModalNode, {
+      mode: extractMode,
+      folderName: extractMode === 'subfolder' ? cleanFolderName : undefined,
+      conflictPolicy: extractConflictPolicy,
+      password: extractPassword || undefined,
+    });
+    if (res !== false) {
+      setExtractModalNode(null);
+      setExtractPassword('');
+    }
+  };
+
+  const handleFolderInputChange = async (e) => {
+    const collected = collectFilesFromInputList(e.target?.files || []);
+    if (collected.files.length > 0 || collected.folderPaths.length > 0) {
+      if (onUploadFolderTree) {
+        await onUploadFolderTree(collected, currentFolderId);
+      } else {
+        await onUploadFiles?.(
+          collected.files.map((item) => item.file),
+          currentFolderId,
+        );
+      }
+    }
+    e.target.value = '';
+  };
+
+  // Drag & Drop handlers (External OS Files/Folders + Internal Move)
   const handlePaneDragOver = (e) => {
     if (showTrash || !canWrite) return;
     const hasFiles = Array.from(e.dataTransfer?.types || []).includes('Files');
@@ -668,10 +754,21 @@ export default function WindowsFileExplorer({
     setDragOverFolderId(null);
     if (showTrash || !canWrite) return;
 
-    const files = Array.from(e.dataTransfer?.files || []);
-    if (files.length > 0) {
-      await onUploadFiles?.(files, currentFolderId);
+    const collected = await collectEntriesFromDataTransfer(e.dataTransfer);
+    if ((collected.hasDirectories || collected.folderPaths.length > 0) && onUploadFolderTree) {
+      await onUploadFolderTree(collected, currentFolderId);
       return;
+    }
+    if (collected.files.length > 0) {
+      await onUploadFiles?.(
+        collected.files.map((item) => item.file),
+        currentFolderId,
+      );
+      return;
+    }
+    const rawFiles = Array.from(e.dataTransfer?.files || []);
+    if (rawFiles.length > 0) {
+      await onUploadFiles?.(rawFiles, currentFolderId);
     }
   };
 
@@ -688,17 +785,31 @@ export default function WindowsFileExplorer({
     setIsExternalDragOver(false);
     if (!canWrite || showTrash) return;
 
-    const files = Array.from(e.dataTransfer?.files || []);
-    if (files.length > 0) {
-      await onUploadFiles?.(files, targetFolderId);
+    const draggedId = e.dataTransfer?.getData('application/x-nexus-node-id');
+    if (draggedId) {
+      if (draggedId === targetFolderId) return;
+      const draggedNode = nodesById.get(draggedId);
+      if (!draggedNode || getParentId(draggedNode) === targetFolderId) return;
+      await onMoveNode?.(draggedNode, targetFolderId);
       return;
     }
 
-    const draggedId = e.dataTransfer?.getData('application/x-nexus-node-id');
-    if (!draggedId || draggedId === targetFolderId) return;
-    const draggedNode = nodesById.get(draggedId);
-    if (!draggedNode || getParentId(draggedNode) === targetFolderId) return;
-    await onMoveNode?.(draggedNode, targetFolderId);
+    const collected = await collectEntriesFromDataTransfer(e.dataTransfer);
+    if ((collected.hasDirectories || collected.folderPaths.length > 0) && onUploadFolderTree) {
+      await onUploadFolderTree(collected, targetFolderId);
+      return;
+    }
+    if (collected.files.length > 0) {
+      await onUploadFiles?.(
+        collected.files.map((item) => item.file),
+        targetFolderId,
+      );
+      return;
+    }
+    const rawFiles = Array.from(e.dataTransfer?.files || []);
+    if (rawFiles.length > 0) {
+      await onUploadFiles?.(rawFiles, targetFolderId);
+    }
   };
 
   // Context menu trigger
@@ -894,6 +1005,22 @@ export default function WindowsFileExplorer({
                 />
               </label>
 
+              <label
+                title="Enviar uma pasta inteira do computador mantendo todas as subpastas (sem precisar compactar em ZIP ou RAR)"
+                className="min-h-[34px] px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:bg-amber-500/15"
+              >
+                <FolderUp size={14} />
+                <span>Enviar Pasta</span>
+                <input
+                  ref={folderInputRef}
+                  type="file"
+                  multiple
+                  aria-label="Upload de pasta inteira"
+                  onChange={handleFolderInputChange}
+                  className="hidden"
+                />
+              </label>
+
               {onCreateSheet && (
                 <button
                   type="button"
@@ -975,6 +1102,24 @@ export default function WindowsFileExplorer({
                 </button>
               )}
 
+              {canWrite &&
+                primarySelectedNode &&
+                isExtractableArchive(primarySelectedNode) &&
+                primarySelectedNode.effectiveAccess !== 'viewer_online' &&
+                onExtractArchive && (
+                  <button
+                    type="button"
+                    disabled={extractingNodeId === primarySelectedNode.id}
+                    onClick={() => openExtractModal(primarySelectedNode)}
+                    title="Descompactar arquivo .ZIP, .RAR ou .TAR diretamente na VPS"
+                    aria-label="Descompactar arquivo"
+                    className="min-h-[34px] px-2.5 py-1 rounded-lg bg-amber-600 text-white text-xs font-bold hover:opacity-95 flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <PackageOpen size={14} />
+                    <span>{extractingNodeId === primarySelectedNode.id ? 'Extraindo...' : 'Descompactar'}</span>
+                  </button>
+                )}
+
               {primaryCanDownload && (
                 <button
                   type="button"
@@ -997,6 +1142,25 @@ export default function WindowsFileExplorer({
                 <Archive size={14} />
                 <span className="hidden md:inline">ZIP</span>
               </button>
+
+              {canManageAcl && onOpenPermissions && (
+                <button
+                  type="button"
+                  onClick={() => onOpenPermissions(primarySelectedNode || currentFolderObj || null)}
+                  title={
+                    primarySelectedNode
+                      ? `Definir quem pode acessar "${primarySelectedNode.name}"`
+                      : currentFolderObj
+                        ? `Definir quem pode acessar a pasta "${currentFolderObj.name}"`
+                        : 'Gerenciar permissões de acesso das pastas da VPS'
+                  }
+                  aria-label="Gerenciar permissões da pasta"
+                  className="min-h-[34px] px-2.5 py-1 rounded-lg border border-indigo-500/35 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 text-xs font-bold hover:bg-indigo-500/15 flex items-center gap-1"
+                >
+                  <ShieldCheck size={14} />
+                  <span className="hidden md:inline">Permissões</span>
+                </button>
+              )}
 
               {canManageAcl && primarySelectedNode && !isFolderNode(primarySelectedNode) && (
                 <button
@@ -1211,6 +1375,38 @@ export default function WindowsFileExplorer({
         </div>
       </div>
 
+      {/* FOLDER UPLOAD PROGRESS BANNER */}
+      {uploadProgress && (
+        <div
+          data-testid="folder-upload-progress"
+          className="px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/25 space-y-1.5 text-xs text-amber-900 dark:text-amber-200"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-bold flex items-center gap-1.5 min-w-0">
+              <FolderUp size={14} className="shrink-0" />
+              <span className="truncate">
+                {uploadProgress.phase === 'folders'
+                  ? `Criando estrutura de pastas (${uploadProgress.current}/${uploadProgress.total}): ${uploadProgress.currentName}`
+                  : `Enviando arquivo ${uploadProgress.current}/${uploadProgress.total}: ${uploadProgress.currentName}`}
+              </span>
+            </span>
+            <span className="font-mono text-[11px] font-bold shrink-0">
+              {uploadProgress.total > 0
+                ? `${Math.min(100, Math.round((uploadProgress.current / uploadProgress.total) * 100))}%`
+                : '0%'}
+            </span>
+          </div>
+          <div className="w-full h-1.5 rounded-full bg-amber-500/20 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-amber-600 transition-all duration-150"
+              style={{
+                width: `${uploadProgress.total > 0 ? Math.min(100, Math.round((uploadProgress.current / uploadProgress.total) * 100)) : 5}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* CLIPBOARD BANNER */}
       {clipboard && (
         <div className="px-4 py-2 bg-sky-500/10 border-b border-sky-500/20 flex flex-wrap items-center justify-between gap-2 text-xs text-sky-800 dark:text-sky-200">
@@ -1328,15 +1524,15 @@ export default function WindowsFileExplorer({
           }}
           className="relative flex-1 min-w-0 flex flex-col bg-white dark:bg-[#111113]"
         >
-          {/* OS File Drag & Drop Overlay */}
+          {/* OS File/Folder Drag & Drop Overlay */}
           {isExternalDragOver && (
             <div className="absolute inset-2 z-30 rounded-xl border-2 border-dashed border-brand bg-brand/10 backdrop-blur-[1px] flex flex-col items-center justify-center gap-2 pointer-events-none">
               <UploadCloud size={36} className="text-brand-aa" />
               <p className="text-sm font-black text-slate-900 dark:text-white">
-                Solte os arquivos aqui para enviar
+                Solte arquivos ou pastas inteiras aqui para enviar
               </p>
               <p className="text-xs text-slate-600 dark:text-zinc-300">
-                Destino: {currentFolderObj ? getNodePath(currentFolderObj) : '/ (Raiz do Cofre)'}
+                Subpastas são recriadas automaticamente • Destino: {currentFolderObj ? getNodePath(currentFolderObj) : '/ (Raiz do Cofre)'}
               </p>
             </div>
           )}
@@ -1396,7 +1592,7 @@ export default function WindowsFileExplorer({
                     </p>
                     {canWrite && !searchQuery && (
                       <p className="text-xs text-slate-500">
-                        Arraste arquivos do seu computador para cá, clique com o botão direito ou use <strong>Nova Pasta</strong> / <strong>Enviar Arquivos</strong> acima.
+                        Arraste arquivos ou pastas inteiras do seu computador para cá, clique com o botão direito ou use <strong>Nova Pasta</strong>, <strong>Enviar Arquivos</strong> ou <strong>Enviar Pasta</strong> acima.
                       </p>
                     )}
                   </div>
@@ -1597,6 +1793,21 @@ export default function WindowsFileExplorer({
                                   >
                                     <Eye size={14} />
                                   </button>
+                                  {!isViewerOnline && canWrite && isExtractableArchive(node) && onExtractArchive && (
+                                    <button
+                                      type="button"
+                                      disabled={extractingNodeId === node.id}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openExtractModal(node);
+                                      }}
+                                      title="Descompactar arquivo na VPS"
+                                      aria-label={`Descompactar ${node.name}`}
+                                      className="p-1.5 rounded-lg text-amber-700 dark:text-amber-300 hover:bg-amber-500/15 disabled:opacity-40"
+                                    >
+                                      <PackageOpen size={14} />
+                                    </button>
+                                  )}
                                   {!isViewerOnline && (
                                     <button
                                       type="button"
@@ -1958,6 +2169,27 @@ export default function WindowsFileExplorer({
                           <span>Renomear</span>
                         </button>
                       )}
+                      {!folder && canWrite && isExtractableArchive(inspectorNode) && !isViewerOnline && onExtractArchive && (
+                        <button
+                          type="button"
+                          disabled={extractingNodeId === inspectorNode.id}
+                          onClick={() => openExtractModal(inspectorNode)}
+                          className="col-span-2 px-2.5 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 hover:opacity-95 disabled:opacity-50"
+                        >
+                          <PackageOpen size={13} />
+                          <span>{extractingNodeId === inspectorNode.id ? 'Descompactando...' : 'Descompactar Arquivo'}</span>
+                        </button>
+                      )}
+                      {canManageAcl && onOpenPermissions && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenPermissions(inspectorNode)}
+                          className="col-span-2 px-2.5 py-1.5 rounded-lg border border-indigo-500/35 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 text-xs font-bold flex items-center justify-center gap-1.5"
+                        >
+                          <ShieldCheck size={13} />
+                          <span>Gerenciar Permissões</span>
+                        </button>
+                      )}
                       {!folder && canManageAcl && (
                         <button
                           type="button"
@@ -2143,6 +2375,18 @@ export default function WindowsFileExplorer({
                     </button>
                   )}
 
+                  {!folder && canWrite && isExtractableArchive(node) && !isViewerOnline && onExtractArchive && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => openExtractModal(node)}
+                      className="w-full px-3 py-1.5 text-left hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 flex items-center gap-2.5 font-bold"
+                    >
+                      <PackageOpen size={14} />
+                      <span>Descompactar...</span>
+                    </button>
+                  )}
+
                   {canWrite && (
                     <>
                       <div className="my-1 border-t border-slate-200 dark:border-zinc-800" />
@@ -2229,6 +2473,21 @@ export default function WindowsFileExplorer({
                     </>
                   )}
 
+                  {canManageAcl && onOpenPermissions && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setContextMenu(null);
+                        onOpenPermissions(node);
+                      }}
+                      className="w-full px-3 py-1.5 text-left hover:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 flex items-center gap-2.5 font-semibold"
+                    >
+                      <ShieldCheck size={14} />
+                      <span>Gerenciar Permissões...</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     role="menuitem"
@@ -2291,6 +2550,32 @@ export default function WindowsFileExplorer({
                     <UploadCloud size={14} className="text-brand-aa" />
                     <span>Enviar Arquivos...</span>
                   </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setContextMenu(null);
+                      folderInputRef.current?.click();
+                    }}
+                    className="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center gap-2.5"
+                  >
+                    <FolderUp size={14} className="text-amber-600 dark:text-amber-400" />
+                    <span>Enviar Pasta...</span>
+                  </button>
+                  {canManageAcl && onOpenPermissions && currentFolderObj && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setContextMenu(null);
+                        onOpenPermissions(currentFolderObj);
+                      }}
+                      className="w-full px-3 py-1.5 text-left hover:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 flex items-center gap-2.5 font-semibold"
+                    >
+                      <ShieldCheck size={14} />
+                      <span>Permissões desta pasta...</span>
+                    </button>
+                  )}
                   {clipboard && (
                     <button
                       type="button"
@@ -2570,6 +2855,162 @@ export default function WindowsFileExplorer({
                 </div>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* ARCHIVE EXTRACTION MODAL (.ZIP / .RAR / .TAR / .TAR.GZ / .TGZ) */}
+      {extractModalNode && (
+        <div
+          data-testid="archive-extract-modal"
+          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => {
+            if (extractingNodeId !== extractModalNode.id) setExtractModalNode(null);
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] p-5 space-y-4 shadow-2xl"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-sm font-black flex items-center gap-2 text-slate-900 dark:text-white">
+                <PackageOpen size={17} className="text-amber-600 dark:text-amber-400" />
+                <span>Descompactar Arquivo na VPS</span>
+              </h4>
+              <button
+                type="button"
+                disabled={extractingNodeId === extractModalNode.id}
+                onClick={() => setExtractModalNode(null)}
+                aria-label="Fechar modal de descompactação"
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 px-3 py-2 text-xs">
+              <p className="font-bold text-slate-900 dark:text-white truncate">{extractModalNode.name}</p>
+              <p className="text-[11px] font-mono text-slate-500">
+                {formatBytes(extractModalNode.sizeBytes ?? extractModalNode.size_bytes)} • Extração direta no servidor (sem baixar para o PC)
+              </p>
+            </div>
+
+            <form onSubmit={handleSubmitExtract} className="space-y-3.5 text-xs">
+              <div className="space-y-2">
+                <span className="block font-bold text-slate-700 dark:text-zinc-300">Onde deseja extrair?</span>
+                <label
+                  className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors ${
+                    extractMode === 'subfolder'
+                      ? 'border-amber-500 bg-amber-500/10'
+                      : 'border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-900/50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="extract-mode"
+                    value="subfolder"
+                    checked={extractMode === 'subfolder'}
+                    onChange={() => setExtractMode('subfolder')}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <span className="font-bold text-slate-900 dark:text-white block">
+                      Extrair em uma nova pasta (recomendado)
+                    </span>
+                    {extractMode === 'subfolder' && (
+                      <input
+                        type="text"
+                        aria-label="Nome da pasta de destino"
+                        value={extractFolderName}
+                        onChange={(e) => setExtractFolderName(e.target.value)}
+                        placeholder="Nome da pasta de destino"
+                        className="w-full min-h-[34px] px-2.5 rounded-lg border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-xs font-semibold"
+                      />
+                    )}
+                  </div>
+                </label>
+
+                <label
+                  className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors ${
+                    extractMode === 'here'
+                      ? 'border-amber-500 bg-amber-500/10'
+                      : 'border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-900/50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="extract-mode"
+                    value="here"
+                    checked={extractMode === 'here'}
+                    onChange={() => setExtractMode('here')}
+                    className="mt-0.5"
+                  />
+                  <div className="min-w-0">
+                    <span className="font-bold text-slate-900 dark:text-white block">
+                      Extrair nesta pasta atual
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Coloca os arquivos e subpastas lado a lado com o arquivo compactado.
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              <div>
+                <label htmlFor="extract-conflict-policy" className="block font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                  Se já existir um arquivo com o mesmo nome
+                </label>
+                <select
+                  id="extract-conflict-policy"
+                  value={extractConflictPolicy}
+                  onChange={(e) => setExtractConflictPolicy(e.target.value)}
+                  className="w-full min-h-[38px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 text-xs font-semibold"
+                >
+                  <option value="rename">Renomear cópias automaticamente (seguro)</option>
+                  <option value="version">Criar nova versão no arquivo existente</option>
+                  <option value="skip">Ignorar arquivos que já existem</option>
+                </select>
+              </div>
+
+              {/\.rar$/i.test(String(extractModalNode.name || '')) && (
+                <div>
+                  <label htmlFor="extract-rar-password" className="block font-bold text-slate-700 dark:text-zinc-300 mb-1">
+                    Senha do arquivo .RAR (opcional)
+                  </label>
+                  <input
+                    id="extract-rar-password"
+                    type="password"
+                    value={extractPassword}
+                    onChange={(e) => setExtractPassword(e.target.value)}
+                    placeholder="Deixe vazio se o RAR não tiver senha"
+                    className="w-full min-h-[38px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 text-xs"
+                  />
+                </div>
+              )}
+
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Proteção automática: caminhos inválidos (Zip-Slip) e executáveis de risco (.exe, .bat, .ps1, .sh) são bloqueados na extração.
+              </p>
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={extractingNodeId === extractModalNode.id}
+                  onClick={() => setExtractModalNode(null)}
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={extractingNodeId === extractModalNode.id}
+                  className="px-4 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold inline-flex items-center gap-1.5 hover:opacity-95 disabled:opacity-50"
+                >
+                  <PackageOpen size={14} />
+                  <span>{extractingNodeId === extractModalNode.id ? 'Descompactando...' : 'Descompactar Agora'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
