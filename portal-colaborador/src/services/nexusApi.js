@@ -215,6 +215,16 @@ export const portalApi = {
       method: 'PATCH',
       body: { name },
     }),
+  updateStorageNode: (nodeId, payload) =>
+    request(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}`, {
+      method: 'PATCH',
+      body: payload,
+    }),
+  copyStorageNode: (nodeId, payload = {}) =>
+    request(`/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/copy`, {
+      method: 'POST',
+      body: payload,
+    }),
   createSheet: (payload) =>
     request('/api/v1/storage/sheets', { method: 'POST', body: payload }),
   getSheet: (sheetId) =>

@@ -37,6 +37,19 @@ import { hasFeature } from '../utils/entitlements';
 import { microservicesApi } from '../services/microservicesClient';
 import { evaluateCellValue, evaluateSheetFormulas } from '../utils/sheetFormulaEngine';
 import VpsOnboardingTutorial from '../components/cloud/VpsOnboardingTutorial';
+import WindowsFileExplorer from '../components/cloud/WindowsFileExplorer';
+
+function triggerBrowserDownload(blob, fileName) {
+  if (!blob || typeof window === 'undefined' || typeof URL?.createObjectURL !== 'function') return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName || 'arquivo';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
 
 function formatBytes(bytes) {
   const num = Number(bytes || 0);
@@ -118,11 +131,11 @@ const CloudVaultHub = () => {
   const [showTrash, setShowTrash] = useState(false);
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [newFolderName, setNewFolderName] = useState('');
   const [selectedNodeIds, setSelectedNodeIds] = useState([]);
   const [activeNode, setActiveNode] = useState(null);
   const [nodeVersions, setNodeVersions] = useState([]);
   const [previewInfo, setPreviewInfo] = useState(null);
+  const [uploadingCount, setUploadingCount] = useState(0);
 
   // Tab 3: ACL & Audit
   const [aclNodeId, setAclNodeId] = useState('');
@@ -155,7 +168,6 @@ const CloudVaultHub = () => {
   const [newTabTitle, setNewTabTitle] = useState('');
 
   const wsHandleRef = useRef(null);
-  const fileInputRef = useRef(null);
 
   const loadVaultOverview = useCallback(async () => {
     if (!canRead || zeroKnowledgeBlocked || !planEntitled) return;
@@ -296,23 +308,25 @@ const CloudVaultHub = () => {
   const EvaluatedTabs = useMemo(() => evaluateSheetFormulas(sheetTabs), [sheetTabs]);
   const evaluatedCurrentTab = EvaluatedTabs[activeSheetTabIdx] || EvaluatedTabs[0] || DEFAULT_SHEET_TABS[0];
 
-  // Filter visible nodes in Explorer
-  const visibleNodes = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return nodes.filter((n) => {
-      if (n.effectiveAccess === 'none') return false;
-      if (q) {
-        return (
-          String(n.name || '').toLowerCase().includes(q) ||
-          String(n.virtualPath || n.virtual_path || '').toLowerCase().includes(q)
-        );
+  const closePreviewInfo = useCallback(() => {
+    setPreviewInfo((prev) => {
+      if (prev?.objectUrl && typeof URL?.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(prev.objectUrl);
       }
-      if (currentFolderId) {
-        return (n.parentId || n.parent_id) === currentFolderId;
-      }
-      return true;
+      return null;
     });
-  }, [nodes, searchQuery, currentFolderId]);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      setPreviewInfo((prev) => {
+        if (prev?.objectUrl && typeof URL?.revokeObjectURL === 'function') {
+          URL.revokeObjectURL(prev.objectUrl);
+        }
+        return null;
+      });
+    };
+  }, []);
 
   // Handlers Tab 1
   const handleSaveConnection = async (e) => {
@@ -410,50 +424,102 @@ const CloudVaultHub = () => {
     }
   };
 
-  // Handlers Tab 2
-  const handleCreateFolder = async (e) => {
-    e?.preventDefault?.();
-    const trimmed = newFolderName.trim();
-    if (!trimmed) return;
+  // Handlers Tab 2 (Windows File Explorer)
+  const handleCreateFolder = async (folderName, targetParentId = currentFolderId) => {
+    const trimmed = String(folderName || '').trim();
+    if (!trimmed) return false;
     if (trimmed.includes('..') || trimmed.includes('/') || trimmed.includes('\\')) {
       toast.error('Nome de pasta inválido (Path Traversal bloqueado).');
-      return;
+      return false;
     }
     try {
       const res = await microservicesApi.createStorageFolder({
-        parentId: currentFolderId,
+        parentId: targetParentId || null,
         name: trimmed,
       });
       const created = res?.node || res?.folder || res;
       if (created?.id) {
         setNodes((prev) => [...prev, created]);
       }
-      setNewFolderName('');
       toast.success(`Pasta "${trimmed}" criada na VPS.`);
+      return true;
     } catch (err) {
       toast.error(err?.message || 'Erro ao criar pasta.');
+      return false;
     }
   };
 
-  const handleFileUpload = async (e) => {
-    const file = e.target?.files?.[0];
-    if (!file) return;
+  const handleUploadFiles = async (fileList, targetParentId = currentFolderId) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+    setUploadingCount(files.length);
+    let successCount = 0;
     try {
-      const res = await microservicesApi.uploadStorageFile(file, {
-        parentId: currentFolderId,
-        fileName: file.name,
-        conflictPolicy: 'version',
-      });
-      const uploaded = res?.node || res;
-      if (uploaded?.id) {
-        setNodes((prev) => {
-          const exists = prev.some((n) => n.id === uploaded.id);
-          return exists ? prev.map((n) => (n.id === uploaded.id ? uploaded : n)) : [...prev, uploaded];
-        });
+      for (const file of files) {
+        try {
+          const res = await microservicesApi.uploadStorageFile(file, {
+            parentId: targetParentId || null,
+            fileName: file.name,
+            conflictPolicy: 'version',
+          });
+          const uploaded = res?.node || res;
+          if (uploaded?.id) {
+            setNodes((prev) => {
+              const exists = prev.some((n) => n.id === uploaded.id);
+              return exists ? prev.map((n) => (n.id === uploaded.id ? uploaded : n)) : [...prev, uploaded];
+            });
+          }
+          successCount += 1;
+        } catch (err) {
+          toast.error(`Falha ao enviar "${file.name}": ${err?.message || 'erro no upload.'}`);
+        }
       }
-      toast.success(`Arquivo "${file.name}" enviado para a VPS.`);
+      if (successCount > 0) {
+        toast.success(
+          successCount === 1
+            ? `Arquivo "${files[0].name}" enviado para a VPS.`
+            : `${successCount} arquivos enviados para a VPS.`,
+        );
+        await loadVaultOverview();
+      }
+    } finally {
+      setUploadingCount(0);
+    }
+  };
+
+  const handleRenameNode = async (node, newName) => {
+    try {
+      const res = await microservicesApi.updateStorageNode(node.id, { name: newName });
+      const updated = res?.node || res;
+      if (updated?.id) {
+        setNodes((prev) => prev.map((n) => (n.id === updated.id ? { ...n, ...updated } : n)));
+      }
+      toast.success(`Renomeado para "${newName}".`);
+      await loadVaultOverview();
     } catch (err) {
-      toast.error(err?.message || 'Falha no upload para a VPS.');
+      toast.error(err?.message || 'Falha ao renomear item.');
+    }
+  };
+
+  const handleMoveNode = async (node, targetParentId) => {
+    try {
+      await microservicesApi.updateStorageNode(node.id, { parentId: targetParentId ?? null });
+      toast.success(`"${node.name}" movido com sucesso.`);
+      await loadVaultOverview();
+    } catch (err) {
+      toast.error(err?.message || 'Falha ao mover item.');
+    }
+  };
+
+  const handleCopyNode = async (node, targetParentId, explicitName) => {
+    try {
+      const payload = { targetParentId: targetParentId ?? null };
+      if (explicitName) payload.name = explicitName;
+      await microservicesApi.copyStorageNode(node.id, payload);
+      toast.success(`Cópia de "${node.name}" criada com sucesso.`);
+      await loadVaultOverview();
+    } catch (err) {
+      toast.error(err?.message || 'Falha ao copiar item.');
     }
   };
 
@@ -463,7 +529,10 @@ const CloudVaultHub = () => {
       return;
     }
     try {
-      await microservicesApi.downloadStorageFile(node.id);
+      const res = await microservicesApi.downloadStorageFile(node.id);
+      if (res?.blob) {
+        triggerBrowserDownload(res.blob, node.name);
+      }
       toast.success(`Download de "${node.name}" iniciado.`);
     } catch (err) {
       toast.error(err?.message || 'Falha ao baixar arquivo.');
@@ -473,21 +542,49 @@ const CloudVaultHub = () => {
   const handlePreviewNode = async (node) => {
     try {
       const res = await microservicesApi.previewStorageFile(node.id);
+      const contentType = res?.contentType || node.mimeType || 'application/octet-stream';
+      let objectUrl = null;
+      let textContent = null;
+
+      if (res?.blob) {
+        const lowerCt = String(contentType).toLowerCase();
+        const isText =
+          lowerCt.startsWith('text/') ||
+          lowerCt.includes('json') ||
+          lowerCt.includes('xml') ||
+          /\.(txt|md|json|csv|log|xml|ini|yml|yaml)$/i.test(String(node.name || ''));
+        if (isText && typeof res.blob.text === 'function') {
+          textContent = await res.blob.text();
+        } else if (typeof URL?.createObjectURL === 'function') {
+          objectUrl = URL.createObjectURL(res.blob);
+        }
+      }
+
       setActiveNode(node);
-      setPreviewInfo({
-        node,
-        contentType: res?.contentType || node.mimeType || 'application/octet-stream',
+      setPreviewInfo((prev) => {
+        if (prev?.objectUrl && typeof URL?.revokeObjectURL === 'function') {
+          URL.revokeObjectURL(prev.objectUrl);
+        }
+        return { node, contentType, objectUrl, textContent };
       });
     } catch (err) {
       toast.error(err?.message || 'Falha ao visualizar arquivo.');
     }
   };
 
-  const handleDownloadZip = async () => {
-    const ids = selectedNodeIds.length > 0 ? selectedNodeIds : nodes.slice(0, 2).map((n) => n.id);
+  const handleDownloadZip = async (explicitIds) => {
+    const ids =
+      Array.isArray(explicitIds) && explicitIds.length > 0
+        ? explicitIds
+        : selectedNodeIds.length > 0
+          ? selectedNodeIds
+          : nodes.slice(0, 2).map((n) => n.id);
     if (ids.length === 0) return;
     try {
-      await microservicesApi.downloadStorageZip(ids);
+      const res = await microservicesApi.downloadStorageZip(ids);
+      if (res?.blob) {
+        triggerBrowserDownload(res.blob, 'nexus-vault-selecao.zip');
+      }
       toast.success('Pacote ZIP gerado com sucesso.');
     } catch (err) {
       toast.error(err?.message || 'Falha ao baixar pacote ZIP.');
@@ -509,13 +606,69 @@ const CloudVaultHub = () => {
     }
   };
 
-  const handleDeleteNode = async (node) => {
+  const handleDeleteNodes = async (nodeList) => {
+    const list = Array.isArray(nodeList) ? nodeList : [nodeList];
+    const removedIds = [];
+    for (const node of list) {
+      if (!node?.id) continue;
+      try {
+        await microservicesApi.deleteStorageNode(node.id);
+        removedIds.push(node.id);
+      } catch (err) {
+        toast.error(`Falha ao remover "${node.name}": ${err?.message || 'erro'}`);
+      }
+    }
+    if (removedIds.length > 0) {
+      setNodes((prev) => prev.filter((n) => !removedIds.includes(n.id)));
+      setSelectedNodeIds((prev) => prev.filter((id) => !removedIds.includes(id)));
+      toast.success(
+        removedIds.length === 1
+          ? `"${list[0].name}" movido para a lixeira da VPS.`
+          : `${removedIds.length} itens movidos para a lixeira da VPS.`,
+      );
+    }
+  };
+
+  const handleOpenSheetFromExplorer = (node) => {
+    if (!node?.id) return;
+    setActiveSheetId(node.id);
+    setActiveTab('sheets');
+  };
+
+  const handleCreateSheetInFolder = async (targetParentId) => {
     try {
-      await microservicesApi.deleteStorageNode(node.id);
-      setNodes((prev) => prev.filter((n) => n.id !== node.id));
-      toast.success(`"${node.name}" movido para a lixeira da VPS.`);
+      const stamped = `Planilha-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const res = await microservicesApi.createSheet({
+        parentId: targetParentId || null,
+        name: stamped,
+        sheets: DEFAULT_SHEET_TABS,
+      });
+      const node = res?.node || res;
+      if (node?.id) {
+        setActiveSheetId(node.id);
+        setNodes((prev) => [...prev, node]);
+        wsHandleRef.current?.joinSheet?.(node.id);
+        setActiveTab('sheets');
+      }
+      toast.success(`Planilha "${stamped}" criada e aberta no Nexus Sheets Live.`);
     } catch (err) {
-      toast.error(err?.message || 'Falha ao remover item.');
+      toast.error(err?.message || 'Falha ao criar planilha.');
+    }
+  };
+
+  const handleCreateShareLinkForNode = async ({ nodeId, expiresInHours, password }) => {
+    try {
+      const res = await microservicesApi.createStorageShareLink({
+        nodeId,
+        expiresInHours,
+        allowDownload: true,
+        password,
+      });
+      toast.success('Link temporário seguro criado com sucesso.');
+      return res;
+    } catch (err) {
+      toast.error(err?.message || 'Falha ao criar link temporário.');
+      return null;
     }
   };
 
@@ -759,7 +912,10 @@ const CloudVaultHub = () => {
   const handleExportSheet = async (format) => {
     const targetId = activeSheetId || 'sheet-default';
     try {
-      await microservicesApi.exportSheet(targetId, format);
+      const res = await microservicesApi.exportSheet(targetId, format);
+      if (res?.blob) {
+        triggerBrowserDownload(res.blob, `planilha-nexus.${format}`);
+      }
       toast.success(`Planilha exportada em formato .${format}.`);
     } catch (err) {
       toast.error(err?.message || 'Falha ao exportar planilha.');
@@ -1326,267 +1482,47 @@ const CloudVaultHub = () => {
         </div>
       )}
 
-      {/* TAB 2: EXPLORER VFS */}
+      {/* TAB 2: EXPLORER VFS (WINDOWS FILE EXPLORER UX) */}
       {activeTab === 'explorer' && (
-        <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] p-5 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTrash(false);
-                  setCurrentFolderId(null);
-                }}
-                className="min-h-[38px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold"
-              >
-                Raiz (/)
-              </button>
-              <button
-                type="button"
-                onClick={handleLoadTrash}
-                className="min-h-[38px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold flex items-center gap-1.5"
-              >
-                <Trash2 size={14} />
-                <span>Lixeira (.nexus_trash)</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleDownloadZip}
-                className="min-h-[38px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold flex items-center gap-1.5"
-              >
-                <Archive size={14} />
-                <span>Baixar ZIP</span>
-              </button>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-3 text-slate-400" />
-                <input
-                  type="search"
-                  aria-label="Buscar arquivos no cofre"
-                  placeholder="Buscar pasta ou arquivo..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="min-h-[38px] pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 text-xs"
-                />
-              </div>
-
-              {canWrite && (
-                <>
-                  <form onSubmit={handleCreateFolder} className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      aria-label="Nome da nova pasta"
-                      placeholder="Nova pasta..."
-                      value={newFolderName}
-                      onChange={(e) => setNewFolderName(e.target.value)}
-                      className="min-h-[38px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 text-xs"
-                    />
-                    <button
-                      type="submit"
-                      className="min-h-[38px] px-3 py-1.5 rounded-xl bg-brand text-brand-fg text-xs font-bold flex items-center gap-1"
-                    >
-                      <FolderPlus size={14} />
-                      <span>Criar Pasta</span>
-                    </button>
-                  </form>
-
-                  <label className="min-h-[38px] px-3 py-1.5 rounded-xl border border-brand/40 bg-brand/10 text-brand-aa text-xs font-bold flex items-center gap-1.5 cursor-pointer">
-                    <UploadCloud size={14} />
-                    <span>Upload Arquivo</span>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      aria-label="Upload de arquivo"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                  </label>
-                </>
-              )}
-            </div>
-          </div>
-
-          {!showTrash ? (
-            <div className="divide-y divide-slate-100 dark:divide-zinc-800">
-              {visibleNodes.length === 0 ? (
-                <p className="py-8 text-center text-xs text-slate-500">
-                  Nenhum arquivo ou pasta encontrado neste diretório.
-                </p>
-              ) : (
-                visibleNodes.map((node) => {
-                  const isFolder = (node.nodeType || node.node_type || node.type) === 'folder';
-                  const lockedBy = node.lockedByEmail || node.locked_by_email;
-                  const isViewerOnline = node.effectiveAccess === 'viewer_online';
-                  return (
-                    <div
-                      key={node.id}
-                      data-testid={`vfs-node-${node.name}`}
-                      className="py-2.5 px-2 flex flex-wrap items-center justify-between gap-2 hover:bg-slate-50 dark:hover:bg-zinc-900/50 rounded-xl"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <input
-                          type="checkbox"
-                          aria-label={`Selecionar ${node.name}`}
-                          checked={selectedNodeIds.includes(node.id)}
-                          onChange={(e) => {
-                            setSelectedNodeIds((prev) =>
-                              e.target.checked ? [...prev, node.id] : prev.filter((id) => id !== node.id),
-                            );
-                          }}
-                        />
-                        {isFolder ? (
-                          <Folder size={17} className="text-amber-500 shrink-0" />
-                        ) : (
-                          <FileText size={17} className="text-sky-500 shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                          <button
-                            type="button"
-                            onClick={() => (isFolder ? setCurrentFolderId(node.id) : handlePreviewNode(node))}
-                            className="text-xs font-bold text-slate-800 dark:text-zinc-100 hover:underline truncate block text-left"
-                          >
-                            {node.name}
-                          </button>
-                          <span className="text-[11px] font-mono text-slate-500 block">
-                            {isFolder ? 'Pasta' : formatBytes(node.sizeBytes || node.size_bytes)} • v{node.currentVersion || node.current_version || 1} • {node.effectiveAccess || 'full_control'}
-                          </span>
-                        </div>
-                        {lockedBy && (
-                          <span
-                            data-testid={`lock-badge-${node.id}`}
-                            className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 flex items-center gap-1"
-                          >
-                            <Lock size={11} />
-                            <span>Em edição por {lockedBy}</span>
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        {!isFolder && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handlePreviewNode(node)}
-                              className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-semibold flex items-center gap-1"
-                            >
-                              <Eye size={13} />
-                              <span>Preview</span>
-                            </button>
-                            {!isViewerOnline && (
-                              <button
-                                type="button"
-                                onClick={() => handleDownloadNode(node)}
-                                className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-semibold flex items-center gap-1"
-                              >
-                                <Download size={13} />
-                                <span>Baixar</span>
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleLoadVersions(node)}
-                              className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-semibold flex items-center gap-1"
-                            >
-                              <History size={13} />
-                              <span>Versões</span>
-                            </button>
-                            {canWrite && (
-                              <button
-                                type="button"
-                                onClick={() => handleToggleLock(node)}
-                                className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-semibold flex items-center gap-1"
-                              >
-                                {lockedBy ? <Unlock size={13} /> : <Lock size={13} />}
-                                <span>{lockedBy ? 'Desbloquear' : 'Bloquear'}</span>
-                              </button>
-                            )}
-                          </>
-                        )}
-                        {canWrite && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteNode(node)}
-                            aria-label={`Excluir ${node.name}`}
-                            className="px-2.5 py-1 rounded-lg border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-1"
-                          >
-                            <Trash2 size={13} />
-                            <span>Excluir</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <h3 className="text-xs font-bold uppercase text-slate-500">Itens na Lixeira (.nexus_trash)</h3>
-              {trashNodes.length === 0 ? (
-                <p className="text-xs text-slate-500 py-4">A lixeira está vazia.</p>
-              ) : (
-                trashNodes.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between py-2 px-3 rounded-xl bg-slate-50 dark:bg-zinc-900 text-xs">
-                    <div>
-                      <span className="font-bold">{t.name}</span>
-                      <span className="ml-2 font-mono text-slate-500">{t.originalVirtualPath || t.virtualPath}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleRestoreTrashNode(t.id)}
-                        className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-bold"
-                      >
-                        Restaurar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handlePurgeTrashNode(t.id)}
-                        className="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-bold"
-                      >
-                        Expurgar
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {nodeVersions.length > 0 && activeNode && (
-            <div className="rounded-xl border border-slate-200 dark:border-zinc-800 p-3 space-y-2">
-              <h4 className="text-xs font-bold">Histórico de Versões — {activeNode.name}</h4>
-              {nodeVersions.map((v) => (
-                <div key={v.id || v.versionNumber || v.version_number} className="flex items-center justify-between text-xs py-1">
-                  <span>
-                    v{v.versionNumber || v.version_number} • {formatBytes(v.sizeBytes || v.size_bytes)} • SHA-256: {(v.sha256Hash || v.sha256_hash || '').slice(0, 12)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleRestoreVersion(activeNode.id, v.versionNumber || v.version_number)}
-                    className="px-2.5 py-1 rounded-lg border border-brand/40 text-brand-aa font-bold"
-                  >
-                    Restaurar v{v.versionNumber || v.version_number}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {previewInfo && (
-            <div data-testid="file-preview-modal" className="rounded-xl border border-slate-200 dark:border-zinc-800 p-4 space-y-2 bg-slate-50 dark:bg-zinc-900">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold">Visualização Online — {previewInfo.node.name} ({previewInfo.contentType})</span>
-                <button type="button" onClick={() => setPreviewInfo(null)} className="text-xs font-bold text-rose-500">
-                  Fechar Preview
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <WindowsFileExplorer
+          nodes={nodes}
+          trashNodes={trashNodes}
+          quotaInfo={quotaInfo}
+          canWrite={canWrite}
+          canManageAcl={canManageAcl}
+          currentFolderId={currentFolderId}
+          onChangeFolder={setCurrentFolderId}
+          showTrash={showTrash}
+          onOpenTrash={handleLoadTrash}
+          onCloseTrash={() => setShowTrash(false)}
+          searchQuery={searchQuery}
+          onChangeSearch={setSearchQuery}
+          selectedNodeIds={selectedNodeIds}
+          onChangeSelectedIds={setSelectedNodeIds}
+          activeNode={activeNode}
+          nodeVersions={nodeVersions}
+          previewInfo={previewInfo}
+          onClosePreview={closePreviewInfo}
+          onRefresh={loadVaultOverview}
+          onCreateFolder={handleCreateFolder}
+          onUploadFiles={handleUploadFiles}
+          onRenameNode={handleRenameNode}
+          onMoveNode={handleMoveNode}
+          onCopyNode={handleCopyNode}
+          onPreviewNode={handlePreviewNode}
+          onDownloadNode={handleDownloadNode}
+          onDownloadZip={handleDownloadZip}
+          onToggleLock={handleToggleLock}
+          onDeleteNodes={handleDeleteNodes}
+          onLoadVersions={handleLoadVersions}
+          onRestoreVersion={handleRestoreVersion}
+          onRestoreTrashNode={handleRestoreTrashNode}
+          onPurgeTrashNode={handlePurgeTrashNode}
+          onOpenSheet={handleOpenSheetFromExplorer}
+          onCreateSheet={handleCreateSheetInFolder}
+          onCreateShareLink={handleCreateShareLinkForNode}
+          uploadingCount={uploadingCount}
+        />
       )}
 
       {/* TAB 3: MATRIZ ACL & AUDITORIA SHA-256 */}

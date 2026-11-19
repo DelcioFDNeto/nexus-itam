@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import PortalIcon from './PortalIcon.vue';
 import { getStoredSession, portalApi } from '../services/nexusApi';
 import { evaluateCellValue, evaluateSheetFormulas } from '../utils/sheetFormulaEngine.js';
@@ -15,11 +15,39 @@ const props = defineProps({
 
 const nodes = ref([]);
 const loading = ref(false);
+const uploadingCount = ref(0);
 const errorBanner = ref('');
 const planUpgradeNotice = ref('');
+
+// Windows Explorer Navigation & View State
 const currentFolderId = ref(null);
+const navHistory = ref([null]);
+const navIndex = ref(0);
+const searchQuery = ref('');
+const viewMode = ref('details'); // 'details' | 'grid'
+const sortBy = ref('name'); // 'name' | 'type' | 'size'
+const sortDir = ref('asc');
+const selectedNodeId = ref(null);
+
+// Inline Create Folder & Inline Rename (F2)
+const creatingFolder = ref(false);
 const newFolderName = ref('');
+const renamingNodeId = ref(null);
+const renameDraft = ref('');
+
+// Clipboard (Copy / Cut / Paste) & Drag-Drop
+const clipboard = ref(null); // { mode: 'copy' | 'cut', nodeId }
+const isExternalDragOver = ref(false);
+const dragOverFolderId = ref(null);
+
+// Right-Click Context Menu
+const contextMenu = ref(null); // { x, y, node }
+
+// Real Inline Preview State
 const previewNode = ref(null);
+const previewContentType = ref('');
+const previewObjectUrl = ref(null);
+const previewTextContent = ref(null);
 
 // Nexus Sheets Live state
 const activeSheetNode = ref(null);
@@ -43,26 +71,25 @@ const sheetPeers = ref([]);
 const remoteCursors = ref({});
 
 let ownWsHandle = null;
+const fileInputEl = ref(null);
+const newFolderInputEl = ref(null);
 
-const resolvedEmail = computed(() => {
-  return String(
-    props.userEmail ||
-      props.user?.email ||
-      getStoredSession()?.user?.email ||
-      '',
-  )
+const ACCESS_LABELS_PT = {
+  full_control: 'Controle Total',
+  editor: 'Editor',
+  reader: 'Leitor (Download)',
+  viewer_online: 'Somente Leitura Online',
+};
+
+const resolvedEmail = computed(() =>
+  String(props.userEmail || props.user?.email || getStoredSession()?.user?.email || '')
     .toLowerCase()
-    .trim();
-});
+    .trim(),
+);
 
-const resolvedDepartment = computed(() => {
-  return String(
-    props.userDepartment ||
-      props.user?.department ||
-      getStoredSession()?.user?.department ||
-      '',
-  ).trim();
-});
+const resolvedDepartment = computed(() =>
+  String(props.userDepartment || props.user?.department || getStoredSession()?.user?.department || '').trim(),
+);
 
 function formatBytes(bytes) {
   const num = Number(bytes || 0);
@@ -72,53 +99,170 @@ function formatBytes(bytes) {
   return `${(num / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Collaborator ACL visibility filter
-const visibleNodes = computed(() => {
-  return nodes.value.filter((n) => {
+function isFolder(node) {
+  return (node?.nodeType || node?.node_type || node?.type) === 'folder';
+}
+
+function isSpreadsheet(node) {
+  return !isFolder(node) && /\.(xlsx|xls|csv|nexusheet)$/i.test(String(node?.name || ''));
+}
+
+function isImageFile(node) {
+  return !isFolder(node) && /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(String(node?.name || ''));
+}
+
+function isArchiveFile(node) {
+  return !isFolder(node) && /\.(zip|rar|7z|tar|gz)$/i.test(String(node?.name || ''));
+}
+
+function getFileTypeLabel(node) {
+  if (isFolder(node)) return 'Pasta de arquivos';
+  const name = String(node?.name || '').toLowerCase();
+  if (/\.(xlsx|xls|csv|nexusheet)$/i.test(name)) return 'Planilha';
+  if (name.endsWith('.pdf')) return 'Documento PDF';
+  if (/\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(name)) return 'Imagem';
+  if (/\.(zip|rar|7z|tar|gz)$/i.test(name)) return 'Compactado';
+  if (/\.(docx?|odt|rtf)$/i.test(name)) return 'Documento Word';
+  if (/\.(txt|md|json|log|xml)$/i.test(name)) return 'Texto';
+  return 'Arquivo';
+}
+
+function getAccessLabel(node) {
+  const eff = String(node?.effectiveAccess || node?.effective_access || 'reader').toLowerCase();
+  return ACCESS_LABELS_PT[eff] || eff;
+}
+
+function triggerBrowserDownload(blob, fileName) {
+  if (!blob || typeof window === 'undefined' || typeof URL?.createObjectURL !== 'function') return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName || 'arquivo';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function closePreview() {
+  if (previewObjectUrl.value && typeof URL?.revokeObjectURL === 'function') {
+    URL.revokeObjectURL(previewObjectUrl.value);
+  }
+  previewObjectUrl.value = null;
+  previewTextContent.value = null;
+  previewContentType.value = '';
+  previewNode.value = null;
+}
+
+// Collaborator ACL visibility filter (strictly blocks restricted folders and 'none' nodes)
+const accessibleNodes = computed(() =>
+  nodes.value.filter((n) => {
+    if (!n || n.isTrashed || n.is_trashed) return false;
     const eff = String(n.effectiveAccess || n.effective_access || n.accessLevel || '').toLowerCase();
     if (eff === 'none') return false;
     const vPath = String(n.virtualPath || n.virtual_path || '');
     if (vPath === '/Cofre-TI-Infra' || vPath.startsWith('/Cofre-TI-Infra/')) return false;
     if (vPath === '/Chamados' || vPath.startsWith('/Chamados/')) return false;
-    if (currentFolderId.value) {
-      return (n.parentId || n.parent_id) === currentFolderId.value;
-    }
     return true;
+  }),
+);
+
+const accessibleById = computed(() => {
+  const m = new Map();
+  for (const n of accessibleNodes.value) m.set(n.id, n);
+  return m;
+});
+
+const rootFolders = computed(() =>
+  accessibleNodes.value
+    .filter((n) => {
+      if (!isFolder(n)) return false;
+      const pid = n.parentId || n.parent_id;
+      return !pid || !accessibleById.value.has(pid);
+    })
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR', { numeric: true })),
+);
+
+const breadcrumbs = computed(() => {
+  const trail = [{ id: null, label: 'Meus Arquivos' }];
+  const chain = [];
+  let cursor = currentFolderId.value ? accessibleById.value.get(currentFolderId.value) : null;
+  const guard = new Set();
+  while (cursor && !guard.has(cursor.id)) {
+    guard.add(cursor.id);
+    chain.unshift({ id: cursor.id, label: cursor.name });
+    const pid = cursor.parentId || cursor.parent_id;
+    cursor = pid ? accessibleById.value.get(pid) : null;
+  }
+  return [...trail, ...chain];
+});
+
+// Folders first, then files (Windows Explorer natural sorting)
+const visibleNodes = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase();
+  const list = accessibleNodes.value.filter((n) => {
+    if (q) {
+      return (
+        String(n.name || '').toLowerCase().includes(q) ||
+        String(n.virtualPath || n.virtual_path || '').toLowerCase().includes(q)
+      );
+    }
+    const pid = n.parentId || n.parent_id;
+    if (currentFolderId.value) {
+      return pid === currentFolderId.value;
+    }
+    return !pid || !accessibleById.value.has(pid);
+  });
+
+  const dir = sortDir.value === 'asc' ? 1 : -1;
+  return [...list].sort((a, b) => {
+    const af = isFolder(a);
+    const bf = isFolder(b);
+    if (af !== bf) return af ? -1 : 1;
+    if (sortBy.value === 'size') {
+      return (Number(a.sizeBytes ?? a.size_bytes ?? 0) - Number(b.sizeBytes ?? b.size_bytes ?? 0)) * dir;
+    }
+    if (sortBy.value === 'type') {
+      return getFileTypeLabel(a).localeCompare(getFileTypeLabel(b), 'pt-BR') * dir;
+    }
+    return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR', { numeric: true }) * dir;
   });
 });
 
-const currentFolderNode = computed(() => {
-  if (!currentFolderId.value) return null;
-  return nodes.value.find((n) => n.id === currentFolderId.value) || null;
-});
+const selectedNode = computed(() =>
+  selectedNodeId.value ? visibleNodes.value.find((n) => n.id === selectedNodeId.value) || null : null,
+);
+
+const currentFolderNode = computed(() =>
+  currentFolderId.value ? accessibleById.value.get(currentFolderId.value) || null : null,
+);
 
 const currentFolderAccess = computed(() => {
   if (currentFolderNode.value) {
     return String(
-      currentFolderNode.value.effectiveAccess ||
-        currentFolderNode.value.effective_access ||
-        'editor',
+      currentFolderNode.value.effectiveAccess || currentFolderNode.value.effective_access || 'editor',
     ).toLowerCase();
   }
   const writable = visibleNodes.value.some((n) =>
-    ['editor', 'full_control'].includes(
-      String(n.effectiveAccess || n.effective_access || '').toLowerCase(),
-    ),
+    ['editor', 'full_control'].includes(String(n.effectiveAccess || n.effective_access || '').toLowerCase()),
   );
   return writable ? 'editor' : 'reader';
 });
 
-const canWriteInCurrentFolder = computed(() => {
-  return ['editor', 'full_control'].includes(currentFolderAccess.value);
-});
+const canWriteInCurrentFolder = computed(() =>
+  ['editor', 'full_control'].includes(currentFolderAccess.value),
+);
+
+function canEditNode(node) {
+  const eff = String(node?.effectiveAccess || node?.effective_access || '').toLowerCase();
+  return ['editor', 'full_control'].includes(eff);
+}
 
 function canDeleteNode(node) {
   const eff = String(node.effectiveAccess || node.effective_access || '').toLowerCase();
   if (eff === 'full_control') return true;
   if (eff === 'editor') {
-    const creator = String(node.createdByEmail || node.created_by_email || '')
-      .toLowerCase()
-      .trim();
+    const creator = String(node.createdByEmail || node.created_by_email || '').toLowerCase().trim();
     if (!creator || !resolvedEmail.value) return false;
     return creator === resolvedEmail.value;
   }
@@ -130,10 +274,207 @@ function canDownloadNode(node) {
   return ['reader', 'editor', 'full_control'].includes(eff);
 }
 
+const canGoBack = computed(() => navIndex.value > 0);
+const canGoUp = computed(() => Boolean(currentFolderId.value));
+
+function navigateTo(folderId, pushHistory = true) {
+  contextMenu.value = null;
+  renamingNodeId.value = null;
+  creatingFolder.value = false;
+  selectedNodeId.value = null;
+  if (searchQuery.value) searchQuery.value = '';
+  currentFolderId.value = folderId || null;
+
+  if (pushHistory) {
+    const sliced = navHistory.value.slice(0, navIndex.value + 1);
+    if (sliced[sliced.length - 1] !== (folderId || null)) {
+      navHistory.value = [...sliced, folderId || null];
+      navIndex.value = navHistory.value.length - 1;
+    }
+  }
+}
+
+function goBack() {
+  if (!canGoBack.value) return;
+  navIndex.value -= 1;
+  navigateTo(navHistory.value[navIndex.value], false);
+}
+
+function goUp() {
+  if (!currentFolderId.value) return;
+  const pid = currentFolderNode.value ? currentFolderNode.value.parentId || currentFolderNode.value.parent_id : null;
+  navigateTo(pid && accessibleById.value.has(pid) ? pid : null);
+}
+
+function openItem(node) {
+  if (!node) return;
+  if (isFolder(node)) {
+    navigateTo(node.id);
+    return;
+  }
+  if (isSpreadsheet(node)) {
+    openSheetEditor(node);
+    return;
+  }
+  handlePreviewFile(node);
+}
+
+function startCreateFolder() {
+  if (!canWriteInCurrentFolder.value) return;
+  contextMenu.value = null;
+  creatingFolder.value = true;
+  newFolderName.value = 'Nova pasta';
+  nextTick(() => {
+    newFolderInputEl.value?.focus?.();
+    newFolderInputEl.value?.select?.();
+  });
+}
+
+function startRename(node) {
+  if (!node || !canEditNode(node)) return;
+  contextMenu.value = null;
+  renamingNodeId.value = node.id;
+  renameDraft.value = node.name || '';
+}
+
+async function commitRename(node) {
+  const trimmed = renameDraft.value.trim();
+  renamingNodeId.value = null;
+  if (!trimmed || trimmed === node.name) return;
+  if (trimmed.includes('..') || trimmed.includes('/') || trimmed.includes('\\')) {
+    errorBanner.value = 'Nome inválido: não utilize barras ou "..".';
+    return;
+  }
+  errorBanner.value = '';
+  try {
+    await portalApi.renameStorageNode(node.id, trimmed);
+    await loadDriveNodes();
+  } catch (err) {
+    errorBanner.value = err?.message || 'Não foi possível renomear o item.';
+  }
+}
+
+function setClipboardAction(mode, node) {
+  if (!node || !canEditNode(node)) return;
+  clipboard.value = { mode, nodeId: node.id };
+  contextMenu.value = null;
+}
+
+async function pasteClipboard() {
+  if (!clipboard.value || !canWriteInCurrentFolder.value) return;
+  const src = accessibleById.value.get(clipboard.value.nodeId);
+  if (!src) {
+    clipboard.value = null;
+    return;
+  }
+  errorBanner.value = '';
+  try {
+    if (clipboard.value.mode === 'cut') {
+      if (src.id !== currentFolderId.value && (src.parentId || src.parent_id || null) !== (currentFolderId.value || null)) {
+        await portalApi.updateStorageNode(src.id, { parentId: currentFolderId.value || null });
+      }
+      clipboard.value = null;
+    } else {
+      await portalApi.copyStorageNode(src.id, { targetParentId: currentFolderId.value || null });
+    }
+    await loadDriveNodes();
+  } catch (err) {
+    errorBanner.value = err?.message || 'Não foi possível colar o item nesta pasta.';
+  }
+}
+
+function openContextMenu(event, node = null) {
+  event.preventDefault();
+  event.stopPropagation();
+  if (node) selectedNodeId.value = node.id;
+  const maxW = typeof window !== 'undefined' ? window.innerWidth - 220 : 600;
+  const maxH = typeof window !== 'undefined' ? window.innerHeight - 280 : 400;
+  contextMenu.value = {
+    x: Math.max(12, Math.min(event.clientX, maxW)),
+    y: Math.max(12, Math.min(event.clientY, maxH)),
+    node,
+  };
+}
+
+function closeContextMenu() {
+  contextMenu.value = null;
+}
+
+function handleDragOverPane(event) {
+  if (!canWriteInCurrentFolder.value) return;
+  const hasFiles = Array.from(event.dataTransfer?.types || []).includes('Files');
+  if (hasFiles) {
+    event.preventDefault();
+    isExternalDragOver.value = true;
+  }
+}
+
+function handleDragLeavePane(event) {
+  if (event.currentTarget?.contains?.(event.relatedTarget)) return;
+  isExternalDragOver.value = false;
+}
+
+async function handleDropOnPane(event) {
+  event.preventDefault();
+  isExternalDragOver.value = false;
+  dragOverFolderId.value = null;
+  if (!canWriteInCurrentFolder.value) return;
+  const files = Array.from(event.dataTransfer?.files || []);
+  if (files.length > 0) {
+    await uploadMultipleFiles(files, currentFolderId.value);
+  }
+}
+
+function handleItemDragStart(event, node) {
+  if (!canEditNode(node)) return;
+  event.dataTransfer?.setData('application/x-nexus-portal-node', node.id);
+}
+
+async function handleDropOnFolder(event, targetFolderId) {
+  event.preventDefault();
+  event.stopPropagation();
+  dragOverFolderId.value = null;
+  isExternalDragOver.value = false;
+  const files = Array.from(event.dataTransfer?.files || []);
+  if (files.length > 0) {
+    await uploadMultipleFiles(files, targetFolderId);
+    return;
+  }
+  const draggedId = event.dataTransfer?.getData('application/x-nexus-portal-node');
+  if (!draggedId || draggedId === targetFolderId) return;
+  try {
+    await portalApi.updateStorageNode(draggedId, { parentId: targetFolderId || null });
+    await loadDriveNodes();
+  } catch (err) {
+    errorBanner.value = err?.message || 'Não foi possível mover este item.';
+  }
+}
+
+function handleExplorerKeydown(event) {
+  const tag = String(event.target?.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  if (event.key === 'Escape') {
+    contextMenu.value = null;
+    creatingFolder.value = false;
+    renamingNodeId.value = null;
+    clipboard.value = null;
+  } else if (event.key === 'F2' && selectedNode.value && canEditNode(selectedNode.value)) {
+    event.preventDefault();
+    startRename(selectedNode.value);
+  } else if (event.key === 'Enter' && selectedNode.value) {
+    event.preventDefault();
+    openItem(selectedNode.value);
+  } else if (event.key === 'Backspace' && canGoUp.value) {
+    event.preventDefault();
+    goUp();
+  } else if (event.key === 'Delete' && selectedNode.value && canDeleteNode(selectedNode.value)) {
+    event.preventDefault();
+    handleDeleteFile(selectedNode.value);
+  }
+}
+
 const evaluatedTabs = computed(() => evaluateSheetFormulas(sheetTabs.value));
-const currentTab = computed(
-  () => sheetTabs.value[activeSheetTabIdx.value] || sheetTabs.value[0],
-);
+const currentTab = computed(() => sheetTabs.value[activeSheetTabIdx.value] || sheetTabs.value[0]);
 const evaluatedCurrentTab = computed(
   () => evaluatedTabs.value[activeSheetTabIdx.value] || evaluatedTabs.value[0],
 );
@@ -169,7 +510,10 @@ async function loadDriveNodes() {
 
 async function handleCreateFolder() {
   const name = newFolderName.value.trim();
-  if (!name) return;
+  if (!name) {
+    creatingFolder.value = false;
+    return;
+  }
   if (name.includes('..') || name.includes('/') || name.includes('\\')) {
     errorBanner.value = 'Nome de pasta inválido (Path Traversal bloqueado).';
     return;
@@ -185,34 +529,61 @@ async function handleCreateFolder() {
       nodes.value = [...nodes.value, created];
     }
     newFolderName.value = '';
+    creatingFolder.value = false;
   } catch (err) {
     errorBanner.value = err?.message || 'Erro ao criar pasta.';
   }
 }
 
-async function handleUploadFile(event) {
-  const file = event?.target?.files?.[0];
-  if (!file) return;
+async function uploadMultipleFiles(files, targetFolderId = currentFolderId.value) {
+  if (!files || files.length === 0) return;
   errorBanner.value = '';
+  uploadingCount.value = files.length;
   try {
-    const res = await portalApi.uploadStorageFile(file, {
-      parentId: currentFolderId.value,
-      fileName: file.name,
-      conflictPolicy: 'version',
-    });
-    const created = res?.node || res;
-    if (created?.id) {
-      nodes.value = [...nodes.value.filter((n) => n.id !== created.id), created];
+    for (const file of files) {
+      const res = await portalApi.uploadStorageFile(file, {
+        parentId: targetFolderId,
+        fileName: file.name,
+        conflictPolicy: 'version',
+      });
+      const created = res?.node || res;
+      if (created?.id) {
+        nodes.value = [...nodes.value.filter((n) => n.id !== created.id), created];
+      }
     }
   } catch (err) {
     errorBanner.value = err?.message || 'Falha no upload do arquivo (verifique cota ou bloqueio).';
+  } finally {
+    uploadingCount.value = 0;
   }
+}
+
+async function handleUploadFile(event) {
+  const files = Array.from(event?.target?.files || []);
+  if (files.length === 0) return;
+  await uploadMultipleFiles(files, currentFolderId.value);
+  if (event?.target) event.target.value = '';
 }
 
 async function handlePreviewFile(node) {
   errorBanner.value = '';
   try {
-    await portalApi.previewStorageFile(node.id);
+    const res = await portalApi.previewStorageFile(node.id);
+    closePreview();
+    const ct = res?.contentType || node.mimeType || node.mime_type || 'application/octet-stream';
+    previewContentType.value = ct;
+    if (res?.blob) {
+      const lower = String(ct).toLowerCase();
+      const isText =
+        lower.startsWith('text/') ||
+        lower.includes('json') ||
+        /\.(txt|md|json|csv|log|xml)$/i.test(String(node.name || ''));
+      if (isText && typeof res.blob.text === 'function') {
+        previewTextContent.value = await res.blob.text();
+      } else if (typeof URL?.createObjectURL === 'function') {
+        previewObjectUrl.value = URL.createObjectURL(res.blob);
+      }
+    }
     previewNode.value = node;
   } catch (err) {
     errorBanner.value = err?.message || 'Falha ao abrir preview online.';
@@ -226,7 +597,10 @@ async function handleDownloadFile(node) {
   }
   errorBanner.value = '';
   try {
-    await portalApi.downloadStorageFile(node.id);
+    const res = await portalApi.downloadStorageFile(node.id);
+    if (res?.blob) {
+      triggerBrowserDownload(res.blob, node.name);
+    }
   } catch (err) {
     errorBanner.value = err?.message || 'Falha ao baixar arquivo.';
   }
@@ -241,6 +615,7 @@ async function handleDeleteFile(node) {
   try {
     await portalApi.deleteStorageNode(node.id);
     nodes.value = nodes.value.filter((n) => n.id !== node.id);
+    if (selectedNodeId.value === node.id) selectedNodeId.value = null;
   } catch (err) {
     errorBanner.value = err?.message || 'Falha ao excluir arquivo.';
   }
@@ -335,27 +710,27 @@ function handleIncomingSheetFrame(frame) {
   } else if (evt === 'sheet.presence' && Array.isArray(data.peers)) {
     sheetPeers.value = data.peers;
   } else if (evt === 'sheet.cursor' && (data.cellRef || data.cell)) {
-    const ref = data.cellRef || data.cell;
+    const refCell = data.cellRef || data.cell;
     remoteCursors.value = {
       ...remoteCursors.value,
       [data.userEmail || data.email || 'peer']: {
         userEmail: data.userEmail || data.email,
         userName: data.userName || data.name || data.userEmail,
         tabName: data.tabName || data.tab || 'Planilha1',
-        cellRef: ref,
+        cellRef: refCell,
       },
     };
   } else if (evt === 'sheet.cell.patch' && (data.cellRef || data.cell)) {
-    const ref = data.cellRef || data.cell;
+    const refCell = data.cellRef || data.cell;
     const targetTab = data.tabName || data.tab || sheetTabs.value[0]?.name || 'Planilha1';
     sheetTabs.value = evaluateSheetFormulas(
       sheetTabs.value.map((t) => {
         if (t.name !== targetTab) return t;
         const nextCells = { ...(t.cells || {}) };
-        nextCells[ref] = {
-          ...(nextCells[ref] || {}),
-          value: data.value !== undefined ? String(data.value) : nextCells[ref]?.value,
-          formula: data.formula !== undefined ? data.formula : nextCells[ref]?.formula || null,
+        nextCells[refCell] = {
+          ...(nextCells[refCell] || {}),
+          value: data.value !== undefined ? String(data.value) : nextCells[refCell]?.value,
+          formula: data.formula !== undefined ? data.formula : nextCells[refCell]?.formula || null,
         };
         return { ...t, cells: nextCells };
       }),
@@ -375,6 +750,9 @@ watch(
 );
 
 onMounted(async () => {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('click', closeContextMenu);
+  }
   if (!props.streamHandle) {
     const stored = getStoredSession();
     if (stored?.token && typeof portalApi.connectRealtimeStream === 'function') {
@@ -389,6 +767,10 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('click', closeContextMenu);
+  }
+  closePreview();
   if (ownWsHandle) {
     ownWsHandle.disconnect?.();
     ownWsHandle = null;
@@ -398,41 +780,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="space-y-5">
-    <!-- Header Banner -->
-    <div class="station-panel p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-      <div>
-        <div class="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-text-light dark:text-brand-text-dark">
-          <PortalIcon name="hard-drive" :size="16" />
-          <span>Nexus Cloud Drive • {{ resolvedDepartment || 'Corporativo' }}</span>
-        </div>
-        <h2 class="text-lg font-bold text-slate-900 dark:text-[#fafafa] mt-1">
-          Arquivos &amp; Nuvem Corporativa
-        </h2>
-        <p class="text-xs text-slate-600 dark:text-slate-300">
-          Acesse pastas públicas, arquivos do seu setor, seu espaço pessoal e coedite planilhas Nexus Sheets em tempo real.
-        </p>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-2">
-        <button
-          v-if="currentFolderId"
-          type="button"
-          class="min-h-[40px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold"
-          @click="currentFolderId = null"
-        >
-          Voltar para Raiz (/)
-        </button>
-        <button
-          type="button"
-          class="min-h-[40px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-bold inline-flex items-center gap-1.5"
-          @click="loadDriveNodes"
-        >
-          <PortalIcon name="refresh-cw" :size="14" />
-          <span>Atualizar</span>
-        </button>
-      </div>
-    </div>
-
     <!-- Plan upgrade or error banners -->
     <div
       v-if="planUpgradeNotice"
@@ -447,166 +794,656 @@ onBeforeUnmount(() => {
       v-if="errorBanner"
       role="alert"
       data-testid="cloud-error-banner"
-      class="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-xs font-semibold text-rose-700 dark:text-rose-300"
+      class="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center justify-between gap-2"
     >
-      {{ errorBanner }}
+      <span>{{ errorBanner }}</span>
+      <button type="button" class="p-1" aria-label="Fechar aviso" @click="errorBanner = ''">
+        <PortalIcon name="x" :size="14" />
+      </button>
     </div>
 
-    <!-- Folder & Upload Controls (only when user has editor/full_control access) -->
+    <!-- WINDOWS 11 EXPLORER SHELL -->
     <div
-      v-if="!planUpgradeNotice && canWriteInCurrentFolder"
-      class="station-panel p-4 flex flex-wrap items-center justify-between gap-3"
+      v-if="!planUpgradeNotice"
+      tabindex="0"
+      class="station-panel overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+      @keydown="handleExplorerKeydown"
     >
-      <form class="flex items-center gap-2" @submit.prevent="handleCreateFolder">
-        <input
-          v-model="newFolderName"
-          type="text"
-          aria-label="Nova pasta"
-          placeholder="Nome da nova pasta..."
-          class="min-h-[40px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs"
-        />
-        <button
-          type="submit"
-          class="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-brand text-brand-fg text-xs font-bold inline-flex items-center gap-1.5"
-        >
-          <PortalIcon name="plus" :size="15" />
-          <span>Criar Pasta</span>
-        </button>
-      </form>
-
-      <label
-        class="min-h-[40px] px-3.5 py-1.5 rounded-xl border border-brand/40 bg-brand/10 text-brand-text-light dark:text-brand-text-dark text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
-      >
-        <PortalIcon name="paperclip" :size="15" />
-        <span>Enviar Arquivo</span>
-        <input
-          type="file"
-          aria-label="Enviar arquivo para a nuvem"
-          class="hidden"
-          @change="handleUploadFile"
-        />
-      </label>
-    </div>
-
-    <!-- VFS Node List -->
-    <div v-if="!planUpgradeNotice" class="station-panel divide-y divide-slate-100 dark:divide-zinc-800">
-      <div v-if="loading && visibleNodes.length === 0" class="p-8 text-center text-xs text-slate-500">
-        Carregando arquivos da nuvem corporativa…
-      </div>
-      <div v-else-if="visibleNodes.length === 0" class="p-8 text-center text-xs text-slate-500">
-        Nenhum arquivo ou pasta disponível neste diretório.
-      </div>
-      <div
-        v-for="node in visibleNodes"
-        :key="node.id"
-        :data-testid="`portal-node-${node.name}`"
-        class="p-3.5 flex flex-wrap items-center justify-between gap-3 hover:bg-slate-50/80 dark:hover:bg-zinc-900/50"
-      >
-        <div class="flex items-center gap-3 min-w-0">
-          <PortalIcon
-            v-if="(node.nodeType || node.node_type || node.type) === 'folder'"
-            name="package"
-            :size="18"
-          />
-          <PortalIcon
-            v-else
-            name="file-text"
-            :size="18"
-          />
-          <div class="min-w-0">
-            <button
-              type="button"
-              class="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#fafafa] hover:underline truncate block text-left"
-              @click="
-                (node.nodeType || node.node_type || node.type) === 'folder'
-                  ? (currentFolderId = node.id)
-                  : /\.(xlsx|csv|nexusheet)$/i.test(node.name)
-                    ? openSheetEditor(node)
-                    : handlePreviewFile(node)
-              "
-            >
-              {{ node.name }}
-            </button>
-            <span class="text-[11px] font-mono text-slate-500 block">
-              {{ (node.nodeType || node.node_type || node.type) === 'folder' ? 'Pasta' : formatBytes(node.sizeBytes || node.size_bytes) }}
-              • Permissão: {{ node.effectiveAccess || node.effective_access || 'reader' }}
+      <!-- Command Bar (Ribbon estilo Windows) -->
+      <div class="px-3.5 py-2.5 border-b border-slate-200 dark:border-zinc-800 bg-slate-50/80 dark:bg-zinc-900/60 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-1.5">
+          <div class="flex items-center gap-1.5 pr-2 mr-1 border-r border-slate-200 dark:border-zinc-700">
+            <PortalIcon name="hard-drive" :size="15" />
+            <span class="text-xs font-bold text-slate-900 dark:text-[#fafafa]">
+              Arquivos &amp; Nuvem • {{ resolvedDepartment || 'Corporativo' }}
             </span>
           </div>
 
-          <span
-            v-if="node.lockedByEmail || node.locked_by_email"
-            :data-testid="`portal-lock-${node.id}`"
-            class="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-300 text-[11px] font-bold inline-flex items-center gap-1"
-          >
-            <PortalIcon name="lock" :size="11" />
-            <span>Em edição por {{ node.lockedByEmail || node.locked_by_email }}</span>
-          </span>
+          <template v-if="canWriteInCurrentFolder">
+            <button
+              type="button"
+              class="min-h-[34px] px-3 py-1 rounded-lg bg-brand text-brand-fg text-xs font-bold inline-flex items-center gap-1.5"
+              @click="startCreateFolder"
+            >
+              <PortalIcon name="folder-plus" :size="14" />
+              <span>Nova Pasta</span>
+            </button>
+
+            <label
+              class="min-h-[34px] px-3 py-1 rounded-lg border border-brand/40 bg-brand/10 text-brand-text-light dark:text-brand-text-dark text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <PortalIcon name="upload-cloud" :size="14" />
+              <span>{{ uploadingCount > 0 ? `Enviando (${uploadingCount})...` : 'Enviar Arquivos' }}</span>
+              <input
+                ref="fileInputEl"
+                type="file"
+                multiple
+                aria-label="Enviar arquivo para a nuvem"
+                class="hidden"
+                @change="handleUploadFile"
+              />
+            </label>
+
+            <button
+              v-if="selectedNode && canEditNode(selectedNode)"
+              type="button"
+              title="Renomear (F2)"
+              class="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-semibold inline-flex items-center gap-1"
+              @click="startRename(selectedNode)"
+            >
+              <PortalIcon name="edit" :size="13" />
+              <span class="hidden sm:inline">Renomear</span>
+            </button>
+
+            <button
+              v-if="selectedNode && canEditNode(selectedNode)"
+              type="button"
+              title="Copiar item"
+              class="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-semibold inline-flex items-center gap-1"
+              @click="setClipboardAction('copy', selectedNode)"
+            >
+              <PortalIcon name="copy" :size="13" />
+              <span class="hidden md:inline">Copiar</span>
+            </button>
+
+            <button
+              v-if="clipboard"
+              type="button"
+              class="min-h-[34px] px-2.5 py-1 rounded-lg bg-sky-600 text-white text-xs font-bold inline-flex items-center gap-1"
+              @click="pasteClipboard"
+            >
+              <PortalIcon name="plus" :size="13" />
+              <span>Colar Aqui</span>
+            </button>
+          </template>
         </div>
 
         <div class="flex items-center gap-1.5">
-          <template v-if="(node.nodeType || node.node_type || node.type) !== 'folder'">
-            <button
-              type="button"
-              class="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-semibold inline-flex items-center gap-1"
-              @click="handlePreviewFile(node)"
-            >
-              <PortalIcon name="eye" :size="13" />
-              <span>Visualizar</span>
-            </button>
+          <select
+            aria-label="Ordenar arquivos"
+            :value="`${sortBy}:${sortDir}`"
+            class="min-h-[34px] px-2 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-semibold"
+            @change="
+              (e) => {
+                const [f, d] = e.target.value.split(':');
+                sortBy = f;
+                sortDir = d;
+              }
+            "
+          >
+            <option value="name:asc">Nome (A–Z)</option>
+            <option value="name:desc">Nome (Z–A)</option>
+            <option value="size:desc">Maior tamanho</option>
+            <option value="type:asc">Tipo</option>
+          </select>
 
+          <div class="inline-flex rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-0.5 text-xs">
             <button
-              v-if="/\.(xlsx|csv|nexusheet)$/i.test(node.name)"
               type="button"
-              class="px-2.5 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-bold inline-flex items-center gap-1"
-              @click="openSheetEditor(node)"
+              title="Detalhes"
+              :class="viewMode === 'details' ? 'bg-brand text-brand-fg' : 'text-slate-600 dark:text-zinc-300'"
+              class="px-2 py-1 rounded-md font-bold"
+              @click="viewMode = 'details'"
             >
-              <PortalIcon name="file-text" :size="13" />
-              <span>Abrir Planilha</span>
+              Lista
             </button>
-
             <button
-              v-if="canDownloadNode(node)"
               type="button"
-              :data-testid="`portal-download-${node.id}`"
-              class="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-700 text-xs font-semibold inline-flex items-center gap-1"
-              @click="handleDownloadFile(node)"
+              title="Ícones Grandes"
+              :class="viewMode === 'grid' ? 'bg-brand text-brand-fg' : 'text-slate-600 dark:text-zinc-300'"
+              class="px-2 py-1 rounded-md font-bold"
+              @click="viewMode = 'grid'"
             >
-              <PortalIcon name="download" :size="13" />
-              <span>Baixar</span>
+              Ícones
             </button>
-          </template>
+          </div>
 
           <button
-            v-if="canDeleteNode(node)"
             type="button"
-            :data-testid="`portal-delete-${node.id}`"
-            class="px-2.5 py-1.5 rounded-xl border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-semibold inline-flex items-center gap-1"
-            @click="handleDeleteFile(node)"
+            title="Atualizar"
+            class="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-bold inline-flex items-center gap-1"
+            @click="loadDriveNodes"
           >
-            <PortalIcon name="trash-2" :size="13" />
-            <span>Excluir</span>
+            <PortalIcon name="refresh-cw" :size="13" />
           </button>
         </div>
       </div>
+
+      <!-- Navigation & Address Bar (← ↑ | Breadcrumbs | Search) -->
+      <div class="px-3.5 py-2 border-b border-slate-200 dark:border-zinc-800 flex flex-wrap items-center gap-2">
+        <div class="flex items-center gap-1">
+          <button
+            type="button"
+            :disabled="!canGoBack"
+            title="Voltar"
+            aria-label="Voltar pasta"
+            class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 disabled:opacity-30"
+            @click="goBack"
+          >
+            <PortalIcon name="arrow-left" :size="15" />
+          </button>
+          <button
+            type="button"
+            :disabled="!canGoUp"
+            title="Subir um nível"
+            aria-label="Subir um nível"
+            class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 disabled:opacity-30"
+            @click="goUp"
+          >
+            <PortalIcon name="chevron-up" :size="15" />
+          </button>
+        </div>
+
+        <nav
+          aria-label="Caminho atual"
+          class="flex-1 min-w-[180px] min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 flex items-center gap-1 overflow-x-auto text-xs"
+        >
+          <PortalIcon name="folder-open" :size="14" />
+          <template v-for="(crumb, idx) in breadcrumbs" :key="`${crumb.id ?? 'root'}-${idx}`">
+            <PortalIcon v-if="idx > 0" name="chevron-right" :size="12" />
+            <button
+              type="button"
+              class="px-1.5 py-0.5 rounded hover:bg-slate-200/70 dark:hover:bg-zinc-800 whitespace-nowrap"
+              :class="idx === breadcrumbs.length - 1 ? 'font-bold text-slate-900 dark:text-white' : 'text-slate-600 dark:text-zinc-300'"
+              @click="navigateTo(crumb.id)"
+            >
+              {{ crumb.label }}
+            </button>
+          </template>
+        </nav>
+
+        <div class="relative w-full sm:w-56">
+          <span class="absolute left-2.5 top-2.5 text-slate-400">
+            <PortalIcon name="search" :size="14" />
+          </span>
+          <input
+            v-model="searchQuery"
+            type="search"
+            aria-label="Pesquisar arquivos"
+            placeholder="Pesquisar arquivos..."
+            class="w-full min-h-[34px] pl-8 pr-3 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 text-xs"
+          />
+        </div>
+      </div>
+
+      <!-- 2-Pane Windows Explorer Body -->
+      <div class="flex flex-col md:flex-row min-h-[360px]">
+        <!-- Left Quick Access Folders -->
+        <aside
+          v-if="rootFolders.length > 0"
+          class="md:w-52 shrink-0 border-b md:border-b-0 md:border-r border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/30 p-2.5 space-y-1"
+        >
+          <p class="px-2 pt-0.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Pastas Liberadas
+          </p>
+          <button
+            type="button"
+            class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left"
+            :class="!currentFolderId ? 'bg-brand/15 font-bold text-brand-text-light dark:text-brand-text-dark' : 'text-slate-700 dark:text-zinc-300 hover:bg-slate-200/70 dark:hover:bg-zinc-800'"
+            @click="navigateTo(null)"
+          >
+            <PortalIcon name="hard-drive" :size="14" />
+            <span>Início (Todas)</span>
+          </button>
+
+          <button
+            v-for="folder in rootFolders"
+            :key="`tree-${folder.id}`"
+            type="button"
+            class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left truncate"
+            :class="
+              dragOverFolderId === folder.id
+                ? 'bg-brand/25 ring-1 ring-brand font-bold'
+                : currentFolderId === folder.id
+                  ? 'bg-brand/15 font-bold text-brand-text-light dark:text-brand-text-dark'
+                  : 'text-slate-700 dark:text-zinc-300 hover:bg-slate-200/70 dark:hover:bg-zinc-800'
+            "
+            @click="navigateTo(folder.id)"
+            @dragover.prevent="dragOverFolderId = folder.id"
+            @dragleave="dragOverFolderId = null"
+            @drop="handleDropOnFolder($event, folder.id)"
+          >
+            <PortalIcon name="folder" :size="14" />
+            <span class="truncate">{{ folder.name }}</span>
+          </button>
+        </aside>
+
+        <!-- Center Content Area (OS Drag-Drop Upload + Context Menu) -->
+        <div
+          class="relative flex-1 min-w-0 overflow-auto"
+          @dragover="handleDragOverPane"
+          @dragleave="handleDragLeavePane"
+          @drop="handleDropOnPane"
+          @contextmenu="openContextMenu($event, null)"
+        >
+          <div
+            v-if="isExternalDragOver"
+            class="absolute inset-2 z-20 rounded-xl border-2 border-dashed border-brand bg-brand/10 flex flex-col items-center justify-center gap-2 pointer-events-none"
+          >
+            <PortalIcon name="upload-cloud" :size="32" />
+            <p class="text-xs font-bold">Solte os arquivos aqui para enviar para esta pasta</p>
+          </div>
+
+          <!-- Inline Create Folder Row -->
+          <form
+            v-if="creatingFolder && canWriteInCurrentFolder"
+            class="mx-3 mt-3 mb-1 px-3 py-2 rounded-xl border border-brand/40 bg-brand/5 flex items-center gap-2"
+            @submit.prevent="handleCreateFolder"
+          >
+            <PortalIcon name="folder" :size="16" />
+            <input
+              ref="newFolderInputEl"
+              v-model="newFolderName"
+              type="text"
+              aria-label="Nova pasta"
+              placeholder="Nome da nova pasta..."
+              class="flex-1 min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-semibold"
+              @keydown.esc.stop="creatingFolder = false"
+            />
+            <button
+              type="submit"
+              class="px-3 py-1.5 rounded-lg bg-brand text-brand-fg text-xs font-bold inline-flex items-center gap-1"
+            >
+              <PortalIcon name="check" :size="13" />
+              <span>Criar</span>
+            </button>
+            <button type="button" class="p-1.5 text-slate-500" @click="creatingFolder = false">
+              <PortalIcon name="x" :size="14" />
+            </button>
+          </form>
+
+          <div v-if="loading && visibleNodes.length === 0" class="p-10 text-center text-xs text-slate-500">
+            Carregando arquivos da nuvem corporativa…
+          </div>
+          <div v-else-if="visibleNodes.length === 0" class="p-10 text-center space-y-1.5">
+            <p class="text-xs font-bold text-slate-600 dark:text-zinc-300">
+              {{ searchQuery ? `Nenhum item encontrado para "${searchQuery}".` : 'Esta pasta está vazia.' }}
+            </p>
+            <p v-if="canWriteInCurrentFolder && !searchQuery" class="text-[11px] text-slate-500">
+              Arraste arquivos do seu computador para cá ou clique em Enviar Arquivos / Nova Pasta.
+            </p>
+          </div>
+
+          <!-- DETAILS TABLE VIEW -->
+          <table v-else-if="viewMode === 'details'" class="w-full text-left border-collapse text-xs">
+            <thead class="sticky top-0 bg-slate-50 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 text-[11px] text-slate-500 font-bold">
+              <tr>
+                <th class="py-2 pl-3.5 pr-2">Nome</th>
+                <th class="py-2 px-2 hidden sm:table-cell w-28">Tipo</th>
+                <th class="py-2 px-2 hidden sm:table-cell w-20 text-right">Tamanho</th>
+                <th class="py-2 px-2 hidden lg:table-cell w-36">Permissão</th>
+                <th class="py-2 pl-2 pr-3.5 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-zinc-800/70">
+              <tr
+                v-for="node in visibleNodes"
+                :key="node.id"
+                :data-testid="`portal-node-${node.name}`"
+                :draggable="canEditNode(node)"
+                class="select-none transition-colors"
+                :class="[
+                  clipboard?.mode === 'cut' && clipboard.nodeId === node.id ? 'opacity-50' : '',
+                  dragOverFolderId === node.id
+                    ? 'bg-brand/20'
+                    : selectedNodeId === node.id
+                      ? 'bg-brand/10'
+                      : 'hover:bg-slate-50/80 dark:hover:bg-zinc-900/50',
+                ]"
+                @click="selectedNodeId = node.id"
+                @dblclick="openItem(node)"
+                @contextmenu="openContextMenu($event, node)"
+                @dragstart="handleItemDragStart($event, node)"
+                @dragover="isFolder(node) && canEditNode(node) ? ($event.preventDefault(), (dragOverFolderId = node.id)) : null"
+                @dragleave="dragOverFolderId === node.id ? (dragOverFolderId = null) : null"
+                @drop="isFolder(node) ? handleDropOnFolder($event, node.id) : null"
+              >
+                <td class="py-2.5 pl-3.5 pr-2">
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <span class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                      <PortalIcon v-if="isFolder(node)" name="folder" :size="16" class="text-amber-500" />
+                      <PortalIcon v-else-if="isSpreadsheet(node)" name="file-spreadsheet" :size="16" class="text-emerald-600" />
+                      <PortalIcon v-else-if="isImageFile(node)" name="image" :size="16" class="text-violet-500" />
+                      <PortalIcon v-else-if="isArchiveFile(node)" name="archive" :size="16" class="text-amber-600" />
+                      <PortalIcon v-else name="file-text" :size="16" class="text-sky-500" />
+                    </span>
+
+                    <div class="min-w-0">
+                      <input
+                        v-if="renamingNodeId === node.id"
+                        v-model="renameDraft"
+                        type="text"
+                        aria-label="Novo nome"
+                        class="px-2 py-0.5 rounded border border-brand bg-white dark:bg-zinc-900 text-xs font-bold"
+                        @blur="commitRename(node)"
+                        @keydown.enter.stop="commitRename(node)"
+                        @keydown.esc.stop="renamingNodeId = null"
+                      />
+                      <button
+                        v-else
+                        type="button"
+                        class="font-bold text-slate-900 dark:text-[#fafafa] hover:underline truncate block text-left"
+                        @click.stop="openItem(node)"
+                      >
+                        {{ node.name }}
+                      </button>
+
+                      <span
+                        v-if="node.lockedByEmail || node.locked_by_email"
+                        :data-testid="`portal-lock-${node.id}`"
+                        class="mt-0.5 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-300 text-[10px] font-bold inline-flex items-center gap-1"
+                      >
+                        <PortalIcon name="lock" :size="10" />
+                        <span>Em edição por {{ node.lockedByEmail || node.locked_by_email }}</span>
+                      </span>
+                    </div>
+                  </div>
+                </td>
+
+                <td class="py-2.5 px-2 text-[11px] text-slate-500 hidden sm:table-cell">
+                  {{ getFileTypeLabel(node) }}
+                </td>
+
+                <td class="py-2.5 px-2 text-[11px] font-mono text-slate-500 hidden sm:table-cell text-right">
+                  {{ isFolder(node) ? '' : formatBytes(node.sizeBytes || node.size_bytes) }}
+                </td>
+
+                <td class="py-2.5 px-2 text-[11px] text-slate-500 hidden lg:table-cell">
+                  {{ getAccessLabel(node) }}
+                </td>
+
+                <td class="py-2.5 pl-2 pr-3.5 text-right whitespace-nowrap">
+                  <div class="inline-flex items-center gap-1">
+                    <template v-if="!isFolder(node)">
+                      <button
+                        type="button"
+                        class="px-2 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-[11px] font-semibold inline-flex items-center gap-1"
+                        @click.stop="handlePreviewFile(node)"
+                      >
+                        <PortalIcon name="eye" :size="12" />
+                        <span>Visualizar</span>
+                      </button>
+
+                      <button
+                        v-if="isSpreadsheet(node)"
+                        type="button"
+                        class="px-2 py-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold inline-flex items-center gap-1"
+                        @click.stop="openSheetEditor(node)"
+                      >
+                        <PortalIcon name="file-spreadsheet" :size="12" />
+                        <span>Planilha</span>
+                      </button>
+
+                      <button
+                        v-if="canDownloadNode(node)"
+                        type="button"
+                        :data-testid="`portal-download-${node.id}`"
+                        class="px-2 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-[11px] font-semibold inline-flex items-center gap-1"
+                        @click.stop="handleDownloadFile(node)"
+                      >
+                        <PortalIcon name="download" :size="12" />
+                        <span>Baixar</span>
+                      </button>
+                    </template>
+
+                    <button
+                      v-if="canDeleteNode(node)"
+                      type="button"
+                      :data-testid="`portal-delete-${node.id}`"
+                      class="px-2 py-1 rounded-lg border border-rose-500/30 text-rose-600 dark:text-rose-400 text-[11px] font-semibold inline-flex items-center gap-1"
+                      @click.stop="handleDeleteFile(node)"
+                    >
+                      <PortalIcon name="trash-2" :size="12" />
+                      <span>Excluir</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- LARGE ICONS GRID VIEW -->
+          <div v-else class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div
+              v-for="node in visibleNodes"
+              :key="`grid-${node.id}`"
+              :data-testid="`portal-node-${node.name}`"
+              class="rounded-xl border p-3 flex flex-col items-center text-center gap-2 select-none transition-all"
+              :class="
+                selectedNodeId === node.id
+                  ? 'border-brand/50 bg-brand/10'
+                  : 'border-slate-200/70 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-900/50'
+              "
+              @click="selectedNodeId = node.id"
+              @dblclick="openItem(node)"
+              @contextmenu="openContextMenu($event, node)"
+            >
+              <div class="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center">
+                <PortalIcon v-if="isFolder(node)" name="folder" :size="28" class="text-amber-500" />
+                <PortalIcon v-else-if="isSpreadsheet(node)" name="file-spreadsheet" :size="28" class="text-emerald-600" />
+                <PortalIcon v-else-if="isImageFile(node)" name="image" :size="28" class="text-violet-500" />
+                <PortalIcon v-else-if="isArchiveFile(node)" name="archive" :size="28" class="text-amber-600" />
+                <PortalIcon v-else name="file-text" :size="28" class="text-sky-500" />
+              </div>
+
+              <button
+                type="button"
+                class="text-xs font-bold text-slate-900 dark:text-[#fafafa] hover:underline break-all"
+                @click.stop="openItem(node)"
+              >
+                {{ node.name }}
+              </button>
+
+              <span class="text-[10px] font-mono text-slate-500">
+                {{ isFolder(node) ? 'Pasta' : formatBytes(node.sizeBytes || node.size_bytes) }}
+              </span>
+
+              <div v-if="!isFolder(node)" class="flex flex-wrap justify-center gap-1 pt-1">
+                <button
+                  type="button"
+                  class="px-2 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700 text-[10px] font-semibold"
+                  @click.stop="handlePreviewFile(node)"
+                >
+                  Visualizar
+                </button>
+                <button
+                  v-if="canDownloadNode(node)"
+                  type="button"
+                  :data-testid="`portal-download-${node.id}`"
+                  class="px-2 py-0.5 rounded-md border border-slate-200 dark:border-zinc-700 text-[10px] font-semibold"
+                  @click.stop="handleDownloadFile(node)"
+                >
+                  Baixar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Windows Status Bar -->
+      <div class="px-3.5 py-2 border-t border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/70 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+        <span>{{ visibleNodes.length }} {{ visibleNodes.length === 1 ? 'item' : 'itens' }}</span>
+        <span class="hidden sm:inline text-[10px]">
+          Duplo clique: Abrir • Botão direito: Mais ações • F2: Renomear
+        </span>
+      </div>
     </div>
 
-    <!-- Online Preview Panel -->
+    <!-- Floating Context Menu -->
+    <div
+      v-if="contextMenu"
+      role="menu"
+      :style="{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }"
+      class="fixed z-50 w-52 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-2xl py-1.5 text-xs"
+      @click.stop
+    >
+      <template v-if="contextMenu.node">
+        <button
+          type="button"
+          class="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-zinc-800 font-bold flex items-center gap-2"
+          @click="
+            openItem(contextMenu.node);
+            closeContextMenu();
+          "
+        >
+          <PortalIcon name="eye" :size="13" />
+          <span>{{ isFolder(contextMenu.node) ? 'Abrir pasta' : 'Visualizar / Abrir' }}</span>
+        </button>
+
+        <button
+          v-if="!isFolder(contextMenu.node) && canDownloadNode(contextMenu.node)"
+          type="button"
+          class="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+          @click="
+            handleDownloadFile(contextMenu.node);
+            closeContextMenu();
+          "
+        >
+          <PortalIcon name="download" :size="13" />
+          <span>Baixar</span>
+        </button>
+
+        <button
+          v-if="canEditNode(contextMenu.node)"
+          type="button"
+          class="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+          @click="startRename(contextMenu.node)"
+        >
+          <PortalIcon name="edit" :size="13" />
+          <span>Renomear (F2)</span>
+        </button>
+
+        <button
+          v-if="canEditNode(contextMenu.node)"
+          type="button"
+          class="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+          @click="setClipboardAction('copy', contextMenu.node)"
+        >
+          <PortalIcon name="copy" :size="13" />
+          <span>Copiar</span>
+        </button>
+
+        <button
+          v-if="canDeleteNode(contextMenu.node)"
+          type="button"
+          class="w-full px-3 py-1.5 text-left hover:bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-2"
+          @click="
+            handleDeleteFile(contextMenu.node);
+            closeContextMenu();
+          "
+        >
+          <PortalIcon name="trash-2" :size="13" />
+          <span>Excluir</span>
+        </button>
+      </template>
+
+      <template v-else>
+        <button
+          v-if="canWriteInCurrentFolder"
+          type="button"
+          class="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-zinc-800 font-semibold flex items-center gap-2"
+          @click="startCreateFolder"
+        >
+          <PortalIcon name="folder-plus" :size="13" />
+          <span>Nova Pasta</span>
+        </button>
+        <button
+          v-if="canWriteInCurrentFolder && clipboard"
+          type="button"
+          class="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-zinc-800 font-semibold text-sky-600 flex items-center gap-2"
+          @click="
+            pasteClipboard();
+            closeContextMenu();
+          "
+        >
+          <PortalIcon name="plus" :size="13" />
+          <span>Colar aqui</span>
+        </button>
+        <button
+          type="button"
+          class="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+          @click="
+            loadDriveNodes();
+            closeContextMenu();
+          "
+        >
+          <PortalIcon name="refresh-cw" :size="13" />
+          <span>Atualizar</span>
+        </button>
+      </template>
+    </div>
+
+    <!-- Real Online Preview Panel -->
     <div
       v-if="previewNode"
       data-testid="portal-preview-panel"
-      class="station-panel p-4 flex items-center justify-between"
+      class="station-panel overflow-hidden"
     >
-      <span class="text-xs font-bold">Visualização Online — {{ previewNode.name }}</span>
-      <button type="button" class="text-xs font-bold text-rose-500" @click="previewNode = null">
-        Fechar
-      </button>
+      <div class="px-4 py-3 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between gap-2 bg-slate-50 dark:bg-zinc-900">
+        <span class="text-xs font-bold truncate">Visualização Online — {{ previewNode.name }}</span>
+        <div class="flex items-center gap-2">
+          <button
+            v-if="canDownloadNode(previewNode)"
+            type="button"
+            class="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-semibold"
+            @click="handleDownloadFile(previewNode)"
+          >
+            Baixar
+          </button>
+          <button type="button" class="text-xs font-bold text-rose-500" @click="closePreview">
+            Fechar
+          </button>
+        </div>
+      </div>
+      <div class="p-4 bg-slate-100/70 dark:bg-zinc-950 flex justify-center">
+        <img
+          v-if="previewObjectUrl && previewContentType.startsWith('image/')"
+          :src="previewObjectUrl"
+          :alt="previewNode.name"
+          class="max-w-full max-h-[60vh] rounded-lg object-contain"
+        />
+        <iframe
+          v-else-if="previewObjectUrl && previewContentType.includes('pdf')"
+          :src="previewObjectUrl"
+          :title="previewNode.name"
+          class="w-full h-[60vh] rounded-lg bg-white"
+        />
+        <pre
+          v-else-if="previewTextContent !== null"
+          class="w-full max-h-[55vh] overflow-auto rounded-lg bg-white dark:bg-zinc-900 p-3 text-xs font-mono whitespace-pre-wrap"
+        >{{ previewTextContent }}</pre>
+        <p v-else class="text-xs text-slate-500 py-4">
+          Arquivo carregado em visualização segura ({{ previewContentType || 'arquivo' }}).
+        </p>
+      </div>
     </div>
 
     <!-- Embedded Nexus Sheets Live Co-Editor -->
     <div v-if="!planUpgradeNotice" class="station-panel p-5 space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2">
-          <PortalIcon name="file-text" :size="18" />
+          <PortalIcon name="file-spreadsheet" :size="18" />
           <h3 class="text-sm font-bold text-slate-900 dark:text-[#fafafa]">
             Nexus Sheets Live — {{ activeSheetNode?.name || 'Planilha Colaborativa' }}
           </h3>
