@@ -5174,6 +5174,26 @@ export const storageRepo = {
     return normalizeStorageTempLinkRow(rows[0]);
   },
 
+  async deleteTempLink(tenantId, linkId) {
+    const clean = requireCleanTenantId(tenantId);
+    if (!isUuid(linkId)) return null;
+    if (!USE_PG) {
+      const idx = mem.storageTempLinks.findIndex(
+        (l) => l.id === linkId && matchTenant(l.tenant_id, clean),
+      );
+      if (idx === -1) return null;
+      const [removed] = mem.storageTempLinks.splice(idx, 1);
+      return normalizeStorageTempLinkRow({ ...removed });
+    }
+    const { rows } = await pool.query(
+      `DELETE FROM storage_svc.storage_temp_links
+       WHERE id = $1 AND tenant_id = $2
+       RETURNING *`,
+      [linkId, clean],
+    );
+    return normalizeStorageTempLinkRow(rows[0]);
+  },
+
   // ---------------------------------------------------------------------------
   // 6.7 Sheets Live Sessions & Cell History
   // ---------------------------------------------------------------------------

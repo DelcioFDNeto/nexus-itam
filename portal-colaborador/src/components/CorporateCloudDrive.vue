@@ -17,15 +17,17 @@ const nodes = ref([]);
 const loading = ref(false);
 const uploadingCount = ref(0);
 const errorBanner = ref('');
+const statusToast = ref('');
 const planUpgradeNotice = ref('');
 
-// Windows Explorer Navigation & View State
+// Windows Explorer Navigation, Filter & View State
 const currentFolderId = ref(null);
 const navHistory = ref([null]);
 const navIndex = ref(0);
 const searchQuery = ref('');
+const typeFilter = ref('all'); // 'all' | 'folders' | 'docs' | 'sheets' | 'images'
 const viewMode = ref('details'); // 'details' | 'grid'
-const sortBy = ref('name'); // 'name' | 'type' | 'size'
+const sortBy = ref('name'); // 'name' | 'updatedAt' | 'type' | 'size'
 const sortDir = ref('asc');
 const selectedNodeId = ref(null);
 
@@ -36,22 +38,24 @@ const renamingNodeId = ref(null);
 const renameDraft = ref('');
 
 // Clipboard (Copy / Cut / Paste) & Drag-Drop
-const clipboard = ref(null); // { mode: 'copy' | 'cut', nodeId }
+const clipboard = ref(null); // { mode: 'copy' | 'cut', nodeId, name }
 const isExternalDragOver = ref(false);
 const dragOverFolderId = ref(null);
 
 // Right-Click Context Menu
 const contextMenu = ref(null); // { x, y, node }
 
-// Real Inline Preview State
+// Real Inline Preview Lightbox State
 const previewNode = ref(null);
 const previewContentType = ref('');
 const previewObjectUrl = ref(null);
 const previewTextContent = ref(null);
 
-// Nexus Sheets Live state
+// Nexus Sheets Live state (collapsible QoL — auto-expanded when spreadsheet loaded)
 const activeSheetNode = ref(null);
+const showSheetEditor = ref(false);
 const sheetRev = ref(1);
+const sheetSaving = ref(false);
 const sheetTabs = ref([
   {
     name: 'Planilha1',
@@ -71,15 +75,24 @@ const sheetPeers = ref([]);
 const remoteCursors = ref({});
 
 let ownWsHandle = null;
+let toastTimer = null;
 const fileInputEl = ref(null);
 const newFolderInputEl = ref(null);
 
 const ACCESS_LABELS_PT = {
   full_control: 'Controle Total',
-  editor: 'Editor',
-  reader: 'Leitor (Download)',
+  editor: 'Pode Editar',
+  reader: 'Leitura e Download',
   viewer_online: 'Somente Leitura Online',
 };
+
+function notifySuccess(msg) {
+  statusToast.value = msg;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    statusToast.value = '';
+  }, 3500);
+}
 
 const resolvedEmail = computed(() =>
   String(props.userEmail || props.user?.email || getStoredSession()?.user?.email || '')
@@ -99,6 +112,20 @@ function formatBytes(bytes) {
   return `${(num / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatFriendlyDate(value) {
+  if (!value) return '—';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return '—';
+  const now = new Date();
+  const sameDay = dt.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const timeStr = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (sameDay) return `Hoje ${timeStr}`;
+  if (dt.toDateString() === yesterday.toDateString()) return `Ontem ${timeStr}`;
+  return dt.toLocaleDateString('pt-BR');
+}
+
 function isFolder(node) {
   return (node?.nodeType || node?.node_type || node?.type) === 'folder';
 }
@@ -111,18 +138,22 @@ function isImageFile(node) {
   return !isFolder(node) && /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(String(node?.name || ''));
 }
 
+function isDocumentFile(node) {
+  return !isFolder(node) && /\.(pdf|docx?|odt|rtf|txt|md|pptx?)$/i.test(String(node?.name || ''));
+}
+
 function isArchiveFile(node) {
   return !isFolder(node) && /\.(zip|rar|7z|tar|gz)$/i.test(String(node?.name || ''));
 }
 
 function getFileTypeLabel(node) {
-  if (isFolder(node)) return 'Pasta de arquivos';
+  if (isFolder(node)) return 'Pasta';
   const name = String(node?.name || '').toLowerCase();
   if (/\.(xlsx|xls|csv|nexusheet)$/i.test(name)) return 'Planilha';
-  if (name.endsWith('.pdf')) return 'Documento PDF';
+  if (name.endsWith('.pdf')) return 'PDF';
   if (/\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(name)) return 'Imagem';
   if (/\.(zip|rar|7z|tar|gz)$/i.test(name)) return 'Compactado';
-  if (/\.(docx?|odt|rtf)$/i.test(name)) return 'Documento Word';
+  if (/\.(docx?|odt|rtf)$/i.test(name)) return 'Documento';
   if (/\.(txt|md|json|log|xml)$/i.test(name)) return 'Texto';
   return 'Arquivo';
 }
@@ -183,6 +214,9 @@ const rootFolders = computed(() =>
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR', { numeric: true })),
 );
 
+const totalFolderCount = computed(() => accessibleNodes.value.filter((n) => isFolder(n)).length);
+const totalFileCount = computed(() => accessibleNodes.value.filter((n) => !isFolder(n)).length);
+
 const breadcrumbs = computed(() => {
   const trail = [{ id: null, label: 'Meus Arquivos' }];
   const chain = [];
@@ -197,15 +231,24 @@ const breadcrumbs = computed(() => {
   return [...trail, ...chain];
 });
 
-// Folders first, then files (Windows Explorer natural sorting)
+// Folders first, then files (Windows Explorer natural sorting + QoL type filter)
 const visibleNodes = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
   const list = accessibleNodes.value.filter((n) => {
+    if (typeFilter.value === 'folders' && !isFolder(n)) return false;
+    if (typeFilter.value === 'docs' && !isDocumentFile(n)) return false;
+    if (typeFilter.value === 'sheets' && !isSpreadsheet(n)) return false;
+    if (typeFilter.value === 'images' && !isImageFile(n)) return false;
+
     if (q) {
       return (
         String(n.name || '').toLowerCase().includes(q) ||
         String(n.virtualPath || n.virtual_path || '').toLowerCase().includes(q)
       );
+    }
+    // When a type filter other than 'all' is active at root, search across all accessible areas
+    if (typeFilter.value !== 'all' && !currentFolderId.value) {
+      return true;
     }
     const pid = n.parentId || n.parent_id;
     if (currentFolderId.value) {
@@ -219,6 +262,11 @@ const visibleNodes = computed(() => {
     const af = isFolder(a);
     const bf = isFolder(b);
     if (af !== bf) return af ? -1 : 1;
+    if (sortBy.value === 'updatedAt') {
+      const ta = new Date(a.updatedAt || a.updated_at || a.createdAt || a.created_at || 0).getTime();
+      const tb = new Date(b.updatedAt || b.updated_at || b.createdAt || b.created_at || 0).getTime();
+      return (ta - tb) * dir;
+    }
     if (sortBy.value === 'size') {
       return (Number(a.sizeBytes ?? a.size_bytes ?? 0) - Number(b.sizeBytes ?? b.size_bytes ?? 0)) * dir;
     }
@@ -243,15 +291,40 @@ const currentFolderAccess = computed(() => {
       currentFolderNode.value.effectiveAccess || currentFolderNode.value.effective_access || 'editor',
     ).toLowerCase();
   }
-  const writable = visibleNodes.value.some((n) =>
+  const writable = accessibleNodes.value.some((n) =>
     ['editor', 'full_control'].includes(String(n.effectiveAccess || n.effective_access || '').toLowerCase()),
   );
-  return writable ? 'editor' : 'reader';
+  if (writable) return 'editor';
+  const onlyOnline =
+    accessibleNodes.value.length > 0 &&
+    accessibleNodes.value.every(
+      (n) => String(n.effectiveAccess || n.effective_access || '').toLowerCase() === 'viewer_online',
+    );
+  return onlyOnline ? 'viewer_online' : 'reader';
 });
 
 const canWriteInCurrentFolder = computed(() =>
   ['editor', 'full_control'].includes(currentFolderAccess.value),
 );
+
+const currentPermissionHint = computed(() => {
+  if (canWriteInCurrentFolder.value) {
+    return {
+      tone: 'emerald',
+      text: 'Você pode enviar, organizar e editar arquivos nesta pasta',
+    };
+  }
+  if (currentFolderAccess.value === 'viewer_online') {
+    return {
+      tone: 'amber',
+      text: 'Modo leitura protegida — visualização online na tela',
+    };
+  }
+  return {
+    tone: 'sky',
+    text: 'Pasta somente leitura — visualização e cópia local liberados',
+  };
+});
 
 function canEditNode(node) {
   const eff = String(node?.effectiveAccess || node?.effective_access || '').toLowerCase();
@@ -348,6 +421,7 @@ async function commitRename(node) {
   errorBanner.value = '';
   try {
     await portalApi.renameStorageNode(node.id, trimmed);
+    notifySuccess(`Renomeado para "${trimmed}".`);
     await loadDriveNodes();
   } catch (err) {
     errorBanner.value = err?.message || 'Não foi possível renomear o item.';
@@ -356,8 +430,13 @@ async function commitRename(node) {
 
 function setClipboardAction(mode, node) {
   if (!node || !canEditNode(node)) return;
-  clipboard.value = { mode, nodeId: node.id };
+  clipboard.value = { mode, nodeId: node.id, name: node.name };
   contextMenu.value = null;
+  notifySuccess(
+    mode === 'cut'
+      ? `"${node.name}" recortado. Abra a pasta destino e clique em Colar Aqui.`
+      : `"${node.name}" copiado. Abra a pasta destino e clique em Colar Aqui.`,
+  );
 }
 
 async function pasteClipboard() {
@@ -372,10 +451,12 @@ async function pasteClipboard() {
     if (clipboard.value.mode === 'cut') {
       if (src.id !== currentFolderId.value && (src.parentId || src.parent_id || null) !== (currentFolderId.value || null)) {
         await portalApi.updateStorageNode(src.id, { parentId: currentFolderId.value || null });
+        notifySuccess(`"${src.name}" movido com sucesso.`);
       }
       clipboard.value = null;
     } else {
       await portalApi.copyStorageNode(src.id, { targetParentId: currentFolderId.value || null });
+      notifySuccess(`Cópia de "${src.name}" criada nesta pasta.`);
     }
     await loadDriveNodes();
   } catch (err) {
@@ -444,6 +525,7 @@ async function handleDropOnFolder(event, targetFolderId) {
   if (!draggedId || draggedId === targetFolderId) return;
   try {
     await portalApi.updateStorageNode(draggedId, { parentId: targetFolderId || null });
+    notifySuccess('Item movido para a pasta.');
     await loadDriveNodes();
   } catch (err) {
     errorBanner.value = err?.message || 'Não foi possível mover este item.';
@@ -454,6 +536,10 @@ function handleExplorerKeydown(event) {
   const tag = String(event.target?.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
   if (event.key === 'Escape') {
+    if (previewNode.value) {
+      closePreview();
+      return;
+    }
     contextMenu.value = null;
     creatingFolder.value = false;
     renamingNodeId.value = null;
@@ -530,8 +616,30 @@ async function handleCreateFolder() {
     }
     newFolderName.value = '';
     creatingFolder.value = false;
+    notifySuccess(`Pasta "${name}" criada com sucesso.`);
   } catch (err) {
     errorBanner.value = err?.message || 'Erro ao criar pasta.';
+  }
+}
+
+async function handleCreateQuickSheet() {
+  if (!canWriteInCurrentFolder.value) return;
+  errorBanner.value = '';
+  const stamped = `Planilha-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  try {
+    const res = await portalApi.createSheet({
+      parentId: currentFolderId.value,
+      name: stamped,
+      sheets: sheetTabs.value,
+    });
+    const created = res?.node || res;
+    if (created?.id) {
+      nodes.value = [...nodes.value, created];
+      await openSheetEditor(created);
+      notifySuccess(`Planilha "${stamped}" criada e aberta ao vivo.`);
+    }
+  } catch (err) {
+    errorBanner.value = err?.message || 'Não foi possível criar a planilha nesta pasta.';
   }
 }
 
@@ -539,6 +647,7 @@ async function uploadMultipleFiles(files, targetFolderId = currentFolderId.value
   if (!files || files.length === 0) return;
   errorBanner.value = '';
   uploadingCount.value = files.length;
+  let uploadedCount = 0;
   try {
     for (const file of files) {
       const res = await portalApi.uploadStorageFile(file, {
@@ -550,6 +659,14 @@ async function uploadMultipleFiles(files, targetFolderId = currentFolderId.value
       if (created?.id) {
         nodes.value = [...nodes.value.filter((n) => n.id !== created.id), created];
       }
+      uploadedCount += 1;
+    }
+    if (uploadedCount > 0) {
+      notifySuccess(
+        uploadedCount === 1
+          ? `Arquivo "${files[0].name}" enviado para a nuvem.`
+          : `${uploadedCount} arquivos enviados para a nuvem.`,
+      );
     }
   } catch (err) {
     errorBanner.value = err?.message || 'Falha no upload do arquivo (verifique cota ou bloqueio).';
@@ -600,6 +717,7 @@ async function handleDownloadFile(node) {
     const res = await portalApi.downloadStorageFile(node.id);
     if (res?.blob) {
       triggerBrowserDownload(res.blob, node.name);
+      notifySuccess(`Download de "${node.name}" iniciado.`);
     }
   } catch (err) {
     errorBanner.value = err?.message || 'Falha ao baixar arquivo.';
@@ -616,6 +734,7 @@ async function handleDeleteFile(node) {
     await portalApi.deleteStorageNode(node.id);
     nodes.value = nodes.value.filter((n) => n.id !== node.id);
     if (selectedNodeId.value === node.id) selectedNodeId.value = null;
+    notifySuccess(`"${node.name}" movido para a lixeira.`);
   } catch (err) {
     errorBanner.value = err?.message || 'Falha ao excluir arquivo.';
   }
@@ -627,6 +746,7 @@ function getActiveWsHandle() {
 
 async function openSheetEditor(node) {
   activeSheetNode.value = node;
+  showSheetEditor.value = true;
   try {
     const res = await portalApi.getSheet(node.id);
     const tabs = res?.sheets || res?.tabs || res?.workbook?.sheets;
@@ -688,6 +808,7 @@ function applySheetCellInput(cellRef, rawValue) {
 
 async function saveActiveSheet() {
   if (!activeSheetNode.value?.id) return;
+  sheetSaving.value = true;
   try {
     const res = await portalApi.saveSheet(activeSheetNode.value.id, {
       expectedRev: sheetRev.value,
@@ -695,8 +816,25 @@ async function saveActiveSheet() {
       tabs: evaluatedTabs.value,
     });
     if (res?.rev) sheetRev.value = Number(res.rev);
+    notifySuccess(`Planilha "${activeSheetNode.value.name}" salva na nuvem (rev #${sheetRev.value}).`);
   } catch (err) {
     errorBanner.value = err?.message || 'Erro ao salvar planilha (bloqueada ou conflito de revisão).';
+  } finally {
+    sheetSaving.value = false;
+  }
+}
+
+async function exportActiveSheet(format) {
+  if (!activeSheetNode.value?.id || !canDownloadNode(activeSheetNode.value)) return;
+  try {
+    const res = await portalApi.exportSheet(activeSheetNode.value.id, format);
+    if (res?.blob) {
+      const base = String(activeSheetNode.value.name || 'planilha').replace(/\.[^.]+$/, '');
+      triggerBrowserDownload(res.blob, `${base}.${format}`);
+      notifySuccess(`Planilha exportada em .${format}.`);
+    }
+  } catch (err) {
+    errorBanner.value = err?.message || 'Não foi possível exportar a planilha.';
   }
 }
 
@@ -770,6 +908,7 @@ onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('click', closeContextMenu);
   }
+  if (toastTimer) clearTimeout(toastTimer);
   closePreview();
   if (ownWsHandle) {
     ownWsHandle.disconnect?.();
@@ -779,8 +918,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="space-y-5">
-    <!-- Plan upgrade or error banners -->
+  <div class="space-y-4">
+    <!-- Plan upgrade / error / success toast banners -->
     <div
       v-if="planUpgradeNotice"
       role="alert"
@@ -794,12 +933,80 @@ onBeforeUnmount(() => {
       v-if="errorBanner"
       role="alert"
       data-testid="cloud-error-banner"
-      class="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center justify-between gap-2"
+      class="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-3.5 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center justify-between gap-2"
     >
       <span>{{ errorBanner }}</span>
       <button type="button" class="p-1" aria-label="Fechar aviso" @click="errorBanner = ''">
         <PortalIcon name="x" :size="14" />
       </button>
+    </div>
+
+    <div
+      v-if="statusToast"
+      role="status"
+      data-testid="cloud-success-toast"
+      class="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200 flex items-center justify-between gap-2"
+    >
+      <span class="inline-flex items-center gap-2">
+        <PortalIcon name="check-circle" :size="15" />
+        <span>{{ statusToast }}</span>
+      </span>
+      <button type="button" class="p-0.5" aria-label="Fechar notificação" @click="statusToast = ''">
+        <PortalIcon name="x" :size="13" />
+      </button>
+    </div>
+
+    <!-- QoL CONTEXT BAR: Department, Totals, Permission Hint & Quick File Type Filters -->
+    <div
+      v-if="!planUpgradeNotice"
+      class="station-panel px-4 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3"
+    >
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="inline-flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-[#fafafa]">
+          <PortalIcon name="hard-drive" :size="15" />
+          <span>{{ resolvedDepartment ? `Setor ${resolvedDepartment}` : 'Nuvem Corporativa' }}</span>
+        </span>
+        <span class="text-[11px] text-slate-500 font-medium">
+          • {{ totalFolderCount }} pasta(s), {{ totalFileCount }} arquivo(s)
+        </span>
+        <span
+          class="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full"
+          :class="
+            currentPermissionHint.tone === 'emerald'
+              ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              : currentPermissionHint.tone === 'amber'
+                ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                : 'bg-sky-500/10 text-sky-700 dark:text-sky-300'
+          "
+        >
+          <PortalIcon name="shield-check" :size="12" />
+          <span>{{ currentPermissionHint.text }}</span>
+        </span>
+      </div>
+
+      <!-- Quick File Type Filter Chips -->
+      <div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar por tipo de arquivo">
+        <button
+          v-for="chip in [
+            { id: 'all', label: 'Todos' },
+            { id: 'folders', label: 'Pastas' },
+            { id: 'docs', label: 'Documentos' },
+            { id: 'sheets', label: 'Planilhas' },
+            { id: 'images', label: 'Imagens' },
+          ]"
+          :key="chip.id"
+          type="button"
+          class="px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors border"
+          :class="
+            typeFilter === chip.id
+              ? 'bg-brand text-brand-fg border-brand'
+              : 'bg-slate-50 dark:bg-zinc-900 border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:border-brand/40'
+          "
+          @click="typeFilter = chip.id"
+        >
+          {{ chip.label }}
+        </button>
+      </div>
     </div>
 
     <!-- WINDOWS 11 EXPLORER SHELL -->
@@ -812,13 +1019,6 @@ onBeforeUnmount(() => {
       <!-- Command Bar (Ribbon estilo Windows) -->
       <div class="px-3.5 py-2.5 border-b border-slate-200 dark:border-zinc-800 bg-slate-50/80 dark:bg-zinc-900/60 flex flex-wrap items-center justify-between gap-2">
         <div class="flex flex-wrap items-center gap-1.5">
-          <div class="flex items-center gap-1.5 pr-2 mr-1 border-r border-slate-200 dark:border-zinc-700">
-            <PortalIcon name="hard-drive" :size="15" />
-            <span class="text-xs font-bold text-slate-900 dark:text-[#fafafa]">
-              Arquivos &amp; Nuvem • {{ resolvedDepartment || 'Corporativo' }}
-            </span>
-          </div>
-
           <template v-if="canWriteInCurrentFolder">
             <button
               type="button"
@@ -845,26 +1045,46 @@ onBeforeUnmount(() => {
             </label>
 
             <button
-              v-if="selectedNode && canEditNode(selectedNode)"
               type="button"
-              title="Renomear (F2)"
-              class="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-semibold inline-flex items-center gap-1"
-              @click="startRename(selectedNode)"
+              class="min-h-[34px] px-2.5 py-1 rounded-lg border border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-bold inline-flex items-center gap-1.5"
+              @click="handleCreateQuickSheet"
             >
-              <PortalIcon name="edit" :size="13" />
-              <span class="hidden sm:inline">Renomear</span>
+              <PortalIcon name="file-spreadsheet" :size="14" />
+              <span class="hidden sm:inline">Nova Planilha</span>
             </button>
 
-            <button
-              v-if="selectedNode && canEditNode(selectedNode)"
-              type="button"
-              title="Copiar item"
-              class="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-semibold inline-flex items-center gap-1"
-              @click="setClipboardAction('copy', selectedNode)"
-            >
-              <PortalIcon name="copy" :size="13" />
-              <span class="hidden md:inline">Copiar</span>
-            </button>
+            <template v-if="selectedNode && canEditNode(selectedNode)">
+              <span class="h-5 w-px bg-slate-200 dark:bg-zinc-700 mx-0.5 hidden sm:inline-block" />
+              <button
+                type="button"
+                title="Renomear (F2)"
+                class="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-semibold inline-flex items-center gap-1"
+                @click="startRename(selectedNode)"
+              >
+                <PortalIcon name="edit" :size="13" />
+                <span class="hidden md:inline">Renomear</span>
+              </button>
+
+              <button
+                type="button"
+                title="Recortar (Mover para outra pasta)"
+                class="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-semibold inline-flex items-center gap-1"
+                @click="setClipboardAction('cut', selectedNode)"
+              >
+                <PortalIcon name="folder-open" :size="13" />
+                <span class="hidden lg:inline">Mover</span>
+              </button>
+
+              <button
+                type="button"
+                title="Copiar item"
+                class="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-semibold inline-flex items-center gap-1"
+                @click="setClipboardAction('copy', selectedNode)"
+              >
+                <PortalIcon name="copy" :size="13" />
+                <span class="hidden lg:inline">Copiar</span>
+              </button>
+            </template>
 
             <button
               v-if="clipboard"
@@ -876,6 +1096,9 @@ onBeforeUnmount(() => {
               <span>Colar Aqui</span>
             </button>
           </template>
+          <span v-else class="text-xs font-semibold text-slate-500">
+            Navegação de arquivos corporativos
+          </span>
         </div>
 
         <div class="flex items-center gap-1.5">
@@ -893,6 +1116,7 @@ onBeforeUnmount(() => {
           >
             <option value="name:asc">Nome (A–Z)</option>
             <option value="name:desc">Nome (Z–A)</option>
+            <option value="updatedAt:desc">Mais recentes</option>
             <option value="size:desc">Maior tamanho</option>
             <option value="type:asc">Tipo</option>
           </select>
@@ -921,10 +1145,38 @@ onBeforeUnmount(() => {
           <button
             type="button"
             title="Atualizar"
+            aria-label="Atualizar lista de arquivos"
             class="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-bold inline-flex items-center gap-1"
             @click="loadDriveNodes"
           >
             <PortalIcon name="refresh-cw" :size="13" />
+          </button>
+        </div>
+      </div>
+
+      <!-- Clipboard QoL Bar -->
+      <div
+        v-if="clipboard"
+        class="px-4 py-2 bg-sky-500/10 border-b border-sky-500/20 flex flex-wrap items-center justify-between gap-2 text-xs text-sky-800 dark:text-sky-200"
+      >
+        <span>
+          <strong>{{ clipboard.name }}</strong> {{ clipboard.mode === 'cut' ? 'pronto para mover' : 'copiado' }} — abra a pasta destino e clique em <strong>Colar Aqui</strong>.
+        </span>
+        <div class="flex items-center gap-2">
+          <button
+            v-if="canWriteInCurrentFolder"
+            type="button"
+            class="px-2.5 py-1 rounded-md bg-sky-600 text-white font-bold"
+            @click="pasteClipboard"
+          >
+            Colar Aqui
+          </button>
+          <button
+            type="button"
+            class="px-2 py-1 rounded-md border border-sky-500/30 font-semibold"
+            @click="clipboard = null"
+          >
+            Cancelar
           </button>
         </div>
       </div>
@@ -999,8 +1251,11 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left"
-            :class="!currentFolderId ? 'bg-brand/15 font-bold text-brand-text-light dark:text-brand-text-dark' : 'text-slate-700 dark:text-zinc-300 hover:bg-slate-200/70 dark:hover:bg-zinc-800'"
-            @click="navigateTo(null)"
+            :class="!currentFolderId && typeFilter === 'all' ? 'bg-brand/15 font-bold text-brand-text-light dark:text-brand-text-dark' : 'text-slate-700 dark:text-zinc-300 hover:bg-slate-200/70 dark:hover:bg-zinc-800'"
+            @click="
+              typeFilter = 'all';
+              navigateTo(null);
+            "
           >
             <PortalIcon name="hard-drive" :size="14" />
             <span>Início (Todas)</span>
@@ -1018,7 +1273,10 @@ onBeforeUnmount(() => {
                   ? 'bg-brand/15 font-bold text-brand-text-light dark:text-brand-text-dark'
                   : 'text-slate-700 dark:text-zinc-300 hover:bg-slate-200/70 dark:hover:bg-zinc-800'
             "
-            @click="navigateTo(folder.id)"
+            @click="
+              typeFilter = 'all';
+              navigateTo(folder.id);
+            "
             @dragover.prevent="dragOverFolderId = folder.id"
             @dragleave="dragOverFolderId = null"
             @drop="handleDropOnFolder($event, folder.id)"
@@ -1075,13 +1333,30 @@ onBeforeUnmount(() => {
           <div v-if="loading && visibleNodes.length === 0" class="p-10 text-center text-xs text-slate-500">
             Carregando arquivos da nuvem corporativa…
           </div>
-          <div v-else-if="visibleNodes.length === 0" class="p-10 text-center space-y-1.5">
+          <div v-else-if="visibleNodes.length === 0" class="p-10 text-center space-y-2">
             <p class="text-xs font-bold text-slate-600 dark:text-zinc-300">
-              {{ searchQuery ? `Nenhum item encontrado para "${searchQuery}".` : 'Esta pasta está vazia.' }}
+              {{
+                searchQuery
+                  ? `Nenhum item encontrado para "${searchQuery}".`
+                  : typeFilter !== 'all'
+                    ? 'Nenhum arquivo deste tipo encontrado nesta área.'
+                    : 'Esta pasta está vazia.'
+              }}
             </p>
-            <p v-if="canWriteInCurrentFolder && !searchQuery" class="text-[11px] text-slate-500">
-              Arraste arquivos do seu computador para cá ou clique em Enviar Arquivos / Nova Pasta.
+            <p v-if="canWriteInCurrentFolder && !searchQuery && typeFilter === 'all'" class="text-[11px] text-slate-500">
+              Arraste arquivos do computador para cá ou clique em Enviar Arquivos / Nova Pasta.
             </p>
+            <button
+              v-if="typeFilter !== 'all' || searchQuery"
+              type="button"
+              class="px-3 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-bold"
+              @click="
+                typeFilter = 'all';
+                searchQuery = '';
+              "
+            >
+              Limpar filtros
+            </button>
           </div>
 
           <!-- DETAILS TABLE VIEW -->
@@ -1089,9 +1364,10 @@ onBeforeUnmount(() => {
             <thead class="sticky top-0 bg-slate-50 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 text-[11px] text-slate-500 font-bold">
               <tr>
                 <th class="py-2 pl-3.5 pr-2">Nome</th>
-                <th class="py-2 px-2 hidden sm:table-cell w-28">Tipo</th>
+                <th class="py-2 px-2 hidden md:table-cell w-28">Modificado</th>
+                <th class="py-2 px-2 hidden sm:table-cell w-24">Tipo</th>
                 <th class="py-2 px-2 hidden sm:table-cell w-20 text-right">Tamanho</th>
-                <th class="py-2 px-2 hidden lg:table-cell w-36">Permissão</th>
+                <th class="py-2 px-2 hidden xl:table-cell w-36">Permissão</th>
                 <th class="py-2 pl-2 pr-3.5 text-right">Ações</th>
               </tr>
             </thead>
@@ -1160,6 +1436,10 @@ onBeforeUnmount(() => {
                   </div>
                 </td>
 
+                <td class="py-2.5 px-2 text-[11px] text-slate-500 hidden md:table-cell whitespace-nowrap">
+                  {{ formatFriendlyDate(node.updatedAt || node.updated_at || node.createdAt || node.created_at) }}
+                </td>
+
                 <td class="py-2.5 px-2 text-[11px] text-slate-500 hidden sm:table-cell">
                   {{ getFileTypeLabel(node) }}
                 </td>
@@ -1168,7 +1448,7 @@ onBeforeUnmount(() => {
                   {{ isFolder(node) ? '' : formatBytes(node.sizeBytes || node.size_bytes) }}
                 </td>
 
-                <td class="py-2.5 px-2 text-[11px] text-slate-500 hidden lg:table-cell">
+                <td class="py-2.5 px-2 text-[11px] text-slate-500 hidden xl:table-cell">
                   {{ getAccessLabel(node) }}
                 </td>
 
@@ -1283,9 +1563,12 @@ onBeforeUnmount(() => {
 
       <!-- Windows Status Bar -->
       <div class="px-3.5 py-2 border-t border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/70 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-        <span>{{ visibleNodes.length }} {{ visibleNodes.length === 1 ? 'item' : 'itens' }}</span>
+        <span>
+          {{ visibleNodes.length }} {{ visibleNodes.length === 1 ? 'item' : 'itens' }}
+          <template v-if="selectedNode"> • Selecionado: {{ selectedNode.name }}</template>
+        </span>
         <span class="hidden sm:inline text-[10px]">
-          Duplo clique: Abrir • Botão direito: Mais ações • F2: Renomear
+          Duplo clique: Abrir • Botão direito: Mais ações • Arraste arquivos para enviar
         </span>
       </div>
     </div>
@@ -1332,6 +1615,16 @@ onBeforeUnmount(() => {
         >
           <PortalIcon name="edit" :size="13" />
           <span>Renomear (F2)</span>
+        </button>
+
+        <button
+          v-if="canEditNode(contextMenu.node)"
+          type="button"
+          class="w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+          @click="setClipboardAction('cut', contextMenu.node)"
+        >
+          <PortalIcon name="folder-open" :size="13" />
+          <span>Recortar (Mover)</span>
         </button>
 
         <button
@@ -1394,138 +1687,185 @@ onBeforeUnmount(() => {
       </template>
     </div>
 
-    <!-- Real Online Preview Panel -->
+    <!-- Centered Lightbox Preview Modal -->
     <div
       v-if="previewNode"
       data-testid="portal-preview-panel"
-      class="station-panel overflow-hidden"
+      class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4"
+      @click="closePreview"
     >
-      <div class="px-4 py-3 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between gap-2 bg-slate-50 dark:bg-zinc-900">
-        <span class="text-xs font-bold truncate">Visualização Online — {{ previewNode.name }}</span>
-        <div class="flex items-center gap-2">
-          <button
-            v-if="canDownloadNode(previewNode)"
-            type="button"
-            class="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-semibold"
-            @click="handleDownloadFile(previewNode)"
-          >
-            Baixar
-          </button>
-          <button type="button" class="text-xs font-bold text-rose-500" @click="closePreview">
-            Fechar
-          </button>
+      <div
+        class="w-full max-w-4xl max-h-[90vh] rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] shadow-2xl overflow-hidden flex flex-col"
+        @click.stop
+      >
+        <div class="px-4 py-3 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between gap-2 bg-slate-50 dark:bg-zinc-900">
+          <div class="min-w-0">
+            <span class="text-xs font-bold truncate block">Visualização Online — {{ previewNode.name }}</span>
+            <span class="text-[11px] font-mono text-slate-500">
+              {{ formatBytes(previewNode.sizeBytes || previewNode.size_bytes) }} • {{ getAccessLabel(previewNode) }}
+            </span>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button
+              v-if="canDownloadNode(previewNode)"
+              type="button"
+              class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-semibold inline-flex items-center gap-1"
+              @click="handleDownloadFile(previewNode)"
+            >
+              <PortalIcon name="download" :size="13" />
+              <span>Baixar</span>
+            </button>
+            <button
+              type="button"
+              class="px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 text-xs font-bold"
+              @click="closePreview"
+            >
+              Fechar
+            </button>
+          </div>
         </div>
-      </div>
-      <div class="p-4 bg-slate-100/70 dark:bg-zinc-950 flex justify-center">
-        <img
-          v-if="previewObjectUrl && previewContentType.startsWith('image/')"
-          :src="previewObjectUrl"
-          :alt="previewNode.name"
-          class="max-w-full max-h-[60vh] rounded-lg object-contain"
-        />
-        <iframe
-          v-else-if="previewObjectUrl && previewContentType.includes('pdf')"
-          :src="previewObjectUrl"
-          :title="previewNode.name"
-          class="w-full h-[60vh] rounded-lg bg-white"
-        />
-        <pre
-          v-else-if="previewTextContent !== null"
-          class="w-full max-h-[55vh] overflow-auto rounded-lg bg-white dark:bg-zinc-900 p-3 text-xs font-mono whitespace-pre-wrap"
-        >{{ previewTextContent }}</pre>
-        <p v-else class="text-xs text-slate-500 py-4">
-          Arquivo carregado em visualização segura ({{ previewContentType || 'arquivo' }}).
-        </p>
+        <div class="p-4 flex-1 overflow-auto bg-slate-100/70 dark:bg-zinc-950 flex justify-center items-center min-h-[260px]">
+          <img
+            v-if="previewObjectUrl && previewContentType.startsWith('image/')"
+            :src="previewObjectUrl"
+            :alt="previewNode.name"
+            class="max-w-full max-h-[70vh] rounded-lg object-contain shadow"
+          />
+          <iframe
+            v-else-if="previewObjectUrl && previewContentType.includes('pdf')"
+            :src="previewObjectUrl"
+            :title="previewNode.name"
+            class="w-full h-[70vh] rounded-lg bg-white"
+          />
+          <pre
+            v-else-if="previewTextContent !== null"
+            class="w-full max-h-[65vh] overflow-auto rounded-lg bg-white dark:bg-zinc-900 p-4 text-xs font-mono whitespace-pre-wrap"
+          >{{ previewTextContent }}</pre>
+          <p v-else class="text-xs text-slate-500 py-6">
+            Arquivo carregado em visualização segura ({{ previewContentType || 'arquivo' }}).
+          </p>
+        </div>
       </div>
     </div>
 
-    <!-- Embedded Nexus Sheets Live Co-Editor -->
-    <div v-if="!planUpgradeNotice" class="station-panel p-5 space-y-4">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <div class="flex items-center gap-2">
-          <PortalIcon name="file-spreadsheet" :size="18" />
-          <h3 class="text-sm font-bold text-slate-900 dark:text-[#fafafa]">
-            Nexus Sheets Live — {{ activeSheetNode?.name || 'Planilha Colaborativa' }}
+    <!-- Collapsible Embedded Nexus Sheets Live Co-Editor -->
+    <div v-if="!planUpgradeNotice" class="station-panel overflow-hidden">
+      <div class="px-4 py-3 bg-slate-50/70 dark:bg-zinc-900/50 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <PortalIcon name="file-spreadsheet" :size="17" class="text-emerald-600" />
+          <h3 class="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#fafafa]">
+            Nexus Sheets Live — {{ activeSheetNode?.name || 'Planilhas Colaborativas' }}
           </h3>
-          <span class="text-xs font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold">
+          <span v-if="activeSheetNode" class="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold">
             rev #{{ sheetRev }}
+          </span>
+          <span
+            v-if="sheetPeers.length > 0"
+            class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 inline-flex items-center gap-1"
+          >
+            <PortalIcon name="users" :size="11" />
+            <span>{{ sheetPeers.length }} online</span>
           </span>
         </div>
 
-        <button
-          type="button"
-          class="min-h-[36px] px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold"
-          @click="saveActiveSheet"
-        >
-          Salvar Planilha
-        </button>
+        <div class="flex items-center gap-1.5">
+          <button
+            v-if="showSheetEditor && activeSheetNode && canDownloadNode(activeSheetNode)"
+            type="button"
+            class="min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 text-xs font-semibold"
+            @click="exportActiveSheet('xlsx')"
+          >
+            Exportar .xlsx
+          </button>
+          <button
+            v-if="showSheetEditor && activeSheetNode"
+            type="button"
+            :disabled="sheetSaving"
+            class="min-h-[32px] px-3 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1 disabled:opacity-50"
+            @click="saveActiveSheet"
+          >
+            <PortalIcon name="save" :size="13" />
+            <span>{{ sheetSaving ? 'Salvando...' : 'Salvar Planilha' }}</span>
+          </button>
+          <button
+            type="button"
+            class="min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-bold inline-flex items-center gap-1"
+            @click="showSheetEditor = !showSheetEditor"
+          >
+            <PortalIcon v-if="showSheetEditor" name="chevron-up" :size="13" />
+            <PortalIcon v-else name="chevron-down" :size="13" />
+            <span>{{ showSheetEditor ? 'Recolher' : 'Abrir Editor' }}</span>
+          </button>
+        </div>
       </div>
 
-      <!-- Formula Bar -->
-      <div class="flex items-center gap-2 bg-slate-50 dark:bg-zinc-900 p-2 rounded-xl border border-slate-200 dark:border-zinc-800">
-        <span class="px-2.5 py-1 rounded bg-white dark:bg-zinc-800 font-mono text-xs font-bold border border-slate-200 dark:border-zinc-700">
-          {{ selectedCellRef }}
-        </span>
-        <span class="font-mono text-xs font-bold text-slate-400">fx</span>
-        <input
-          v-model="formulaInput"
-          type="text"
-          aria-label="Barra de Fórmulas da Planilha"
-          data-testid="portal-formula-input"
-          placeholder="Valor ou fórmula (=SOMA(A1:A2))"
-          class="flex-1 min-h-[36px] px-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 font-mono text-xs"
-          @input="applySheetCellInput(selectedCellRef, formulaInput)"
-        />
-      </div>
+      <div v-if="showSheetEditor" class="p-4 border-t border-slate-200 dark:border-zinc-800 space-y-3">
+        <!-- Formula Bar -->
+        <div class="flex items-center gap-2 bg-slate-50 dark:bg-zinc-900 p-2 rounded-xl border border-slate-200 dark:border-zinc-800">
+          <span class="px-2.5 py-1 rounded bg-white dark:bg-zinc-800 font-mono text-xs font-bold border border-slate-200 dark:border-zinc-700">
+            {{ selectedCellRef }}
+          </span>
+          <span class="font-mono text-xs font-bold text-slate-400">fx</span>
+          <input
+            v-model="formulaInput"
+            type="text"
+            aria-label="Barra de Fórmulas da Planilha"
+            data-testid="portal-formula-input"
+            placeholder="Valor ou fórmula (=SOMA(A1:A2))"
+            class="flex-1 min-h-[36px] px-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 font-mono text-xs"
+            @input="applySheetCellInput(selectedCellRef, formulaInput)"
+          />
+        </div>
 
-      <!-- Grid -->
-      <div class="overflow-x-auto border border-slate-200 dark:border-zinc-800 rounded-xl">
-        <table class="w-full border-collapse text-xs font-mono">
-          <thead>
-            <tr class="bg-slate-100 dark:bg-zinc-900">
-              <th class="w-10 border border-slate-200 dark:border-zinc-800 py-1 text-center">#</th>
-              <th
-                v-for="col in ['A', 'B', 'C', 'D']"
-                :key="col"
-                class="min-w-[110px] border border-slate-200 dark:border-zinc-800 py-1 px-2 text-center font-bold"
-              >
-                {{ col }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="rowNum in [1, 2, 3, 4, 5]" :key="rowNum">
-              <td class="bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-center font-bold text-slate-500">
-                {{ rowNum }}
-              </td>
-              <td
-                v-for="col in ['A', 'B', 'C', 'D']"
-                :key="`${col}${rowNum}`"
-                :data-testid="`portal-cell-${col}${rowNum}`"
-                class="border border-slate-200 dark:border-zinc-800 p-0 relative"
-                @click="selectSheetCell(`${col}${rowNum}`)"
-              >
-                <input
-                  type="text"
-                  :aria-label="`Célula ${col}${rowNum}`"
-                  :value="
-                    selectedCellRef === `${col}${rowNum}`
-                      ? formulaInput
-                      : evaluatedCurrentTab?.cells?.[`${col}${rowNum}`]?.value ?? ''
-                  "
-                  class="w-full h-8 px-2 bg-transparent focus:outline-none text-xs font-mono"
-                  @focus="selectSheetCell(`${col}${rowNum}`)"
-                  @input="
-                    (e) => {
-                      formulaInput = e.target.value;
-                      applySheetCellInput(`${col}${rowNum}`, e.target.value);
-                    }
-                  "
-                />
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <!-- Grid -->
+        <div class="overflow-x-auto border border-slate-200 dark:border-zinc-800 rounded-xl">
+          <table class="w-full border-collapse text-xs font-mono">
+            <thead>
+              <tr class="bg-slate-100 dark:bg-zinc-900">
+                <th class="w-10 border border-slate-200 dark:border-zinc-800 py-1 text-center">#</th>
+                <th
+                  v-for="col in ['A', 'B', 'C', 'D']"
+                  :key="col"
+                  class="min-w-[110px] border border-slate-200 dark:border-zinc-800 py-1 px-2 text-center font-bold"
+                >
+                  {{ col }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="rowNum in [1, 2, 3, 4, 5]" :key="rowNum">
+                <td class="bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-center font-bold text-slate-500">
+                  {{ rowNum }}
+                </td>
+                <td
+                  v-for="col in ['A', 'B', 'C', 'D']"
+                  :key="`${col}${rowNum}`"
+                  :data-testid="`portal-cell-${col}${rowNum}`"
+                  class="border border-slate-200 dark:border-zinc-800 p-0 relative"
+                  @click="selectSheetCell(`${col}${rowNum}`)"
+                >
+                  <input
+                    type="text"
+                    :aria-label="`Célula ${col}${rowNum}`"
+                    :value="
+                      selectedCellRef === `${col}${rowNum}`
+                        ? formulaInput
+                        : evaluatedCurrentTab?.cells?.[`${col}${rowNum}`]?.value ?? ''
+                    "
+                    class="w-full h-8 px-2 bg-transparent focus:outline-none text-xs font-mono"
+                    @focus="selectSheetCell(`${col}${rowNum}`)"
+                    @input="
+                      (e) => {
+                        formulaInput = e.target.value;
+                        applySheetCellInput(`${col}${rowNum}`, e.target.value);
+                      }
+                    "
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>

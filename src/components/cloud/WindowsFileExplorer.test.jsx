@@ -142,4 +142,39 @@ describe('WindowsFileExplorer (UX Estilo Windows Nativo)', () => {
     expect(screen.getByTestId('vfs-node-Setores')).toBeInTheDocument();
     expect(screen.getByTestId('vfs-node-Manual-TI.pdf')).toBeInTheDocument();
   });
+
+  it('lista links temporarios ativos no modal de compartilhamento e permite excluir o link', async () => {
+    const onLoadShareLinks = vi.fn().mockResolvedValue([]);
+    const onRevokeShareLink = vi.fn().mockResolvedValue(true);
+    const activeLinks = [
+      {
+        id: 'lnk-1',
+        nodeId: 'doc-1',
+        nodeName: 'Manual-TI.pdf',
+        expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+        allowDownload: true,
+        accessCount: 2,
+        status: 'active',
+      },
+    ];
+
+    render(
+      <StatefulHarness
+        shareLinks={activeLinks}
+        onLoadShareLinks={onLoadShareLinks}
+        onRevokeShareLink={onRevokeShareLink}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('vfs-node-Manual-TI.pdf'));
+    fireEvent.click(screen.getByRole('button', { name: 'Compartilhar link' }));
+
+    expect(onLoadShareLinks).toHaveBeenCalled();
+    expect(screen.getByText(/Links ativos deste arquivo \(1\)/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir link temporário' }));
+    await waitFor(() => {
+      expect(onRevokeShareLink).toHaveBeenCalledWith('lnk-1', { purge: false });
+    });
+  });
 });

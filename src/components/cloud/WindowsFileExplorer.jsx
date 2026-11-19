@@ -250,7 +250,10 @@ export default function WindowsFileExplorer({
   onPurgeTrashNode,
   onOpenSheet,
   onCreateSheet,
+  shareLinks = [],
+  onLoadShareLinks,
   onCreateShareLink,
+  onRevokeShareLink,
   uploadingCount = 0,
 }) {
   // Windows Explorer view & navigation state
@@ -285,6 +288,7 @@ export default function WindowsFileExplorer({
   // Quick Share Link modal
   const [shareModalNode, setShareModalNode] = useState(null);
   const [shareExpiresHours, setShareExpiresHours] = useState(24);
+  const [shareAllowDownload, setShareAllowDownload] = useState(true);
   const [sharePassword, setSharePassword] = useState('');
   const [createdShareUrl, setCreatedShareUrl] = useState('');
 
@@ -617,8 +621,10 @@ export default function WindowsFileExplorer({
     setContextMenu(null);
     setShareModalNode(node);
     setShareExpiresHours(24);
+    setShareAllowDownload(true);
     setSharePassword('');
     setCreatedShareUrl('');
+    onLoadShareLinks?.();
   };
 
   const handleSubmitShareLink = async (e) => {
@@ -627,12 +633,14 @@ export default function WindowsFileExplorer({
     const res = await onCreateShareLink({
       nodeId: shareModalNode.id,
       expiresInHours: Number(shareExpiresHours || 24),
+      allowDownload: Boolean(shareAllowDownload),
       password: sharePassword.trim() || undefined,
     });
-    const url = res?.url || res?.link?.url || res?.shareUrl || (res?.token ? `${window.location.origin}/api/v1/storage/public/${res.token}` : '');
+    const url = res?.shareUrl || res?.url || res?.link?.url || '';
     if (url) {
       setCreatedShareUrl(url);
     }
+    setSharePassword('');
   };
 
   // Drag & Drop handlers (External OS Files + Internal Move)
@@ -2416,6 +2424,14 @@ export default function WindowsFileExplorer({
                   className="w-full min-h-[38px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-3 text-xs"
                 />
               </div>
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-zinc-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={shareAllowDownload}
+                  onChange={(e) => setShareAllowDownload(e.target.checked)}
+                />
+                <span>Permitir download do arquivo pelo link</span>
+              </label>
               <button
                 type="submit"
                 className="w-full min-h-[38px] rounded-xl bg-brand text-brand-fg text-xs font-bold"
@@ -2440,6 +2456,67 @@ export default function WindowsFileExplorer({
                 </button>
               </div>
             )}
+
+            {(() => {
+              const activeFileLinks = (shareLinks || []).filter((l) => {
+                const sameNode = (l.nodeId || l.node_id) === shareModalNode.id;
+                const revoked = Boolean(l.revokedAt || l.revoked_at || l.status === 'revoked');
+                const expMs = new Date(l.expiresAt || l.expires_at || 0).getTime();
+                const expired = expMs > 0 && expMs <= Date.now();
+                return sameNode && !revoked && !expired;
+              });
+              if (activeFileLinks.length === 0) return null;
+              return (
+                <div className="pt-3 border-t border-slate-200 dark:border-zinc-800 space-y-2">
+                  <p className="text-[11px] font-bold uppercase text-slate-500">
+                    Links ativos deste arquivo ({activeFileLinks.length})
+                  </p>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {activeFileLinks.map((lnk) => (
+                      <div
+                        key={lnk.id}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 px-2.5 py-2 text-[11px]"
+                      >
+                        <div className="min-w-0">
+                          <span className="font-semibold text-slate-800 dark:text-zinc-200 block truncate">
+                            Expira {formatDateTime(lnk.expiresAt || lnk.expires_at)}
+                          </span>
+                          <span className="text-[10px] text-slate-500">
+                            {lnk.accessCount ?? lnk.access_count ?? 0} acesso(s) • {lnk.allowDownload || lnk.allow_download ? 'Download' : 'Somente ver'}
+                            {lnk.hasPassword ? ' • Com senha' : ''}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {lnk.shareUrl && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator?.clipboard?.writeText?.(lnk.shareUrl);
+                                toast.success('Link copiado!');
+                              }}
+                              className="px-2 py-1 rounded border border-slate-200 dark:border-zinc-700 font-bold"
+                            >
+                              Copiar
+                            </button>
+                          )}
+                          {onRevokeShareLink && (
+                            <button
+                              type="button"
+                              aria-label="Excluir link temporário"
+                              onClick={() => onRevokeShareLink(lnk.id, { purge: false })}
+                              className="px-2 py-1 rounded bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold inline-flex items-center gap-1"
+                            >
+                              <Trash2 size={11} />
+                              <span>Excluir</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

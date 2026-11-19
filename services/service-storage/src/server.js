@@ -2010,7 +2010,13 @@ export async function buildStorageService(opts = {}) {
 
     const body = request.body && typeof request.body === 'object' ? request.body : {};
     const nodeId = body.nodeId;
-    const expiresInMinutes = Number(body.expiresInMinutes ?? 60);
+    const rawMinutes =
+      body.expiresInMinutes !== undefined && body.expiresInMinutes !== null
+        ? Number(body.expiresInMinutes)
+        : body.expiresInHours !== undefined && body.expiresInHours !== null
+          ? Number(body.expiresInHours) * 60
+          : 60;
+    const expiresInMinutes = rawMinutes;
     if (!nodeId || !Number.isFinite(expiresInMinutes) || expiresInMinutes <= 0) {
       return reply.code(400).send({
         error: 'INVALID_LINK_PARAMS',
@@ -2043,10 +2049,14 @@ export async function buildStorageService(opts = {}) {
       payload: { nodeId: node.id, expiresAt, allowDownload: created.allow_download },
     });
 
+    const sharePath = `/api/v1/storage/share/${rawToken}`;
     const maskedLink = {
       id: created.id,
       tenantId: created.tenant_id,
       nodeId: created.node_id,
+      nodeName: node.name,
+      nodePath: node.virtual_path || `/${node.name}`,
+      sharePath,
       allowDownload: Boolean(created.allow_download),
       allow_download: Boolean(created.allow_download),
       hasPassword: Boolean(created.password_hash),
@@ -2063,6 +2073,7 @@ export async function buildStorageService(opts = {}) {
 
     return reply.code(201).send({
       token: rawToken,
+      sharePath,
       link: maskedLink,
       ...maskedLink,
     });
@@ -2071,23 +2082,38 @@ export async function buildStorageService(opts = {}) {
   app.get('/api/v1/storage/links', async (request) => {
     const user = authenticateStorageUser(request);
     requireGlobalCapability(user, 'cloud:read');
-    const links = await storageRepo.listTempLinks(user.tenantId);
-    const sanitized = links.map((l) => ({
-      id: l.id,
-      tenantId: l.tenant_id,
-      nodeId: l.node_id,
-      allowDownload: Boolean(l.allow_download),
-      allow_download: Boolean(l.allow_download),
-      hasPassword: Boolean(l.password_hash),
-      accessCount: Number(l.access_count ?? 0),
-      access_count: Number(l.access_count ?? 0),
-      expiresAt: l.expires_at,
-      expires_at: l.expires_at,
-      revokedAt: l.revoked_at,
-      revoked_at: l.revoked_at,
-      createdByEmail: l.created_by_email,
-      createdAt: l.created_at,
-    }));
+    const nodeIdFilter = request.query?.nodeId ? String(request.query.nodeId) : undefined;
+    const [links, allNodes] = await Promise.all([
+      storageRepo.listTempLinks(user.tenantId, { nodeId: nodeIdFilter }),
+      storageRepo.listNodes(user.tenantId, { includeTrash: true }),
+    ]);
+    const nodesMap = new Map(allNodes.map((n) => [n.id, n]));
+    const nowMs = Date.now();
+    const sanitized = links.map((l) => {
+      const targetNode = nodesMap.get(l.node_id);
+      const expMs = new Date(l.expires_at).getTime();
+      const isRevoked = Boolean(l.revoked_at);
+      const isExpired = !isRevoked && Number.isFinite(expMs) && expMs <= nowMs;
+      return {
+        id: l.id,
+        tenantId: l.tenant_id,
+        nodeId: l.node_id,
+        nodeName: targetNode?.name || null,
+        nodePath: targetNode?.virtual_path || null,
+        allowDownload: Boolean(l.allow_download),
+        allow_download: Boolean(l.allow_download),
+        hasPassword: Boolean(l.password_hash),
+        accessCount: Number(l.access_count ?? 0),
+        access_count: Number(l.access_count ?? 0),
+        expiresAt: l.expires_at,
+        expires_at: l.expires_at,
+        revokedAt: l.revoked_at,
+        revoked_at: l.revoked_at,
+        status: isRevoked ? 'revoked' : isExpired ? 'expired' : 'active',
+        createdByEmail: l.created_by_email,
+        createdAt: l.created_at,
+      };
+    });
     return {
       tenantId: user.tenantId,
       links: sanitized,
@@ -2101,19 +2127,22 @@ export async function buildStorageService(opts = {}) {
       return reply.code(403).send({ error: 'FORBIDDEN', message: 'Sem permissão para revogar links.' });
     }
 
-    const revoked = await storageRepo.revokeTempLink(user.tenantId, request.params.id);
-    if (!revoked) {
+    const purge = String(request.query?.purge || '').toLowerCase() === 'true';
+    const result = purge
+      ? await storageRepo.deleteTempLink(user.tenantId, request.params.id)
+      : await storageRepo.revokeTempLink(user.tenantId, request.params.id);
+    if (!result) {
       return reply.code(404).send({ error: 'LINK_NOT_FOUND', message: 'Link temporário não encontrado.' });
     }
 
     await recordStorageAudit(user.tenantId, user, {
-      action: 'STORAGE_TEMP_LINK_REVOKED',
+      action: purge ? 'STORAGE_TEMP_LINK_DELETED' : 'STORAGE_TEMP_LINK_REVOKED',
       resourceType: 'storage_temp_link',
-      resourceId: revoked.id,
-      payload: { nodeId: revoked.node_id },
+      resourceId: result.id,
+      payload: { nodeId: result.node_id, purged: purge },
     });
 
-    return { ok: true, link: revoked };
+    return { ok: true, purged: purge, link: result };
   });
 
   async function handlePublicShareAccess(request, reply) {

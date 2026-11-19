@@ -34,7 +34,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { can, isSuperadmin } from '../utils/permissions';
 import { hasFeature } from '../utils/entitlements';
-import { microservicesApi } from '../services/microservicesClient';
+import { getGatewayBaseUrl, microservicesApi } from '../services/microservicesClient';
 import { evaluateCellValue, evaluateSheetFormulas } from '../utils/sheetFormulaEngine';
 import VpsOnboardingTutorial from '../components/cloud/VpsOnboardingTutorial';
 import WindowsFileExplorer from '../components/cloud/WindowsFileExplorer';
@@ -146,9 +146,10 @@ const CloudVaultHub = () => {
     accessLevel: 'editor',
   });
   const [shareLinks, setShareLinks] = useState([]);
+  const [showInactiveLinks, setShowInactiveLinks] = useState(false);
   const [shareLinkForm, setShareLinkForm] = useState({
     expiresInHours: 24,
-    allowDownload: false,
+    allowDownload: true,
     password: '',
   });
   const [auditEntries, setAuditEntries] = useState([]);
@@ -656,19 +657,57 @@ const CloudVaultHub = () => {
     }
   };
 
-  const handleCreateShareLinkForNode = async ({ nodeId, expiresInHours, password }) => {
+  const handleLoadShareLinks = useCallback(async () => {
+    const linksRes = await microservicesApi.listStorageShareLinks().catch(() => null);
+    if (linksRes) {
+      setShareLinks((prev) => {
+        const prevTokens = new Map(prev.filter((l) => l.token || l.shareUrl).map((l) => [l.id, { token: l.token, shareUrl: l.shareUrl }]));
+        return (linksRes.links || linksRes.items || []).map((item) => {
+          const cached = prevTokens.get(item.id);
+          return cached ? { ...item, ...cached } : item;
+        });
+      });
+    }
+  }, []);
+
+  const handleCreateShareLinkForNode = async ({ nodeId, expiresInHours, allowDownload = true, password }) => {
     try {
+      const hours = Math.max(1, Number(expiresInHours || 24));
       const res = await microservicesApi.createStorageShareLink({
         nodeId,
-        expiresInHours,
-        allowDownload: true,
-        password,
+        expiresInHours: hours,
+        expiresInMinutes: hours * 60,
+        allowDownload: Boolean(allowDownload),
+        password: password || undefined,
       });
+      const rawToken = res?.token || res?.link?.token;
+      const shareUrl = rawToken ? `${getGatewayBaseUrl()}/api/v1/storage/share/${rawToken}` : '';
+      const created = { ...(res?.link || res), token: rawToken, shareUrl };
+      setShareLinks((prev) => [created, ...prev.filter((l) => l.id !== created.id)]);
       toast.success('Link temporário seguro criado com sucesso.');
-      return res;
+      return { ...created, url: shareUrl, shareUrl };
     } catch (err) {
       toast.error(err?.message || 'Falha ao criar link temporário.');
       return null;
+    }
+  };
+
+  const handleRevokeShareLink = async (linkId, { purge = false } = {}) => {
+    if (!linkId) return;
+    try {
+      await microservicesApi.revokeStorageShareLink(linkId, { purge });
+      if (purge) {
+        setShareLinks((prev) => prev.filter((l) => l.id !== linkId));
+        toast.success('Link temporário excluído permanentemente.');
+      } else {
+        const nowIso = new Date().toISOString();
+        setShareLinks((prev) =>
+          prev.map((l) => (l.id === linkId ? { ...l, revokedAt: nowIso, revoked_at: nowIso, status: 'revoked' } : l)),
+        );
+        toast.success('Link temporário revogado e desativado.');
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Falha ao excluir link temporário.');
     }
   };
 
@@ -782,18 +821,14 @@ const CloudVaultHub = () => {
     e?.preventDefault?.();
     const targetNodeId = aclNodeId || nodes[0]?.id;
     if (!targetNodeId) return;
-    try {
-      const res = await microservicesApi.createStorageShareLink({
-        nodeId: targetNodeId,
-        expiresInHours: Number(shareLinkForm.expiresInHours || 24),
-        allowDownload: Boolean(shareLinkForm.allowDownload),
-        password: shareLinkForm.password || undefined,
-      });
-      const created = res?.link || res;
-      setShareLinks((prev) => [created, ...prev]);
-      toast.success('Link temporário auditado gerado com sucesso.');
-    } catch (err) {
-      toast.error(err?.message || 'Falha ao gerar link temporário.');
+    const created = await handleCreateShareLinkForNode({
+      nodeId: targetNodeId,
+      expiresInHours: Number(shareLinkForm.expiresInHours || 24),
+      allowDownload: Boolean(shareLinkForm.allowDownload),
+      password: shareLinkForm.password.trim() || undefined,
+    });
+    if (created) {
+      setShareLinkForm((prev) => ({ ...prev, password: '' }));
     }
   };
 
@@ -1520,7 +1555,10 @@ const CloudVaultHub = () => {
           onPurgeTrashNode={handlePurgeTrashNode}
           onOpenSheet={handleOpenSheetFromExplorer}
           onCreateSheet={handleCreateSheetInFolder}
+          shareLinks={shareLinks}
+          onLoadShareLinks={handleLoadShareLinks}
           onCreateShareLink={handleCreateShareLinkForNode}
+          onRevokeShareLink={handleRevokeShareLink}
           uploadingCount={uploadingCount}
         />
       )}
@@ -1616,32 +1654,180 @@ const CloudVaultHub = () => {
               ))}
             </div>
 
-            {/* Share link generator */}
-            <div className="pt-3 border-t border-slate-200 dark:border-zinc-800 space-y-2">
-              <h3 className="text-xs font-bold uppercase text-slate-500 flex items-center gap-1.5">
-                <Link2 size={14} />
-                <span>Emitir Link Temporário Auditado</span>
-              </h3>
-              <form onSubmit={handleCreateShareLink} className="flex flex-wrap items-center gap-2">
+            {/* Share link generator & manager */}
+            <div className="pt-3 border-t border-slate-200 dark:border-zinc-800 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-xs font-bold uppercase text-slate-500 flex items-center gap-1.5">
+                  <Link2 size={14} />
+                  <span>Emitir &amp; Gerenciar Links Temporários</span>
+                </h3>
+                {shareLinks.some((l) => l.revokedAt || l.revoked_at || l.status === 'revoked' || l.status === 'expired') && (
+                  <label className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showInactiveLinks}
+                      onChange={(e) => setShowInactiveLinks(e.target.checked)}
+                    />
+                    <span>Mostrar revogados/expirados</span>
+                  </label>
+                )}
+              </div>
+
+              <form onSubmit={handleCreateShareLink} className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <input
                   type="number"
+                  min={1}
                   aria-label="Validade em horas"
+                  placeholder="Validade (h)"
                   value={shareLinkForm.expiresInHours}
                   onChange={(e) => setShareLinkForm((p) => ({ ...p, expiresInHours: e.target.value }))}
-                  className="w-24 min-h-[38px] rounded-xl border border-slate-200 dark:border-zinc-700 px-2.5 text-xs"
+                  className="min-h-[38px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-2.5 text-xs"
                 />
+                <input
+                  type="password"
+                  aria-label="Senha opcional do link"
+                  placeholder="Senha (opcional)"
+                  value={shareLinkForm.password}
+                  onChange={(e) => setShareLinkForm((p) => ({ ...p, password: e.target.value }))}
+                  className="min-h-[38px] rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 px-2.5 text-xs"
+                />
+                <label className="min-h-[38px] px-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900 text-xs flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(shareLinkForm.allowDownload)}
+                    onChange={(e) => setShareLinkForm((p) => ({ ...p, allowDownload: e.target.checked }))}
+                  />
+                  <span>Permitir download</span>
+                </label>
                 <button
                   type="submit"
-                  className="min-h-[38px] px-3 py-1.5 rounded-xl border border-brand/40 bg-brand/10 text-brand-aa text-xs font-bold"
+                  className="sm:col-span-3 min-h-[38px] px-3 py-1.5 rounded-xl border border-brand/40 bg-brand/10 text-brand-aa text-xs font-bold"
                 >
                   Gerar Link Temporário
                 </button>
               </form>
-              {shareLinks.map((lnk) => (
-                <div key={lnk.id || lnk.token} className="text-xs font-mono p-2 rounded-lg bg-slate-50 dark:bg-zinc-900">
-                  {lnk.shareUrl || `/api/v1/storage/share/${lnk.token || lnk.id}`}
-                </div>
-              ))}
+
+              {(() => {
+                const nowMs = Date.now();
+                const normalizedLinks = shareLinks.map((lnk) => {
+                  const isRevoked = Boolean(lnk.revokedAt || lnk.revoked_at || lnk.status === 'revoked');
+                  const expMs = new Date(lnk.expiresAt || lnk.expires_at || 0).getTime();
+                  const isExpired = !isRevoked && expMs > 0 && expMs <= nowMs;
+                  const targetNode = nodes.find((n) => n.id === (lnk.nodeId || lnk.node_id));
+                  const fullUrl =
+                    lnk.shareUrl ||
+                    (lnk.token ? `${getGatewayBaseUrl()}/api/v1/storage/share/${lnk.token}` : null);
+                  return {
+                    ...lnk,
+                    isRevoked,
+                    isExpired,
+                    isActive: !isRevoked && !isExpired,
+                    displayName: lnk.nodeName || targetNode?.name || 'Arquivo compartilhado',
+                    fullUrl,
+                  };
+                });
+                const displayedLinks = showInactiveLinks
+                  ? normalizedLinks
+                  : normalizedLinks.filter((l) => l.isActive);
+
+                if (displayedLinks.length === 0) {
+                  return (
+                    <p className="text-xs text-slate-500 py-1">
+                      Nenhum link temporário ativo no momento.
+                    </p>
+                  );
+                }
+
+                return (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {displayedLinks.map((lnk) => (
+                      <div
+                        key={lnk.id || lnk.token}
+                        data-testid={`share-link-${lnk.id || lnk.token}`}
+                        className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 p-2.5 text-xs space-y-1.5"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-bold text-slate-900 dark:text-white truncate">
+                              {lnk.displayName}
+                            </span>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                lnk.isRevoked
+                                  ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                                  : lnk.isExpired
+                                    ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                    : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                              }`}
+                            >
+                              {lnk.isRevoked ? 'Revogado' : lnk.isExpired ? 'Expirado' : 'Ativo'}
+                            </span>
+                            {lnk.hasPassword && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-zinc-800">
+                                Com senha
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {lnk.fullUrl && lnk.isActive && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator?.clipboard?.writeText?.(lnk.fullUrl);
+                                  toast.success('Link copiado para a área de transferência.');
+                                }}
+                                className="px-2 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-[11px] font-bold flex items-center gap-1"
+                              >
+                                <Copy size={11} />
+                                <span>Copiar</span>
+                              </button>
+                            )}
+                            {lnk.id && lnk.isActive && (
+                              <button
+                                type="button"
+                                aria-label={`Revogar link de ${lnk.displayName}`}
+                                onClick={() => handleRevokeShareLink(lnk.id, { purge: false })}
+                                className="px-2 py-1 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[11px] font-bold flex items-center gap-1"
+                              >
+                                <Trash2 size={11} />
+                                <span>Excluir Link</span>
+                              </button>
+                            )}
+                            {lnk.id && !lnk.isActive && (
+                              <button
+                                type="button"
+                                aria-label={`Remover registro do link de ${lnk.displayName}`}
+                                onClick={() => handleRevokeShareLink(lnk.id, { purge: true })}
+                                className="px-2 py-1 rounded-lg border border-slate-300 dark:border-zinc-700 text-slate-500 hover:text-rose-600 text-[11px] font-semibold flex items-center gap-1"
+                              >
+                                <Trash2 size={11} />
+                                <span>Remover</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="text-[11px] text-slate-500 flex flex-wrap gap-x-3 gap-y-0.5">
+                          <span>Acessos: {lnk.accessCount ?? lnk.access_count ?? 0}</span>
+                          <span>{lnk.allowDownload || lnk.allow_download ? 'Download liberado' : 'Somente visualização'}</span>
+                          {(lnk.expiresAt || lnk.expires_at) && (
+                            <span>
+                              Expira: {new Date(lnk.expiresAt || lnk.expires_at).toLocaleString('pt-BR')}
+                            </span>
+                          )}
+                        </div>
+
+                        {lnk.fullUrl && (
+                          <div className="font-mono text-[11px] text-brand-aa break-all bg-white dark:bg-zinc-950 rounded-lg px-2 py-1 border border-slate-200 dark:border-zinc-800">
+                            {lnk.fullUrl}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

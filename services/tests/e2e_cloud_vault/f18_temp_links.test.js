@@ -229,6 +229,38 @@ describe('F-18: Audited Temporary Share Links', () => {
       const afterRev = await cluster.apiFetch(null, `/api/v1/storage/share/${rawToken}`);
       expect(afterRev.status).toBe(410);
     });
+
+    it('supports expiresInHours, nodeId filter with nodeName/status metadata, and permanent purge via DELETE /links/:id?purge=true', async () => {
+      const createRes = await cluster.apiFetch(managerToken, '/api/v1/storage/links', {
+        method: 'POST',
+        body: { nodeId: brochureId, expiresInHours: 2, allowDownload: false },
+      });
+      expect(createRes.status).toBe(201);
+      const linkId = (createRes.data?.link || createRes.data).id;
+      const rawToken = createRes.data?.token || createRes.data?.link?.token;
+      expect(createRes.data?.nodeName).toBe('f18-brochure.pdf');
+      expect(createRes.data?.sharePath).toBe(`/api/v1/storage/share/${rawToken}`);
+
+      const filteredList = await cluster.apiFetch(managerToken, `/api/v1/storage/links?nodeId=${brochureId}`);
+      expect(filteredList.status).toBe(200);
+      const found = extractLinksList(filteredList).find((l) => l.id === linkId);
+      expect(found).toBeTruthy();
+      expect(found.nodeName).toBe('f18-brochure.pdf');
+      expect(found.status).toBe('active');
+
+      const purgeRes = await cluster.apiFetch(managerToken, `/api/v1/storage/links/${linkId}?purge=true`, {
+        method: 'DELETE',
+      });
+      expect(purgeRes.status).toBe(200);
+      expect(purgeRes.data?.purged).toBe(true);
+
+      const listAfterPurge = await cluster.apiFetch(managerToken, `/api/v1/storage/links?nodeId=${brochureId}`);
+      expect(listAfterPurge.status).toBe(200);
+      expect(extractLinksList(listAfterPurge).find((l) => l.id === linkId)).toBeUndefined();
+
+      const afterPurgeAccess = await cluster.apiFetch(null, `/api/v1/storage/share/${rawToken}`);
+      expect(afterPurgeAccess.status).toBe(404);
+    });
   });
 
   describe('Tier 2 — Expiration, Wrong Password, Audit Trail, RBAC & Cross-Tenant Isolation', () => {

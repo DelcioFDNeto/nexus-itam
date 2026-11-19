@@ -514,11 +514,15 @@ export const microservicesApi = {
       `/api/v1/storage/nodes/${encodeURIComponent(nodeId)}/acl/${encodeURIComponent(aclId)}`,
       { method: 'DELETE' },
     ),
-  listStorageShareLinks: () => gatewayRequest('/api/v1/storage/links'),
+  listStorageShareLinks: (nodeId) =>
+    gatewayRequest(`/api/v1/storage/links${nodeId ? `?nodeId=${encodeURIComponent(nodeId)}` : ''}`),
   createStorageShareLink: (payload) =>
     gatewayRequest('/api/v1/storage/links', { method: 'POST', body: payload }),
-  revokeStorageShareLink: (linkId) =>
-    gatewayRequest(`/api/v1/storage/links/${encodeURIComponent(linkId)}`, { method: 'DELETE' }),
+  revokeStorageShareLink: (linkId, { purge = false } = {}) =>
+    gatewayRequest(
+      `/api/v1/storage/links/${encodeURIComponent(linkId)}${purge ? '?purge=true' : ''}`,
+      { method: 'DELETE' },
+    ),
 
   // Nexus Sheets Live REST
   createSheet: (payload) =>
