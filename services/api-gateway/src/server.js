@@ -11,6 +11,8 @@
 // =============================================================================
 
 import crypto from 'node:crypto';
+import http from 'node:http';
+import https from 'node:https';
 import Fastify from 'fastify';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
@@ -18,6 +20,108 @@ import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import WebSocket from 'ws';
 import { pathToFileURL } from 'node:url';
+
+const UPSTREAM_HTTP_AGENT = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 60_000,
+  maxSockets: 128,
+  maxFreeSockets: 32,
+  scheduling: 'lifo',
+  timeout: 65_000,
+});
+
+const UPSTREAM_HTTPS_AGENT = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 60_000,
+  maxSockets: 128,
+  maxFreeSockets: 32,
+  scheduling: 'lifo',
+  timeout: 65_000,
+});
+
+function requestUpstreamKeepAlive(targetUrl, { method = 'GET', headers = {}, body = undefined, timeoutMs = 25_000 } = {}) {
+  const parsed = new URL(targetUrl);
+  const isHttps = parsed.protocol === 'https:';
+  const transport = isHttps ? https : http;
+  const agent = isHttps ? UPSTREAM_HTTPS_AGENT : UPSTREAM_HTTP_AGENT;
+  const upperMethod = String(method || 'GET').toUpperCase();
+  const bodyBuf =
+    body === undefined || body === null || ['GET', 'HEAD'].includes(upperMethod)
+      ? null
+      : Buffer.isBuffer(body)
+        ? body
+        : Buffer.from(String(body), 'utf8');
+
+  const reqHeaders = {
+    Connection: 'keep-alive',
+    ...headers,
+  };
+  if (!['GET', 'HEAD'].includes(upperMethod)) {
+    reqHeaders['content-length'] = bodyBuf ? bodyBuf.length : 0;
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const req = transport.request(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port || (isHttps ? 443 : 80),
+        path: `${parsed.pathname}${parsed.search}`,
+        method: upperMethod,
+        headers: reqHeaders,
+        agent,
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          if (settled) return;
+          settled = true;
+          const rawHeaders = res.headers || {};
+          resolve({
+            status: res.statusCode || 500,
+            ok: (res.statusCode || 500) >= 200 && (res.statusCode || 500) < 300,
+            buffer: Buffer.concat(chunks),
+            headers: {
+              get(name) {
+                const v = rawHeaders[String(name || '').toLowerCase()];
+                return Array.isArray(v) ? v.join(', ') : v !== undefined ? String(v) : null;
+              },
+            },
+          });
+        });
+        res.on('error', (err) => {
+          if (settled) return;
+          settled = true;
+          reject(err);
+        });
+      },
+    );
+
+    req.setNoDelay(true);
+    req.setTimeout(timeoutMs, () => {
+      if (!settled) {
+        settled = true;
+        const err = new Error('timeout');
+        err.code = 'ETIMEDOUT';
+        req.destroy(err);
+        reject(err);
+      }
+    });
+    req.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      err.reusedSocket = Boolean(req.reusedSocket);
+      reject(err);
+    });
+
+    if (bodyBuf && bodyBuf.length > 0) {
+      req.write(bodyBuf);
+    }
+    req.end();
+  });
+}
 import { authRepo, checkDbHealth, initDatabase } from '../../shared/db.js';
 import {
   requireRoles,
@@ -75,11 +179,31 @@ export async function buildApiGateway(opts = {}) {
           .filter(Boolean)
       : true;
 
+  const CONTRACT_CACHE_TTL_MS = 15_000;
+  const tenantContractCache = new Map();
+
+  async function getCachedTenantContract(tenantId) {
+    const key = String(tenantId || '');
+    const now = Date.now();
+    const hit = tenantContractCache.get(key);
+    if (hit && hit.expiresAt > now) {
+      return hit.contract;
+    }
+    const contract = await authRepo.getTenantContract(tenantId);
+    tenantContractCache.set(key, { contract, expiresAt: now + CONTRACT_CACHE_TTL_MS });
+    return contract;
+  }
+
+  function invalidateTenantContractCache(tenantId) {
+    if (tenantId) tenantContractCache.delete(String(tenantId));
+  }
+
   const app = Fastify({
     logger: opts.logger ?? false,
     bodyLimit: 110 * 1024 * 1024,
     trustProxy: true,
-    forceCloseConnections: true,
+    keepAliveTimeout: 65_000,
+    forceCloseConnections: 'idle',
   });
 
   app.addContentTypeParser('multipart/form-data', { parseAs: 'buffer' }, (_req, body, done) => {
@@ -358,6 +482,7 @@ export async function buildApiGateway(opts = {}) {
       }
       requireRoles(claims, ['owner']);
       const updated = await authRepo.updateTenantContract(claims.tenantId, request.body || {});
+      invalidateTenantContractCache(claims.tenantId);
       return updated;
     },
   );
@@ -559,7 +684,7 @@ export async function buildApiGateway(opts = {}) {
             requestId: request.correlationId,
           });
         }
-        const contract = await authRepo.getTenantContract(claims.tenantId);
+        const contract = await getCachedTenantContract(claims.tenantId);
         if (contract && !isCloudStorageEntitled(contract)) {
           return reply.code(403).send({
             error: 'FEATURE_NOT_IN_PLAN',
@@ -595,12 +720,25 @@ export async function buildApiGateway(opts = {}) {
 
     let response;
     try {
-      response = await fetch(targetUrl, {
-        method: request.method,
-        headers: forwardHeaders,
-        body: serializedBody,
-        signal: AbortSignal.timeout(25_000),
-      });
+      try {
+        response = await requestUpstreamKeepAlive(targetUrl, {
+          method: request.method,
+          headers: forwardHeaders,
+          body: serializedBody,
+          timeoutMs: 25_000,
+        });
+      } catch (firstErr) {
+        if (firstErr?.reusedSocket && ['ECONNRESET', 'EPIPE', 'ECONNABORTED'].includes(firstErr?.code)) {
+          response = await requestUpstreamKeepAlive(targetUrl, {
+            method: request.method,
+            headers: forwardHeaders,
+            body: serializedBody,
+            timeoutMs: 25_000,
+          });
+        } else {
+          throw firstErr;
+        }
+      }
     } catch (err) {
       return reply.code(502).send({
         error: 'UPSTREAM_UNAVAILABLE',
@@ -609,7 +747,7 @@ export async function buildApiGateway(opts = {}) {
       });
     }
 
-    const rawBuf = Buffer.from(await response.arrayBuffer());
+    const rawBuf = response.buffer;
     reply.code(response.status);
     for (const hName of [
       'content-type',
@@ -691,13 +829,17 @@ export async function buildApiGateway(opts = {}) {
       upstreamHeaders['x-tenant-id'] = request.headers['x-tenant-id'];
     }
 
+    clientSocket._socket?.setNoDelay?.(true);
+
     const pendingMessages = [];
     const upstream = new WebSocket(upstreamWsUrl, {
       headers: upstreamHeaders,
       maxPayload: 4 * 1024 * 1024,
+      perMessageDeflate: false,
     });
 
     upstream.on('open', () => {
+      upstream._socket?.setNoDelay?.(true);
       while (pendingMessages.length > 0 && upstream.readyState === WebSocket.OPEN) {
         upstream.send(pendingMessages.shift());
       }

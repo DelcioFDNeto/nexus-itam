@@ -3,9 +3,50 @@
 // Driver Híbrido 1 — SFTP / SSH Nativo Zero-Install (ssh2)
 // =============================================================================
 
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { Client as SshClient } from 'ssh2';
 import { normalizeVirtualVaultPath } from '../../../shared/security.js';
+
+// Pool de sessões SFTP persistentes por host/credencial (elimina handshakes SSH repetidos a cada operação)
+const SFTP_WAN_IDLE_TTL_MS = 45_000;
+const SFTP_LOOPBACK_IDLE_TTL_MS = 800;
+const sftpPool = new Map();
+
+function isLoopbackHost(h) {
+  const clean = String(h || '').trim().toLowerCase();
+  return clean === '127.0.0.1' || clean === 'localhost' || clean === '::1';
+}
+
+function evictPooledSftp(poolKey, expectedEntry = null) {
+  const entry = sftpPool.get(poolKey);
+  if (!entry || (expectedEntry && entry !== expectedEntry)) return;
+  sftpPool.delete(poolKey);
+  if (entry.idleTimer) {
+    clearTimeout(entry.idleTimer);
+    entry.idleTimer = null;
+  }
+  try {
+    entry.client?.end();
+  } catch {
+    /* ignore */
+  }
+}
+
+export function closeAllSftpSessions() {
+  for (const key of Array.from(sftpPool.keys())) {
+    evictPooledSftp(key);
+  }
+}
+
+function touchPooledSftp(poolKey, entry) {
+  if (entry.idleTimer) clearTimeout(entry.idleTimer);
+  const ttl = entry.idleTtlMs || SFTP_WAN_IDLE_TTL_MS;
+  entry.idleTimer = setTimeout(() => {
+    evictPooledSftp(poolKey, entry);
+  }, ttl);
+  entry.idleTimer.unref?.();
+}
 
 function sanitizeSftpErrorMessage(msg, secrets = []) {
   let out = String(msg || 'Falha na conexão SFTP.');
@@ -27,6 +68,10 @@ export function createSftpDriver(connection, credentials = {}) {
   const rootPath = normalizeVirtualVaultPath(connection.root_path || connection.rootPath || '/');
 
   const secretValues = [password, privateKey, passphrase].filter(Boolean);
+  const credFingerprint = crypto
+    .createHash('sha256')
+    .update(`${host}:${port}:${username}:${password || ''}:${privateKey || ''}:${passphrase || ''}`)
+    .digest('hex');
 
   function resolveRemotePath(virtualPath) {
     const vPath = normalizeVirtualVaultPath(virtualPath || '/');
@@ -35,63 +80,132 @@ export function createSftpDriver(connection, credentials = {}) {
     return path.posix.join(rootPath, vPath.replace(/^\/+/, ''));
   }
 
-  async function withSftpSession(fn) {
+  function acquirePooledSession() {
+    const existing = sftpPool.get(credFingerprint);
+    if (existing?.sftp && existing.ready) {
+      touchPooledSftp(credFingerprint, existing);
+      return Promise.resolve(existing);
+    }
+    if (existing?.connectingPromise) {
+      return existing.connectingPromise;
+    }
+
     const client = new SshClient();
-    try {
-      const sftp = await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          client.end();
-          reject(new Error('Timeout na conexão SFTP.'));
-        }, 7000);
+    const entry = {
+      client,
+      sftp: null,
+      ready: false,
+      idleTimer: null,
+      idleTtlMs: isLoopbackHost(host) ? SFTP_LOOPBACK_IDLE_TTL_MS : SFTP_WAN_IDLE_TTL_MS,
+      connectingPromise: null,
+    };
 
-        client.once('ready', () => {
-          client.sftp((err, sftpStream) => {
-            clearTimeout(timer);
-            if (err) return reject(err);
-            resolve(sftpStream);
-          });
-        });
+    entry.connectingPromise = new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        evictPooledSftp(credFingerprint, entry);
+        reject(new Error('Timeout na conexão SFTP.'));
+      }, 7000);
+      timer.unref?.();
 
-        client.once('error', (err) => {
+      client.once('ready', () => {
+        client.sftp((err, sftpStream) => {
           clearTimeout(timer);
+          if (settled) return;
+          if (err) {
+            settled = true;
+            evictPooledSftp(credFingerprint, entry);
+            return reject(err);
+          }
+          settled = true;
+          entry.sftp = sftpStream;
+          entry.ready = true;
+          entry.connectingPromise = null;
+          sftpStream.once('close', () => evictPooledSftp(credFingerprint, entry));
+          sftpStream.once('error', () => evictPooledSftp(credFingerprint, entry));
+          touchPooledSftp(credFingerprint, entry);
+          // Unref underlying socket when idle so test runners exit cleanly
+          client._sock?.unref?.();
+          resolve(entry);
+        });
+      });
+
+      client.on('error', (err) => {
+        clearTimeout(timer);
+        evictPooledSftp(credFingerprint, entry);
+        if (!settled) {
+          settled = true;
           reject(err);
-        });
-
-        const connectConfig = {
-          host,
-          port,
-          username,
-          readyTimeout: 6000,
-        };
-        if (privateKey) {
-          connectConfig.privateKey = privateKey;
-          if (passphrase) connectConfig.passphrase = passphrase;
-        }
-        if (password) {
-          connectConfig.password = password;
-        }
-
-        try {
-          client.connect(connectConfig);
-        } catch (syncErr) {
-          clearTimeout(timer);
-          reject(syncErr);
         }
       });
 
-      return await fn(sftp, client);
-    } catch (err) {
-      const cleanMsg = sanitizeSftpErrorMessage(err?.message, secretValues);
-      const wrapped = new Error(cleanMsg);
-      wrapped.code = err?.code || 'SFTP_ERROR';
-      wrapped.statusCode = err?.statusCode || 502;
-      throw wrapped;
-    } finally {
-      try {
-        client.end();
-      } catch {
-        /* ignore */
+      client.once('close', () => evictPooledSftp(credFingerprint, entry));
+      client.once('end', () => evictPooledSftp(credFingerprint, entry));
+
+      const connectConfig = {
+        host,
+        port,
+        username,
+        readyTimeout: 6000,
+        keepaliveInterval: 15_000,
+        keepaliveCountMax: 3,
+      };
+      if (privateKey) {
+        connectConfig.privateKey = privateKey;
+        if (passphrase) connectConfig.passphrase = passphrase;
       }
+      if (password) {
+        connectConfig.password = password;
+      }
+
+      try {
+        client.connect(connectConfig);
+      } catch (syncErr) {
+        clearTimeout(timer);
+        evictPooledSftp(credFingerprint, entry);
+        if (!settled) {
+          settled = true;
+          reject(syncErr);
+        }
+      }
+    });
+
+    sftpPool.set(credFingerprint, entry);
+    return entry.connectingPromise;
+  }
+
+  async function withSftpSession(fn) {
+    let wasCached = Boolean(sftpPool.get(credFingerprint)?.ready);
+    try {
+      const entry = await acquirePooledSession();
+      touchPooledSftp(credFingerprint, entry);
+      return await fn(entry.sftp, entry.client);
+    } catch (firstErr) {
+      // Se falhou em uma sessão reaproveitada (ex.: servidor fechou canal ocioso), reconecta 1 vez
+      if (wasCached && firstErr?.statusCode !== 404) {
+        evictPooledSftp(credFingerprint);
+        try {
+          const fresh = await acquirePooledSession();
+          touchPooledSftp(credFingerprint, fresh);
+          return await fn(fresh.sftp, fresh.client);
+        } catch (retryErr) {
+          const cleanRetryMsg = sanitizeSftpErrorMessage(retryErr?.message, secretValues);
+          const wrappedRetry = new Error(cleanRetryMsg);
+          wrappedRetry.code = retryErr?.code || 'SFTP_ERROR';
+          wrappedRetry.statusCode = retryErr?.statusCode || 502;
+          throw wrappedRetry;
+        }
+      }
+      if (firstErr?.statusCode !== 404) {
+        evictPooledSftp(credFingerprint);
+      }
+      const cleanMsg = sanitizeSftpErrorMessage(firstErr?.message, secretValues);
+      const wrapped = new Error(cleanMsg);
+      wrapped.code = firstErr?.code || 'SFTP_ERROR';
+      wrapped.statusCode = firstErr?.statusCode || 502;
+      throw wrapped;
     }
   }
 
@@ -241,6 +355,18 @@ export function createSftpDriver(connection, credentials = {}) {
         await ensureRemoteDir(sftp, remotePath);
       });
       return { ok: true, path: remotePath };
+    },
+
+    async mkdirBatch(virtualPaths = []) {
+      const list = Array.isArray(virtualPaths) ? virtualPaths.filter(Boolean) : [];
+      if (list.length === 0) return { ok: true, created: [] };
+      const remotePaths = list.map((vp) => resolveRemotePath(vp));
+      await withSftpSession(async (sftp) => {
+        for (const rPath of remotePaths) {
+          await ensureRemoteDir(sftp, rPath);
+        }
+      });
+      return { ok: true, created: remotePaths };
     },
 
     async writeFile(virtualPath, buffer) {

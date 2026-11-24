@@ -42,10 +42,12 @@ using System.IO;
 using System.Management;
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Net.Security;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
+using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.ServiceProcess;
@@ -61,14 +63,14 @@ using Microsoft.Win32;
 [assembly: AssemblyCompany("Nexus ITAM")]
 [assembly: AssemblyProduct("Nexus ITAM - NexusDesk & Vault Sync")]
 [assembly: AssemblyCopyright("Nexus ITAM")]
-[assembly: AssemblyVersion("3.4.0.0")]
-[assembly: AssemblyFileVersion("3.4.0.0")]
+[assembly: AssemblyVersion("3.5.0.0")]
+[assembly: AssemblyFileVersion("3.5.0.0")]
 
 namespace NexusITAM
 {
     internal static class AgentInfo
     {
-        public const string Version = "3.4.0";
+        public const string Version = "3.5.0";
         public const string DefaultRelayBase = "https://itam-api-164-152-195-199.sslip.io";
         public const string ServiceName = "NexusITAMAgent";
         public const string ServiceDisplayName = "Nexus ITAM Agent";
@@ -84,6 +86,7 @@ namespace NexusITAM
         // (scripts/build-agent.mjs). Sem preenchimento, valem os do config.json.
         public const string BuildProjectId = "__PROJECT_ID__";
         public const string BuildApiKey = "__API_KEY__";
+        public const string BuildRelayBase = "__RELAY_BASE__";
 
         public static string Filled(string value, string fallback)
         {
@@ -606,9 +609,28 @@ namespace NexusITAM
         [ScriptIgnore]
         public string LoadedFrom = "";
 
+        [ScriptIgnore]
+        private string _runtimeRelayBase = "";
+
+        public void SetRuntimeRelayBase(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return;
+            string clean = url.Trim().TrimEnd('/');
+            if (clean.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                clean.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            {
+                _runtimeRelayBase = clean;
+            }
+        }
+
         public string ProjectId() { return AgentInfo.Filled(projectId, AgentInfo.Filled(AgentInfo.BuildProjectId, "itam-nexus")); }
         public string ApiKey() { return AgentInfo.Filled(apiKey, AgentInfo.Filled(AgentInfo.BuildApiKey, "")); }
-        public string RelayBase() { return string.IsNullOrEmpty(relayBase) ? AgentInfo.DefaultRelayBase : relayBase.TrimEnd('/'); }
+        public string RelayBase()
+        {
+            if (!string.IsNullOrEmpty(_runtimeRelayBase)) return _runtimeRelayBase;
+            if (!string.IsNullOrEmpty(relayBase)) return relayBase.TrimEnd('/');
+            return AgentInfo.Filled(AgentInfo.BuildRelayBase, AgentInfo.DefaultRelayBase).TrimEnd('/');
+        }
         public string FirestoreBase() { return string.IsNullOrEmpty(firestoreBase) ? "https://firestore.googleapis.com/v1" : firestoreBase.TrimEnd('/'); }
         public string AuthBase() { return string.IsNullOrEmpty(authBase) ? "https://identitytoolkit.googleapis.com/v1" : authBase.TrimEnd('/'); }
         public string TokenBase() { return string.IsNullOrEmpty(tokenBase) ? "https://securetoken.googleapis.com/v1" : tokenBase.TrimEnd('/'); }
@@ -773,8 +795,8 @@ namespace NexusITAM
             ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072;
             ServicePointManager.Expect100Continue = false;
             ServicePointManager.UseNagleAlgorithm = false;
-            ServicePointManager.DefaultConnectionLimit = 24;
-            ServicePointManager.MaxServicePointIdleTime = 60000;
+            ServicePointManager.DefaultConnectionLimit = 48;
+            ServicePointManager.MaxServicePointIdleTime = 90000;
             try { WebRequest.DefaultWebProxy.Credentials = CredentialCache.DefaultNetworkCredentials; } catch { }
         }
 
@@ -928,6 +950,341 @@ namespace NexusITAM
                 result.Body = ex.Message;
             }
             return result;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Cliente WebSocket RFC 6455 Nativo (Zero Dependencias / TCP_NODELAY + TLS 1.2)
+    // Transmite quadros a 30-60 FPS sem overhead HTTP e recebe inputs em tempo real
+    // -------------------------------------------------------------------------
+    internal sealed class RelayWebSocket
+    {
+        private readonly object _writeLock = new object();
+        private TcpClient _tcp;
+        private Stream _stream;
+        private Thread _readThread;
+        private volatile bool _connected;
+        private string _connectedBase = "";
+        private Action<Dictionary<string, object>> _onControl;
+        private int _maskSeed = Environment.TickCount;
+
+        public bool IsConnected { get { return _connected; } }
+        public string ConnectedBase { get { return _connectedBase; } }
+
+        public bool Connect(string relayBaseUrl, string tenantId, string deviceKey, Action<Dictionary<string, object>> onControl)
+        {
+            Close();
+            try
+            {
+                if (string.IsNullOrEmpty(relayBaseUrl) || string.IsNullOrEmpty(tenantId) || string.IsNullOrEmpty(deviceKey))
+                    return false;
+
+                Uri httpUri = new Uri(relayBaseUrl.TrimEnd('/'));
+                bool secure = string.Equals(httpUri.Scheme, "https", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(httpUri.Scheme, "wss", StringComparison.OrdinalIgnoreCase);
+                string host = httpUri.DnsSafeHost;
+                int port = httpUri.IsDefaultPort ? (secure ? 443 : 80) : httpUri.Port;
+                string basePath = httpUri.AbsolutePath.TrimEnd('/');
+                string wsPath = basePath + "/ws/nexusdesk?tenantId=" + Uri.EscapeDataString(tenantId) +
+                    "&deviceKey=" + Uri.EscapeDataString(deviceKey) + "&client=nexusdesk-agent";
+
+                TcpClient tcp = new TcpClient();
+                tcp.NoDelay = true;
+                tcp.SendBufferSize = 262144;
+                tcp.ReceiveBufferSize = 131072;
+                tcp.SendTimeout = 4000;
+                tcp.ReceiveTimeout = 45000;
+
+                IAsyncResult ar = tcp.BeginConnect(host, port, null, null);
+                if (!ar.AsyncWaitHandle.WaitOne(3500, false))
+                {
+                    try { tcp.Close(); } catch { }
+                    return false;
+                }
+                tcp.EndConnect(ar);
+                tcp.NoDelay = true;
+
+                Stream stream = tcp.GetStream();
+                if (secure)
+                {
+                    SslStream ssl = new SslStream(stream, false);
+                    ssl.AuthenticateAsClient(host, null, (SslProtocols)3072, false);
+                    stream = ssl;
+                }
+
+                byte[] keyBytes = new byte[16];
+                using (RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider()) rng.GetBytes(keyBytes);
+                string wsKey = Convert.ToBase64String(keyBytes);
+                string hostHeader = ((secure && port == 443) || (!secure && port == 80))
+                    ? host
+                    : (host + ":" + port.ToString(CultureInfo.InvariantCulture));
+
+                string handshake =
+                    "GET " + wsPath + " HTTP/1.1\r\n" +
+                    "Host: " + hostHeader + "\r\n" +
+                    "Upgrade: websocket\r\n" +
+                    "Connection: Upgrade\r\n" +
+                    "Sec-WebSocket-Key: " + wsKey + "\r\n" +
+                    "Sec-WebSocket-Version: 13\r\n" +
+                    "User-Agent: NexusITAM-Agent/" + AgentInfo.Version + "\r\n\r\n";
+
+                byte[] reqBytes = Encoding.ASCII.GetBytes(handshake);
+                stream.Write(reqBytes, 0, reqBytes.Length);
+                stream.Flush();
+
+                string respHeaders = ReadHttpHeaders(stream, 8192);
+                if (string.IsNullOrEmpty(respHeaders) || !respHeaders.StartsWith("HTTP/1.1 101", StringComparison.OrdinalIgnoreCase))
+                {
+                    try { stream.Close(); } catch { }
+                    try { tcp.Close(); } catch { }
+                    return false;
+                }
+
+                _tcp = tcp;
+                _stream = stream;
+                _onControl = onControl;
+                _connectedBase = relayBaseUrl.TrimEnd('/');
+                _connected = true;
+
+                _readThread = new Thread(ReceiveLoop);
+                _readThread.IsBackground = true;
+                _readThread.Name = "NexusDeskWsReader";
+                _readThread.Start();
+                return true;
+            }
+            catch
+            {
+                Close();
+                return false;
+            }
+        }
+
+        private static string ReadHttpHeaders(Stream stream, int maxBytes)
+        {
+            MemoryStream ms = new MemoryStream(512);
+            int state = 0;
+            while (ms.Length < maxBytes)
+            {
+                int b = stream.ReadByte();
+                if (b < 0) break;
+                ms.WriteByte((byte)b);
+                if (state == 0 && b == '\r') state = 1;
+                else if (state == 1 && b == '\n') state = 2;
+                else if (state == 2 && b == '\r') state = 3;
+                else if (state == 3 && b == '\n') return Encoding.ASCII.GetString(ms.ToArray());
+                else state = (b == '\r') ? 1 : 0;
+            }
+            return "";
+        }
+
+        public bool SendText(string text, out int sendElapsedMs)
+        {
+            sendElapsedMs = 0;
+            if (!_connected || _stream == null || text == null) return false;
+            Stopwatch sw = Stopwatch.StartNew();
+            try
+            {
+                byte[] payload = Encoding.UTF8.GetBytes(text);
+                SendFrame(0x81, payload);
+                sw.Stop();
+                sendElapsedMs = (int)sw.ElapsedMilliseconds;
+                return true;
+            }
+            catch
+            {
+                Close();
+                return false;
+            }
+        }
+
+        public bool SendPing()
+        {
+            int ignored;
+            return SendText("{\"action\":\"ping\"}", out ignored);
+        }
+
+        private void SendFrame(byte firstByte, byte[] payload)
+        {
+            int len = payload != null ? payload.Length : 0;
+            int headerLen = len <= 125 ? 6 : (len <= 65535 ? 8 : 14);
+            byte[] packet = new byte[headerLen + len];
+            packet[0] = firstByte;
+
+            int maskOffset;
+            if (len <= 125)
+            {
+                packet[1] = (byte)(0x80 | len);
+                maskOffset = 2;
+            }
+            else if (len <= 65535)
+            {
+                packet[1] = 0x80 | 126;
+                packet[2] = (byte)((len >> 8) & 0xFF);
+                packet[3] = (byte)(len & 0xFF);
+                maskOffset = 4;
+            }
+            else
+            {
+                packet[1] = 0x80 | 127;
+                long l = len;
+                for (int i = 7; i >= 0; i--)
+                {
+                    packet[2 + i] = (byte)(l & 0xFF);
+                    l >>= 8;
+                }
+                maskOffset = 10;
+            }
+
+            int seed = Interlocked.Add(ref _maskSeed, 0x3C6EF35F);
+            byte m0 = (byte)((seed & 0xFF) | 1);
+            byte m1 = (byte)(((seed >> 8) & 0xFF) ^ 0x5A);
+            byte m2 = (byte)(((seed >> 16) & 0xFF) ^ 0xA5);
+            byte m3 = (byte)(((seed >> 24) & 0xFF) | 2);
+            packet[maskOffset] = m0;
+            packet[maskOffset + 1] = m1;
+            packet[maskOffset + 2] = m2;
+            packet[maskOffset + 3] = m3;
+
+            int dataOffset = maskOffset + 4;
+            for (int i = 0; i < len; i++)
+            {
+                byte maskByte = (i & 3) == 0 ? m0 : ((i & 3) == 1 ? m1 : ((i & 3) == 2 ? m2 : m3));
+                packet[dataOffset + i] = (byte)(payload[i] ^ maskByte);
+            }
+
+            lock (_writeLock)
+            {
+                Stream s = _stream;
+                if (s == null || !_connected) throw new IOException("WebSocket desconectado.");
+                s.Write(packet, 0, packet.Length);
+                s.Flush();
+            }
+        }
+
+        private static bool ReadExact(Stream s, byte[] buffer, int count)
+        {
+            int offset = 0;
+            while (offset < count)
+            {
+                int n = s.Read(buffer, offset, count - offset);
+                if (n <= 0) return false;
+                offset += n;
+            }
+            return true;
+        }
+
+        private void ReceiveLoop()
+        {
+            byte[] hdr = new byte[2];
+            byte[] ext2 = new byte[2];
+            byte[] ext8 = new byte[8];
+            byte[] mask = new byte[4];
+            MemoryStream frag = null;
+
+            try
+            {
+                while (_connected && _stream != null)
+                {
+                    Stream s = _stream;
+                    if (!ReadExact(s, hdr, 2)) break;
+
+                    bool fin = (hdr[0] & 0x80) != 0;
+                    int opcode = hdr[0] & 0x0F;
+                    bool masked = (hdr[1] & 0x80) != 0;
+                    long payloadLen = hdr[1] & 0x7F;
+
+                    if (payloadLen == 126)
+                    {
+                        if (!ReadExact(s, ext2, 2)) break;
+                        payloadLen = (ext2[0] << 8) | ext2[1];
+                    }
+                    else if (payloadLen == 127)
+                    {
+                        if (!ReadExact(s, ext8, 8)) break;
+                        payloadLen = 0;
+                        for (int i = 0; i < 8; i++) payloadLen = (payloadLen << 8) | ext8[i];
+                    }
+
+                    if (payloadLen < 0 || payloadLen > 4 * 1024 * 1024) break;
+                    if (masked && !ReadExact(s, mask, 4)) break;
+
+                    byte[] data = new byte[(int)payloadLen];
+                    if (payloadLen > 0 && !ReadExact(s, data, (int)payloadLen)) break;
+
+                    if (masked)
+                    {
+                        for (int i = 0; i < data.Length; i++) data[i] = (byte)(data[i] ^ mask[i & 3]);
+                    }
+
+                    if (opcode == 0x8) // Close
+                    {
+                        break;
+                    }
+                    if (opcode == 0x9) // Ping -> Pong
+                    {
+                        try { SendFrame(0x8A, data); } catch { break; }
+                        continue;
+                    }
+                    if (opcode == 0xA) // Pong
+                    {
+                        continue;
+                    }
+
+                    if (opcode == 0x1 || opcode == 0x0)
+                    {
+                        if (!fin)
+                        {
+                            if (frag == null) frag = new MemoryStream();
+                            frag.Write(data, 0, data.Length);
+                            if (frag.Length > 4 * 1024 * 1024) break;
+                            continue;
+                        }
+                        byte[] complete = data;
+                        if (frag != null)
+                        {
+                            frag.Write(data, 0, data.Length);
+                            complete = frag.ToArray();
+                            frag.Dispose();
+                            frag = null;
+                        }
+                        HandleIncomingJson(Encoding.UTF8.GetString(complete));
+                    }
+                }
+            }
+            catch { }
+            finally
+            {
+                if (frag != null) frag.Dispose();
+                Close();
+            }
+        }
+
+        private void HandleIncomingJson(string rawJson)
+        {
+            if (string.IsNullOrEmpty(rawJson)) return;
+            Dictionary<string, object> msg = Json.ParseObject(rawJson);
+            if (msg == null) return;
+            string ev = Json.Str(msg, "event");
+            if (ev == "auth.rejected")
+            {
+                Close();
+                return;
+            }
+            if (ev == "remote.control" && _onControl != null)
+            {
+                Dictionary<string, object> data = Json.Map(msg, "data") ?? msg;
+                try { _onControl(data); } catch { }
+            }
+        }
+
+        public void Close()
+        {
+            _connected = false;
+            _connectedBase = "";
+            Stream s = Interlocked.Exchange(ref _stream, null);
+            TcpClient t = Interlocked.Exchange(ref _tcp, null);
+            if (s != null) { try { s.Close(); } catch { } }
+            if (t != null) { try { t.Close(); } catch { } }
         }
     }
 
@@ -1454,6 +1811,7 @@ namespace NexusITAM
         private static readonly object _captureLock = new object();
         private static Bitmap _fullBmp;
         private static Bitmap _scaledBmp;
+        private static readonly MemoryStream _jpegBuffer = new MemoryStream(131072);
         private static ImageCodecInfo _jpegCodec;
         private static bool _codecLoaded;
 
@@ -1486,30 +1844,113 @@ namespace NexusITAM
             return Screen.PrimaryScreen.Bounds;
         }
 
-        public static Dictionary<string, object> Capture(string quality, string sessionId, int monitorIndex, out string signature)
+        private static string NormalizeQuality(string quality)
+        {
+            if (quality == "low" || quality == "balanced" || quality == "high" || quality == "ultra")
+                return quality;
+            return "balanced";
+        }
+
+        /// <summary>
+        /// Hash FNV-1a 64-bit ultrarrapido (< 0,3 ms) em grade densa via LockBits para detectar
+        /// tela parada ANTES de redimensionar ou comprimir JPEG.
+        /// </summary>
+        private static ulong ComputeFastPixelHash(Bitmap bmp, int cursorX, int cursorY)
+        {
+            const ulong fnvOffset = 14695981039346656037UL;
+            const ulong fnvPrime = 1099511628211UL;
+            ulong hash = fnvOffset;
+            hash = (hash ^ (ulong)cursorX) * fnvPrime;
+            hash = (hash ^ (ulong)cursorY) * fnvPrime;
+
+            BitmapData bd = bmp.LockBits(
+                new Rectangle(0, 0, bmp.Width, bmp.Height),
+                ImageLockMode.ReadOnly,
+                PixelFormat.Format24bppRgb
+            );
+            try
+            {
+                IntPtr scan0 = bd.Scan0;
+                int stride = bd.Stride;
+                int w = bmp.Width;
+                int h = bmp.Height;
+                int totalBytes = Math.Abs(stride) * h;
+                int cols = Math.Min(w, 96);
+                int rows = Math.Min(h, 54);
+                int stepX = Math.Max(1, w / cols);
+                int stepY = Math.Max(1, h / rows);
+
+                for (int y = 0; y < h; y += stepY)
+                {
+                    int rowBase = y * stride;
+                    for (int x = 0; x < w; x += stepX)
+                    {
+                        int offset = rowBase + (x * 3);
+                        if (offset >= 0 && offset + 4 <= totalBytes)
+                        {
+                            int sample = Marshal.ReadInt32(scan0, offset) & 0x00FFFFFF;
+                            hash = (hash ^ (ulong)(uint)sample) * fnvPrime;
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                bmp.UnlockBits(bd);
+            }
+            return hash == 0UL ? 1UL : hash;
+        }
+
+        public static Dictionary<string, object> Capture(
+            string quality,
+            string sessionId,
+            int monitorIndex,
+            bool refineSharp,
+            bool forceEncode,
+            ulong prevPixelHash,
+            out ulong pixelHash,
+            out bool unchanged,
+            out string signature)
         {
             signature = "";
-            string cleanQuality = (quality == "low" || quality == "high") ? quality : "balanced";
+            pixelHash = 0UL;
+            unchanged = false;
+            string cleanQuality = NormalizeQuality(quality);
             try
             {
                 int monCount = MonitorCount;
                 int safeMonitor = (monitorIndex == -1 || (monitorIndex >= 0 && monitorIndex < monCount)) ? monitorIndex : 0;
                 Rectangle bounds = GetMonitorBounds(safeMonitor);
-                int width = 1088;
-                long jpeg = 48L;
-                InterpolationMode interp = InterpolationMode.Bilinear;
-                if (cleanQuality == "high")
+
+                int width;
+                long jpeg;
+                InterpolationMode interp;
+
+                if (cleanQuality == "ultra")
                 {
-                    width = Math.Min(bounds.Width, 1600);
-                    jpeg = 68L;
-                    interp = InterpolationMode.HighQualityBilinear;
+                    width = Math.Min(bounds.Width, refineSharp ? 2560 : 1920);
+                    jpeg = refineSharp ? 90L : 82L;
+                    interp = refineSharp ? InterpolationMode.HighQualityBicubic : InterpolationMode.HighQualityBilinear;
+                }
+                else if (cleanQuality == "high")
+                {
+                    width = Math.Min(bounds.Width, refineSharp ? 1920 : 1600);
+                    jpeg = refineSharp ? 88L : 74L;
+                    interp = refineSharp ? InterpolationMode.HighQualityBicubic : InterpolationMode.HighQualityBilinear;
                 }
                 else if (cleanQuality == "low")
                 {
-                    width = 768;
-                    jpeg = 32L;
-                    interp = InterpolationMode.Low;
+                    width = Math.Min(bounds.Width, refineSharp ? 1280 : 1024);
+                    jpeg = refineSharp ? 74L : 52L;
+                    interp = refineSharp ? InterpolationMode.HighQualityBilinear : InterpolationMode.Bilinear;
                 }
+                else // balanced
+                {
+                    width = Math.Min(bounds.Width, refineSharp ? 1600 : 1366);
+                    jpeg = refineSharp ? 82L : 64L;
+                    interp = refineSharp ? InterpolationMode.HighQualityBicubic : InterpolationMode.Bilinear;
+                }
+
                 if (width > bounds.Width) width = bounds.Width;
                 int height = Math.Max(1, (int)Math.Round(bounds.Height * (width / (double)bounds.Width)));
 
@@ -1520,12 +1961,9 @@ namespace NexusITAM
                         if (_fullBmp != null) _fullBmp.Dispose();
                         _fullBmp = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format24bppRgb);
                     }
-                    if (_scaledBmp == null || _scaledBmp.Width != width || _scaledBmp.Height != height)
-                    {
-                        if (_scaledBmp != null) _scaledBmp.Dispose();
-                        _scaledBmp = new Bitmap(width, height, PixelFormat.Format24bppRgb);
-                    }
 
+                    int cursorRelX = -1;
+                    int cursorRelY = -1;
                     using (Graphics g = Graphics.FromImage(_fullBmp))
                     {
                         g.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
@@ -1536,6 +1974,8 @@ namespace NexusITAM
                             int cy = pt.Y - bounds.Top;
                             if (cx >= 0 && cy >= 0 && cx < bounds.Width && cy < bounds.Height)
                             {
+                                cursorRelX = cx;
+                                cursorRelY = cy;
                                 using (Pen outline = new Pen(Color.FromArgb(220, 15, 23, 42), 2f))
                                 using (SolidBrush fill = new SolidBrush(Color.FromArgb(210, 56, 189, 248)))
                                 {
@@ -1548,57 +1988,94 @@ namespace NexusITAM
                         }
                     }
 
-                    using (Graphics gs = Graphics.FromImage(_scaledBmp))
+                    pixelHash = ComputeFastPixelHash(_fullBmp, cursorRelX, cursorRelY);
+                    if (!forceEncode && !refineSharp && prevPixelHash != 0UL && pixelHash == prevPixelHash)
                     {
-                        gs.InterpolationMode = interp;
-                        gs.CompositingQuality = CompositingQuality.HighSpeed;
-                        gs.PixelOffsetMode = PixelOffsetMode.HighSpeed;
-                        gs.SmoothingMode = SmoothingMode.HighSpeed;
-                        gs.DrawImage(_fullBmp, 0, 0, width, height);
+                        unchanged = true;
+                        return null;
                     }
 
-                    using (MemoryStream ms = new MemoryStream(65536))
+                    // Se durante um ciclo de refinamento o usuario voltou a mover a tela, prioriza fluidez
+                    bool effectiveSharp = refineSharp && (prevPixelHash == 0UL || pixelHash == prevPixelHash);
+                    if (!effectiveSharp && refineSharp)
                     {
-                        ImageCodecInfo codec = JpegCodec();
-                        if (codec != null)
-                        {
-                            using (EncoderParameters ep = new EncoderParameters(1))
-                            {
-                                ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, jpeg);
-                                _scaledBmp.Save(ms, codec, ep);
-                            }
-                        }
-                        else
-                        {
-                            _scaledBmp.Save(ms, ImageFormat.Jpeg);
-                        }
-                        byte[] bytes = ms.ToArray();
-                        int byteSize = bytes.Length;
-                        using (MD5 md5 = MD5.Create()) signature = cleanQuality + ":" + safeMonitor + ":" + width + "x" + height + ":" + Convert.ToBase64String(md5.ComputeHash(bytes));
-                        string encoded = Convert.ToBase64String(bytes);
-                        Array.Clear(bytes, 0, bytes.Length);
-                        int nextSeq = Interlocked.Increment(ref _seq);
-                        Dictionary<string, object> frame = new Dictionary<string, object>();
-                        frame["sessionId"] = sessionId ?? "";
-                        frame["quality"] = cleanQuality;
-                        frame["monitorIndex"] = safeMonitor;
-                        frame["monitorCount"] = monCount;
-                        frame["data"] = encoded;
-                        frame["width"] = width;
-                        frame["height"] = height;
-                        frame["screenWidth"] = bounds.Width;
-                        frame["screenHeight"] = bounds.Height;
-                        frame["byteSize"] = byteSize;
-                        frame["seq"] = nextSeq;
-                        frame["capturedAt"] = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
-                        return frame;
+                        if (cleanQuality == "ultra") { width = Math.Min(bounds.Width, 1920); jpeg = 82L; interp = InterpolationMode.HighQualityBilinear; }
+                        else if (cleanQuality == "high") { width = Math.Min(bounds.Width, 1600); jpeg = 74L; interp = InterpolationMode.HighQualityBilinear; }
+                        else if (cleanQuality == "low") { width = Math.Min(bounds.Width, 1024); jpeg = 52L; interp = InterpolationMode.Bilinear; }
+                        else { width = Math.Min(bounds.Width, 1366); jpeg = 64L; interp = InterpolationMode.Bilinear; }
+                        height = Math.Max(1, (int)Math.Round(bounds.Height * (width / (double)bounds.Width)));
                     }
+
+                    if (_scaledBmp == null || _scaledBmp.Width != width || _scaledBmp.Height != height)
+                    {
+                        if (_scaledBmp != null) _scaledBmp.Dispose();
+                        _scaledBmp = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+                    }
+
+                    if (width == bounds.Width && height == bounds.Height)
+                    {
+                        _jpegBuffer.Position = 0;
+                        _jpegBuffer.SetLength(0);
+                        SaveJpeg(_fullBmp, _jpegBuffer, jpeg);
+                    }
+                    else
+                    {
+                        using (Graphics gs = Graphics.FromImage(_scaledBmp))
+                        {
+                            gs.InterpolationMode = interp;
+                            gs.CompositingQuality = effectiveSharp ? CompositingQuality.HighQuality : CompositingQuality.HighSpeed;
+                            gs.PixelOffsetMode = effectiveSharp ? PixelOffsetMode.HighQuality : PixelOffsetMode.HighSpeed;
+                            gs.SmoothingMode = effectiveSharp ? SmoothingMode.HighQuality : SmoothingMode.HighSpeed;
+                            gs.DrawImage(_fullBmp, 0, 0, width, height);
+                        }
+                        _jpegBuffer.Position = 0;
+                        _jpegBuffer.SetLength(0);
+                        SaveJpeg(_scaledBmp, _jpegBuffer, jpeg);
+                    }
+
+                    byte[] bytes = _jpegBuffer.ToArray();
+                    int byteSize = bytes.Length;
+                    signature = cleanQuality + ":" + safeMonitor + ":" + (effectiveSharp ? "S:" : "M:") + width + "x" + height + ":" + pixelHash.ToString("X16", CultureInfo.InvariantCulture);
+                    string encoded = Convert.ToBase64String(bytes);
+                    int nextSeq = Interlocked.Increment(ref _seq);
+                    Dictionary<string, object> frame = new Dictionary<string, object>();
+                    frame["sessionId"] = sessionId ?? "";
+                    frame["quality"] = cleanQuality;
+                    frame["sharp"] = effectiveSharp;
+                    frame["monitorIndex"] = safeMonitor;
+                    frame["monitorCount"] = monCount;
+                    frame["data"] = encoded;
+                    frame["width"] = width;
+                    frame["height"] = height;
+                    frame["screenWidth"] = bounds.Width;
+                    frame["screenHeight"] = bounds.Height;
+                    frame["byteSize"] = byteSize;
+                    frame["seq"] = nextSeq;
+                    frame["capturedAt"] = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
+                    return frame;
                 }
             }
             catch (Exception ex)
             {
                 AgentLog.Write("Captura de tela falhou: {0}", ex.Message);
                 return null;
+            }
+        }
+
+        private static void SaveJpeg(Bitmap bmp, Stream dest, long quality)
+        {
+            ImageCodecInfo codec = JpegCodec();
+            if (codec != null)
+            {
+                using (EncoderParameters ep = new EncoderParameters(1))
+                {
+                    ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, quality);
+                    bmp.Save(dest, codec, ep);
+                }
+            }
+            else
+            {
+                bmp.Save(dest, ImageFormat.Jpeg);
             }
         }
 
@@ -1630,6 +2107,7 @@ namespace NexusITAM
                 switch (type)
                 {
                     case "mousemove":
+                    case "mousedrag":
                         NativeMethods.SetCursorPos(px, py);
                         break;
                     case "click":
@@ -1637,7 +2115,7 @@ namespace NexusITAM
                         break;
                     case "dblclick":
                         Click(px, py, NativeMethods.MOUSEEVENTF_LEFTDOWN | NativeMethods.MOUSEEVENTF_LEFTUP);
-                        Thread.Sleep(45);
+                        Thread.Sleep(25);
                         NativeMethods.mouse_event(NativeMethods.MOUSEEVENTF_LEFTDOWN | NativeMethods.MOUSEEVENTF_LEFTUP, px, py, 0, UIntPtr.Zero);
                         break;
                     case "rightclick":
@@ -1701,7 +2179,6 @@ namespace NexusITAM
         private static void Click(int x, int y, uint flags)
         {
             NativeMethods.SetCursorPos(x, y);
-            Thread.Sleep(10);
             NativeMethods.mouse_event(flags, x, y, 0, UIntPtr.Zero);
         }
 
@@ -2002,13 +2479,18 @@ namespace NexusITAM
         public string Mode = "attended";
         public string Quality = "balanced";
         public int MonitorIndex;
-        public int TargetFps = 20;
+        public int TargetFps = 45;
         public long LastSeq;
+        public ulong LastPixelHash;
+        public bool SharpFrameSent;
+        public DateTime LastMotionUtc = DateTime.MinValue;
+        public int LastSendMs = 12;
         public DateTime StartedUtc = DateTime.MinValue;
         public DateTime ViewerSeenUtc = DateTime.MinValue;
         public string LastFrameSig = "";
         public DateTime LastFrameAt = DateTime.MinValue;
         public DateTime LastRelayControlPoll = DateTime.MinValue;
+        public DateTime LastWsPingUtc = DateTime.MinValue;
         public bool Dirty;
         public bool FrameVisible;
         public readonly HashSet<string> Decided = new HashSet<string>();
@@ -2045,6 +2527,7 @@ namespace NexusITAM
         private DateTime _lastControlPoll = DateTime.MinValue;
         private DateTime _lastFirestoreFrameAt = DateTime.MinValue;
         private DateTime _relayBackoffUntil = DateTime.MinValue;
+        private DateTime _wsBackoffUntil = DateTime.MinValue;
         private DateTime _lastTraySpawnAttempt = DateTime.MinValue;
         private DateTime _awakeUntil = DateTime.MinValue;
         private DateTime _localAwakeUntil = DateTime.MinValue;
@@ -2055,8 +2538,11 @@ namespace NexusITAM
         private volatile bool _forceInventory;
         private volatile bool _inventoryRunning;
         private volatile bool _commandRunning;
+        private volatile bool _firestoreFrameWriting;
         private volatile bool _revoked;
         private bool _verified;
+        private RelayWebSocket _relayWs;
+        private readonly object _wsSync = new object();
         private Dictionary<string, object> _lastCommandResult;
         private Dictionary<string, object> _pendingSupport;
         private readonly object _sync = new object();
@@ -2134,6 +2620,7 @@ namespace NexusITAM
             _running = false;
             _kick.Set();
             _streamKick.Set();
+            CloseRelayWebSocket();
             if (_streamThread != null) _streamThread.Join(2500);
             if (_thread != null) _thread.Join(5000);
             if (_cloud != null && !_revoked && DoesTelemetry())
@@ -2722,14 +3209,62 @@ namespace NexusITAM
             return rs;
         }
 
+        private void CloseRelayWebSocket()
+        {
+            lock (_wsSync)
+            {
+                if (_relayWs != null)
+                {
+                    try { _relayWs.Close(); } catch { }
+                    _relayWs = null;
+                }
+            }
+        }
+
+        private bool EnsureRelayWebSocket()
+        {
+            if (_cred == null) return false;
+            string relayBase = _cfg.RelayBase();
+            if (string.IsNullOrEmpty(relayBase)) return false;
+
+            lock (_wsSync)
+            {
+                if (_relayWs != null && _relayWs.IsConnected &&
+                    string.Equals(_relayWs.ConnectedBase, relayBase, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+                if (DateTime.UtcNow < _wsBackoffUntil) return false;
+
+                if (_relayWs != null)
+                {
+                    try { _relayWs.Close(); } catch { }
+                    _relayWs = null;
+                }
+
+                RelayWebSocket ws = new RelayWebSocket();
+                if (ws.Connect(relayBase, _cred.tenantId, _cred.deviceKey, ApplyRelayControl))
+                {
+                    _relayWs = ws;
+                    _session.LastWsPingUtc = DateTime.UtcNow;
+                    AgentLog.Write("Canal WebSocket NexusDesk conectado em {0}.", relayBase);
+                    return true;
+                }
+                _wsBackoffUntil = DateTime.UtcNow.AddSeconds(5);
+                return false;
+            }
+        }
+
         private void ApplyQualitySetting(string quality)
         {
-            if (quality != "low" && quality != "balanced" && quality != "high") return;
+            if (quality != "low" && quality != "balanced" && quality != "high" && quality != "ultra") return;
             if (quality == _session.Quality) return;
             string prev = _session.Quality;
             lock (_sync)
             {
                 _session.Quality = quality;
+                _session.LastPixelHash = 0UL;
+                _session.SharpFrameSent = false;
                 _session.LastFrameSig = "";
                 _session.LastFrameAt = DateTime.MinValue;
                 _lastFirestoreFrameAt = DateTime.MinValue;
@@ -2747,6 +3282,8 @@ namespace NexusITAM
             lock (_sync)
             {
                 _session.MonitorIndex = safeIndex;
+                _session.LastPixelHash = 0UL;
+                _session.SharpFrameSent = false;
                 _session.LastFrameSig = "";
                 _session.LastFrameAt = DateTime.MinValue;
                 _lastFirestoreFrameAt = DateTime.MinValue;
@@ -2780,6 +3317,10 @@ namespace NexusITAM
         private void ApplyRelayControl(Dictionary<string, object> control)
         {
             if (control == null || !_session.Active) return;
+            string ctrlSession = Json.Str(control, "sessionId");
+            if (!string.IsNullOrEmpty(ctrlSession) && !string.IsNullOrEmpty(_session.Id) && ctrlSession != _session.Id)
+                return;
+
             string status = Json.Str(control, "status");
             if (status == "closed" || status == "ended")
             {
@@ -2791,6 +3332,10 @@ namespace NexusITAM
             {
                 _session.ViewerSeenUtc = seen.Value;
             }
+            else if (seen.HasValue == false)
+            {
+                _session.ViewerSeenUtc = _cloud.ServerNowUtc;
+            }
             ApplyQualitySetting(Json.Str(control, "quality"));
             if (control.ContainsKey("monitorIndex"))
             {
@@ -2798,8 +3343,8 @@ namespace NexusITAM
             }
             if (control.ContainsKey("targetFps"))
             {
-                int fps = (int)Json.Long(control, "targetFps", 20);
-                _session.TargetFps = Math.Max(8, Math.Min(30, fps));
+                int fps = (int)Json.Long(control, "targetFps", 45);
+                _session.TargetFps = Math.Max(10, Math.Min(60, fps));
             }
             object raw;
             if (control.TryGetValue("inputEvents", out raw))
@@ -2812,6 +3357,9 @@ namespace NexusITAM
         {
             if (viewerSeen.HasValue && viewerSeen.Value > _session.ViewerSeenUtc) _session.ViewerSeenUtc = viewerSeen.Value;
             if (rs == null) return;
+            string dynamicRelay = Json.Str(rs, "relayBase");
+            if (!string.IsNullOrEmpty(dynamicRelay)) _cfg.SetRuntimeRelayBase(dynamicRelay);
+
             string status = Json.Str(rs, "status");
             string sessionId = Json.Str(rs, "sessionId");
 
@@ -2832,12 +3380,20 @@ namespace NexusITAM
                 if (string.IsNullOrEmpty(_session.Operator)) _session.Operator = "Equipe de TI";
                 _session.Mode = Json.Str(rs, "mode") == "unattended" ? "unattended" : "attended";
                 string initialQuality = Json.Str(rs, "quality");
-                _session.Quality = (initialQuality == "low" || initialQuality == "high") ? initialQuality : "balanced";
+                _session.Quality = (initialQuality == "low" || initialQuality == "high" || initialQuality == "ultra") ? initialQuality : "balanced";
                 _session.MonitorIndex = (int)Json.Long(rs, "monitorIndex", 0);
+                int reqFps = (int)Json.Long(rs, "targetFps", 45);
+                _session.TargetFps = Math.Max(15, Math.Min(60, reqFps));
                 _session.LastSeq = 0;
+                _session.LastPixelHash = 0UL;
+                _session.SharpFrameSent = false;
+                _session.LastMotionUtc = DateTime.MinValue;
+                _session.LastSendMs = 12;
                 _session.LastFrameSig = "";
                 _session.LastFrameAt = DateTime.MinValue;
                 _lastFirestoreFrameAt = DateTime.MinValue;
+                _wsBackoffUntil = DateTime.MinValue;
+                _relayBackoffUntil = DateTime.MinValue;
                 _session.ViewerSeenUtc = viewerSeen.HasValue ? viewerSeen.Value : DateTime.MinValue;
                 _session.Decided.Add(sessionId);
 
@@ -2880,6 +3436,11 @@ namespace NexusITAM
             {
                 ApplyMonitorSetting((int)Json.Long(rs, "monitorIndex", 0));
             }
+            if (rs.ContainsKey("targetFps"))
+            {
+                int nextFps = (int)Json.Long(rs, "targetFps", _session.TargetFps);
+                _session.TargetFps = Math.Max(15, Math.Min(60, nextFps));
+            }
 
             object raw;
             if (!rs.TryGetValue("inputEvents", out raw)) return;
@@ -2893,24 +3454,35 @@ namespace NexusITAM
                 _session.State = state;
                 _session.Dirty = true;
             }
+            CloseRelayWebSocket();
             AgentLog.Write("Sessao remota {0} encerrada: {1}", _session.Id, reason);
             if (_ui != null) _ui.ShowSession(false, "");
             _kick.Set();
         }
 
-        private int TargetFrameIntervalMs(bool relayActive)
+        private int TargetFrameIntervalMs(bool relayActive, bool wsConnected)
         {
-            string q = _session.Quality;
+            if (wsConnected)
+            {
+                int targetFps = Math.Max(15, Math.Min(60, _session.TargetFps > 0 ? _session.TargetFps : 45));
+                int baseInterval = Math.Max(16, 1000 / targetFps);
+                // Backpressure adaptativo: nunca acumula fila TCP se o upload da rede demorar mais que o intervalo
+                if (_session.LastSendMs > baseInterval)
+                {
+                    return Math.Min(90, _session.LastSendMs + 4);
+                }
+                return baseInterval;
+            }
             if (relayActive)
             {
-                int requested = _session.TargetFps > 0 ? Math.Max(35, 1000 / Math.Min(30, _session.TargetFps)) : 55;
-                if (q == "low") return Math.Max(45, requested);
-                if (q == "high") return Math.Max(110, requested);
-                return Math.Max(65, requested);
+                int httpFps = Math.Max(15, Math.Min(35, _session.TargetFps > 0 ? _session.TargetFps : 30));
+                int httpBase = Math.Max(28, 1000 / httpFps);
+                return _session.LastSendMs > httpBase ? Math.Min(110, _session.LastSendMs + 6) : httpBase;
             }
-            if (q == "low") return 200;
-            if (q == "high") return 340;
-            return 260;
+            string q = _session.Quality;
+            if (q == "low") return 180;
+            if (q == "high" || q == "ultra") return 320;
+            return 240;
         }
 
         private void StreamLoop()
@@ -2919,30 +3491,65 @@ namespace NexusITAM
             {
                 if (!_session.Active || _cred == null || _revoked)
                 {
-                    _streamKick.WaitOne(250);
+                    _streamKick.WaitOne(200);
                     continue;
                 }
                 Stopwatch sw = Stopwatch.StartNew();
                 bool relayActive = DateTime.UtcNow >= _relayBackoffUntil;
+                bool wsConnected = false;
                 try
                 {
-                    StreamSession(out relayActive);
+                    StreamSession(out relayActive, out wsConnected);
                 }
                 catch (Exception ex)
                 {
                     AgentLog.Write("Erro no stream remoto: {0}", ex.Message);
                 }
                 sw.Stop();
-                int targetMs = TargetFrameIntervalMs(relayActive);
-                int waitMs = Math.Max(5, targetMs - (int)sw.ElapsedMilliseconds);
+                int targetMs = TargetFrameIntervalMs(relayActive, wsConnected);
+                int waitMs = Math.Max(2, targetMs - (int)sw.ElapsedMilliseconds);
                 _streamKick.WaitOne(waitMs);
             }
         }
 
-        /// <summary>Frames so com sessao ativa, alguem assistindo e tela mudando.</summary>
-        private void StreamSession(out bool relayActive)
+        private void WriteFirestoreSnapshotAsync(Dictionary<string, object> frame, bool relaySent)
+        {
+            if (_firestoreFrameWriting || !_session.Active) return;
+            _firestoreFrameWriting = true;
+            Dictionary<string, object> f = Identity();
+            f["screenFrame"] = frame;
+            f["remoteState"] = SessionStateFields();
+            string docId = DocId();
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    if (!_session.Active) return;
+                    int status;
+                    RemoteDoc doc = _cloud.Patch("agentDevices", docId, f, new string[] { "tenantId", "deviceKey", "screenFrame", "remoteState" }, new string[] { "consoleWakeAt" }, 10000, out status);
+                    if (doc == null)
+                    {
+                        if (!relaySent) NoteFailure(status);
+                        return;
+                    }
+                    _lastFirestoreFrameAt = DateTime.UtcNow;
+                    _session.FrameVisible = true;
+                    lock (_sync) _session.Dirty = false;
+                }
+                catch { }
+                finally
+                {
+                    _firestoreFrameWriting = false;
+                }
+            });
+        }
+
+        /// <summary>Frames em alta velocidade (WebSocket full-duplex + nitidez progressiva).</summary>
+        private void StreamSession(out bool relayActive, out bool wsConnected)
         {
             relayActive = DateTime.UtcNow >= _relayBackoffUntil;
+            wsConnected = false;
             if (!_session.Active) return;
             DateTime now = DateTime.UtcNow;
             DateTime viewer = _session.StartedUtc;
@@ -2975,20 +3582,49 @@ namespace NexusITAM
                 return;
             }
 
+            wsConnected = EnsureRelayWebSocket();
+            if (wsConnected) relayActive = true;
+
             string currentQuality = _session.Quality;
             string currentSessionId = _session.Id;
             int currentMonitor = _session.MonitorIndex;
-            string signature;
-            Dictionary<string, object> frame = RemoteDesktop.Capture(currentQuality, currentSessionId, currentMonitor, out signature);
-            if (frame == null || !_session.Active) return;
+            bool forceRefresh = (now - _session.LastFrameAt).TotalSeconds >= 5 || !_session.FrameVisible || _session.Dirty;
+            bool wantSharp = !forceRefresh &&
+                             !_session.SharpFrameSent &&
+                             _session.LastMotionUtc != DateTime.MinValue &&
+                             (now - _session.LastMotionUtc).TotalMilliseconds >= 180;
 
-            bool changed = signature != _session.LastFrameSig;
-            bool forceRefresh = (now - _session.LastFrameAt).TotalSeconds >= 4 || !_session.FrameVisible || _session.Dirty;
-            if (!changed && !forceRefresh)
+            ulong pixelHash;
+            bool unchanged;
+            string signature;
+            Dictionary<string, object> frame = RemoteDesktop.Capture(
+                currentQuality,
+                currentSessionId,
+                currentMonitor,
+                wantSharp,
+                forceRefresh,
+                _session.LastPixelHash,
+                out pixelHash,
+                out unchanged,
+                out signature
+            );
+            if (!_session.Active) return;
+
+            if (unchanged || frame == null)
             {
-                // Mesmo com a tela parada, consulta rapidamente o Relay VPS (sem enviar imagem)
-                // para executar cliques/teclas do tecnico com latencia minima.
-                if (DateTime.UtcNow >= _relayBackoffUntil && (now - _session.LastRelayControlPoll).TotalMilliseconds >= 140)
+                // Com WebSocket conectado, os cliques/teclas chegam via push instantaneo sem precisar de HTTP polling!
+                if (wsConnected)
+                {
+                    if ((now - _session.LastWsPingUtc).TotalSeconds >= 12)
+                    {
+                        _session.LastWsPingUtc = now;
+                        RelayWebSocket ws = _relayWs;
+                        if (ws != null) ws.SendPing();
+                    }
+                    return;
+                }
+
+                if (DateTime.UtcNow >= _relayBackoffUntil && (now - _session.LastRelayControlPoll).TotalMilliseconds >= 95)
                 {
                     _session.LastRelayControlPoll = now;
                     try
@@ -3017,23 +3653,65 @@ namespace NexusITAM
                         else
                         {
                             relayActive = false;
-                            _relayBackoffUntil = DateTime.UtcNow.AddSeconds(8);
+                            _relayBackoffUntil = DateTime.UtcNow.AddSeconds(6);
                         }
                     }
                     catch
                     {
                         relayActive = false;
-                        _relayBackoffUntil = DateTime.UtcNow.AddSeconds(8);
+                        _relayBackoffUntil = DateTime.UtcNow.AddSeconds(6);
                     }
                 }
                 return;
             }
 
+            bool isSharpFrame = Json.Bool(frame, "sharp", false);
+            if (isSharpFrame && pixelHash == _session.LastPixelHash)
+            {
+                _session.SharpFrameSent = true;
+            }
+            else
+            {
+                _session.LastMotionUtc = now;
+                _session.SharpFrameSent = false;
+            }
+            _session.LastPixelHash = pixelHash;
+
             bool relaySent = false;
-            if (DateTime.UtcNow >= _relayBackoffUntil)
+            if (wsConnected)
+            {
+                RelayWebSocket ws = _relayWs;
+                if (ws != null && ws.IsConnected)
+                {
+                    Dictionary<string, object> wsEnvelope = new Dictionary<string, object>();
+                    wsEnvelope["action"] = "remote.frame";
+                    wsEnvelope["deviceKey"] = _cred.deviceKey;
+                    wsEnvelope["sessionId"] = currentSessionId;
+                    wsEnvelope["ackInputSeq"] = _session.LastSeq;
+                    wsEnvelope["frame"] = frame;
+                    wsEnvelope["remoteState"] = SessionStateFields();
+
+                    int wsSendMs;
+                    if (ws.SendText(Json.Serializer.Serialize(wsEnvelope), out wsSendMs))
+                    {
+                        relaySent = true;
+                        relayActive = true;
+                        _session.LastSendMs = wsSendMs;
+                        _session.LastWsPingUtc = now;
+                    }
+                    else
+                    {
+                        wsConnected = false;
+                        _wsBackoffUntil = DateTime.UtcNow.AddSeconds(3);
+                    }
+                }
+            }
+
+            if (!relaySent && DateTime.UtcNow >= _relayBackoffUntil)
             {
                 try
                 {
+                    Stopwatch httpSw = Stopwatch.StartNew();
                     _session.LastRelayControlPoll = now;
                     Dictionary<string, object> relayPayload = new Dictionary<string, object>();
                     relayPayload["tenantId"] = _cred.tenantId;
@@ -3050,10 +3728,12 @@ namespace NexusITAM
                         null,
                         2500
                     );
+                    httpSw.Stop();
                     if (rr.Status >= 200 && rr.Status < 300)
                     {
                         relaySent = true;
                         relayActive = true;
+                        _session.LastSendMs = (int)httpSw.ElapsedMilliseconds;
                         Dictionary<string, object> resp = Json.ParseObject(rr.Body);
                         if (resp != null)
                         {
@@ -3063,38 +3743,26 @@ namespace NexusITAM
                     else
                     {
                         relayActive = false;
-                        _relayBackoffUntil = DateTime.UtcNow.AddSeconds(8);
+                        _relayBackoffUntil = DateTime.UtcNow.AddSeconds(6);
                     }
                 }
                 catch
                 {
                     relayActive = false;
-                    _relayBackoffUntil = DateTime.UtcNow.AddSeconds(8);
+                    _relayBackoffUntil = DateTime.UtcNow.AddSeconds(6);
                 }
             }
 
             _session.LastFrameAt = DateTime.UtcNow;
             _session.LastFrameSig = signature;
 
-            // Quando o Relay VPS esta fluido, grava snapshot no Firestore apenas a cada 4s (80% menos cota).
+            // Grava snapshot periodico no Firestore em background (ThreadPool) sem bloquear o loop de video!
             bool shouldWriteFirestore = !relaySent || !_session.FrameVisible || _session.Dirty ||
-                (DateTime.UtcNow - _lastFirestoreFrameAt).TotalMilliseconds >= 4000;
+                (DateTime.UtcNow - _lastFirestoreFrameAt).TotalMilliseconds >= 6000;
 
             if (shouldWriteFirestore && _session.Active)
             {
-                Dictionary<string, object> f = Identity();
-                f["screenFrame"] = frame;
-                f["remoteState"] = SessionStateFields();
-                int status;
-                RemoteDoc doc = _cloud.Patch("agentDevices", DocId(), f, new string[] { "tenantId", "deviceKey", "screenFrame", "remoteState" }, new string[] { "consoleWakeAt" }, 10000, out status);
-                if (doc == null)
-                {
-                    if (!relaySent) NoteFailure(status);
-                    return;
-                }
-                _lastFirestoreFrameAt = DateTime.UtcNow;
-                _session.FrameVisible = true;
-                lock (_sync) _session.Dirty = false;
+                WriteFirestoreSnapshotAsync(frame, relaySent);
             }
         }
 

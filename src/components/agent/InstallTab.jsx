@@ -24,6 +24,7 @@ import {
 } from '../../utils/agentScripts';
 import { AGENT_VERSION, isAgentOutdated } from '../../utils/agentInventory';
 import { dispatchBatchAgentUpdate } from '../../services/rmmService';
+import { getGatewayBaseUrl } from '../../services/microservicesClient';
 
 const GUIDES = {
   windows: {
@@ -160,7 +161,13 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
         configDownloadTimerRef.current = setTimeout(() => {
           configDownloadTimerRef.current = null;
           try {
-            const cfg = buildAgentConfigJson({ projectId, apiKey, tenantId, agentToken });
+            const cfg = buildAgentConfigJson({
+              projectId,
+              apiKey,
+              tenantId,
+              agentToken,
+              relayBase: getGatewayBaseUrl(),
+            });
             triggerBlobDownload(cfg.content, cfg.filename, cfg.mime);
           } catch (err) {
             toast.error(err?.message || 'Erro ao gerar config.json.');

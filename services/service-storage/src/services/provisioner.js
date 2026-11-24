@@ -18,14 +18,20 @@ function isSafeSingleSegment(seg) {
 
 export async function provisionCorporateVault(tenantId, user, driver) {
   // 1. Ensure physical connectivity first so offline nodes fail BEFORE creating DB rows
-  await driver.mkdir('/.nexus_versions');
-  await driver.mkdir('/.nexus_trash');
+  if (typeof driver.mkdirBatch === 'function') {
+    await driver.mkdirBatch(['/.nexus_versions', '/.nexus_trash']);
+  } else {
+    await driver.mkdir('/.nexus_versions');
+    await driver.mkdir('/.nexus_trash');
+  }
 
   const provisionedPaths = [];
 
-  async function ensureFolder({ parentId = null, name, virtualPath, departmentScope = null, defaultRules = [] }) {
+  async function ensureFolderRecord({ parentId = null, name, virtualPath, departmentScope = null, defaultRules = [], skipPhysicalMkdir = false }) {
     const normPath = normalizeVirtualVaultPath(virtualPath);
-    await driver.mkdir(normPath);
+    if (!skipPhysicalMkdir) {
+      await driver.mkdir(normPath);
+    }
 
     let node = await storageRepo.getNodeByPath(tenantId, normPath);
     if (!node) {
@@ -43,85 +49,23 @@ export async function provisionCorporateVault(tenantId, user, driver) {
     }
     provisionedPaths.push(normPath);
 
-    for (const rule of defaultRules) {
-      await storageRepo.upsertNodeAcl(tenantId, node.id, {
-        targetType: rule.targetType,
-        targetValue: rule.targetValue,
-        accessLevel: rule.accessLevel,
-        grantedByEmail: user.email,
-      });
+    if (defaultRules.length > 0) {
+      await Promise.all(
+        defaultRules.map((rule) =>
+          storageRepo.upsertNodeAcl(tenantId, node.id, {
+            targetType: rule.targetType,
+            targetValue: rule.targetValue,
+            accessLevel: rule.accessLevel,
+            grantedByEmail: user.email,
+          }),
+        ),
+      );
     }
 
     return node;
   }
 
-  // Root standard folders
-  const corpPublic = await ensureFolder({
-    parentId: null,
-    name: 'Corporativo-Publico',
-    virtualPath: '/Corporativo-Publico',
-    defaultRules: [
-      { targetType: 'role', targetValue: 'collaborator', accessLevel: 'reader' },
-      { targetType: 'role', targetValue: 'viewer', accessLevel: 'reader' },
-      { targetType: 'role', targetValue: 'operator', accessLevel: 'editor' },
-      { targetType: 'role', targetValue: 'member', accessLevel: 'editor' },
-      { targetType: 'role', targetValue: 'manager', accessLevel: 'full_control' },
-    ],
-  });
-
-  const setoresRoot = await ensureFolder({
-    parentId: null,
-    name: 'Setores',
-    virtualPath: '/Setores',
-    defaultRules: [
-      { targetType: 'role', targetValue: 'collaborator', accessLevel: 'reader' },
-      { targetType: 'role', targetValue: 'viewer', accessLevel: 'reader' },
-      { targetType: 'role', targetValue: 'operator', accessLevel: 'editor' },
-    ],
-  });
-
-  const cofreTi = await ensureFolder({
-    parentId: null,
-    name: 'Cofre-TI-Infra',
-    virtualPath: '/Cofre-TI-Infra',
-    departmentScope: 'TI',
-    defaultRules: [
-      { targetType: 'role', targetValue: 'collaborator', accessLevel: 'none' },
-      { targetType: 'role', targetValue: 'owner', accessLevel: 'full_control' },
-      { targetType: 'role', targetValue: 'admin', accessLevel: 'full_control' },
-      { targetType: 'role', targetValue: 'manager', accessLevel: 'full_control' },
-      { targetType: 'role', targetValue: 'operator', accessLevel: 'editor' },
-    ],
-  });
-
-  await ensureFolder({
-    parentId: cofreTi.id,
-    name: 'Termos',
-    virtualPath: '/Cofre-TI-Infra/Termos',
-    departmentScope: 'TI',
-    defaultRules: [{ targetType: 'role', targetValue: 'collaborator', accessLevel: 'none' }],
-  });
-
-  await ensureFolder({
-    parentId: null,
-    name: 'Chamados',
-    virtualPath: '/Chamados',
-    departmentScope: 'TI',
-    defaultRules: [
-      { targetType: 'role', targetValue: 'collaborator', accessLevel: 'none' },
-      { targetType: 'role', targetValue: 'operator', accessLevel: 'editor' },
-      { targetType: 'role', targetValue: 'manager', accessLevel: 'full_control' },
-    ],
-  });
-
-  const espacoPessoal = await ensureFolder({
-    parentId: null,
-    name: 'Espaco-Pessoal',
-    virtualPath: '/Espaco-Pessoal',
-    defaultRules: [{ targetType: 'role', targetValue: 'collaborator', accessLevel: 'reader' }],
-  });
-
-  // Discover tenant users and departments
+  // Discover tenant users and departments upfront so we can batch all physical mkdirs in 1 round-trip
   const tenantUsers = await authRepo.listTenantUsers(tenantId).catch(() => []);
   const departments = new Set(['TI', 'Financeiro', 'RH', 'Comercial']);
   if (user.department && isSafeSingleSegment(user.department)) {
@@ -131,19 +75,6 @@ export async function provisionCorporateVault(tenantId, user, driver) {
     if (u.department && isSafeSingleSegment(u.department)) {
       departments.add(u.department.trim());
     }
-  }
-
-  for (const dept of departments) {
-    if (!isSafeSingleSegment(dept)) continue;
-    await ensureFolder({
-      parentId: setoresRoot.id,
-      name: dept,
-      virtualPath: `/Setores/${dept}`,
-      departmentScope: dept,
-      defaultRules: [
-        { targetType: 'department', targetValue: dept, accessLevel: 'editor' },
-      ],
-    });
   }
 
   const userEmails = new Set();
@@ -156,16 +87,118 @@ export async function provisionCorporateVault(tenantId, user, driver) {
     }
   }
 
-  for (const email of userEmails) {
-    await ensureFolder({
-      parentId: espacoPessoal.id,
-      name: email,
-      virtualPath: `/Espaco-Pessoal/${email}`,
-      defaultRules: [
-        { targetType: 'user', targetValue: email, accessLevel: 'full_control' },
-      ],
-    });
+  const safeDepts = [...departments].filter(isSafeSingleSegment);
+  const safeEmails = [...userEmails];
+
+  const allPhysicalPaths = [
+    '/Corporativo-Publico',
+    '/Setores',
+    '/Cofre-TI-Infra',
+    '/Cofre-TI-Infra/Termos',
+    '/Chamados',
+    '/Espaco-Pessoal',
+    ...safeDepts.map((dept) => `/Setores/${dept}`),
+    ...safeEmails.map((email) => `/Espaco-Pessoal/${email}`),
+  ];
+
+  const batchedPhysically = typeof driver.mkdirBatch === 'function';
+  if (batchedPhysically) {
+    await driver.mkdirBatch(allPhysicalPaths);
+  } else {
+    await Promise.all(allPhysicalPaths.map((vp) => driver.mkdir(vp)));
   }
+
+  // Root standard folders (parallel DB creation)
+  const [corpPublic, setoresRoot, cofreTi, , espacoPessoal] = await Promise.all([
+    ensureFolderRecord({
+      parentId: null,
+      name: 'Corporativo-Publico',
+      virtualPath: '/Corporativo-Publico',
+      skipPhysicalMkdir: true,
+      defaultRules: [
+        { targetType: 'role', targetValue: 'collaborator', accessLevel: 'reader' },
+        { targetType: 'role', targetValue: 'viewer', accessLevel: 'reader' },
+        { targetType: 'role', targetValue: 'operator', accessLevel: 'editor' },
+        { targetType: 'role', targetValue: 'member', accessLevel: 'editor' },
+        { targetType: 'role', targetValue: 'manager', accessLevel: 'full_control' },
+      ],
+    }),
+    ensureFolderRecord({
+      parentId: null,
+      name: 'Setores',
+      virtualPath: '/Setores',
+      skipPhysicalMkdir: true,
+      defaultRules: [
+        { targetType: 'role', targetValue: 'collaborator', accessLevel: 'reader' },
+        { targetType: 'role', targetValue: 'viewer', accessLevel: 'reader' },
+        { targetType: 'role', targetValue: 'operator', accessLevel: 'editor' },
+      ],
+    }),
+    ensureFolderRecord({
+      parentId: null,
+      name: 'Cofre-TI-Infra',
+      virtualPath: '/Cofre-TI-Infra',
+      departmentScope: 'TI',
+      skipPhysicalMkdir: true,
+      defaultRules: [
+        { targetType: 'role', targetValue: 'collaborator', accessLevel: 'none' },
+        { targetType: 'role', targetValue: 'owner', accessLevel: 'full_control' },
+        { targetType: 'role', targetValue: 'admin', accessLevel: 'full_control' },
+        { targetType: 'role', targetValue: 'manager', accessLevel: 'full_control' },
+        { targetType: 'role', targetValue: 'operator', accessLevel: 'editor' },
+      ],
+    }),
+    ensureFolderRecord({
+      parentId: null,
+      name: 'Chamados',
+      virtualPath: '/Chamados',
+      departmentScope: 'TI',
+      skipPhysicalMkdir: true,
+      defaultRules: [
+        { targetType: 'role', targetValue: 'collaborator', accessLevel: 'none' },
+        { targetType: 'role', targetValue: 'operator', accessLevel: 'editor' },
+        { targetType: 'role', targetValue: 'manager', accessLevel: 'full_control' },
+      ],
+    }),
+    ensureFolderRecord({
+      parentId: null,
+      name: 'Espaco-Pessoal',
+      virtualPath: '/Espaco-Pessoal',
+      skipPhysicalMkdir: true,
+      defaultRules: [{ targetType: 'role', targetValue: 'collaborator', accessLevel: 'reader' }],
+    }),
+  ]);
+
+  // Child standard folders in parallel
+  await Promise.all([
+    ensureFolderRecord({
+      parentId: cofreTi.id,
+      name: 'Termos',
+      virtualPath: '/Cofre-TI-Infra/Termos',
+      departmentScope: 'TI',
+      skipPhysicalMkdir: true,
+      defaultRules: [{ targetType: 'role', targetValue: 'collaborator', accessLevel: 'none' }],
+    }),
+    ...safeDepts.map((dept) =>
+      ensureFolderRecord({
+        parentId: setoresRoot.id,
+        name: dept,
+        virtualPath: `/Setores/${dept}`,
+        departmentScope: dept,
+        skipPhysicalMkdir: true,
+        defaultRules: [{ targetType: 'department', targetValue: dept, accessLevel: 'editor' }],
+      }),
+    ),
+    ...safeEmails.map((email) =>
+      ensureFolderRecord({
+        parentId: espacoPessoal.id,
+        name: email,
+        virtualPath: `/Espaco-Pessoal/${email}`,
+        skipPhysicalMkdir: true,
+        defaultRules: [{ targetType: 'user', targetValue: email, accessLevel: 'full_control' }],
+      }),
+    ),
+  ]);
 
   const updatedConn = await storageRepo.updateConnectionStatus(tenantId, {
     status: 'connected',

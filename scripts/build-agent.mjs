@@ -33,6 +33,7 @@ const readEnv = () => {
 const env = readEnv();
 const projectId = env.VITE_FIREBASE_PROJECT_ID;
 const apiKey = env.VITE_FIREBASE_API_KEY;
+const relayBase = (env.VITE_API_GATEWAY_URL || 'https://itam-api-164-152-195-199.sslip.io').trim().replace(/\/+$/, '');
 if (!projectId || !apiKey) throw new Error('Defina VITE_FIREBASE_PROJECT_ID e VITE_FIREBASE_API_KEY no .env.');
 
 const agentVersion = readFileSync(join(root, 'src/utils/agentInventory.js'), 'utf8').match(/AGENT_VERSION = '([^']+)'/)?.[1];
@@ -52,7 +53,7 @@ if (!csc) throw new Error('csc.exe do .NET Framework 4.x nao encontrado (o build
 const work = mkdtempSync(join(tmpdir(), 'nexus-agent-'));
 try {
   const source = join(work, 'NexusAgent.cs');
-  writeFileSync(source, fill(readFileSync(join(root, 'src/agent/windows/NexusAgent.cs'), 'utf8'), { PROJECT_ID: projectId, API_KEY: apiKey }));
+  writeFileSync(source, fill(readFileSync(join(root, 'src/agent/windows/NexusAgent.cs'), 'utf8'), { PROJECT_ID: projectId, API_KEY: apiKey, RELAY_BASE: relayBase }));
 
   mkdirSync(out, { recursive: true });
   const exe = join(out, 'NexusAgent.exe');

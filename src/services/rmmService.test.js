@@ -20,19 +20,22 @@ vi.mock('firebase/firestore', () => ({
 }));
 vi.mock('./firebase', () => ({ db: {} }));
 
-const { setDoc, updateDoc } = await import('firebase/firestore');
+const { deleteDoc, setDoc, updateDoc } = await import('firebase/firestore');
 const {
   MAX_COMMAND_LENGTH,
   buildAgentSelfUpdateScript,
   clearRemoteInputEvents,
+  detectDuplicateLiveDevices,
   dispatchAgentUpdate,
   dispatchBatchAgentUpdate,
+  findLiveDeviceForAsset,
   sanitizeAuditDetail,
   stopRemoteSession,
   dispatchRemoteCommand,
   isDeviceOnline,
   resolveRuntimePolicy,
   startRemoteSession,
+  unifyAgentDevices,
 } = await import('./rmmService');
 
 const user = { uid: 'u-gestor', name: 'Gestora TI' };
@@ -42,6 +45,8 @@ describe('rmmService', () => {
   beforeEach(() => {
     batch.set.mockClear();
     batch.commit.mockClear();
+    deleteDoc.mockClear();
+    setDoc.mockClear();
     updateDoc.mockClear();
   });
 
@@ -139,5 +144,59 @@ describe('rmmService', () => {
       zipUrl: 'https://itam-nexus.web.app/downloads/NexusAgent.zip',
     });
     expect(batchRes).toEqual({ updated: 2, failed: 0, errors: [] });
+  });
+
+  it('prioriza matrícula Online/mais recente pós-formatação e unifica removendo registro antigo', async () => {
+    const now = Date.parse('2026-11-24T16:35:00Z');
+    const asset = {
+      id: 'asset-ntb-001',
+      internalId: 'SHL-BEL-NTB-001',
+      serialNumber: 'ABC123456',
+      location: 'Belém',
+      agent: { hostname: 'SHL-BEL-NTB-001', deviceKey: 'old-key-154' },
+    };
+    const oldPreFormat = {
+      id: 'acme_old-key-154',
+      deviceKey: 'old-key-154',
+      accessId: '154 683 680',
+      hostname: 'SHL-BEL-NTB-001',
+      serialNumber: 'ABC123456',
+      lastSeenAt: new Date(now - 3600 * 1000).toISOString(),
+    };
+    const newPostFormat = {
+      id: 'acme_new-key-311',
+      deviceKey: 'new-key-311',
+      accessId: '311 314 897',
+      deviceId: 'new-machine-guid',
+      hostname: 'SHL-BEL-NTB-001',
+      serialNumber: 'ABC123456',
+      ipAddress: '192.168.15.41',
+      loggedUser: 'SHL-BEL-NTB-001\\shiad',
+      agentVersion: '3.4.0',
+      lastSeenAt: new Date(now - 10 * 1000).toISOString(),
+    };
+
+    // Mesmo que o documento antigo venha primeiro no Firestore, o Online/mais recente vence
+    const chosen = findLiveDeviceForAsset(asset, [oldPreFormat, newPostFormat], now);
+    expect(chosen.deviceKey).toBe('new-key-311');
+
+    const groups = detectDuplicateLiveDevices([asset], [oldPreFormat, newPostFormat], now);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].primaryDevice.deviceKey).toBe('new-key-311');
+    expect(groups[0].supersededDevices.map((d) => d.deviceKey)).toEqual(['old-key-154']);
+
+    const res = await unifyAgentDevices({ tenantId: 'acme', groups, user });
+    expect(res).toEqual({ unifiedGroups: 1, removedDevices: 1 });
+    expect(updateDoc).toHaveBeenCalledWith(
+      { path: 'assets/asset-ntb-001', id: 'asset-ntb-001' },
+      expect.objectContaining({
+        'agent.deviceKey': 'new-key-311',
+        'agent.deviceId': 'new-machine-guid',
+      })
+    );
+    expect(deleteDoc).toHaveBeenCalledWith({
+      path: 'agentDevices/acme_old-key-154',
+      id: 'acme_old-key-154',
+    });
   });
 });

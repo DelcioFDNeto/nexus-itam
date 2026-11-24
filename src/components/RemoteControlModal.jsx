@@ -85,6 +85,24 @@ const closeBitmapSafely = (bmp) => {
   }
 };
 
+const targetFpsForQuality = (q) => (q === 'ultra' ? 60 : 45);
+
+const decodeBase64ToBytes = (b64) => {
+  if (typeof Uint8Array !== 'undefined' && typeof Uint8Array.fromBase64 === 'function') {
+    return Uint8Array.fromBase64(b64);
+  }
+  const binary = atob(b64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+};
+
+const defaultQualityForViewport = () =>
+  typeof window !== 'undefined' && window.innerWidth >= 1024 ? 'balanced' : 'low';
+
 export default function RemoteControlModal({
   isOpen,
   onClose,
@@ -100,7 +118,7 @@ export default function RemoteControlModal({
 
   // Estado da Sessão Remota NexusDesk
   const [sessionMode, setSessionMode] = useState('attended');
-  const [quality, setQuality] = useState('low'); // Padrão Turbo para fluidez móvel imediata
+  const [quality, setQuality] = useState(defaultQualityForViewport);
   const [monitorIndex, setMonitorIndex] = useState(0);
   const [sessionId, setSessionId] = useState('');
   const [lastSessionId, setLastSessionId] = useState('');
@@ -143,6 +161,8 @@ export default function RemoteControlModal({
   const [wingetPkg, setWingetPkg] = useState('');
   const [uninstallName, setUninstallName] = useState('');
 
+  const [usingRealMouse, setUsingRealMouse] = useState(false);
+
   // Refs de Diálogo, Pipeline Canvas e Touch
   const dialogRef = useRef(null);
   const returnFocusRef = useRef(null);
@@ -151,8 +171,11 @@ export default function RemoteControlModal({
   const viewportRef = useRef(null);
   const canvasRef = useRef(null);
   const latestBitmapRef = useRef(null);
+  const lastDrawnBitmapRef = useRef(null);
   const rafIdRef = useRef(null);
   const mobileKeyboardInputRef = useRef(null);
+  const lastTouchAtRef = useRef(0);
+  const mouseDragStateRef = useRef({ down: false, startX: 0, startY: 0, dragged: false });
   
   const inputSeqRef = useRef(1);
   const inputQueueRef = useRef([]);
@@ -475,6 +498,7 @@ export default function RemoteControlModal({
         }
       },
       () => {},
+      { deviceKey },
     );
     wsClientRef.current = wsClient;
     return () => {
@@ -507,7 +531,7 @@ export default function RemoteControlModal({
         status: 'active',
         quality: qualityRef.current,
         monitorIndex: monitorIndexRef.current,
-        targetFps: 30,
+        targetFps: targetFpsForQuality(qualityRef.current),
       });
       wsClientRef.current?.ping?.();
     };
@@ -639,10 +663,18 @@ export default function RemoteControlModal({
     }
 
     const rawData = String(candidateFrameData || '');
-    let dataUri = rawData;
-    if (!rawData.startsWith('data:')) {
-      const isPng = rawData.startsWith('iVBORw0KGgo');
-      dataUri = `data:${isPng ? 'image/png' : 'image/jpeg'};base64,${rawData}`;
+    let cleanBase64 = rawData;
+    let mimeType = 'image/jpeg';
+    if (rawData.startsWith('data:')) {
+      const commaIdx = rawData.indexOf(',');
+      if (commaIdx !== -1) {
+        const prefix = rawData.slice(5, commaIdx);
+        if (prefix.includes('image/png')) mimeType = 'image/png';
+        else if (prefix.includes('image/webp')) mimeType = 'image/webp';
+        cleanBase64 = rawData.slice(commaIdx + 1);
+      }
+    } else if (rawData.startsWith('iVBORw0KGgo')) {
+      mimeType = 'image/png';
     }
 
     let cancelled = false;
@@ -659,29 +691,33 @@ export default function RemoteControlModal({
           setLatestBitmap(img);
         }
       };
-      img.src = dataUri;
+      img.src = rawData.startsWith('data:') ? rawData : `data:${mimeType};base64,${cleanBase64}`;
     };
 
-    // Decodificação rápida via ImageBitmap ou fallback Image com controle estrito de ordem (anti-jitter)
-    if (typeof createImageBitmap !== 'undefined' && typeof fetch !== 'undefined') {
-      fetch(dataUri)
-        .then((res) => res.blob())
-        .then((blob) => createImageBitmap(blob))
-        .then((bmp) => {
-          if (
-            cancelled ||
-            sessionIdRef.current !== activeSessionId ||
-            (currentSeq > 0 && currentSeq < lastDecodedSeqRef.current)
-          ) {
-            closeBitmapSafely(bmp);
-            return;
-          }
-          lastDecodedSeqRef.current = Math.max(lastDecodedSeqRef.current, currentSeq);
-          setLatestBitmap(bmp);
-        })
-        .catch(() => {
-          loadFallbackImage();
-        });
+    // Decodificação binária direta (sem fetch dataURI) -> ImageBitmap off-thread para 30-60 FPS sem GC lag
+    if (typeof createImageBitmap !== 'undefined' && typeof Blob !== 'undefined') {
+      try {
+        const bytes = decodeBase64ToBytes(cleanBase64);
+        const blob = new Blob([bytes], { type: mimeType });
+        createImageBitmap(blob)
+          .then((bmp) => {
+            if (
+              cancelled ||
+              sessionIdRef.current !== activeSessionId ||
+              (currentSeq > 0 && currentSeq < lastDecodedSeqRef.current)
+            ) {
+              closeBitmapSafely(bmp);
+              return;
+            }
+            lastDecodedSeqRef.current = Math.max(lastDecodedSeqRef.current, currentSeq);
+            setLatestBitmap(bmp);
+          })
+          .catch(() => {
+            loadFallbackImage();
+          });
+      } catch {
+        loadFallbackImage();
+      }
     } else {
       loadFallbackImage();
     }
@@ -691,9 +727,10 @@ export default function RemoteControlModal({
     };
   }, [isOpen, sessionId, candidateFrameSeq, candidateFrameData, setLatestBitmap]);
 
-  // Loop requestAnimationFrame Contínuo no Canvas (Double-Buffer) apenas enquanto o modal está aberto
+  // Loop requestAnimationFrame no Canvas (desynchronized + dirty-bitmap check: só redesenha quando chega quadro novo)
   useEffect(() => {
     if (!isOpen) {
+      lastDrawnBitmapRef.current = null;
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
@@ -708,8 +745,10 @@ export default function RemoteControlModal({
       const canvas = canvasRef.current;
       const bitmap = latestBitmapRef.current;
 
-      if (canvas && bitmap) {
-        const ctx = canvas.getContext('2d');
+      if (canvas && bitmap && bitmap !== lastDrawnBitmapRef.current) {
+        const ctx =
+          canvas.getContext('2d', { alpha: false, desynchronized: true }) ||
+          canvas.getContext('2d');
         if (ctx) {
           const w = bitmap.width || bitmap.naturalWidth || 1280;
           const h = bitmap.height || bitmap.naturalHeight || 720;
@@ -718,8 +757,9 @@ export default function RemoteControlModal({
             canvas.height = h;
           }
           ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'medium';
+          ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(bitmap, 0, 0, w, h);
+          lastDrawnBitmapRef.current = bitmap;
         }
       }
       rafIdRef.current = requestAnimationFrame(renderLoop);
@@ -728,6 +768,7 @@ export default function RemoteControlModal({
     rafIdRef.current = requestAnimationFrame(renderLoop);
     return () => {
       running = false;
+      lastDrawnBitmapRef.current = null;
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
@@ -740,37 +781,49 @@ export default function RemoteControlModal({
     const seq = inputSeqRef.current;
     inputSeqRef.current += 1;
     const eventWithSeq = { ...ev, seq };
-    inputQueueRef.current = [...inputQueueRef.current.slice(-20), eventWithSeq];
+    inputQueueRef.current = [...inputQueueRef.current.slice(-32), eventWithSeq];
 
     const currentQuality = qualityRef.current;
-    wsClientRef.current?.pushRemoteControl({
-      deviceKey,
-      sessionId,
-      status: 'active',
-      mode: effectiveMode,
-      quality: currentQuality,
-      targetFps: 30,
-      inputEvents: [eventWithSeq],
-    });
+    const targetFps = targetFpsForQuality(currentQuality);
+    const deliveredViaWs = Boolean(
+      wsClientRef.current?.pushRemoteControl({
+        deviceKey,
+        sessionId,
+        status: 'active',
+        mode: effectiveMode,
+        quality: currentQuality,
+        targetFps,
+        inputEvents: [eventWithSeq],
+      }),
+    );
+
+    // Quando o WebSocket bidirecional entregou em tempo real, evita tempestade de POSTs HTTP e escritas Firestore a cada movimento do mouse!
+    if (deliveredViaWs && (ev.type === 'mousemove' || ev.type === 'mousedrag')) {
+      return;
+    }
 
     if (flushTimerRef.current) return;
-    const delayMs = ev.type === 'mousemove' ? 33 : 10;
+    const delayMs = deliveredViaWs ? 120 : ev.type === 'mousemove' ? 28 : 8;
     flushTimerRef.current = setTimeout(() => {
       flushTimerRef.current = null;
       const batch = [...inputQueueRef.current];
+      if (batch.length === 0) return;
       const latestQuality = qualityRef.current;
-      microservicesApi
-        .updateRemoteControlRelay({
-          tenantId,
-          deviceKey,
-          sessionId,
-          status: 'active',
-          mode: effectiveMode,
-          quality: latestQuality,
-          targetFps: 30,
-          inputEvents: batch,
-        })
-        .catch(() => {});
+      const latestFps = targetFpsForQuality(latestQuality);
+      if (!deliveredViaWs) {
+        microservicesApi
+          .updateRemoteControlRelay({
+            tenantId,
+            deviceKey,
+            sessionId,
+            status: 'active',
+            mode: effectiveMode,
+            quality: latestQuality,
+            targetFps: latestFps,
+            inputEvents: batch,
+          })
+          .catch(() => {});
+      }
       sendRemoteInputEvents({
         tenantId,
         deviceKey,
@@ -804,12 +857,15 @@ export default function RemoteControlModal({
       lastFrameSeqRef.current = 0;
       lastDecodedSeqRef.current = 0;
       const currentQuality = qualityRef.current;
+      const desiredFps = targetFpsForQuality(currentQuality);
       const newSessionId = await startRemoteSession({
         tenantId,
         deviceKey,
         hostname: hostLabel,
         mode: effectiveMode,
         quality: currentQuality,
+        targetFps: desiredFps,
+        monitorIndex: monitorIndexRef.current,
         user: currentUser,
       });
       if (!isOpenRef.current) {
@@ -825,7 +881,8 @@ export default function RemoteControlModal({
         status: 'active',
         mode: effectiveMode,
         quality: currentQuality,
-        targetFps: 30,
+        targetFps: desiredFps,
+        monitorIndex: monitorIndexRef.current,
       });
       microservicesApi
         .updateRemoteControlRelay({
@@ -835,7 +892,8 @@ export default function RemoteControlModal({
           status: 'active',
           mode: effectiveMode,
           quality: currentQuality,
-          targetFps: 30,
+          targetFps: desiredFps,
+          monitorIndex: monitorIndexRef.current,
         })
         .catch(() => {});
       toast.success(
@@ -895,13 +953,15 @@ export default function RemoteControlModal({
     qualityRef.current = newQuality;
     setQuality(newQuality);
     if (sessionId && tenantId && deviceKey) {
+      const nextFps = targetFpsForQuality(newQuality);
       wsClientRef.current?.pushRemoteControl({
         deviceKey,
         sessionId,
         status: 'active',
         mode: effectiveMode,
         quality: newQuality,
-        targetFps: 30,
+        targetFps: nextFps,
+        monitorIndex: monitorIndexRef.current,
       });
       microservicesApi
         .updateRemoteControlRelay({
@@ -911,7 +971,8 @@ export default function RemoteControlModal({
           status: 'active',
           mode: effectiveMode,
           quality: newQuality,
-          targetFps: 30,
+          targetFps: nextFps,
+          monitorIndex: monitorIndexRef.current,
         })
         .catch(() => {});
       await updateRemoteQuality({
@@ -996,6 +1057,8 @@ export default function RemoteControlModal({
 
   // INTERAÇÕES TOUCH PARA SMARTPHONES & PWA MOBILE (AnyDesk-style)
   const handleTouchStart = (e) => {
+    lastTouchAtRef.current = Date.now();
+    if (usingRealMouse) setUsingRealMouse(false);
     if (!sessionId) return;
     const ts = touchStateRef.current;
     if (ts.longPressTimer) {
@@ -1121,6 +1184,7 @@ export default function RemoteControlModal({
   };
 
   const handleTouchEnd = (e) => {
+    lastTouchAtRef.current = Date.now();
     const ts = touchStateRef.current;
     if (ts.longPressTimer) {
       clearTimeout(ts.longPressTimer);
@@ -1167,10 +1231,37 @@ export default function RemoteControlModal({
     ts.pinchStartDist = 0;
   };
 
-  // Cliques via Mouse Convencional
+  // Cliques, Arraste e Movimento via Mouse Convencional (Desktop)
+  const isSyntheticTouchMouse = () => Date.now() - lastTouchAtRef.current <= 600;
+
+  const handleCanvasMouseDown = (e) => {
+    if (!sessionId || !controlEnabled || isSyntheticTouchMouse() || e.button !== 0) return;
+    if (!usingRealMouse) setUsingRealMouse(true);
+    mouseDragStateRef.current = {
+      down: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      dragged: false,
+    };
+  };
+
+  const handleCanvasMouseUp = (e) => {
+    if (!sessionId || !controlEnabled || isSyntheticTouchMouse() || e.button !== 0) return;
+    const ds = mouseDragStateRef.current;
+    if (ds.down && ds.dragged) {
+      const coords = getRelativeCoordsFromClient(e.clientX, e.clientY);
+      queueInputEvent({ type: 'mouseup', ...coords });
+    }
+    ds.down = false;
+  };
+
   const handleCanvasClick = (e) => {
-    if (!sessionId || !controlEnabled) return;
-    const coords = touchMode === 'trackpad' ? virtualCursor : getRelativeCoordsFromClient(e.clientX, e.clientY);
+    if (!sessionId || !controlEnabled || isSyntheticTouchMouse()) return;
+    if (mouseDragStateRef.current.dragged) {
+      mouseDragStateRef.current.dragged = false;
+      return;
+    }
+    const coords = getRelativeCoordsFromClient(e.clientX, e.clientY);
     if (rightClickArmed) {
       queueInputEvent({ type: 'rightclick', ...coords });
       setRightClickArmed(false);
@@ -1181,26 +1272,37 @@ export default function RemoteControlModal({
   };
 
   const handleCanvasDoubleClick = (e) => {
-    if (!sessionId || !controlEnabled) return;
-    const coords = touchMode === 'trackpad' ? virtualCursor : getRelativeCoordsFromClient(e.clientX, e.clientY);
+    if (!sessionId || !controlEnabled || isSyntheticTouchMouse()) return;
+    const coords = getRelativeCoordsFromClient(e.clientX, e.clientY);
     queueInputEvent({ type: 'dblclick', ...coords });
   };
 
   const handleCanvasContextMenu = (e) => {
     e.preventDefault();
     if (!sessionId || !controlEnabled) return;
-    const coords = touchMode === 'trackpad' ? virtualCursor : getRelativeCoordsFromClient(e.clientX, e.clientY);
+    const coords = isSyntheticTouchMouse() && touchMode === 'trackpad'
+      ? virtualCursor
+      : getRelativeCoordsFromClient(e.clientX, e.clientY);
     queueInputEvent({ type: 'rightclick', ...coords });
   };
 
   const handleCanvasMouseMove = (e) => {
-    if (!sessionId || !controlEnabled || touchMode === 'trackpad') return;
-    const now = Date.now();
-    if (now - lastMouseMoveAtRef.current < 50) return;
-    lastMouseMoveAtRef.current = now;
+    if (!sessionId || !controlEnabled || isSyntheticTouchMouse()) return;
+    if (!usingRealMouse) setUsingRealMouse(true);
+    const ds = mouseDragStateRef.current;
     const coords = getRelativeCoordsFromClient(e.clientX, e.clientY);
+
+    if (ds.down && !ds.dragged && Math.hypot(e.clientX - ds.startX, e.clientY - ds.startY) > 4) {
+      ds.dragged = true;
+      const startCoords = getRelativeCoordsFromClient(ds.startX, ds.startY);
+      queueInputEvent({ type: 'mousedown', ...startCoords });
+    }
+
+    const now = Date.now();
+    if (now - lastMouseMoveAtRef.current < 24) return;
+    lastMouseMoveAtRef.current = now;
     setVirtualCursor(coords);
-    queueInputEvent({ type: 'mousemove', ...coords });
+    queueInputEvent({ type: ds.dragged ? 'mousedrag' : 'mousemove', ...coords });
   };
 
   const handleCanvasWheel = (e) => {
@@ -1398,7 +1500,8 @@ export default function RemoteControlModal({
     try {
       await handleStopRemote();
       const removed = await revokeAgentDevice({ tenantId, deviceKey, hostname: hostLabel, user: currentUser });
-      toast.success(removed ? 'Agente revogado com sucesso.' : 'Máquina já estava revogada.');
+      toast.success(removed ? 'Matrícula do agente revogada e removida da frota.' : 'Máquina já estava revogada.');
+      onClose?.();
     } catch (e) {
       toast.error(e?.message || 'Erro ao revogar.');
     }
@@ -1701,8 +1804,9 @@ export default function RemoteControlModal({
                     title="Modo de Transmissão"
                   >
                     <option value="low">Turbo 30+ FPS (Fluído)</option>
-                    <option value="balanced">Padrão Equilibrado</option>
-                    <option value="high">Alta Definição (HD)</option>
+                    <option value="balanced">Equilibrada HD (45 FPS)</option>
+                    <option value="high">Alta Full HD (1080p)</option>
+                    <option value="ultra">Ultra Nativa 60 FPS (Full HD+)</option>
                   </select>
 
                   {/* Seletor Multi-Monitor (Agente v3.4+) */}
@@ -1886,6 +1990,8 @@ export default function RemoteControlModal({
                       ref={canvasRef}
                       width={1280}
                       height={720}
+                      onMouseDown={handleCanvasMouseDown}
+                      onMouseUp={handleCanvasMouseUp}
                       onClick={handleCanvasClick}
                       onDoubleClick={handleCanvasDoubleClick}
                       onContextMenu={handleCanvasContextMenu}
@@ -1896,8 +2002,8 @@ export default function RemoteControlModal({
                       }`}
                     />
 
-                    {/* Cursor Virtual NexusDesk para Modo Trackpad Mobile */}
-                    {touchMode === 'trackpad' && controlEnabled && (
+                    {/* Cursor Virtual NexusDesk para Modo Trackpad Mobile (oculto ao usar mouse físico) */}
+                    {touchMode === 'trackpad' && !usingRealMouse && controlEnabled && (
                       <div
                         className="absolute w-5 h-5 -ml-2.5 -mt-2.5 rounded-full border-2 border-white bg-brand/90 shadow-2xl pointer-events-none flex items-center justify-center"
                         style={{
@@ -1921,6 +2027,11 @@ export default function RemoteControlModal({
                       <span className="text-cyan-300">
                         {latencyMs}ms
                       </span>
+                      {latestCandidateFrame?.sharp && (
+                        <span className="px-1.5 py-0.5 rounded font-sans font-bold bg-emerald-500/20 text-emerald-300">
+                          HD Nítido
+                        </span>
+                      )}
                       <span className="px-1.5 py-0.5 rounded font-sans font-bold bg-brand/20 text-brand-aa">
                         {transportMode === 'ws-relay' ? 'Turbo WS' : 'Seguro'}
                       </span>

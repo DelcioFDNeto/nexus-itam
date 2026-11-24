@@ -18,12 +18,17 @@
 	}
 }
 
-# Edge API Gateway (REST APIs 1..4 + WebSocket API 5 em wss://)
+# Edge API Gateway (REST APIs 1..6 + WebSocket API 5 em wss:// de Baixa Latência)
 {$API_DOMAIN} {
 	import security_headers
 	encode zstd gzip
 
 	reverse_proxy api-gateway:8000 {
 		header_up X-Real-IP {remote_host}
+		flush_interval -1
+		transport http {
+			keepalive 90s
+			keepalive_idle_conns 64
+		}
 	}
 }

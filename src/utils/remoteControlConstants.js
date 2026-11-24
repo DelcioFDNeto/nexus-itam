@@ -1,9 +1,10 @@
 // src/utils/remoteControlConstants.js
 
 export const QUALITY_LABELS = {
-  low: 'Turbo 30+ FPS (768p)',
-  balanced: 'Equilibrada (1088p)',
-  high: 'Alta HD (1366p+)',
+  low: 'Turbo 30+ FPS (1024p→1280p)',
+  balanced: 'Equilibrada HD (1366p→1600p)',
+  high: 'Alta Full HD (1600p→1920p)',
+  ultra: 'Ultra Nativa 60 FPS (Full HD+)',
 };
 
 export const SESSION_END_MESSAGES = {

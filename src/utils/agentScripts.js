@@ -30,6 +30,7 @@ export const AGENT_MODES = {
 };
 
 export const DEFAULT_FIRESTORE_BASE = 'https://firestore.googleapis.com/v1';
+export const DEFAULT_RELAY_BASE = 'https://itam-api-164-152-195-199.sslip.io';
 
 // O valor vai para dentro de aspas no script: so caracteres inofensivos.
 const SAFE_VALUE = /^[A-Za-z0-9_.:-]+$/;
@@ -162,28 +163,37 @@ timeout /t 4
   };
 };
 
-/** Codigo-fonte C# do NexusAgent.exe com o projeto e a chave de API do Firebase. */
-export const buildAgentSource = ({ projectId, apiKey }) => {
+/** Codigo-fonte C# do NexusAgent.exe com o projeto, chave de API e endpoint Relay VPS. */
+export const buildAgentSource = ({ projectId, apiKey, relayBase = DEFAULT_RELAY_BASE }) => {
   assertSafe('projectId', projectId);
   assertSafe('apiKey', apiKey);
-  return fill(windowsAgentCs, { PROJECT_ID: projectId, API_KEY: apiKey });
+  const cleanRelay = String(relayBase || DEFAULT_RELAY_BASE).trim().replace(/\/+$/, '');
+  assertSafe('relayBase', cleanRelay, SAFE_URL);
+  return fill(windowsAgentCs, {
+    PROJECT_ID: projectId,
+    API_KEY: apiKey,
+    RELAY_BASE: cleanRelay,
+  });
 };
 
 /**
  * config.json para colocar ao lado do NexusAgent.exe avulso (.zip). O token so
  * vale ate a matricula: o executavel o apaga do arquivo ao instalar.
  */
-export const buildAgentConfigJson = ({ projectId = 'itam-nexus', apiKey, tenantId, agentToken, patrimony = '' }) => {
+export const buildAgentConfigJson = ({ projectId = 'itam-nexus', apiKey, tenantId, agentToken, patrimony = '', relayBase = '' }) => {
   assertSafe('projectId', projectId);
   assertSafe('apiKey', apiKey);
   assertSafe('tenantId', tenantId);
   assertSafe('token', agentToken);
+  const cleanRelay = String(relayBase || '').trim().replace(/\/+$/, '');
+  if (cleanRelay) assertSafe('relayBase', cleanRelay, SAFE_URL);
   const payload = {
     projectId,
     apiKey,
     tenantId,
     agentToken,
     patrimony,
+    ...(cleanRelay ? { relayBase: cleanRelay } : {}),
   };
   return {
     content: JSON.stringify(payload, null, 2),

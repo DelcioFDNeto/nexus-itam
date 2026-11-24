@@ -69,7 +69,8 @@ export async function buildNexusDeskService(opts = {}) {
   const app = Fastify({
     logger: opts.logger ?? false,
     bodyLimit: 4_194_304,
-    forceCloseConnections: true,
+    keepAliveTimeout: 65_000,
+    forceCloseConnections: 'idle',
   });
 
   // Salas multi-tenant isoladas em memória para streaming WebSocket em tempo real
@@ -273,11 +274,11 @@ export async function buildNexusDeskService(opts = {}) {
     }
     if (payload.status) existing.status = sanitizeText(payload.status, 32);
     if (payload.mode) existing.mode = payload.mode === 'unattended' ? 'unattended' : 'attended';
-    if (['low', 'balanced', 'high'].includes(payload.quality)) {
+    if (['low', 'balanced', 'high', 'ultra'].includes(payload.quality)) {
       existing.quality = payload.quality;
     }
     if (payload.targetFps) {
-      existing.targetFps = Math.max(10, Math.min(60, Number(payload.targetFps) || 30));
+      existing.targetFps = Math.max(10, Math.min(60, Number(payload.targetFps) || 45));
     }
     if (payload.monitorIndex !== undefined && payload.monitorIndex !== null) {
       const mIdx = Number(payload.monitorIndex);
@@ -303,7 +304,7 @@ export async function buildNexusDeskService(opts = {}) {
         }
         existing.inputEvents = Array.from(bySeq.values())
           .sort((a, b) => Number(a.seq) - Number(b.seq))
-          .slice(-32);
+          .slice(-64);
       }
     }
 
@@ -335,11 +336,38 @@ export async function buildNexusDeskService(opts = {}) {
     const cleanTenant = canonicalTenantId(tenantId);
     const room = tenantRooms.get(cleanTenant);
     if (!room || room.size === 0) return 0;
+    const eventName = String(envelope?.event || '');
+    const eventDeviceKey = envelope?.data?.deviceKey || envelope?.data?.targetDevice || '';
     const serialized = JSON.stringify(envelope);
     let delivered = 0;
 
     for (const peer of room) {
       if (excludeSocket && peer.socket === excludeSocket) continue;
+
+      // Sandbox estrito para conexões M2M do NexusAgent: nunca recebem frames de vídeo ou eventos de domínio,
+      // apenas sinais/controles endereçados especificamente ao seu próprio deviceKey.
+      if (peer.role === 'agent' || peer.clientType === 'nexusdesk-agent') {
+        if (eventName !== 'remote.control' && eventName !== 'remote.signal') {
+          continue;
+        }
+        if (peer.deviceKey && eventDeviceKey && peer.deviceKey !== eventDeviceKey) {
+          continue;
+        }
+      } else if (peer.clientType === 'agent' && eventName === 'remote.frame') {
+        // Outros agentes autenticados por token nunca precisam receber quadros JPEG de tela
+        continue;
+      }
+
+      // Viewers dedicados a um dispositivo específico só recebem quadros daquele dispositivo
+      if (
+        eventName === 'remote.frame' &&
+        peer.watchDeviceKey &&
+        eventDeviceKey &&
+        peer.watchDeviceKey !== eventDeviceKey
+      ) {
+        continue;
+      }
+
       if (
         peer.role === 'collaborator' &&
         !canCollaboratorReceiveEvent(peer.userEmail, envelope)
@@ -357,7 +385,10 @@ export async function buildNexusDeskService(opts = {}) {
   await app.register(helmet, { global: true, contentSecurityPolicy: false });
   await app.register(cors, { origin: true });
   await app.register(websocket, {
-    options: { maxPayload: 4 * 1024 * 1024 },
+    options: {
+      maxPayload: 4 * 1024 * 1024,
+      perMessageDeflate: false,
+    },
   });
 
   // Captura rawBody em /internal/events para verificação HMAC exata
@@ -665,7 +696,7 @@ export async function buildNexusDeskService(opts = {}) {
         status: state.status,
         mode: state.mode,
         quality: state.quality,
-        targetFps: state.targetFps || 30,
+        targetFps: state.targetFps || 45,
         monitorIndex: state.monitorIndex ?? 0,
         viewerSeenAt: state.viewerSeenAt,
         inputEvents: state.inputEvents || [],
@@ -678,6 +709,7 @@ export async function buildNexusDeskService(opts = {}) {
   // ===========================================================================
   app.get('/ws/nexusdesk', { websocket: true }, async (socket, request) => {
     let session = null;
+    socket._socket?.setNoDelay?.(true);
 
     socket.on('error', () => {
       if (session) removeClientFromRoom(session.tenantId, session);
@@ -688,6 +720,7 @@ export async function buildNexusDeskService(opts = {}) {
       const authHeader = request.headers.authorization;
       const agentToken = request.headers['x-agent-token'] || request.query?.agentToken;
       const claimedTenant = request.headers['x-tenant-id'] || request.query?.tenantId;
+      const queryDeviceKey = sanitizeText(request.query?.deviceKey || '', 120);
 
       if (agentToken && claimedTenant) {
         const ok = await authRepo.verifyTenantAgentToken(String(claimedTenant), String(agentToken));
@@ -698,10 +731,26 @@ export async function buildNexusDeskService(opts = {}) {
         }
         session = {
           socket,
-          tenantId: String(claimedTenant),
+          tenantId: canonicalTenantId(String(claimedTenant)),
           userEmail: `agent@${claimedTenant}`,
           role: 'operator',
           clientType: 'agent',
+          deviceKey: queryDeviceKey || null,
+          connectedAt: new Date().toISOString(),
+        };
+      } else if (
+        claimedTenant &&
+        request.query?.client === 'nexusdesk-agent' &&
+        /^[A-Za-z0-9-]{3,120}$/.test(queryDeviceKey)
+      ) {
+        // Canal WebSocket dedicado e isolado para NexusAgent.exe matriculado (sem expor agentToken em disco)
+        session = {
+          socket,
+          tenantId: canonicalTenantId(String(claimedTenant)),
+          userEmail: `agent-${queryDeviceKey}@nexusdesk`,
+          role: 'agent',
+          clientType: 'nexusdesk-agent',
+          deviceKey: queryDeviceKey,
           connectedAt: new Date().toISOString(),
         };
       } else if (queryToken || authHeader) {
@@ -714,6 +763,7 @@ export async function buildNexusDeskService(opts = {}) {
           role: claims.role,
           department: claims.department || 'Geral',
           clientType: request.query?.client || 'web-console',
+          watchDeviceKey: queryDeviceKey || null,
           connectedAt: new Date().toISOString(),
           sheetAccessMap: new Map(),
         };
@@ -724,6 +774,7 @@ export async function buildNexusDeskService(opts = {}) {
           userEmail: 'viewer@nexusdesk',
           role: 'operator',
           clientType: 'nexusdesk-viewer',
+          watchDeviceKey: queryDeviceKey || null,
           connectedAt: new Date().toISOString(),
         };
       } else {
@@ -819,43 +870,86 @@ export async function buildNexusDeskService(opts = {}) {
           return;
         }
 
-        // Streaming direto de frames de tela de alta velocidade via WebSocket (30+ FPS sem overhead HTTP)
+        // Streaming direto de frames de tela de alta velocidade via WebSocket (30-60 FPS sem overhead HTTP)
         if (action === 'remote.frame' || action === 'remote.push_frame') {
           if (session.role === 'collaborator') return;
           const payload = msg.data || msg;
-          const deviceKey = sanitizeText(payload.deviceKey || '', 120);
+          const deviceKey =
+            session.role === 'agent' && session.deviceKey
+              ? session.deviceKey
+              : sanitizeText(payload.deviceKey || '', 120);
           const sessionId = sanitizeText(payload.sessionId || payload.frame?.sessionId || '', 120);
-          if (!deviceKey || !sessionId) return;
+          if (!deviceKey || !sessionId || !/^(rem|ses)-[A-Za-z0-9-]+$/.test(sessionId)) return;
 
-          const key = `${session.tenantId}_${deviceKey}`;
+          const cleanTenant = canonicalTenantId(session.tenantId);
+          const key = `${cleanTenant}_${deviceKey}`;
           let state = remoteSessions.get(key);
           if (!state || state.sessionId !== sessionId) {
-            state = upsertRemoteControlState(session.tenantId, {
+            state = upsertRemoteControlState(cleanTenant, {
               deviceKey,
               sessionId,
               status: 'active',
               quality: payload.frame?.quality || payload.quality || 'balanced',
-              targetFps: payload.frame?.targetFps || payload.targetFps || 30,
+              targetFps: payload.frame?.targetFps || payload.targetFps || 45,
             });
           }
 
-          broadcastToTenant(
-            session.tenantId,
-            {
-              protocol: 'nexusdesk-ws/3.0',
-              event: 'remote.frame',
-              tenantId: canonicalTenantId(session.tenantId),
-              sender: session.userEmail,
-              timestamp: new Date().toISOString(),
-              data: {
-                deviceKey,
-                sessionId,
-                frame: payload.frame || payload,
-                remoteState: payload.remoteState || state || null,
+          const ackSeq = Number(payload.ackInputSeq || payload.remoteState?.lastInputSeq || 0);
+          if (ackSeq > 0 && Array.isArray(state.inputEvents) && state.inputEvents.length > 0) {
+            state.inputEvents = state.inputEvents.filter((ev) => Number(ev.seq) > ackSeq);
+          }
+
+          if (payload.frame) {
+            broadcastToTenant(
+              cleanTenant,
+              {
+                protocol: 'nexusdesk-ws/3.0',
+                event: 'remote.frame',
+                tenantId: cleanTenant,
+                sender: session.userEmail,
+                timestamp: new Date().toISOString(),
+                data: {
+                  deviceKey,
+                  sessionId,
+                  frame: payload.frame,
+                  remoteState: payload.remoteState || state || null,
+                },
               },
-            },
-            socket,
-          );
+              socket,
+            );
+          }
+
+          // Sincroniza de volta ao agente caso existam inputs pendentes ou sessão encerrada
+          if (
+            socket.readyState === 1 &&
+            (state.status === 'closed' ||
+              state.status === 'ended' ||
+              (Array.isArray(state.inputEvents) && state.inputEvents.length > 0))
+          ) {
+            socket.send(
+              JSON.stringify({
+                protocol: 'nexusdesk-ws/3.0',
+                event: 'remote.control',
+                tenantId: cleanTenant,
+                timestamp: new Date().toISOString(),
+                data: {
+                  sessionId: state.sessionId,
+                  status: state.status,
+                  mode: state.mode,
+                  quality: state.quality,
+                  targetFps: state.targetFps || 45,
+                  monitorIndex: state.monitorIndex ?? 0,
+                  viewerSeenAt: state.viewerSeenAt,
+                  inputEvents: state.inputEvents || [],
+                },
+              }),
+            );
+          }
+          return;
+        }
+
+        // Sandbox: conexões M2M de agente não acessam controle de terceiros, chat ou planilhas
+        if (session.role === 'agent') {
           return;
         }
 

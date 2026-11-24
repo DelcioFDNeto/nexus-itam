@@ -80,27 +80,32 @@ function parseJsonBody(rawBody) {
 }
 
 async function computeDirUsedBytes(dirPath) {
-  let total = 0;
   let entries;
   try {
     entries = await fsp.readdir(dirPath, { withFileTypes: true });
   } catch {
     return 0;
   }
-  for (const entry of entries) {
-    if (entry.isSymbolicLink()) continue;
-    const full = path.join(dirPath, entry.name);
-    try {
-      if (entry.isDirectory()) {
-        total += await computeDirUsedBytes(full);
-      } else if (entry.isFile()) {
-        const st = await fsp.stat(full);
-        total += st.size;
+  const sizes = await Promise.all(
+    entries.map(async (entry) => {
+      if (entry.isSymbolicLink()) return 0;
+      const full = path.join(dirPath, entry.name);
+      try {
+        if (entry.isDirectory()) {
+          return await computeDirUsedBytes(full);
+        }
+        if (entry.isFile()) {
+          const st = await fsp.stat(full);
+          return st.size;
+        }
+      } catch {
+        // Ignore files removed concurrently during calculation
       }
-    } catch {
-      // Ignore files removed concurrently during calculation
-    }
-  }
+      return 0;
+    }),
+  );
+  let total = 0;
+  for (const s of sizes) total += s;
   return total;
 }
 
@@ -138,6 +143,44 @@ export async function startNexusStorageNodeAgent({
   await fsp.mkdir(resolvedRoot, { recursive: true });
   const realRoot = await fsp.realpath(resolvedRoot);
   const rootPosix = resolvedRoot.replace(/\\/g, '/').replace(/\/+$/, '') || '/';
+
+  // Cache incremental em memória de bytes ocupados para eliminar varredura recursiva
+  // bloqueante em /health, /statfs e escritas frequentes, reconciliando em background.
+  const USAGE_RECONCILE_TTL_MS = 15_000;
+  let cachedUsedBytes = await computeDirUsedBytes(resolvedRoot);
+  let cachedUsedAt = Date.now();
+  let reconcilePromise = null;
+
+  function adjustUsedBytes(deltaBytes) {
+    if (!Number.isFinite(deltaBytes) || deltaBytes === 0) return;
+    cachedUsedBytes = Math.max(0, cachedUsedBytes + deltaBytes);
+    cachedUsedAt = Date.now();
+  }
+
+  function refreshUsedBytesInBackground() {
+    if (reconcilePromise) return reconcilePromise;
+    reconcilePromise = computeDirUsedBytes(resolvedRoot)
+      .then((fresh) => {
+        cachedUsedBytes = fresh;
+        cachedUsedAt = Date.now();
+        return fresh;
+      })
+      .catch(() => cachedUsedBytes)
+      .finally(() => {
+        reconcilePromise = null;
+      });
+    return reconcilePromise;
+  }
+
+  async function getFastUsedBytes({ forceReconcile = false } = {}) {
+    if (forceReconcile) {
+      return refreshUsedBytesInBackground();
+    }
+    if (Date.now() - cachedUsedAt > USAGE_RECONCILE_TTL_MS) {
+      refreshUsedBytesInBackground();
+    }
+    return cachedUsedBytes;
+  }
 
   function requireNonEmptyPath(rawValue, fieldName = 'path') {
     if (rawValue === undefined || rawValue === null || String(rawValue).trim() === '') {
@@ -279,11 +322,12 @@ export async function startNexusStorageNodeAgent({
       const pathname = parsedUrl.pathname;
 
       if (method === 'GET' && pathname === '/health') {
-        const usedBytes = await computeDirUsedBytes(resolvedRoot);
+        const usedBytes = await getFastUsedBytes();
         return sendJson(res, 200, {
           ok: true,
           status: 'healthy',
           driver: 'agent_node',
+          keepAlive: true,
           rootDir: resolvedRoot,
           quotaBytes: effectiveQuota,
           usedBytes,
@@ -295,7 +339,8 @@ export async function startNexusStorageNodeAgent({
       }
 
       if (method === 'GET' && pathname === '/statfs') {
-        const usedBytes = await computeDirUsedBytes(resolvedRoot);
+        const forceRefresh = parsedUrl.searchParams.get('refresh') === '1';
+        const usedBytes = await getFastUsedBytes({ forceReconcile: forceRefresh });
         return sendJson(res, 200, {
           quotaBytes: effectiveQuota,
           usedBytes,
@@ -328,17 +373,23 @@ export async function startNexusStorageNodeAgent({
         await assertNoSymlinkEscape(absTarget);
         try {
           const dirEntries = await fsp.readdir(absTarget, { withFileTypes: true });
-          const entries = [];
-          for (const entry of dirEntries) {
-            if (entry.isSymbolicLink()) continue;
-            const st = await fsp.stat(path.join(absTarget, entry.name));
-            entries.push({
-              name: entry.name,
-              type: entry.isDirectory() ? 'dir' : 'file',
-              size: entry.isDirectory() ? 0 : st.size,
-              mtimeMs: st.mtimeMs,
-            });
-          }
+          const statResults = await Promise.all(
+            dirEntries.map(async (entry) => {
+              if (entry.isSymbolicLink()) return null;
+              try {
+                const st = await fsp.stat(path.join(absTarget, entry.name));
+                return {
+                  name: entry.name,
+                  type: entry.isDirectory() ? 'dir' : 'file',
+                  size: entry.isDirectory() ? 0 : st.size,
+                  mtimeMs: st.mtimeMs,
+                };
+              } catch {
+                return null;
+              }
+            }),
+          );
+          const entries = statResults.filter(Boolean);
           return sendJson(res, 200, { path: virtualNormalized, entries });
         } catch (err) {
           if (err?.code === 'ENOENT') {
@@ -354,6 +405,22 @@ export async function startNexusStorageNodeAgent({
         await assertNoSymlinkEscape(absTarget);
         await fsp.mkdir(absTarget, { recursive: payload.recursive !== false });
         return sendJson(res, 201, { ok: true, path: virtualNormalized });
+      }
+
+      if (method === 'POST' && pathname === '/mkdir-batch') {
+        const payload = parseJsonBody(rawBody);
+        const rawPaths = Array.isArray(payload.paths) ? payload.paths.slice(0, 256) : [];
+        const targets = rawPaths.map((p) => resolveNodePath(p || '/'));
+        for (const t of targets) {
+          await assertNoSymlinkEscape(t.absTarget);
+        }
+        await Promise.all(
+          targets.map((t) => fsp.mkdir(t.absTarget, { recursive: payload.recursive !== false })),
+        );
+        return sendJson(res, 201, {
+          ok: true,
+          created: targets.map((t) => t.virtualNormalized),
+        });
       }
 
       if ((method === 'PUT' && pathname === '/files') || (method === 'POST' && pathname === '/write')) {
@@ -374,7 +441,7 @@ export async function startNexusStorageNodeAgent({
         );
         await assertNoSymlinkEscape(absTarget);
 
-        const currentUsed = await computeDirUsedBytes(resolvedRoot);
+        const currentUsed = await getFastUsedBytes();
         const existingSize = await computePathSize(absTarget);
         if (currentUsed - existingSize + fileBuffer.length > effectiveQuota) {
           return sendJson(res, 413, {
@@ -388,6 +455,7 @@ export async function startNexusStorageNodeAgent({
 
         await fsp.mkdir(path.dirname(absTarget), { recursive: true });
         await fsp.writeFile(absTarget, fileBuffer);
+        adjustUsedBytes(fileBuffer.length - existingSize);
         return sendJson(res, 201, {
           ok: true,
           path: virtualNormalized,
@@ -494,9 +562,11 @@ export async function startNexusStorageNodeAgent({
         } catch {
           return sendJson(res, 404, { error: 'NOT_FOUND', message: 'Source not found' });
         }
-        const copySize = await computePathSize(from.absTarget);
-        const currentUsed = await computeDirUsedBytes(resolvedRoot);
-        const existingDestSize = await computePathSize(to.absTarget);
+        const [copySize, currentUsed, existingDestSize] = await Promise.all([
+          computePathSize(from.absTarget),
+          getFastUsedBytes(),
+          computePathSize(to.absTarget),
+        ]);
         if (currentUsed - existingDestSize + copySize > effectiveQuota) {
           return sendJson(res, 413, { error: 'QUOTA_EXCEEDED', message: 'Quota exceeded on copy' });
         }
@@ -506,6 +576,7 @@ export async function startNexusStorageNodeAgent({
         } else {
           await fsp.copyFile(from.absTarget, to.absTarget);
         }
+        adjustUsedBytes(copySize - existingDestSize);
         return sendJson(res, 200, { ok: true, sizeBytes: copySize });
       }
 
@@ -528,7 +599,9 @@ export async function startNexusStorageNodeAgent({
           return sendJson(res, 404, { error: 'NOT_FOUND', message: 'Path not found' });
         }
 
+        const removedSize = await computePathSize(absTarget);
         await fsp.rm(absTarget, { recursive, force: false });
+        adjustUsedBytes(-removedSize);
         return sendJson(res, 200, { ok: true, path: virtualNormalized });
       }
 
@@ -542,6 +615,14 @@ export async function startNexusStorageNodeAgent({
         message: err?.message || 'Internal error',
       });
     }
+  });
+
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000;
+  server.requestTimeout = 120_000;
+  server.on('connection', (socket) => {
+    socket.setNoDelay(true);
+    socket.setKeepAlive(true, 30_000);
   });
 
   await new Promise((resolve, reject) => {
@@ -559,6 +640,7 @@ export async function startNexusStorageNodeAgent({
     rootDir: resolvedRoot,
     quotaBytes: effectiveQuota,
     async stop() {
+      server.closeIdleConnections?.();
       await new Promise((resolve) => server.close(() => resolve()));
     },
   };

@@ -4,7 +4,115 @@
 // =============================================================================
 
 import crypto from 'node:crypto';
+import http from 'node:http';
+import https from 'node:https';
 import { normalizeVirtualVaultPath } from '../../../shared/security.js';
+
+const KEEP_ALIVE_HTTP_AGENT = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 60_000,
+  maxSockets: 64,
+  maxFreeSockets: 16,
+  scheduling: 'lifo',
+  timeout: 65_000,
+});
+
+const KEEP_ALIVE_HTTPS_AGENT = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 60_000,
+  maxSockets: 64,
+  maxFreeSockets: 16,
+  scheduling: 'lifo',
+  timeout: 65_000,
+});
+
+function createHeaderAccessor(rawHeaders = {}) {
+  return {
+    get(name) {
+      if (!name) return null;
+      const val = rawHeaders[String(name).toLowerCase()];
+      if (Array.isArray(val)) return val.join(', ');
+      return val !== undefined ? String(val) : null;
+    },
+  };
+}
+
+function sendKeepAliveHttpRequest(urlStr, { method = 'GET', headers = {}, bodyBuffer = null, timeoutMs = 8000 } = {}) {
+  const parsed = new URL(urlStr);
+  const isHttps = parsed.protocol === 'https:';
+  const transport = isHttps ? https : http;
+  const agent = isHttps ? KEEP_ALIVE_HTTPS_AGENT : KEEP_ALIVE_HTTP_AGENT;
+  const upperMethod = String(method || 'GET').toUpperCase();
+  const hasPayload = !['GET', 'HEAD'].includes(upperMethod) && bodyBuffer && bodyBuffer.length > 0;
+
+  const finalHeaders = {
+    Connection: 'keep-alive',
+    ...headers,
+  };
+  if (!['GET', 'HEAD'].includes(upperMethod)) {
+    finalHeaders['Content-Length'] = hasPayload ? bodyBuffer.length : 0;
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const req = transport.request(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port || (isHttps ? 443 : 80),
+        path: `${parsed.pathname}${parsed.search}`,
+        method: upperMethod,
+        headers: finalHeaders,
+        agent,
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          if (settled) return;
+          settled = true;
+          const buffer = Buffer.concat(chunks);
+          const status = res.statusCode || 500;
+          resolve({
+            ok: status >= 200 && status < 300,
+            status,
+            headers: createHeaderAccessor(res.headers),
+            buffer,
+            reusedSocket: Boolean(req.reusedSocket),
+          });
+        });
+        res.on('error', (err) => {
+          if (settled) return;
+          settled = true;
+          reject(err);
+        });
+      },
+    );
+
+    req.setNoDelay(true);
+    req.setTimeout(timeoutMs, () => {
+      if (!settled) {
+        settled = true;
+        const timeoutErr = new Error(`Timeout após ${timeoutMs}ms`);
+        timeoutErr.code = 'ETIMEDOUT';
+        req.destroy(timeoutErr);
+        reject(timeoutErr);
+      }
+    });
+
+    req.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      err.reusedSocket = Boolean(req.reusedSocket);
+      reject(err);
+    });
+
+    if (hasPayload) {
+      req.write(bodyBuffer);
+    }
+    req.end();
+  });
+}
 
 function sha256Hex(buf) {
   return crypto.createHash('sha256').update(buf || Buffer.alloc(0)).digest('hex');
@@ -74,14 +182,34 @@ export function createAgentNodeDriver(connection, credentials = {}) {
     });
     Object.assign(reqHeaders, authHeaders);
 
+    const targetUrl = `${baseUrl}${pathWithQuery}`;
     let res;
     try {
-      res = await fetch(`${baseUrl}${pathWithQuery}`, {
-        method,
-        headers: reqHeaders,
-        body: ['GET', 'HEAD'].includes(method.toUpperCase()) ? undefined : rawBody,
-        signal: AbortSignal.timeout(timeoutMs),
-      });
+      try {
+        res = await sendKeepAliveHttpRequest(targetUrl, {
+          method,
+          headers: reqHeaders,
+          bodyBuffer: rawBody,
+          timeoutMs,
+        });
+      } catch (firstErr) {
+        if (firstErr?.reusedSocket && ['ECONNRESET', 'EPIPE', 'ECONNABORTED'].includes(firstErr?.code)) {
+          const freshAuth = signAgentNodeHeaders({
+            hmacToken,
+            method,
+            pathWithQuery,
+            rawBody,
+          });
+          res = await sendKeepAliveHttpRequest(targetUrl, {
+            method,
+            headers: { ...reqHeaders, ...freshAuth },
+            bodyBuffer: rawBody,
+            timeoutMs,
+          });
+        } else {
+          throw firstErr;
+        }
+      }
     } catch (fetchErr) {
       const err = new Error(`Nexus Storage Node inacessível (${fetchErr.message || 'offline'}).`);
       err.code = 'UPSTREAM_UNAVAILABLE';
@@ -89,8 +217,7 @@ export function createAgentNodeDriver(connection, credentials = {}) {
       throw err;
     }
 
-    const arrayBuf = await res.arrayBuffer();
-    const buffer = Buffer.from(arrayBuf);
+    const buffer = res.buffer;
     let data = null;
     const ct = (res.headers.get('content-type') || '').toLowerCase();
     if (ct.includes('application/json')) {
@@ -106,6 +233,7 @@ export function createAgentNodeDriver(connection, credentials = {}) {
       headers: res.headers,
       buffer,
       data,
+      reusedSocket: Boolean(res.reusedSocket),
     };
   }
 
@@ -113,18 +241,34 @@ export function createAgentNodeDriver(connection, credentials = {}) {
     providerType: 'agent_node',
 
     async testConnection() {
-      const started = Date.now();
+      const coldStart = Date.now();
       try {
-        const res = await signedRequest('GET', '/health');
-        const latencyMs = Date.now() - started;
+        let res = await signedRequest('GET', '/health');
+        const coldLatencyMs = Date.now() - coldStart;
         if (!res.ok) {
           return {
             ok: false,
             status: 'error',
-            latencyMs,
+            latencyMs: coldLatencyMs,
             error: res.data?.message || res.data?.error || `HTTP ${res.status}`,
           };
         }
+
+        // Quando a primeira chamada abriu socket TCP frio, mede o RTT real sobre o socket Keep-Alive já aquecido
+        let latencyMs = coldLatencyMs;
+        if (!res.reusedSocket) {
+          const warmStart = Date.now();
+          try {
+            const warmRes = await signedRequest('GET', '/health', { timeoutMs: 4000 });
+            if (warmRes.ok) {
+              latencyMs = Date.now() - warmStart;
+              res = warmRes;
+            }
+          } catch {
+            // Mantém medição inicial se a sonda de aquecimento falhar
+          }
+        }
+
         return {
           ok: true,
           status: 'connected',
@@ -133,12 +277,17 @@ export function createAgentNodeDriver(connection, credentials = {}) {
           freeBytes: Number(res.data?.freeBytes ?? 0),
           totalBytes: Number(res.data?.totalBytes ?? res.data?.quotaBytes ?? 0),
           usedBytes: Number(res.data?.usedBytes ?? 0),
+          transportDetails: {
+            keepAlive: true,
+            reusedSocket: Boolean(res.reusedSocket),
+            coldLatencyMs,
+          },
         };
       } catch (err) {
         return {
           ok: false,
           status: 'error',
-          latencyMs: Date.now() - started,
+          latencyMs: Date.now() - coldStart,
           error: err.message || 'Falha ao conectar ao Nexus Storage Node.',
         };
       }
@@ -166,6 +315,26 @@ export function createAgentNodeDriver(connection, credentials = {}) {
         throw err;
       }
       return { ok: true, path: rPath };
+    },
+
+    async mkdirBatch(virtualPaths = []) {
+      const list = Array.isArray(virtualPaths) ? virtualPaths.filter(Boolean) : [];
+      if (list.length === 0) return { ok: true, created: [] };
+      const remotePaths = list.map((vp) => resolveRemotePath(vp));
+      const res = await signedRequest('POST', '/mkdir-batch', {
+        body: { paths: remotePaths, recursive: true },
+      });
+      if (res.ok) {
+        return { ok: true, created: remotePaths };
+      }
+      if (res.status === 404) {
+        await Promise.all(list.map((vp) => this.mkdir(vp)));
+        return { ok: true, created: remotePaths };
+      }
+      const err = new Error(res.data?.message || `Falha ao criar pastas em lote (${res.status})`);
+      err.code = res.data?.error || 'MKDIR_BATCH_FAILED';
+      err.statusCode = res.status >= 500 ? 502 : res.status;
+      throw err;
     },
 
     async writeFile(virtualPath, buffer) {

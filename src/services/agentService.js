@@ -181,10 +181,11 @@ const specsFrom = (inventory, previousSpecs = {}) => {
   return { ...kept, ...Object.fromEntries(Object.entries(fresh).filter(([, v]) => text(v))) };
 };
 
-const agentSummary = (inventory, alerts, lastChange, source) => ({
+const agentSummary = (inventory, alerts, lastChange, source, deviceKey = '') => ({
   source: text(source) || 'Agente ITAM',
   version: inventory.agentVersion,
   deviceId: inventory.deviceId,
+  ...(text(deviceKey) ? { deviceKey: text(deviceKey) } : {}),
   hostname: inventory.hostname,
   domain: inventory.domain,
   loggedUser: inventory.loggedUser,
@@ -265,10 +266,11 @@ export const registerAgentAsset = async (payload, options = {}) => {
   const lastChange = changes.length
     ? { at: new Date().toISOString(), summary: changes.map((c) => c.label).join(', ') }
     : current?.agent?.lastChange || null;
-  const agent = agentSummary(inventory, alerts, lastChange, payload.source || options.source);
+  const agent = agentSummary(inventory, alerts, lastChange, payload.source || options.source, options.deviceKey || payload.deviceKey);
   // Coleta sem identidade (agente antigo, sem permissao) nao apaga a ja conhecida.
   if (current?.agent) {
     if (!agent.deviceId && current.agent.deviceId) agent.deviceId = current.agent.deviceId;
+    if (!agent.deviceKey && current.agent.deviceKey) agent.deviceKey = current.agent.deviceKey;
     if (!agent.mac && current.agent.mac) agent.mac = current.agent.mac;
   }
   const batch = writeBatch(db);
@@ -528,7 +530,7 @@ export const processAgentInbox = async ({ tenantId, user, ids = null, max = 50, 
     try {
       const inventory = normalizeInventory(claimed.payload || {});
       if (canCreate && !findAgentAsset(inventory, ctx.existingAssets)) await canCreate();
-      const result = await registerAgentAsset(claimed.payload || {}, { tenantId, user, context: ctx, namingConfig: ctx.namingConfig, source: claimed.source });
+      const result = await registerAgentAsset(claimed.payload || {}, { tenantId, user, context: ctx, namingConfig: ctx.namingConfig, source: claimed.source, deviceKey: claimed.deviceKey });
       await finishSubmission(claimed, { status: 'processed', result, error: deleteField() });
       summary.processed += 1;
       summary[result.action] += 1;

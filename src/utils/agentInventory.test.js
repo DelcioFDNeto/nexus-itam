@@ -258,14 +258,14 @@ describe('licencas e frota', () => {
   });
 
   it('compara versoes do agente e detecta desatualizados para atualizacao OTA', () => {
-    expect(AGENT_VERSION).toBe('3.4.0');
-    expect(compareAgentVersion('3.1.0', '3.4.0')).toBe(-1);
-    expect(compareAgentVersion('3.3.0', '3.4.0')).toBe(-1);
-    expect(compareAgentVersion('3.4.0', '3.4.0')).toBe(0);
-    expect(compareAgentVersion('v3.5.0', '3.4.0')).toBe(1);
+    expect(AGENT_VERSION).toBe('3.5.0');
+    expect(compareAgentVersion('3.1.0', '3.5.0')).toBe(-1);
+    expect(compareAgentVersion('3.4.0', '3.5.0')).toBe(-1);
+    expect(compareAgentVersion('3.5.0', '3.5.0')).toBe(0);
+    expect(compareAgentVersion('v3.6.0', '3.5.0')).toBe(1);
     expect(isAgentOutdated('3.1.0')).toBe(true);
-    expect(isAgentOutdated('3.3.0')).toBe(true);
-    expect(isAgentOutdated('3.4.0')).toBe(false);
+    expect(isAgentOutdated('3.4.0')).toBe(true);
+    expect(isAgentOutdated('3.5.0')).toBe(false);
     expect(isAgentOutdated('')).toBe(true);
   });
 });

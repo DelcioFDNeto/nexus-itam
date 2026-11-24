@@ -591,25 +591,51 @@ export const microservicesApi = {
     }),
 
   // API 5 (NÃO-REST) — WebSocket Bidirecional (`ws://.../ws/nexusdesk`)
-  openNexusDeskSocket(tokenOrTenantId, secondArg = {}, thirdArg) {
+  openNexusDeskSocket(tokenOrTenantId, secondArg = {}, thirdArg, fourthArg = {}) {
     const wsBase = getGatewayBaseUrl().replace(/^http/i, 'ws');
+    const isOptionsObject =
+      tokenOrTenantId !== null && typeof tokenOrTenantId === 'object';
     const isViewerSignature = typeof secondArg === 'function';
-    const onFrame = isViewerSignature ? secondArg : secondArg?.onFrame;
-    const onStatus = isViewerSignature ? thirdArg : secondArg?.onStatus;
-    const onReconnected = isViewerSignature ? undefined : secondArg?.onReconnected;
 
-    let url;
-    if (isViewerSignature) {
-      const savedToken = getGatewaySession()?.token || '';
-      const q = new URLSearchParams({
-        tenantId: String(tokenOrTenantId || 'tenant-ap3htf6'),
-        client: 'nexusdesk-viewer',
-      });
-      if (savedToken) q.set('token', savedToken);
-      url = `${wsBase}/ws/nexusdesk?${q.toString()}`;
-    } else {
-      url = `${wsBase}/ws/nexusdesk?token=${encodeURIComponent(tokenOrTenantId)}&client=react19-console`;
-    }
+    const onFrame = isOptionsObject
+      ? tokenOrTenantId.onFrame || tokenOrTenantId.onEvent
+      : isViewerSignature
+        ? secondArg
+        : secondArg?.onFrame || secondArg?.onEvent;
+    const onStatus = isOptionsObject
+      ? tokenOrTenantId.onStatus
+      : isViewerSignature
+        ? thirdArg
+        : secondArg?.onStatus;
+    const onReconnected = isOptionsObject
+      ? tokenOrTenantId.onReconnected
+      : isViewerSignature
+        ? fourthArg?.onReconnected
+        : secondArg?.onReconnected;
+
+    const buildWsUrl = () => {
+      if (isOptionsObject) {
+        const savedToken = tokenOrTenantId.token || getGatewaySession()?.token || '';
+        const q = new URLSearchParams({
+          client: String(tokenOrTenantId.clientType || 'react19-console'),
+        });
+        if (tokenOrTenantId.tenantId) q.set('tenantId', String(tokenOrTenantId.tenantId));
+        if (tokenOrTenantId.deviceKey) q.set('deviceKey', String(tokenOrTenantId.deviceKey));
+        if (savedToken) q.set('token', savedToken);
+        return `${wsBase}/ws/nexusdesk?${q.toString()}`;
+      }
+      if (isViewerSignature) {
+        const savedToken = getGatewaySession()?.token || '';
+        const q = new URLSearchParams({
+          tenantId: String(tokenOrTenantId || 'tenant-ap3htf6'),
+          client: 'nexusdesk-viewer',
+        });
+        if (fourthArg?.deviceKey) q.set('deviceKey', String(fourthArg.deviceKey));
+        if (savedToken) q.set('token', savedToken);
+        return `${wsBase}/ws/nexusdesk?${q.toString()}`;
+      }
+      return `${wsBase}/ws/nexusdesk?token=${encodeURIComponent(String(tokenOrTenantId || ''))}&client=react19-console`;
+    };
 
     let ws = null;
     let closedByOperator = false;
@@ -629,10 +655,14 @@ export const microservicesApi = {
       }
     };
 
-    const connect = () => {
+    const connect = async () => {
       if (closedByOperator) return;
+      if (isOptionsObject && !tokenOrTenantId.token && !getGatewaySession()?.token) {
+        await ensureGatewaySession().catch(() => null);
+        if (closedByOperator) return;
+      }
       try {
-        ws = new WebSocket(url);
+        ws = new WebSocket(buildWsUrl());
       } catch {
         onStatus?.('error');
         return;

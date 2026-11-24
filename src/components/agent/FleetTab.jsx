@@ -5,11 +5,13 @@ import {
   AlertTriangle,
   ArrowUpCircle,
   Download,
+  GitMerge,
   Monitor,
   Play,
   Search,
   ShieldAlert,
   Terminal,
+  Trash2,
   Wifi,
   WifiOff,
 } from 'lucide-react';
@@ -17,12 +19,16 @@ import { toast } from 'sonner';
 import { useConfirm } from '../ConfirmDialog';
 import { AGENT_VERSION, agentHealth, ALERT_LABELS, isAgentOutdated } from '../../utils/agentInventory';
 import { isRetired } from '../../utils/assetStatus';
+import { can } from '../../utils/permissions';
 import {
+  detectDuplicateLiveDevices,
   dispatchAgentUpdate,
   dispatchBatchAgentUpdate,
   findLiveDeviceForAsset,
   formatAccessId,
   isDeviceOnline,
+  revokeAgentDevice,
+  unifyAgentDevices,
 } from '../../services/rmmService';
 
 const AGENT_TYPES = new Set(['Computador', 'Notebook', 'Servidor', 'Desktop', 'All-in-One']);
@@ -63,17 +69,38 @@ const FleetTab = ({
   const [quickConnectInput, setQuickConnectInput] = useState('');
   const [updatingKey, setUpdatingKey] = useState('');
   const [batchUpdating, setBatchUpdating] = useState(false);
+  const [unifyingDuplicates, setUnifyingDuplicates] = useState(false);
+  const [removingKey, setRemovingKey] = useState('');
 
+  const canManageAgents = can(currentUser, 'agent:manage');
   const active = useMemo(() => assets.filter((a) => !isRetired(a.status) || a.agent), [assets]);
+
+  // Detecta matrículas duplicadas/antigas (ex.: máquina formatada que gerou novo deviceKey)
+  const duplicateGroups = useMemo(
+    () => detectDuplicateLiveDevices(active, liveDevices),
+    [active, liveDevices]
+  );
+
+  const supersededDeviceKeys = useMemo(() => {
+    const keys = new Set();
+    duplicateGroups.forEach((g) => {
+      (g.supersededDevices || []).forEach((d) => {
+        if (d?.deviceKey) keys.add(d.deviceKey);
+      });
+    });
+    return keys;
+  }, [duplicateGroups]);
+
+  const totalSupersededCount = supersededDeviceKeys.size;
 
   // Combina os ativos com agente e os dispositivos que ja estao transmitindo via NexusAgent.exe
   const managed = useMemo(() => {
-    const matchedDeviceIds = new Set();
+    const matchedDeviceKeys = new Set();
     const list = active
       .filter((a) => a.agent || findLiveDeviceForAsset(a, liveDevices))
       .map((a) => {
         const live = findLiveDeviceForAsset(a, liveDevices);
-        if (live?.id) matchedDeviceIds.add(live.id);
+        if (live?.deviceKey) matchedDeviceKeys.add(live.deviceKey);
         const onlineNow = isDeviceOnline(live);
         const accessId = formatAccessId(live || a.agent?.deviceKey || a.serialNumber || a.internalId);
         const agentVersion = live?.agentVersion || a.agent?.version || '';
@@ -90,8 +117,10 @@ const FleetTab = ({
       });
 
     // Dispositivos que acabaram de rodar o NexusAgent.exe e ainda nao estao na colecao de ativos
+    // (ocultando matrículas antigas substituídas pós-formatação para não duplicar linhas)
     liveDevices.forEach((dev) => {
-      if (matchedDeviceIds.has(dev.id)) return;
+      if (!dev?.deviceKey) return;
+      if (matchedDeviceKeys.has(dev.deviceKey) || supersededDeviceKeys.has(dev.deviceKey)) return;
       const onlineNow = isDeviceOnline(dev);
       const agentVersion = dev.agentVersion || '';
       const outdated = Boolean(dev.deviceKey) && isAgentOutdated(agentVersion);
@@ -121,7 +150,7 @@ const FleetTab = ({
     });
 
     return list;
-  }, [active, liveDevices, staleDays]);
+  }, [active, liveDevices, staleDays, supersededDeviceKeys]);
 
   const outdatedItems = useMemo(
     () => managed.filter((a) => a.outdated && (a.liveDevice?.deviceKey || a.agent?.deviceKey)),
@@ -265,6 +294,70 @@ const FleetTab = ({
     }
   };
 
+  const handleUnifyDuplicates = async () => {
+    if (!tenantId || !duplicateGroups.length) return;
+    const summaryText = duplicateGroups
+      .map((g) => {
+        const name = g.targetAsset?.internalId || g.primaryDevice?.hostname || 'Equipamento';
+        const activeId = formatAccessId(g.primaryDevice);
+        const oldIds = (g.supersededDevices || []).map((d) => formatAccessId(d)).join(', ');
+        return `${name}: manter ${activeId} e remover matrícula(s) antiga(s) ${oldIds}`;
+      })
+      .join(' · ');
+
+    const ok = await confirm({
+      title: `Unificar e limpar ${totalSupersededCount} matrícula(s) antiga(s)?`,
+      message: `O cadastro patrimonial permanecerá vinculado à matrícula ativa mais recente e o(s) registro(s) órfão(s) anterior(es) à formatação serão removidos do RMM (${summaryText}).`,
+      confirmLabel: 'Unificar e Limpar',
+    });
+    if (!ok) return;
+    setUnifyingDuplicates(true);
+    try {
+      const res = await unifyAgentDevices({
+        tenantId,
+        groups: duplicateGroups,
+        user: currentUser,
+      });
+      toast.success(
+        `Unificação concluída: ${res.removedDevices} matrícula(s) antiga(s) removida(s) com sucesso!`
+      );
+    } catch (e) {
+      toast.error(e?.message || 'Erro ao unificar matrículas antigas.');
+    } finally {
+      setUnifyingDuplicates(false);
+    }
+  };
+
+  const handleRemoveOfflineRegistration = async (item) => {
+    const deviceKey = item.liveDevice?.deviceKey || item.agent?.deviceKey;
+    if (!tenantId || !deviceKey) return;
+    const host = item.agent?.hostname || item.internalId;
+    const accessId = item.accessId;
+    const ok = await confirm({
+      title: `Remover matrícula RMM inativa de ${host}?`,
+      message: `A matrícula RMM ${accessId} está sem sinal em tempo real e será removida da lista de conexões (o cadastro patrimonial do ativo não será excluído). Se a máquina for ligada novamente, basta reconectar o agente.`,
+      danger: true,
+      confirmLabel: 'Remover matrícula',
+    });
+    if (!ok) return;
+    setRemovingKey(deviceKey);
+    try {
+      await revokeAgentDevice({
+        tenantId,
+        deviceKey,
+        hostname: host,
+        detail: `Matrícula inativa ${accessId} removida manualmente da frota`,
+        deleteRecord: true,
+        user: currentUser,
+      });
+      toast.success(`Matrícula ${accessId} (${host}) removida da frota.`);
+    } catch (e) {
+      toast.error(e?.message || 'Erro ao remover matrícula.');
+    } finally {
+      setRemovingKey('');
+    }
+  };
+
   const exportCsv = () => {
     const header = [
       'Patrimônio',
@@ -352,6 +445,43 @@ const FleetTab = ({
           </button>
         </div>
       </form>
+
+      {/* Banner de Unificacao Pos-Formatacao / Matriculas Antigas Duplicadas */}
+      {canManageAgents && duplicateGroups.length > 0 && (
+        <div className="p-3.5 rounded-xl bg-amber-50/90 dark:bg-amber-950/25 border border-amber-300/80 dark:border-amber-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+              <GitMerge size={17} aria-hidden="true" />
+            </div>
+            <div>
+              <h3 className="font-bold text-xs sm:text-sm text-amber-950 dark:text-amber-100">
+                {totalSupersededCount === 1
+                  ? '1 matrícula antiga detectada após formatação ou reinstalação'
+                  : `${totalSupersededCount} matrículas antigas detectadas após formatação ou reinstalação`}
+              </h3>
+              <p className="text-xs text-amber-800 dark:text-amber-200/90 mt-0.5">
+                {duplicateGroups
+                  .map((g) => {
+                    const label = g.targetAsset?.internalId || g.primaryDevice?.hostname || 'Equipamento';
+                    const activeId = formatAccessId(g.primaryDevice);
+                    const oldIds = (g.supersededDevices || []).map((d) => formatAccessId(d)).join(', ');
+                    return `${label} já está vinculado ao ID ativo ${activeId} (ID anterior inativo: ${oldIds})`;
+                  })
+                  .join(' · ')}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleUnifyDuplicates}
+            disabled={unifyingDuplicates}
+            className="inline-flex min-h-[44px] items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-black text-xs shadow-sm transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 shrink-0 tabular-nums"
+          >
+            <GitMerge size={14} className={unifyingDuplicates ? 'animate-spin' : ''} />
+            {unifyingDuplicates ? 'Unificando…' : `Unificar e Limpar (${totalSupersededCount})`}
+          </button>
+        </div>
+      )}
 
       {/* Banner de Atualizacao OTA em Lote quando ha agentes desatualizados */}
       {outdatedItems.length > 0 && (
@@ -781,6 +911,18 @@ const FleetTab = ({
                             >
                               <Terminal size={14} />
                             </button>
+                            {canManageAgents && !a.onlineNow && a.liveDevice?.deviceKey && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveOfflineRegistration(a)}
+                                disabled={removingKey === devKey}
+                                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-xl bg-gray-100 hover:bg-rose-50 dark:bg-[#18181b] dark:hover:bg-rose-950/40 border border-transparent dark:border-zinc-700 text-gray-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400 font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 disabled:opacity-50"
+                                title="Remover matrícula RMM inativa (ex.: pós-formatação)"
+                                aria-label={`Remover matrícula RMM inativa de ${a.agent?.hostname || a.internalId}`}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

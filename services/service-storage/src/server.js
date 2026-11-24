@@ -36,7 +36,7 @@ import {
   verifyPassword,
 } from '../../shared/security.js';
 import { resolveStorageDriver } from './drivers/driverRegistry.js';
-import { parseHttpByteRange } from './drivers/sftpDriver.js';
+import { closeAllSftpSessions, parseHttpByteRange } from './drivers/sftpDriver.js';
 import { buildAgentInstallScript } from './services/installScriptBuilder.js';
 import {
   VALID_ACCESS_LEVELS,
@@ -300,11 +300,32 @@ export async function buildStorageService(opts = {}) {
   const app = Fastify({
     logger: opts.logger ?? false,
     bodyLimit: 110 * 1024 * 1024, // 110 MB to support 100 MB streaming uploads
-    forceCloseConnections: true,
+    keepAliveTimeout: 65_000,
+    forceCloseConnections: 'idle',
   });
+
+  // Cache de instâncias de driver por tenant/assinatura de configuração (evita PBKDF2/AES decrypt por request)
+  const driverCache = new Map();
+
+  function getCachedStorageDriver(conn) {
+    if (!conn) return null;
+    const fingerprint = `${conn.id || conn.tenant_id}:${conn.provider_type}:${conn.endpoint_url || ''}:${conn.host || ''}:${conn.port || ''}:${conn.root_path || ''}:${conn.encrypted_credentials || ''}`;
+    const cached = driverCache.get(conn.tenant_id || conn.tenantId);
+    if (cached && cached.fingerprint === fingerprint) {
+      return cached.driver;
+    }
+    const driver = resolveStorageDriver(conn);
+    driverCache.set(conn.tenant_id || conn.tenantId, { fingerprint, driver });
+    return driver;
+  }
 
   await app.register(helmet, { global: true, contentSecurityPolicy: false });
   await app.register(cors, { origin: true });
+
+  app.addHook('onClose', async () => {
+    driverCache.clear();
+    closeAllSftpSessions();
+  });
 
   // Support multipart/form-data and application/octet-stream as raw Buffer
   app.addContentTypeParser('multipart/form-data', { parseAs: 'buffer' }, (_req, body, done) => {
@@ -366,7 +387,7 @@ export async function buildStorageService(opts = {}) {
       err.statusCode = 412;
       throw err;
     }
-    return { conn, driver: resolveStorageDriver(conn) };
+    return { conn, driver: getCachedStorageDriver(conn) };
   }
 
   function assertNodeNotLockedByAnother(node, user) {
@@ -578,7 +599,7 @@ export async function buildStorageService(opts = {}) {
       throw err;
     }
 
-    const driver = resolveStorageDriver(conn);
+    const driver = getCachedStorageDriver(conn);
     const result = await driver.testConnection();
 
     const updated = await storageRepo.updateConnectionStatus(user.tenantId, {
@@ -609,6 +630,7 @@ export async function buildStorageService(opts = {}) {
       latencyMs: result.latencyMs ?? 0,
       freeBytes: result.freeBytes ?? null,
       totalBytes: result.totalBytes ?? null,
+      transportDetails: result.transportDetails || { keepAlive: true },
       error: result.error || null,
       connection: serializePublicConnection(updated),
     };
@@ -732,7 +754,7 @@ export async function buildStorageService(opts = {}) {
       };
     }
 
-    const driver = resolveStorageDriver(conn);
+    const driver = getCachedStorageDriver(conn);
     const probe = await driver.testConnection();
     const updated = await storageRepo.updateConnectionStatus(user.tenantId, {
       status: probe.ok ? 'connected' : 'error',
@@ -752,6 +774,7 @@ export async function buildStorageService(opts = {}) {
       latencyMs: probe.latencyMs ?? 0,
       freeBytes: probe.freeBytes ?? null,
       totalBytes: probe.totalBytes ?? Number(conn.quota_bytes ?? 0),
+      transportDetails: probe.transportDetails || { keepAlive: true },
       lastCheckAt: updated.last_check_at || new Date().toISOString(),
       lastHealthcheckAt: updated.last_check_at || new Date().toISOString(),
       lastError: updated.last_error || null,

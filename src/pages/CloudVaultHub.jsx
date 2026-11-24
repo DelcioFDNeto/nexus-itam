@@ -181,10 +181,11 @@ const CloudVaultHub = () => {
     if (!canRead || zeroKnowledgeBlocked || !planEntitled) return;
     setLoading(true);
     try {
-      const [nodesRes, quotaRes, healthRes] = await Promise.all([
+      const [nodesRes, quotaRes, healthRes, connRes] = await Promise.all([
         microservicesApi.listStorageNodes().catch(() => ({ items: [] })),
         microservicesApi.getStorageQuota().catch(() => null),
         microservicesApi.getStorageHealth().catch(() => null),
+        canConnect ? microservicesApi.getStorageConnection().catch(() => null) : Promise.resolve(null),
       ]);
 
       const nodeItems = nodesRes?.items || nodesRes?.nodes || [];
@@ -224,8 +225,7 @@ const CloudVaultHub = () => {
         setHealthInfo(healthRes);
       }
 
-      if (canConnect) {
-        const connRes = await microservicesApi.getStorageConnection().catch(() => null);
+      if (canConnect && connRes) {
         const conn = connRes?.connection || connRes;
         if (conn && conn.configured !== false) {
           setConnStatus(conn);
@@ -1798,9 +1798,25 @@ const CloudVaultHub = () => {
                   {healthInfo?.status || connStatus?.status || 'connected'}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-slate-500">Latência:</span>
-                <span className="font-mono font-bold">{healthInfo?.latencyMs ?? connStatus?.latencyMs ?? 12} ms</span>
+                <span
+                  className={`font-mono font-bold tabular-nums ${
+                    (healthInfo?.latencyMs ?? connStatus?.latencyMs ?? 12) <= 90
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : (healthInfo?.latencyMs ?? connStatus?.latencyMs ?? 12) <= 220
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-rose-600 dark:text-rose-400'
+                  }`}
+                >
+                  {healthInfo?.latencyMs ?? connStatus?.latencyMs ?? 12} ms
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Transporte:</span>
+                <span className="font-mono text-[11px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold">
+                  Keep-Alive • TCP_NODELAY
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Driver Ativo:</span>

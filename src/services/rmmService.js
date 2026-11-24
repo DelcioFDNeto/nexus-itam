@@ -32,6 +32,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { getGatewayBaseUrl } from './microservicesClient';
 import { AGENT_VERSION } from '../utils/agentInventory';
 
 export const ONLINE_THRESHOLD_MS = 65 * 1000;
@@ -171,33 +172,132 @@ export const sanitizeAuditDetail = (raw = '') => {
     .slice(0, 500);
 };
 
-/**
- * Localiza o dispositivo RMM ao vivo correspondente a um ativo patrimonial.
- */
-export const findLiveDeviceForAsset = (asset, liveDevices = []) => {
-  if (!asset || !Array.isArray(liveDevices) || !liveDevices.length) return null;
-  const normStr = (v) => String(v || '').trim().toUpperCase();
-  const assetKey = normStr(asset.agent?.deviceKey || asset.agentDeviceKey);
-  const assetSn = normStr(asset.serialNumber);
-  const assetDid = normStr(asset.agent?.deviceId || asset.deviceId);
-  const assetInternal = normStr(asset.internalId);
-  const assetHost = normStr(asset.agent?.hostname || asset.hostname);
+const normDeviceStr = (v) => String(v || '').trim().toUpperCase();
 
-  return (
-    liveDevices.find((d) => {
-      if (d.assetId && d.assetId === asset.id) return true;
-      if (assetKey && normStr(d.deviceKey) === assetKey) return true;
-      if (assetDid && normStr(d.deviceId) === assetDid) return true;
-      if (assetSn && assetSn.length > 3 && normStr(d.serialNumber) === assetSn) return true;
-      if (assetInternal && normStr(d.internalId) === assetInternal) return true;
-      if (assetHost && normStr(d.hostname) === assetHost) return true;
-      return false;
-    }) || null
-  );
+const isUsableSerialForMatch = (sn) => {
+  const s = normDeviceStr(sn);
+  if (!s || s.length <= 3) return false;
+  return !/^(DEFAULT STRING|TO BE FILLED BY O\.E\.M\.|NONE|UNKNOWN|SYSTEM SERIAL NUMBER|0+|N\/A|NOT SPECIFIED)$/i.test(s);
+};
+
+export const compareDevicesByPriority = (a, b, nowMs = Date.now()) => {
+  const aRevoked = a?.status === 'revoked' ? 1 : 0;
+  const bRevoked = b?.status === 'revoked' ? 1 : 0;
+  if (aRevoked !== bRevoked) return aRevoked - bRevoked;
+
+  const aOnline = isDeviceOnline(a, nowMs) ? 1 : 0;
+  const bOnline = isDeviceOnline(b, nowMs) ? 1 : 0;
+  if (aOnline !== bOnline) return bOnline - aOnline;
+
+  const aSeen = toMs(a?.lastSeenAt || a?.updatedAt);
+  const bSeen = toMs(b?.lastSeenAt || b?.updatedAt);
+  if (aSeen !== bSeen) return bSeen - aSeen;
+
+  return 0;
+};
+
+const deviceMatchesAsset = (d, asset) => {
+  if (!d || !asset || d.status === 'revoked') return false;
+  const assetKey = normDeviceStr(asset.agent?.deviceKey || asset.agentDeviceKey);
+  const assetSn = normDeviceStr(asset.serialNumber);
+  const assetDid = normDeviceStr(asset.agent?.deviceId || asset.deviceId);
+  const assetInternal = normDeviceStr(asset.internalId);
+  const assetHost = normDeviceStr(asset.agent?.hostname || asset.hostname);
+
+  if (d.assetId && d.assetId === asset.id) return true;
+  if (assetKey && normDeviceStr(d.deviceKey) === assetKey) return true;
+  if (assetDid && normDeviceStr(d.deviceId) === assetDid) return true;
+  if (isUsableSerialForMatch(assetSn) && normDeviceStr(d.serialNumber) === assetSn) return true;
+  if (assetInternal && (normDeviceStr(d.internalId) === assetInternal || normDeviceStr(d.hostname) === assetInternal)) return true;
+  if (assetHost && normDeviceStr(d.hostname) === assetHost) return true;
+  return false;
 };
 
 /**
- * Escuta em tempo real todos os dispositivos com agente instalado no tenant.
+ * Retorna todas as matrículas RMM ativas que correspondem ao ativo, ordenadas
+ * da mais prioritária (Online Ao Vivo -> vista mais recentemente) para a mais antiga.
+ */
+export const findAllLiveDevicesForAsset = (asset, liveDevices = [], nowMs = Date.now()) => {
+  if (!asset || !Array.isArray(liveDevices) || !liveDevices.length) return [];
+  const assetKey = normDeviceStr(asset.agent?.deviceKey || asset.agentDeviceKey);
+  return liveDevices
+    .filter((d) => deviceMatchesAsset(d, asset))
+    .sort((a, b) => {
+      const prio = compareDevicesByPriority(a, b, nowMs);
+      if (prio !== 0) return prio;
+      const aExact = (a.assetId && a.assetId === asset.id) || (assetKey && normDeviceStr(a.deviceKey) === assetKey) ? 1 : 0;
+      const bExact = (b.assetId && b.assetId === asset.id) || (assetKey && normDeviceStr(b.deviceKey) === assetKey) ? 1 : 0;
+      return bExact - aExact;
+    });
+};
+
+/**
+ * Localiza o dispositivo RMM ao vivo correspondente a um ativo patrimonial,
+ * priorizando sempre a matrícula Online / mais recente (ex.: pós-formatação).
+ */
+export const findLiveDeviceForAsset = (asset, liveDevices = [], nowMs = Date.now()) =>
+  findAllLiveDevicesForAsset(asset, liveDevices, nowMs)[0] || null;
+
+/**
+ * Detecta matrículas RMM duplicadas/antigas da mesma máquina física (ex.: notebook
+ * formatado que gerou novo deviceKey mantendo hostname/patrimônio/serial).
+ */
+export const detectDuplicateLiveDevices = (assets = [], liveDevices = [], nowMs = Date.now()) => {
+  const validDevices = (Array.isArray(liveDevices) ? liveDevices : []).filter(
+    (d) => d && d.deviceKey && d.status !== 'revoked'
+  );
+  if (validDevices.length < 2) return [];
+
+  const claimedKeys = new Set();
+  const groups = [];
+
+  for (const asset of Array.isArray(assets) ? assets : []) {
+    const matches = findAllLiveDevicesForAsset(asset, validDevices, nowMs).filter(
+      (d) => !claimedKeys.has(d.deviceKey)
+    );
+    if (matches.length > 0) {
+      matches.forEach((d) => claimedKeys.add(d.deviceKey));
+      if (matches.length > 1) {
+        groups.push({
+          targetAsset: asset,
+          primaryDevice: matches[0],
+          supersededDevices: matches.slice(1),
+        });
+      }
+    }
+  }
+
+  // Agrupa também dispositivos avulsos (ainda não incorporados em assets) pelo mesmo serial ou hostname
+  const remaining = validDevices
+    .filter((d) => !claimedKeys.has(d.deviceKey))
+    .sort((a, b) => compareDevicesByPriority(a, b, nowMs));
+
+  const standaloneBuckets = new Map();
+  for (const dev of remaining) {
+    const sn = isUsableSerialForMatch(dev.serialNumber) ? `SN:${normDeviceStr(dev.serialNumber)}` : '';
+    const tag = normDeviceStr(dev.internalId) ? `TAG:${normDeviceStr(dev.internalId)}` : '';
+    const host = normDeviceStr(dev.hostname) ? `HOST:${normDeviceStr(dev.hostname)}` : '';
+    const bucketKey = sn || tag || host;
+    if (!bucketKey) continue;
+    if (!standaloneBuckets.has(bucketKey)) standaloneBuckets.set(bucketKey, []);
+    standaloneBuckets.get(bucketKey).push(dev);
+  }
+
+  for (const list of standaloneBuckets.values()) {
+    if (list.length > 1) {
+      groups.push({
+        targetAsset: null,
+        primaryDevice: list[0],
+        supersededDevices: list.slice(1),
+      });
+    }
+  }
+
+  return groups;
+};
+
+/**
+ * Escuta em tempo real todos os dispositivos com agente instalado no tenant (ignorando revogados).
  */
 export const subscribeAgentDevices = (tenantId, onUpdate, onError) => {
   if (!tenantId) return () => {};
@@ -205,7 +305,9 @@ export const subscribeAgentDevices = (tenantId, onUpdate, onError) => {
   return onSnapshot(
     q,
     (snapshot) => {
-      const devices = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const devices = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((d) => d.status !== 'revoked');
       onUpdate(devices);
     },
     (err) => {
@@ -342,11 +444,14 @@ export const startRemoteSession = async ({
   hostname = '',
   mode = 'attended',
   quality = 'balanced',
+  targetFps = 45,
+  monitorIndex = 0,
   user,
 }) => {
   if (!tenantId || !deviceKey) throw new Error('Dispositivo inválido para acesso remoto.');
   const op = operatorOf(user);
   const sessionId = newId('rem');
+  const relayBase = getGatewayBaseUrl();
   const batch = writeBatch(db);
   batch.set(doc(db, 'agentAudit', sessionId), auditData({
     tenantId,
@@ -367,6 +472,9 @@ export const startRemoteSession = async ({
       status: 'requesting',
       mode,
       quality,
+      targetFps,
+      monitorIndex,
+      relayBase,
       requestedBy: op.name,
       requestedByUid: op.uid,
       startedAt: new Date().toISOString(),
@@ -665,14 +773,104 @@ export const resolveSupportRequest = async ({ tenantId, deviceKey, resolvedBy = 
 };
 
 /**
- * Revoga o agente da maquina (owner/admin): apaga as matriculas, e a maquina
- * perde o acesso na hora. Para voltar, reinstale com o token da empresa.
+ * Revoga e remove a matrícula RMM da máquina: apaga as matrículas em agentEnrollments,
+ * registra na trilha imutável /agentAudit e remove os documentos órfãos em
+ * agentDevices / agentControl / agentInbox para não deixar fantasmas na frota.
  */
-export const revokeAgentDevice = async ({ tenantId, deviceKey, hostname = '', user }) => {
+export const revokeAgentDevice = async ({
+  tenantId,
+  deviceKey,
+  hostname = '',
+  detail = '',
+  deleteRecord = true,
+  user,
+}) => {
   if (!tenantId || !deviceKey) throw new Error('Dispositivo inválido.');
-  const snap = await getDocs(query(collection(db, 'agentEnrollments'), where('tenantId', '==', tenantId), where('deviceKey', '==', deviceKey)));
-  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
-  await setDoc(doc(db, 'agentAudit', newId('rev')), auditData({ tenantId, deviceKey, hostname, action: 'revoke', detail: `${snap.size} matrícula(s) removida(s)`, user }));
-  await updateDoc(doc(db, 'agentDevices', buildAgentDocId(tenantId, deviceKey)), { status: 'revoked', screenFrame: deleteField() }).catch(() => {});
-  return snap.size;
+  const docId = buildAgentDocId(tenantId, deviceKey);
+  const snap = await Promise.resolve(
+    getDocs(query(collection(db, 'agentEnrollments'), where('tenantId', '==', tenantId), where('deviceKey', '==', deviceKey)))
+  ).catch(() => ({ docs: [], size: 0 }));
+  await Promise.all((snap?.docs || []).map((d) => Promise.resolve(deleteDoc(d.ref)).catch(() => {})));
+
+  await setDoc(
+    doc(db, 'agentAudit', newId('rev')),
+    auditData({
+      tenantId,
+      deviceKey,
+      hostname,
+      action: 'revoke',
+      detail: detail || `${snap?.size || 0} matrícula(s) removida(s)`,
+      user,
+    })
+  );
+
+  await Promise.resolve(deleteDoc(doc(db, 'agentControl', docId))).catch(() => {});
+  await Promise.resolve(deleteDoc(doc(db, 'agentInbox', docId))).catch(() => {});
+
+  if (deleteRecord) {
+    try {
+      await deleteDoc(doc(db, 'agentDevices', docId));
+    } catch {
+      await Promise.resolve(
+        updateDoc(doc(db, 'agentDevices', docId), { status: 'revoked', screenFrame: deleteField() })
+      ).catch(() => {});
+    }
+  } else {
+    await Promise.resolve(
+      updateDoc(doc(db, 'agentDevices', docId), { status: 'revoked', screenFrame: deleteField() })
+    ).catch(() => {});
+  }
+  return Math.max(1, snap?.size || 0);
+};
+
+/**
+ * Unifica matrículas antigas (ex.: pós-formatação do Windows) na matrícula ativa atual:
+ *  1. Atualiza o ativo patrimonial para apontar para o novo deviceKey/deviceId ativo;
+ *  2. Revoga e apaga todas as matrículas antigas substituídas em agentDevices/agentControl/agentEnrollments.
+ */
+export const unifyAgentDevices = async ({ tenantId, groups = [], user }) => {
+  if (!tenantId || !Array.isArray(groups) || !groups.length) {
+    return { unifiedGroups: 0, removedDevices: 0 };
+  }
+  let unifiedGroups = 0;
+  let removedDevices = 0;
+
+  for (const group of groups) {
+    const { targetAsset, primaryDevice, supersededDevices = [] } = group || {};
+    if (!primaryDevice?.deviceKey || !supersededDevices.length) continue;
+
+    if (targetAsset?.id) {
+      const assetPatch = {
+        'agent.deviceKey': primaryDevice.deviceKey,
+        updatedAt: serverTimestamp(),
+      };
+      if (primaryDevice.deviceId) assetPatch['agent.deviceId'] = primaryDevice.deviceId;
+      if (primaryDevice.hostname) assetPatch['agent.hostname'] = primaryDevice.hostname;
+      if (primaryDevice.ipAddress) assetPatch['agent.ip'] = primaryDevice.ipAddress;
+      if (primaryDevice.macAddress) assetPatch['agent.mac'] = primaryDevice.macAddress;
+      if (primaryDevice.loggedUser) assetPatch['agent.loggedUser'] = primaryDevice.loggedUser;
+      if (primaryDevice.agentVersion) assetPatch['agent.version'] = primaryDevice.agentVersion;
+      await updateDoc(doc(db, 'assets', targetAsset.id), assetPatch).catch(() => {});
+    }
+
+    const primaryAccessId = formatAccessId(primaryDevice);
+    const label = targetAsset?.internalId || primaryDevice.hostname || primaryDevice.deviceKey;
+
+    for (const oldDev of supersededDevices) {
+      if (!oldDev?.deviceKey || oldDev.deviceKey === primaryDevice.deviceKey) continue;
+      const oldAccessId = formatAccessId(oldDev);
+      await revokeAgentDevice({
+        tenantId,
+        deviceKey: oldDev.deviceKey,
+        hostname: oldDev.hostname || label,
+        detail: `Unificado em ${label} (mantido ID ${primaryAccessId}, removido ID antigo ${oldAccessId})`,
+        deleteRecord: true,
+        user,
+      });
+      removedDevices += 1;
+    }
+    unifiedGroups += 1;
+  }
+
+  return { unifiedGroups, removedDevices };
 };
