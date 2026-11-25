@@ -139,6 +139,9 @@ services:
       NEXUSDESK_SERVICE_URL: http://service-nexusdesk:8004
       STORAGE_SERVICE_URL: http://service-storage:8005
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+      VITE_API_GATEWAY_URL: ${VITE_API_GATEWAY_URL:-}
+      VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-itam-nexus}
+      VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
     ports:
       - "${EXPOSE_HOST_IP:-0.0.0.0}:8000:8000"
     depends_on:

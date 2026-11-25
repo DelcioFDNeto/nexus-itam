@@ -24,7 +24,7 @@ import {
 } from '../../utils/agentScripts';
 import { AGENT_VERSION, isAgentOutdated } from '../../utils/agentInventory';
 import { dispatchBatchAgentUpdate } from '../../services/rmmService';
-import { getGatewayBaseUrl } from '../../services/microservicesClient';
+import { getGatewayBaseUrl, microservicesApi } from '../../services/microservicesClient';
 
 const GUIDES = {
   windows: {
@@ -147,8 +147,32 @@ const InstallTab = ({ tenantId, agentToken, liveDevices = [], currentUser = null
     }
   };
 
-  const downloadExecutableAndConfig = () => {
+  const downloadExecutableAndConfig = async () => {
     try {
+      if (tenantId && agentToken) {
+        try {
+          await microservicesApi.syncTenantAgentConfig({
+            agentToken,
+            projectId,
+            apiKey,
+            relayBase: getGatewayBaseUrl(),
+          });
+          const res = await microservicesApi.downloadAgentPackage();
+          if (res?.blob) {
+            const url = URL.createObjectURL(res.blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `NexusAgent-${tenantId}.zip`;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 10_000);
+            toast.success(`NexusAgent-${tenantId}.zip baixado com o config.json já incluso! Extraia a pasta e abra o NexusAgent.exe.`);
+            return;
+          }
+        } catch {
+          /* fallback para download em 2 arquivos caso o Gateway esteja offline */
+        }
+      }
+
       const zipLink = document.createElement('a');
       zipLink.href = '/downloads/NexusAgent.zip';
       zipLink.download = 'NexusAgent.zip';

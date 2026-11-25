@@ -8,11 +8,19 @@ import {
   collectFilesFromInputList,
   uploadFolderTreeToVault,
 } from '../utils/folderUpload.js';
+import {
+  classifyPreviewKind,
+  columnIndexToLetters,
+  openPdfPreviewDocument,
+  parseExcelPreview,
+  parseWordPreview,
+} from '../utils/documentPreview.js';
 
 const props = defineProps({
   user: { type: Object, default: () => ({}) },
   userEmail: { type: String, default: '' },
   userDepartment: { type: String, default: '' },
+  assets: { type: Array, default: () => [] },
   wsState: { type: String, default: 'disconnected' },
   liveSheetEvent: { type: Object, default: null },
   streamHandle: { type: Object, default: null },
@@ -59,18 +67,43 @@ const dragOverFolderId = ref(null);
 // Right-Click Context Menu
 const contextMenu = ref(null); // { x, y, node }
 
-// Real Inline Preview Lightbox State
+// Real Inline Preview Lightbox State (PDF Canvas, Word HTML, Excel Multi-Aba, Imagem e Texto)
 const previewNode = ref(null);
+const previewKind = ref('unknown'); // 'pdf' | 'excel' | 'word' | 'image' | 'text' | 'unknown'
+const previewLoading = ref(false);
+const previewError = ref('');
 const previewContentType = ref('');
 const previewObjectUrl = ref(null);
 const previewTextContent = ref(null);
+const previewZoom = ref(1);
+
+// PDF Canvas Preview State
+const previewPdfPages = ref([]);
+const previewPdfTotalPages = ref(0);
+const previewPdfTruncated = ref(false);
+const previewPdfFallbackIframe = ref(false);
+let activePdfHandle = null;
+const pdfCanvasMap = new Map();
+let pdfRenderSeq = 0;
+
+// Word Preview State
+const previewWordHtml = ref('');
+const previewWordNote = ref('');
+
+// Excel Preview State
+const previewExcelSheets = ref([]);
+const previewExcelTabIdx = ref(0);
+const previewExcelSearch = ref('');
 
 // Desktop Auto-Sync via Agente Windows (`nexusvault://`) + Guia do Colaborador
+const AGENT_VERSION_LABEL = '3.5.0';
 const AGENT_DOWNLOAD_URL = 'https://itam-nexus.web.app/downloads/NexusAgent.zip';
 const desktopSyncSession = ref(null);
 const desktopSyncBusy = ref(false);
 const desktopAgentSlowHint = ref(false);
 const showAgentGuide = ref(false);
+const downloadingAgentPkg = ref(false);
+const selectedAgentAssetId = ref('');
 let desktopPollTimer = null;
 let desktopHintTimer = null;
 
@@ -209,14 +242,183 @@ function triggerBrowserDownload(blob, fileName) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
+const custodyComputerAssets = computed(() => {
+  const list = Array.isArray(props.assets) ? props.assets : [];
+  const computers = list.filter((a) =>
+    /note|laptop|comp|desk|serv|workstation|all-in-one|pc/i.test(String(a?.type || '')),
+  );
+  return computers.length > 0 ? computers : list;
+});
+
+const activeAgentAsset = computed(() => {
+  const list = custodyComputerAssets.value;
+  if (!list.length) return null;
+  if (selectedAgentAssetId.value) {
+    const found = list.find((a) => String(a.id || a.internal_id || a.internalId) === selectedAgentAssetId.value);
+    if (found) return found;
+  }
+  return list[0];
+});
+
+const activeAgentPatrimony = computed(() =>
+  String(activeAgentAsset.value?.internal_id || activeAgentAsset.value?.internalId || '').trim(),
+);
+
+const activeExcelPreviewSheet = computed(
+  () => previewExcelSheets.value[previewExcelTabIdx.value] || previewExcelSheets.value[0] || null,
+);
+
+const filteredExcelPreviewRows = computed(() => {
+  const sheet = activeExcelPreviewSheet.value;
+  if (!sheet) return [];
+  const q = previewExcelSearch.value.trim().toLowerCase();
+  if (!q) return sheet.rows || [];
+  return (sheet.rows || []).filter((r) =>
+    (r.cells || []).some((c) => String(c || '').toLowerCase().includes(q)),
+  );
+});
+
+const dynamicSheetColumns = computed(() => {
+  const cells = currentTab.value?.cells || {};
+  let maxColIdx = 7; // mínimo A..H (8 colunas)
+  for (const key of Object.keys(cells)) {
+    const match = /^([A-Z]+)(\d+)$/i.exec(key);
+    if (!match) continue;
+    const letters = match[1].toUpperCase();
+    let idx = 0;
+    for (let i = 0; i < letters.length; i += 1) {
+      idx = idx * 26 + (letters.charCodeAt(i) - 64);
+    }
+    if (idx - 1 > maxColIdx) maxColIdx = Math.min(idx - 1, 25);
+  }
+  const cols = [];
+  for (let c = 0; c <= maxColIdx; c += 1) cols.push(columnIndexToLetters(c));
+  return cols;
+});
+
+const dynamicSheetRows = computed(() => {
+  const cells = currentTab.value?.cells || {};
+  let maxRow = 12; // mínimo 12 linhas
+  for (const key of Object.keys(cells)) {
+    const match = /^[A-Z]+(\d+)$/i.exec(key);
+    if (!match) continue;
+    const r = Number(match[1]);
+    if (r > maxRow) maxRow = Math.min(r, 100);
+  }
+  return Array.from({ length: maxRow }, (_, i) => i + 1);
+});
+
+function setPdfCanvasRef(pageNum, el) {
+  if (el) {
+    pdfCanvasMap.set(pageNum, el);
+  } else {
+    pdfCanvasMap.delete(pageNum);
+  }
+}
+
+async function renderPdfPagesNow() {
+  if (!activePdfHandle || previewPdfPages.value.length === 0) return;
+  const seq = ++pdfRenderSeq;
+  await nextTick();
+  const scale = Math.max(0.65, Math.min(2.2, Number(previewZoom.value || 1) * 1.15));
+  for (const pageNum of previewPdfPages.value) {
+    if (seq !== pdfRenderSeq || !activePdfHandle) return;
+    const canvas = pdfCanvasMap.get(pageNum);
+    if (!canvas) continue;
+    try {
+      await activePdfHandle.renderPage(pageNum, canvas, scale);
+    } catch {
+      /* ignore individual page render error */
+    }
+  }
+}
+
+function adjustPreviewZoom(delta) {
+  const next = Math.max(0.75, Math.min(2, Number((previewZoom.value + delta).toFixed(2))));
+  if (next === previewZoom.value) return;
+  previewZoom.value = next;
+  if (previewKind.value === 'pdf' && activePdfHandle && !previewPdfFallbackIframe.value) {
+    renderPdfPagesNow();
+  }
+}
+
+function resetPreviewZoom() {
+  previewZoom.value = 1;
+  if (previewKind.value === 'pdf' && activePdfHandle && !previewPdfFallbackIframe.value) {
+    renderPdfPagesNow();
+  }
+}
+
 function closePreview() {
+  pdfRenderSeq += 1;
+  if (activePdfHandle) {
+    activePdfHandle.destroy();
+    activePdfHandle = null;
+  }
+  pdfCanvasMap.clear();
   if (previewObjectUrl.value && typeof URL?.revokeObjectURL === 'function') {
     URL.revokeObjectURL(previewObjectUrl.value);
   }
   previewObjectUrl.value = null;
   previewTextContent.value = null;
   previewContentType.value = '';
+  previewKind.value = 'unknown';
+  previewLoading.value = false;
+  previewError.value = '';
+  previewZoom.value = 1;
+  previewPdfPages.value = [];
+  previewPdfTotalPages.value = 0;
+  previewPdfTruncated.value = false;
+  previewPdfFallbackIframe.value = false;
+  previewWordHtml.value = '';
+  previewWordNote.value = '';
+  previewExcelSheets.value = [];
+  previewExcelTabIdx.value = 0;
+  previewExcelSearch.value = '';
   previewNode.value = null;
+}
+
+function parseFilenameFromDisposition(disposition, fallback) {
+  const m = /filename\*?=(?:UTF-8''|")?([^";\r\n"]+)/i.exec(String(disposition || ''));
+  if (m && m[1]) {
+    try {
+      return decodeURIComponent(m[1].trim());
+    } catch {
+      return m[1].trim();
+    }
+  }
+  return fallback;
+}
+
+async function handleDownloadConfiguredAgent() {
+  downloadingAgentPkg.value = true;
+  errorBanner.value = '';
+  const target = activeAgentAsset.value;
+  const assetId = target?.id ? String(target.id) : '';
+  const patrimony = activeAgentPatrimony.value;
+  try {
+    const res = await portalApi.downloadAgentPackage({ assetId, patrimony });
+    if (res?.blob) {
+      const fallbackName = patrimony ? `NexusAgent-${patrimony}.zip` : 'NexusAgent-Configurado.zip';
+      const fileName = parseFilenameFromDisposition(res.contentDisposition, fallbackName);
+      triggerBrowserDownload(res.blob, fileName);
+      const tagNote = res.agentPatrimony || patrimony;
+      notifySuccess(
+        tagNote
+          ? `Pacote ${fileName} (v${res.agentVersion || AGENT_VERSION_LABEL}) baixado com a configuração da empresa e do ativo ${tagNote}! Extraia a pasta e abra o NexusAgent.exe.`
+          : `Pacote ${fileName} (v${res.agentVersion || AGENT_VERSION_LABEL}) baixado com a configuração da empresa! Extraia a pasta e abra o NexusAgent.exe.`,
+      );
+      return;
+    }
+  } catch (err) {
+    errorBanner.value =
+      err?.message || 'Não foi possível gerar o pacote personalizado agora. Usando pacote padrão.';
+    if (typeof window !== 'undefined') {
+      window.open(AGENT_DOWNLOAD_URL, '_blank', 'noopener,noreferrer');
+    }
+  } finally {
+    downloadingAgentPkg.value = false;
+  }
 }
 
 function stopDesktopSyncPolling() {
@@ -545,7 +747,7 @@ function openItem(node) {
     navigateTo(node.id);
     return;
   }
-  if (isSpreadsheet(node)) {
+  if (String(node.name || '').toLowerCase().endsWith('.nexusheet')) {
     openSheetEditor(node);
     return;
   }
@@ -990,26 +1192,87 @@ async function handleSubmitExtract() {
 
 async function handlePreviewFile(node) {
   errorBanner.value = '';
+  closePreview();
+  previewNode.value = node;
+  previewLoading.value = true;
+  previewError.value = '';
+
   try {
     const res = await portalApi.previewStorageFile(node.id);
-    closePreview();
+    if (!previewNode.value || previewNode.value.id !== node.id) return;
+
     const ct = res?.contentType || node.mimeType || node.mime_type || 'application/octet-stream';
     previewContentType.value = ct;
-    if (res?.blob) {
-      const lower = String(ct).toLowerCase();
-      const isText =
-        lower.startsWith('text/') ||
-        lower.includes('json') ||
-        /\.(txt|md|json|csv|log|xml)$/i.test(String(node.name || ''));
-      if (isText && typeof res.blob.text === 'function') {
-        previewTextContent.value = await res.blob.text();
-      } else if (typeof URL?.createObjectURL === 'function') {
+    const kind = classifyPreviewKind(node.name, ct);
+    previewKind.value = kind;
+
+    const rawBuf =
+      res?.arrayBuffer ||
+      (res?.blob && typeof res.blob.arrayBuffer === 'function' ? await res.blob.arrayBuffer() : null);
+
+    if (kind === 'pdf') {
+      if (res?.blob && typeof URL?.createObjectURL === 'function') {
         previewObjectUrl.value = URL.createObjectURL(res.blob);
       }
+      if (rawBuf && rawBuf.byteLength > 0) {
+        try {
+          const handle = await openPdfPreviewDocument(rawBuf);
+          if (!previewNode.value || previewNode.value.id !== node.id) {
+            handle.destroy();
+            return;
+          }
+          activePdfHandle = handle;
+          previewPdfTotalPages.value = handle.numPages;
+          previewPdfTruncated.value = handle.truncated;
+          previewPdfPages.value = Array.from({ length: handle.renderablePages }, (_, i) => i + 1);
+          previewPdfFallbackIframe.value = false;
+          previewLoading.value = false;
+          await renderPdfPagesNow();
+          return;
+        } catch {
+          // Fallback limpo (ex.: ambiente sem canvas 2D ou PDF protegido)
+          previewPdfFallbackIframe.value = true;
+        }
+      } else {
+        previewPdfFallbackIframe.value = true;
+      }
+    } else if (kind === 'excel') {
+      if (rawBuf && rawBuf.byteLength > 0) {
+        const parsed = await parseExcelPreview(rawBuf, node.name);
+        if (!previewNode.value || previewNode.value.id !== node.id) return;
+        previewExcelSheets.value = parsed.sheets || [];
+        previewExcelTabIdx.value = 0;
+        previewExcelSearch.value = '';
+      } else {
+        previewError.value = 'Planilha vazia ou sem conteúdo legível.';
+      }
+    } else if (kind === 'word') {
+      if (rawBuf && rawBuf.byteLength > 0) {
+        const parsed = await parseWordPreview(rawBuf, node.name);
+        if (!previewNode.value || previewNode.value.id !== node.id) return;
+        previewWordHtml.value = parsed.html || '';
+        previewWordNote.value = parsed.note || '';
+      } else {
+        previewError.value = 'Documento Word vazio ou sem conteúdo legível.';
+      }
+    } else if (kind === 'image') {
+      if (res?.blob && typeof URL?.createObjectURL === 'function') {
+        previewObjectUrl.value = URL.createObjectURL(res.blob);
+      }
+    } else if (kind === 'text') {
+      if (res?.blob && typeof res.blob.text === 'function') {
+        previewTextContent.value = await res.blob.text();
+      } else if (rawBuf) {
+        previewTextContent.value = new TextDecoder('utf-8', { fatal: false }).decode(rawBuf);
+      }
+    } else if (res?.blob && typeof URL?.createObjectURL === 'function') {
+      previewObjectUrl.value = URL.createObjectURL(res.blob);
     }
-    previewNode.value = node;
   } catch (err) {
-    errorBanner.value = err?.message || 'Falha ao abrir preview online.';
+    previewError.value = err?.message || 'Falha ao abrir visualização online deste arquivo.';
+    errorBanner.value = previewError.value;
+  } finally {
+    previewLoading.value = false;
   }
 }
 
@@ -2159,25 +2422,110 @@ onBeforeUnmount(() => {
       </template>
     </div>
 
-    <!-- Centered Lightbox Preview Modal -->
+    <!-- Centered Lightbox Preview Modal (PDF Canvas, Word A4, Excel Multi-Aba, Imagem e Texto) -->
     <div
       v-if="previewNode"
       data-testid="portal-preview-panel"
-      class="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4"
+      class="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4"
       @click="closePreview"
     >
       <div
-        class="w-full max-w-4xl max-h-[90vh] rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] shadow-2xl overflow-hidden flex flex-col"
+        class="w-full max-w-6xl h-[92vh] rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#111113] shadow-2xl overflow-hidden flex flex-col"
         @click.stop
       >
-        <div class="px-4 py-3 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between gap-2 bg-slate-50 dark:bg-zinc-900">
-          <div class="min-w-0">
-            <span class="text-xs font-bold truncate block">Visualização Online — {{ previewNode.name }}</span>
-            <span class="text-[11px] font-mono text-slate-500">
-              {{ formatBytes(previewNode.sizeBytes || previewNode.size_bytes) }} • {{ getAccessLabel(previewNode) }}
+        <!-- Header Toolbar -->
+        <div class="px-4 py-3 border-b border-slate-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2 bg-slate-50 dark:bg-zinc-900">
+          <div class="min-w-0 flex items-center gap-2.5">
+            <span class="w-8 h-8 rounded-lg bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 flex items-center justify-center shrink-0">
+              <PortalIcon v-if="previewKind === 'excel'" name="file-spreadsheet" :size="16" class="text-emerald-600" />
+              <PortalIcon v-else-if="previewKind === 'image'" name="image" :size="16" class="text-violet-500" />
+              <PortalIcon v-else name="file-text" :size="16" class="text-sky-600" />
             </span>
+            <div class="min-w-0">
+              <span class="text-xs sm:text-sm font-bold truncate block text-slate-900 dark:text-[#fafafa]">
+                Visualização Online — {{ previewNode.name }}
+              </span>
+              <span class="text-[11px] font-mono text-slate-500 flex flex-wrap items-center gap-1.5">
+                <span>{{ formatBytes(previewNode.sizeBytes || previewNode.size_bytes) }}</span>
+                <span>•</span>
+                <span>{{ getAccessLabel(previewNode) }}</span>
+                <span v-if="previewKind === 'pdf' && previewPdfTotalPages > 0">
+                  • {{ previewPdfTotalPages }} {{ previewPdfTotalPages === 1 ? 'página' : 'páginas' }}
+                </span>
+                <span v-if="previewKind === 'excel' && previewExcelSheets.length > 0">
+                  • {{ previewExcelSheets.length }} {{ previewExcelSheets.length === 1 ? 'aba' : 'abas' }}
+                </span>
+              </span>
+            </div>
           </div>
-          <div class="flex items-center gap-2 shrink-0">
+
+          <div class="flex flex-wrap items-center gap-1.5 shrink-0">
+            <!-- Controles de Zoom para PDF e Word -->
+            <div
+              v-if="(previewKind === 'pdf' && !previewPdfFallbackIframe) || previewKind === 'word'"
+              class="inline-flex items-center rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 overflow-hidden"
+            >
+              <button
+                type="button"
+                class="px-2 py-1.5 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                title="Diminuir zoom"
+                aria-label="Diminuir zoom"
+                @click="adjustPreviewZoom(-0.2)"
+              >
+                <PortalIcon name="zoom-out" :size="13" />
+              </button>
+              <button
+                type="button"
+                class="px-2 py-1.5 text-[11px] font-mono font-bold text-slate-700 dark:text-zinc-200 border-x border-slate-200 dark:border-zinc-700"
+                title="Restaurar zoom 100%"
+                @click="resetPreviewZoom"
+              >
+                {{ Math.round(previewZoom * 100) }}%
+              </button>
+              <button
+                type="button"
+                class="px-2 py-1.5 text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                title="Aumentar zoom"
+                aria-label="Aumentar zoom"
+                @click="adjustPreviewZoom(0.2)"
+              >
+                <PortalIcon name="zoom-in" :size="13" />
+              </button>
+            </div>
+
+            <!-- Atalhos de Edição (quando usuário possui permissão editor/full_control) -->
+            <button
+              v-if="canEditNode(previewNode)"
+              type="button"
+              class="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1 hover:opacity-95"
+              @click="
+                () => {
+                  const target = previewNode;
+                  closePreview();
+                  handleEditOnDesktop(target);
+                }
+              "
+            >
+              <PortalIcon name="monitor" :size="13" />
+              <span>Editar no PC</span>
+            </button>
+
+            <button
+              v-if="previewKind === 'excel' && canEditNode(previewNode)"
+              type="button"
+              class="px-2.5 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-bold inline-flex items-center gap-1"
+              @click="
+                () => {
+                  const target = previewNode;
+                  closePreview();
+                  openSheetEditor(target);
+                }
+              "
+            >
+              <PortalIcon name="file-spreadsheet" :size="13" />
+              <span>Coeditar Web</span>
+            </button>
+
             <button
               v-if="canDownloadNode(previewNode)"
               type="button"
@@ -2187,6 +2535,7 @@ onBeforeUnmount(() => {
               <PortalIcon name="download" :size="13" />
               <span>Baixar</span>
             </button>
+
             <button
               type="button"
               class="px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 text-xs font-bold"
@@ -2196,24 +2545,207 @@ onBeforeUnmount(() => {
             </button>
           </div>
         </div>
-        <div class="p-4 flex-1 overflow-auto bg-slate-100/70 dark:bg-zinc-950 flex justify-center items-center min-h-[260px]">
-          <img
-            v-if="previewObjectUrl && previewContentType.startsWith('image/')"
-            :src="previewObjectUrl"
-            :alt="previewNode.name"
-            class="max-w-full max-h-[70vh] rounded-lg object-contain shadow"
-          />
+
+        <!-- Barra de Abas & Busca para Excel -->
+        <div
+          v-if="previewKind === 'excel' && !previewLoading && previewExcelSheets.length > 0"
+          class="px-4 py-2 border-b border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/70 flex flex-wrap items-center justify-between gap-2"
+        >
+          <div class="flex items-center gap-1 overflow-x-auto">
+            <button
+              v-for="(sheet, idx) in previewExcelSheets"
+              :key="`excel-tab-${sheet.name}-${idx}`"
+              type="button"
+              class="px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors"
+              :class="
+                idx === previewExcelTabIdx
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700'
+              "
+              @click="previewExcelTabIdx = idx"
+            >
+              {{ sheet.name }}
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span v-if="activeExcelPreviewSheet" class="text-[11px] font-mono text-slate-500">
+              {{ activeExcelPreviewSheet.totalRows }} linhas × {{ activeExcelPreviewSheet.totalCols }} colunas
+            </span>
+            <div class="relative">
+              <PortalIcon name="search" :size="12" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                v-model="previewExcelSearch"
+                type="search"
+                aria-label="Filtrar linhas na planilha"
+                placeholder="Filtrar célula..."
+                class="pl-7 pr-2.5 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 text-xs w-44"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Body Viewport -->
+        <div
+          class="flex-1 overflow-auto bg-slate-200/70 dark:bg-zinc-950 p-4"
+          :class="previewKind === 'excel' ? 'p-0' : 'flex flex-col items-center'"
+          @contextmenu="canDownloadNode(previewNode) ? null : $event.preventDefault()"
+        >
+          <!-- Loading -->
+          <div v-if="previewLoading" class="flex-1 w-full flex flex-col items-center justify-center gap-2 py-16 text-slate-500">
+            <PortalIcon name="refresh-cw" :size="24" class="animate-spin text-brand" />
+            <p class="text-xs font-semibold">Preparando visualização segura de {{ previewNode.name }}…</p>
+          </div>
+
+          <!-- Error -->
+          <div
+            v-else-if="previewError"
+            class="my-auto max-w-md rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-center space-y-2"
+          >
+            <PortalIcon name="alert-triangle" :size="22" class="mx-auto text-rose-500" />
+            <p class="text-xs font-bold text-rose-700 dark:text-rose-300">{{ previewError }}</p>
+            <button
+              v-if="canDownloadNode(previewNode)"
+              type="button"
+              class="px-3 py-1.5 rounded-lg bg-brand text-brand-fg text-xs font-bold inline-flex items-center gap-1"
+              @click="handleDownloadFile(previewNode)"
+            >
+              <PortalIcon name="download" :size="13" />
+              <span>Baixar arquivo</span>
+            </button>
+          </div>
+
+          <!-- 1. PDF Nativo em Canvas (Zero bloqueio de CSP/Iframe) -->
+          <div
+            v-else-if="previewKind === 'pdf' && !previewPdfFallbackIframe && previewPdfPages.length > 0"
+            data-testid="portal-pdf-canvas-viewer"
+            class="w-full flex flex-col items-center gap-4 pb-6"
+          >
+            <div
+              v-for="pageNum in previewPdfPages"
+              :key="`pdf-page-${pageNum}`"
+              class="bg-white rounded-lg shadow-md border border-slate-200/90 overflow-hidden"
+            >
+              <canvas
+                :ref="(el) => setPdfCanvasRef(pageNum, el)"
+                class="block max-w-full h-auto"
+              />
+              <div class="px-3 py-1 bg-slate-50 border-t border-slate-100 text-[10px] font-mono text-slate-400 text-right">
+                Página {{ pageNum }} de {{ previewPdfTotalPages }}
+              </div>
+            </div>
+            <p
+              v-if="previewPdfTruncated"
+              class="text-xs text-amber-800 dark:text-amber-200 bg-amber-500/15 border border-amber-500/30 rounded-xl px-4 py-2"
+            >
+              Exibindo as primeiras {{ previewPdfPages.length }} páginas de {{ previewPdfTotalPages }}.
+              {{ canDownloadNode(previewNode) ? 'Clique em "Baixar" para ler o documento completo.' : '' }}
+            </p>
+          </div>
+
+          <!-- 1b. PDF Fallback Iframe -->
           <iframe
-            v-else-if="previewObjectUrl && previewContentType.includes('pdf')"
+            v-else-if="previewKind === 'pdf' && previewObjectUrl"
             :src="previewObjectUrl"
             :title="previewNode.name"
-            class="w-full h-[70vh] rounded-lg bg-white"
+            class="w-full h-full min-h-[70vh] rounded-lg bg-white border border-slate-200"
           />
+
+          <!-- 2. Excel (.xlsx / .xls / .csv / .ods) Multi-Aba -->
+          <div
+            v-else-if="previewKind === 'excel' && activeExcelPreviewSheet"
+            data-testid="portal-excel-viewer"
+            class="w-full h-full flex flex-col bg-white dark:bg-[#111113]"
+          >
+            <div
+              v-if="activeExcelPreviewSheet.truncated"
+              class="px-4 py-2 bg-amber-500/10 border-b border-amber-500/25 text-[11px] text-amber-800 dark:text-amber-200 font-semibold"
+            >
+              Visualização rápida limitada a 500 linhas × 40 colunas por aba.
+              {{ canEditNode(previewNode) ? 'Use "Editar no PC" para abrir a planilha completa no Excel.' : '' }}
+            </div>
+            <div class="flex-1 overflow-auto">
+              <table class="w-full border-collapse text-xs">
+                <thead class="sticky top-0 z-10 bg-slate-100 dark:bg-zinc-900">
+                  <tr>
+                    <th class="sticky left-0 z-20 w-12 bg-slate-200/90 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 py-1.5 px-2 text-center font-mono text-[11px] text-slate-600 dark:text-zinc-300">
+                      #
+                    </th>
+                    <th
+                      v-for="col in activeExcelPreviewSheet.colHeaders"
+                      :key="`h-${col}`"
+                      class="min-w-[110px] max-w-[320px] border border-slate-300 dark:border-zinc-700 py-1.5 px-2.5 text-center font-mono text-[11px] font-bold text-slate-700 dark:text-zinc-200"
+                    >
+                      {{ col }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in filteredExcelPreviewRows"
+                    :key="`r-${row.rowNumber}`"
+                    class="even:bg-slate-50/70 dark:even:bg-zinc-900/40 hover:bg-emerald-50/60 dark:hover:bg-emerald-950/25"
+                  >
+                    <td class="sticky left-0 bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 py-1 px-2 text-center font-mono text-[11px] font-bold text-slate-500">
+                      {{ row.rowNumber }}
+                    </td>
+                    <td
+                      v-for="(cellVal, cIdx) in row.cells"
+                      :key="`c-${row.rowNumber}-${cIdx}`"
+                      class="border border-slate-200 dark:border-zinc-800 py-1 px-2.5 text-slate-800 dark:text-zinc-100 whitespace-pre-wrap break-words max-w-[340px]"
+                      :class="row.rowNumber === 1 ? 'font-bold bg-slate-100/80 dark:bg-zinc-800/70' : ''"
+                    >
+                      {{ cellVal }}
+                    </td>
+                  </tr>
+                  <tr v-if="filteredExcelPreviewRows.length === 0">
+                    <td
+                      :colspan="(activeExcelPreviewSheet.colHeaders?.length || 1) + 1"
+                      class="py-10 text-center text-xs text-slate-500"
+                    >
+                      {{ previewExcelSearch ? 'Nenhuma célula encontrada para o filtro informado.' : 'Esta aba está vazia.' }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 3. Word (.docx / .doc) Folha A4 Sanitizada -->
+          <div
+            v-else-if="previewKind === 'word'"
+            data-testid="portal-word-viewer"
+            class="w-full max-w-4xl space-y-3 pb-6"
+          >
+            <div
+              v-if="previewWordNote"
+              class="rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-900 dark:text-amber-200"
+            >
+              {{ previewWordNote }}
+            </div>
+            <article
+              class="bg-white text-slate-900 rounded-xl shadow-md border border-slate-200 px-6 sm:px-12 py-8 sm:py-10 leading-relaxed nexus-word-sheet origin-top transition-transform"
+              :style="{ fontSize: `${Math.round(14 * previewZoom)}px` }"
+              v-html="previewWordHtml"
+            />
+          </div>
+
+          <!-- 4. Imagem -->
+          <img
+            v-else-if="previewObjectUrl && previewKind === 'image'"
+            :src="previewObjectUrl"
+            :alt="previewNode.name"
+            class="my-auto max-w-full max-h-[78vh] rounded-lg object-contain shadow"
+          />
+
+          <!-- 5. Texto / Código / JSON -->
           <pre
             v-else-if="previewTextContent !== null"
-            class="w-full max-h-[65vh] overflow-auto rounded-lg bg-white dark:bg-zinc-900 p-4 text-xs font-mono whitespace-pre-wrap"
+            class="w-full max-w-5xl rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 text-xs font-mono whitespace-pre-wrap text-slate-800 dark:text-zinc-100 shadow-sm"
           >{{ previewTextContent }}</pre>
-          <p v-else class="text-xs text-slate-500 py-6">
+
+          <!-- 6. Fallback Genérico -->
+          <p v-else class="my-auto text-xs text-slate-500 py-6">
             Arquivo carregado em visualização segura ({{ previewContentType || 'arquivo' }}).
           </p>
         </div>
@@ -2298,14 +2830,32 @@ onBeforeUnmount(() => {
           />
         </div>
 
+        <!-- Sheet Tabs (quando planilha possui múltiplas abas) -->
+        <div v-if="sheetTabs.length > 1" class="flex items-center gap-1 overflow-x-auto">
+          <button
+            v-for="(tab, idx) in sheetTabs"
+            :key="`live-tab-${tab.name}-${idx}`"
+            type="button"
+            class="px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap"
+            :class="
+              idx === activeSheetTabIdx
+                ? 'bg-emerald-600 text-white'
+                : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300'
+            "
+            @click="activeSheetTabIdx = idx"
+          >
+            {{ tab.name }}
+          </button>
+        </div>
+
         <!-- Grid -->
-        <div class="overflow-x-auto border border-slate-200 dark:border-zinc-800 rounded-xl">
+        <div class="overflow-auto max-h-[420px] border border-slate-200 dark:border-zinc-800 rounded-xl">
           <table class="w-full border-collapse text-xs font-mono">
-            <thead>
+            <thead class="sticky top-0 z-10">
               <tr class="bg-slate-100 dark:bg-zinc-900">
                 <th class="w-10 border border-slate-200 dark:border-zinc-800 py-1 text-center">#</th>
                 <th
-                  v-for="col in ['A', 'B', 'C', 'D']"
+                  v-for="col in dynamicSheetColumns"
                   :key="col"
                   class="min-w-[110px] border border-slate-200 dark:border-zinc-800 py-1 px-2 text-center font-bold"
                 >
@@ -2314,12 +2864,12 @@ onBeforeUnmount(() => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="rowNum in [1, 2, 3, 4, 5]" :key="rowNum">
+              <tr v-for="rowNum in dynamicSheetRows" :key="rowNum">
                 <td class="bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-center font-bold text-slate-500">
                   {{ rowNum }}
                 </td>
                 <td
-                  v-for="col in ['A', 'B', 'C', 'D']"
+                  v-for="col in dynamicSheetColumns"
                   :key="`${col}${rowNum}`"
                   :data-testid="`portal-cell-${col}${rowNum}`"
                   class="border border-slate-200 dark:border-zinc-800 p-0 relative"
@@ -2448,8 +2998,8 @@ onBeforeUnmount(() => {
               <div class="space-y-1">
                 <p class="font-bold">O arquivo não abriu no seu PC?</p>
                 <p class="text-[11px] leading-relaxed">
-                  Verifique se o ícone <strong>NX (Agente Nexus v3.4+)</strong> está ativo perto do relógio do Windows.
-                  Se ainda não instalou ou estiver em versão antiga, siga o passo a passo rápido de 2 minutos.
+                  Verifique se o ícone <strong>NX (Agente Nexus v{{ AGENT_VERSION_LABEL }})</strong> está ativo perto do relógio do Windows.
+                  Se ainda não instalou ou estiver em versão antiga, obtenha o pacote já configurado para o seu equipamento.
                 </p>
               </div>
             </div>
@@ -2462,15 +3012,23 @@ onBeforeUnmount(() => {
                 <PortalIcon name="info" :size="13" />
                 <span>Ver Passo a Passo do Colaborador</span>
               </button>
-              <a
-                :href="AGENT_DOWNLOAD_URL"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="px-3 py-1.5 rounded-lg border border-amber-600/40 text-amber-800 dark:text-amber-200 text-[11px] font-bold inline-flex items-center gap-1"
+              <button
+                type="button"
+                :disabled="downloadingAgentPkg"
+                class="px-3 py-1.5 rounded-lg border border-amber-600/40 text-amber-800 dark:text-amber-200 text-[11px] font-bold inline-flex items-center gap-1 disabled:opacity-50"
+                @click="handleDownloadConfiguredAgent"
               >
                 <PortalIcon name="external-link" :size="13" />
-                <span>Obter Agente Windows v3.4</span>
-              </a>
+                <span>
+                  {{
+                    downloadingAgentPkg
+                      ? 'Preparando pacote…'
+                      : activeAgentPatrimony
+                        ? `Obter Agente v${AGENT_VERSION_LABEL} (${activeAgentPatrimony})`
+                        : `Obter Agente Windows v${AGENT_VERSION_LABEL}`
+                  }}
+                </span>
+              </button>
             </div>
           </div>
 
@@ -2615,15 +3173,39 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="px-5 py-3.5 border-t border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 flex flex-wrap items-center justify-between gap-2">
-          <a
-            :href="AGENT_DOWNLOAD_URL"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1.5 hover:opacity-95"
-          >
-            <PortalIcon name="external-link" :size="14" />
-            <span>Obter Agente Windows v3.4 (.ZIP)</span>
-          </a>
+          <div class="flex flex-wrap items-center gap-2">
+            <select
+              v-if="custodyComputerAssets.length > 1"
+              v-model="selectedAgentAssetId"
+              aria-label="Selecionar equipamento para configurar o agente"
+              class="px-2.5 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-mono font-bold"
+            >
+              <option
+                v-for="asset in custodyComputerAssets"
+                :key="asset.id || asset.internal_id"
+                :value="String(asset.id || asset.internal_id || asset.internalId)"
+              >
+                {{ asset.internal_id || asset.internalId }} — {{ asset.model || asset.type }}
+              </option>
+            </select>
+            <button
+              type="button"
+              :disabled="downloadingAgentPkg"
+              class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1.5 hover:opacity-95 disabled:opacity-50"
+              @click="handleDownloadConfiguredAgent"
+            >
+              <PortalIcon name="external-link" :size="14" />
+              <span>
+                {{
+                  downloadingAgentPkg
+                    ? 'Gerando pacote configurado…'
+                    : activeAgentPatrimony
+                      ? `Obter Agente v${AGENT_VERSION_LABEL} (${activeAgentPatrimony} + config)`
+                      : `Obter Agente Windows v${AGENT_VERSION_LABEL} (com config)`
+                }}
+              </span>
+            </button>
+          </div>
           <button
             type="button"
             class="px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs font-bold"

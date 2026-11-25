@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { useModalDialog } from '../composables/useModalDialog';
+import { portalApi } from '../services/nexusApi';
 import PortalIcon from './PortalIcon.vue';
 
 const props = defineProps({
@@ -17,6 +18,8 @@ const selectedAsset = ref(null);
 const copiedTag = ref('');
 const verifiedAssets = ref(new Map());
 const verificationToast = ref('');
+const downloadingAssetAgentKey = ref('');
+const agentDownloadError = ref('');
 const closeModalBtnRef = ref(null);
 const modalPanelRef = ref(null);
 const custodyHeadingRef = ref(null);
@@ -119,6 +122,47 @@ function handleConfirmIntegrity(asset) {
   toastTimer = setTimeout(() => {
     verificationToast.value = '';
   }, 4500);
+}
+
+function isComputerAsset(asset) {
+  const t = String(asset?.type || '').toLowerCase();
+  return /note|laptop|comp|desk|serv|workstation|all-in-one|\bpc\b/.test(t);
+}
+
+async function handleDownloadAgentForAsset(asset) {
+  if (!asset) return;
+  const tag = String(asset.internal_id || asset.internalId || '').trim();
+  const key = String(asset.id || tag || 'asset');
+  downloadingAssetAgentKey.value = key;
+  agentDownloadError.value = '';
+  try {
+    const res = await portalApi.downloadAgentPackage({
+      assetId: asset.id ? String(asset.id) : '',
+      patrimony: tag,
+    });
+    if (res?.blob && typeof window !== 'undefined' && typeof URL?.createObjectURL === 'function') {
+      const m = /filename\*?=(?:UTF-8''|")?([^";\r\n"]+)/i.exec(String(res.contentDisposition || ''));
+      const fileName = m?.[1] ? decodeURIComponent(m[1].trim()) : `NexusAgent-${tag || 'Configurado'}.zip`;
+      const url = URL.createObjectURL(res.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+      verificationToast.value = `Agente Nexus v${res.agentVersion || '3.5.0'} baixado (${fileName}) já com o config.json da empresa e do ativo ${tag || 'vinculado'}. Extraia a pasta e abra o NexusAgent.exe.`;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        verificationToast.value = '';
+      }, 6500);
+    }
+  } catch (err) {
+    agentDownloadError.value = err?.message || 'Não foi possível gerar o pacote do agente para este equipamento.';
+  } finally {
+    downloadingAssetAgentKey.value = '';
+  }
 }
 
 function openAssetModal(asset) {
@@ -259,6 +303,23 @@ function parseCpuLabel(rawSpecs) {
           </span>
         </span>
       </div>
+    </div>
+
+    <!-- Agent Download Error Banner -->
+    <div
+      v-if="agentDownloadError"
+      role="alert"
+      class="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-800 dark:text-rose-200 text-xs font-medium flex items-center justify-between gap-3"
+    >
+      <span>{{ agentDownloadError }}</span>
+      <button
+        type="button"
+        class="p-1 rounded-lg hover:bg-rose-500/15"
+        aria-label="Fechar erro"
+        @click="agentDownloadError = ''"
+      >
+        <PortalIcon name="x" :size="15" />
+      </button>
     </div>
 
     <!-- Verification Toast Banner -->
@@ -821,6 +882,23 @@ function parseCpuLabel(rawSpecs) {
                 }}
               </span>
             </button>
+            <button
+              v-if="isComputerAsset(asset)"
+              type="button"
+              :disabled="downloadingAssetAgentKey === String(asset.id || asset.internal_id || asset.internalId || 'asset')"
+              class="min-h-[44px] text-xs font-semibold px-3.5 py-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-500/20 active:scale-[0.98] transition-colors cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              :title="`Baixar Agente Nexus v3.5.0 já pré-configurado para a empresa e o ativo ${asset.internal_id || asset.internalId}`"
+              @click="handleDownloadAgentForAsset(asset)"
+            >
+              <PortalIcon name="download" :size="15" />
+              <span>
+                {{
+                  downloadingAssetAgentKey === String(asset.id || asset.internal_id || asset.internalId || 'asset')
+                    ? 'Gerando…'
+                    : 'Baixar Agente'
+                }}
+              </span>
+            </button>
           </div>
 
           <button
@@ -974,13 +1052,31 @@ function parseCpuLabel(rawSpecs) {
         <div
           class="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-slate-100 dark:border-zinc-800"
         >
-          <button
-            type="button"
-            class="min-h-[44px] text-xs font-semibold px-4 py-2 rounded-xl border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-zinc-800 active:scale-[0.98] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-            @click="requestModalClose()"
-          >
-            Fechar ficha
-          </button>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              class="min-h-[44px] text-xs font-semibold px-4 py-2 rounded-xl border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-zinc-800 active:scale-[0.98] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+              @click="requestModalClose()"
+            >
+              Fechar ficha
+            </button>
+            <button
+              v-if="isComputerAsset(selectedAsset)"
+              type="button"
+              :disabled="downloadingAssetAgentKey === String(selectedAsset.id || selectedAsset.internal_id || selectedAsset.internalId || 'asset')"
+              class="min-h-[44px] text-xs font-semibold px-4 py-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-500/20 active:scale-[0.98] transition-colors cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              @click="handleDownloadAgentForAsset(selectedAsset)"
+            >
+              <PortalIcon name="download" :size="15" />
+              <span>
+                {{
+                  downloadingAssetAgentKey === String(selectedAsset.id || selectedAsset.internal_id || selectedAsset.internalId || 'asset')
+                    ? 'Preparando pacote…'
+                    : 'Baixar Agente (v3.5.0 + config)'
+                }}
+              </span>
+            </button>
+          </div>
           <button
             type="button"
             class="min-h-[44px] text-xs font-semibold px-4 py-2 rounded-xl bg-brand hover:bg-brand-dark border border-black/10 dark:border-white/15 active:scale-[0.98] text-brand-fg transition-colors cursor-pointer inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"

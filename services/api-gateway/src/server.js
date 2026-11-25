@@ -11,15 +11,17 @@
 // =============================================================================
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import Fastify from 'fastify';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import WebSocket from 'ws';
-import { pathToFileURL } from 'node:url';
 
 const UPSTREAM_HTTP_AGENT = new http.Agent({
   keepAlive: true,
@@ -122,8 +124,10 @@ function requestUpstreamKeepAlive(targetUrl, { method = 'GET', headers = {}, bod
     req.end();
   });
 }
-import { authRepo, checkDbHealth, initDatabase } from '../../shared/db.js';
+import { assetsRepo, authRepo, checkDbHealth, initDatabase, isAssetAssignedToUser } from '../../shared/db.js';
 import {
+  decryptVaultCredentials,
+  encryptVaultCredentials,
   requireRoles,
   sanitizeText,
   signGatewayContext,
@@ -131,7 +135,32 @@ import {
   verifyJwt,
   verifyPassword,
 } from '../../shared/security.js';
+import { buildZipArchive } from '../../service-storage/src/services/zipBuilder.js';
 import { buildOpenApiSpec, renderDocsHtml } from './openapiSpec.js';
+
+const GATEWAY_DIR = path.dirname(fileURLToPath(import.meta.url));
+const CURRENT_AGENT_VERSION = '3.5.0';
+const COMPUTER_ASSET_TYPES_RE = /note|laptop|comp|desk|serv|workstation|all-in-one|pc/i;
+
+function loadBundledAgentBinary() {
+  const candidates = [
+    path.resolve(GATEWAY_DIR, '../../shared/assets/NexusAgent.exe'),
+    path.resolve(GATEWAY_DIR, '../../../public/downloads/NexusAgent.exe'),
+    '/app/shared/assets/NexusAgent.exe',
+    '/app/downloads/NexusAgent.exe',
+  ];
+  for (const filePath of candidates) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const buf = fs.readFileSync(filePath);
+        if (buf.length > 30_000) return buf;
+      }
+    } catch {
+      /* try next candidate */
+    }
+  }
+  return null;
+}
 
 const isValidWsCloseCode = (code) =>
   typeof code === 'number' &&
@@ -222,7 +251,7 @@ export async function buildApiGateway(opts = {}) {
   await app.register(cors, {
     origin: corsOrigin,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: [
+    allowedHeaders: [
       'Content-Type',
       'Authorization',
       'X-Agent-Token',
@@ -231,6 +260,12 @@ export async function buildApiGateway(opts = {}) {
       'Range',
       'X-Share-Password',
       'X-Desktop-Session-Token',
+    ],
+    exposedHeaders: [
+      'Content-Disposition',
+      'X-Nexus-Agent-Version',
+      'X-Nexus-Agent-Patrimony',
+      'X-Nexus-Agent-Configured',
     ],
     credentials: true,
   });
@@ -486,6 +521,243 @@ export async function buildApiGateway(opts = {}) {
       return updated;
     },
   );
+
+  // ---------------------------------------------------------------------------
+  // Configuração Criptografada do Agente por Tenant + Pacote ZIP Pré-Configurado
+  // ---------------------------------------------------------------------------
+  app.put(
+    '/api/v1/auth/agent-config',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            agentToken: { type: 'string', minLength: 8, maxLength: 256 },
+            projectId: { type: 'string', minLength: 2, maxLength: 120 },
+            apiKey: { type: 'string', minLength: 8, maxLength: 256 },
+            relayBase: { type: 'string', maxLength: 256 },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      let claims;
+      try {
+        claims = verifyJwt(request.headers.authorization || '');
+      } catch (err) {
+        return reply.code(401).send({ error: 'UNAUTHORIZED', message: err.message });
+      }
+      requireRoles(claims, ['owner', 'admin']);
+
+      const body = request.body || {};
+      const existingRec = await authRepo.getTenantAgentConfig(claims.tenantId);
+      let existingCfg = {};
+      if (existingRec?.encryptedConfig) {
+        try {
+          existingCfg = decryptVaultCredentials(existingRec.encryptedConfig) || {};
+        } catch {
+          existingCfg = {};
+        }
+      }
+
+      const merged = {
+        projectId: sanitizeText(body.projectId || existingCfg.projectId || process.env.VITE_FIREBASE_PROJECT_ID || 'itam-nexus', 120),
+        apiKey: sanitizeText(body.apiKey || existingCfg.apiKey || process.env.VITE_FIREBASE_API_KEY || '', 256),
+        agentToken: sanitizeText(body.agentToken || existingCfg.agentToken || '', 256),
+        relayBase: sanitizeText(
+          body.relayBase || existingCfg.relayBase || process.env.VITE_API_GATEWAY_URL || '',
+          256,
+        ).replace(/\/+$/, ''),
+        updatedAt: new Date().toISOString(),
+        updatedBy: claims.email,
+      };
+
+      const encryptedConfig = encryptVaultCredentials(merged);
+      const saved = await authRepo.saveTenantAgentConfig(claims.tenantId, {
+        encryptedConfig,
+        rawAgentToken: merged.agentToken || undefined,
+      });
+
+      return {
+        ok: true,
+        tenantId: saved.tenantId,
+        configured: Boolean(merged.agentToken && merged.projectId),
+        hasToken: Boolean(merged.agentToken),
+        agentVersion: CURRENT_AGENT_VERSION,
+      };
+    },
+  );
+
+  app.get('/api/v1/auth/agent-config/status', async (request, reply) => {
+    let claims;
+    try {
+      claims = verifyJwt(request.headers.authorization || '');
+    } catch (err) {
+      return reply.code(401).send({ error: 'UNAUTHORIZED', message: err.message });
+    }
+    const rec = await authRepo.getTenantAgentConfig(claims.tenantId);
+    let cfg = {};
+    if (rec?.encryptedConfig) {
+      try {
+        cfg = decryptVaultCredentials(rec.encryptedConfig) || {};
+      } catch {
+        cfg = {};
+      }
+    }
+    return {
+      tenantId: claims.tenantId,
+      configured: Boolean(cfg.agentToken),
+      hasToken: Boolean(cfg.agentToken),
+      projectId: cfg.projectId || process.env.VITE_FIREBASE_PROJECT_ID || 'itam-nexus',
+      agentVersion: CURRENT_AGENT_VERSION,
+    };
+  });
+
+  app.get('/api/v1/agent/package', async (request, reply) => {
+    let claims;
+    try {
+      claims = verifyJwt(request.headers.authorization || '');
+    } catch (err) {
+      return reply.code(401).send({ error: 'UNAUTHORIZED', message: err.message });
+    }
+
+    const exeBuf = loadBundledAgentBinary();
+    if (!exeBuf) {
+      return reply.code(503).send({
+        error: 'AGENT_BINARY_UNAVAILABLE',
+        message: 'Binário NexusAgent.exe indisponível no servidor no momento.',
+      });
+    }
+
+    const tenantId = claims.tenantId;
+    const rec = await authRepo.getTenantAgentConfig(tenantId);
+    let storedCfg = {};
+    if (rec?.encryptedConfig) {
+      try {
+        storedCfg = decryptVaultCredentials(rec.encryptedConfig) || {};
+      } catch {
+        storedCfg = {};
+      }
+    }
+
+    const reqAssetId = sanitizeText(request.query?.assetId || '', 120);
+    const reqPatrimony = sanitizeText(request.query?.patrimony || '', 64).toUpperCase();
+    const isColab = claims.role === 'collaborator';
+
+    let resolvedPatrimony = '';
+    let resolvedAssetLabel = '';
+
+    const candidateAssets = await assetsRepo.list(tenantId, isColab ? {
+      assignedToEmail: claims.email,
+      assignedToName: claims.name,
+    } : {});
+
+    let matchedAsset = null;
+    if (reqAssetId) {
+      matchedAsset = candidateAssets.find((a) => String(a.id) === reqAssetId) || null;
+      if (!matchedAsset && isColab) {
+        return reply.code(403).send({
+          error: 'ASSET_NOT_IN_CUSTODY',
+          message: 'Você só pode gerar o pacote do agente para equipamentos sob sua custódia.',
+        });
+      }
+    }
+    if (!matchedAsset && reqPatrimony) {
+      matchedAsset =
+        candidateAssets.find(
+          (a) => String(a.internal_id || '').trim().toUpperCase() === reqPatrimony,
+        ) || null;
+      if (!matchedAsset && isColab) {
+        return reply.code(403).send({
+          error: 'ASSET_NOT_IN_CUSTODY',
+          message: 'O patrimônio informado não pertence à sua custódia ativa.',
+        });
+      }
+    }
+    if (!matchedAsset && isColab && candidateAssets.length > 0) {
+      // Seleciona automaticamente o primeiro notebook/computador ativo sob custódia do colaborador
+      matchedAsset =
+        candidateAssets.find((a) => COMPUTER_ASSET_TYPES_RE.test(String(a.type || ''))) ||
+        candidateAssets[0];
+    }
+
+    if (matchedAsset) {
+      if (isColab && !isAssetAssignedToUser(matchedAsset, { email: claims.email, name: claims.name })) {
+        return reply.code(403).send({
+          error: 'ASSET_NOT_IN_CUSTODY',
+          message: 'Ativo fora da custódia do usuário autenticado.',
+        });
+      }
+      resolvedPatrimony = String(matchedAsset.internal_id || '').trim().toUpperCase();
+      resolvedAssetLabel = [matchedAsset.internal_id, matchedAsset.model].filter(Boolean).join(' — ');
+    } else if (!isColab && reqPatrimony) {
+      resolvedPatrimony = reqPatrimony;
+      resolvedAssetLabel = reqPatrimony;
+    }
+
+    const proto = String(request.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
+    const hostHeader = String(request.headers['x-forwarded-host'] || request.headers.host || '').split(',')[0].trim();
+    const inferredRelay = hostHeader ? `${proto}://${hostHeader}` : '';
+
+    const projectId = storedCfg.projectId || process.env.VITE_FIREBASE_PROJECT_ID || 'itam-nexus';
+    const apiKey = storedCfg.apiKey || process.env.VITE_FIREBASE_API_KEY || '';
+    const agentToken = storedCfg.agentToken || '';
+    const relayBase = (
+      storedCfg.relayBase ||
+      process.env.VITE_API_GATEWAY_URL ||
+      inferredRelay ||
+      'https://itam-api-164-152-195-199.sslip.io'
+    ).replace(/\/+$/, '');
+
+    const configPayload = {
+      projectId,
+      apiKey,
+      tenantId,
+      agentToken,
+      patrimony: resolvedPatrimony,
+      relayBase,
+    };
+
+    const readmeLines = [
+      `Nexus ITAM — Agente Windows v${CURRENT_AGENT_VERSION} (Pacote Pré-Configurado)`,
+      '========================================================================',
+      `Empresa (Tenant): ${rec?.companyName || tenantId} (${tenantId})`,
+      resolvedAssetLabel
+        ? `Equipamento / Patrimônio vinculado: ${resolvedAssetLabel}`
+        : 'Equipamento / Patrimônio: Detecção automática pelo hostname/serial',
+      `Relay VPS de Baixa Latência: ${relayBase}`,
+      '',
+      'COMO INSTALAR (1 CLIQUE):',
+      '  1. Extraia TODO o conteúdo deste arquivo .ZIP para uma pasta (ex.: Área de Trabalho).',
+      '     IMPORTANTE: mantenha o arquivo config.json na MESMA pasta do NexusAgent.exe.',
+      '  2. Abra o NexusAgent.exe e clique em "Conectar este computador" (aceite o aviso de Administrador).',
+      '  3. Pronto! O computador já entra vinculado à sua empresa e patrimônio, com NexusDesk 60 FPS',
+      '     e edição sincronizada de arquivos (Excel/Word) na nuvem ativos.',
+      '',
+      agentToken
+        ? 'Status da configuração: PRONTO PARA USO (config.json do tenant incluído).'
+        : 'Aviso: token de matrícula do tenant ainda não sincronizado pelo administrador de TI.',
+    ].join('\r\n');
+
+    const zipBuffer = buildZipArchive([
+      { name: 'NexusAgent.exe', buffer: exeBuf },
+      { name: 'config.json', buffer: Buffer.from(JSON.stringify(configPayload, null, 2), 'utf8') },
+      { name: 'LEIA-ME.txt', buffer: Buffer.from(`\uFEFF${readmeLines}`, 'utf8') },
+    ]);
+
+    const safeTag = (resolvedPatrimony || tenantId).replace(/[^A-Za-z0-9._-]+/g, '-');
+    const fileName = `NexusAgent-${safeTag}.zip`;
+
+    reply.header('content-type', 'application/zip');
+    reply.header('content-disposition', `attachment; filename="${fileName}"`);
+    reply.header('cache-control', 'no-store, no-cache, must-revalidate');
+    reply.header('x-content-type-options', 'nosniff');
+    reply.header('x-nexus-agent-version', CURRENT_AGENT_VERSION);
+    reply.header('x-nexus-agent-patrimony', resolvedPatrimony || '');
+    reply.header('x-nexus-agent-configured', agentToken ? 'true' : 'false');
+    return reply.send(zipBuffer);
+  });
 
   app.get('/api/v1/auth/users', async (request, reply) => {
     let claims;

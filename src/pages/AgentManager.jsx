@@ -23,6 +23,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useAssets } from '../hooks/useAssets';
 import { useTenantSettings } from '../hooks/useTenantSettings';
 import { migrateLegacyAgentToken } from '../services/tenantSecretService';
+import { firebaseConfig } from '../services/firebase';
+import { getGatewayBaseUrl, microservicesApi } from '../services/microservicesClient';
 import {
   getAgentSubmissions,
   processAgentInbox,
@@ -178,7 +180,18 @@ const AgentManager = () => {
     let active = true;
     migrateLegacyAgentToken(tenantId)
       .then((token) => {
-        if (active) setAgentToken(token || '');
+        if (!active) return;
+        setAgentToken(token || '');
+        if (token && import.meta.env?.MODE !== 'test') {
+          microservicesApi
+            .syncTenantAgentConfig({
+              agentToken: token,
+              projectId: firebaseConfig.projectId || 'itam-nexus',
+              apiKey: firebaseConfig.apiKey || '',
+              relayBase: getGatewayBaseUrl(),
+            })
+            .catch(() => {});
+        }
       })
       .catch((error) => {
         if (active) console.error('Falha ao ler o token do agente:', error);

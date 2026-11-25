@@ -110,6 +110,9 @@ async function request(path, options = {}) {
       status: res.status,
       contentType,
       contentDisposition: res.headers.get('content-disposition') || '',
+      agentVersion: res.headers.get('x-nexus-agent-version') || '',
+      agentPatrimony: res.headers.get('x-nexus-agent-patrimony') || '',
+      agentConfigured: res.headers.get('x-nexus-agent-configured') === 'true',
       blob: new Blob([arrayBuffer], { type: contentType || 'application/octet-stream' }),
       arrayBuffer,
     };
@@ -134,6 +137,16 @@ export const portalApi = {
 
   // API 1 (REST) — Ativos sob Custódia (mine=1 garante escopo individual também para owner/admin)
   listMyAssets: () => request('/api/v1/assets?mine=1'),
+
+  // Pacote Pré-Configurado do Agente Windows (NexusAgent.exe + config.json do tenant + patrimônio)
+  getAgentConfigStatus: () => request('/api/v1/auth/agent-config/status'),
+  downloadAgentPackage: ({ assetId = '', patrimony = '' } = {}) => {
+    const q = new URLSearchParams();
+    if (assetId) q.set('assetId', String(assetId));
+    if (patrimony) q.set('patrimony', String(patrimony));
+    const qs = q.toString();
+    return request(`/api/v1/agent/package${qs ? `?${qs}` : ''}`);
+  },
 
   // API 2 (REST) — Chamados de Suporte
   listMyTickets: () => request('/api/v1/tickets'),

@@ -61,6 +61,11 @@ try {
     'System.Management.dll', 'System.Security.dll', 'System.ServiceProcess.dll'].map((r) => `/r:${r}`);
   execFileSync(csc, ['/nologo', '/target:winexe', '/optimize+', '/warnaserror+', `/out:${exe}`, ...refs, source], { stdio: 'inherit' });
 
+  // Espelha binario compilado para services/shared/assets para empacotamento dinamico com config.json por tenant/ativo
+  const sharedAssetsDir = join(root, 'services', 'shared', 'assets');
+  mkdirSync(sharedAssetsDir, { recursive: true });
+  writeFileSync(join(sharedAssetsDir, 'NexusAgent.exe'), readFileSync(exe));
+
   const collector = fill(readFileSync(join(root, 'src/agent/windows/nexus-agent.ps1'), 'utf8'), {
     AGENT_VERSION: agentVersion,
     PROJECT_ID: projectId,

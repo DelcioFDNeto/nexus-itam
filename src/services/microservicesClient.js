@@ -570,7 +570,21 @@ export const microservicesApi = {
       `/api/v1/storage/sheets/${encodeURIComponent(sheetId)}/history${cellRef ? `?cellRef=${encodeURIComponent(cellRef)}` : ''}`,
     ),
 
-  // API 4 (REST) — Telemetria RMM (`service-nexusdesk`)
+  // API 4 (REST) — Telemetria RMM (`service-nexusdesk`) & Pacote Agente Pré-Configurado
+  syncTenantAgentConfig: (payload) =>
+    gatewayRequest('/api/v1/auth/agent-config', {
+      method: 'PUT',
+      body: payload,
+      _skipAutoAuth: false,
+    }),
+  getTenantAgentConfigStatus: () => gatewayRequest('/api/v1/auth/agent-config/status'),
+  downloadAgentPackage: ({ assetId = '', patrimony = '' } = {}) => {
+    const q = new URLSearchParams();
+    if (assetId) q.set('assetId', String(assetId));
+    if (patrimony) q.set('patrimony', String(patrimony));
+    const qs = q.toString();
+    return gatewayRequest(`/api/v1/agent/package${qs ? `?${qs}` : ''}`);
+  },
   getFleetTelemetry: () => gatewayRequest('/api/v1/telemetry/fleet'),
   sendTelemetryHeartbeat: (payload, agentToken) =>
     gatewayRequest('/api/v1/telemetry/heartbeat', {

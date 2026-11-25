@@ -1737,6 +1737,46 @@ export const authRepo = {
       customContract: row.custom_contract || {},
     };
   },
+
+  async saveTenantAgentConfig(tenantId, { encryptedConfig, rawAgentToken } = {}) {
+    const tokenHash = rawAgentToken ? hashAgentToken(String(rawAgentToken)) : null;
+    if (!USE_PG) {
+      const target = mem.tenants.find((t) => matchTenant(t.id, tenantId));
+      if (!target) {
+        const err = new Error('Empresa não encontrada.');
+        err.statusCode = 404;
+        throw err;
+      }
+      if (encryptedConfig !== undefined) target.agent_config_enc = encryptedConfig || null;
+      if (tokenHash) target.agent_token_hash = tokenHash;
+      return { tenantId: target.id, configured: Boolean(target.agent_config_enc) };
+    }
+    const cleanTenantId = canonicalTenantId(tenantId) || tenantId;
+    const { rows } = await pool.query(
+      `UPDATE auth_svc.tenants
+       SET agent_config_enc = COALESCE($2, agent_config_enc),
+           agent_token_hash = COALESCE($3, agent_token_hash)
+       WHERE id = $1 OR id = $4
+       RETURNING id, agent_config_enc`,
+      [tenantId, encryptedConfig || null, tokenHash, cleanTenantId],
+    );
+    if (!rows.length) {
+      const err = new Error('Empresa não encontrada.');
+      err.statusCode = 404;
+      throw err;
+    }
+    return { tenantId: rows[0].id, configured: Boolean(rows[0].agent_config_enc) };
+  },
+
+  async getTenantAgentConfig(tenantId) {
+    const tenant = await this.findTenantById(tenantId);
+    if (!tenant) return null;
+    return {
+      tenantId: tenant.id,
+      companyName: tenant.name,
+      encryptedConfig: tenant.agent_config_enc || null,
+    };
+  },
 };
 
 // =============================================================================

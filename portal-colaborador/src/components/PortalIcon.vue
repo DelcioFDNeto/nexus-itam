@@ -414,6 +414,10 @@ const ICON_MAP = {
     circles: [{ cx: 11, cy: 11, r: 8 }],
     paths: ['m21 21-4.3-4.3', 'M11 8v6', 'M8 11h6'],
   },
+  'zoom-out': {
+    circles: [{ cx: 11, cy: 11, r: 8 }],
+    paths: ['m21 21-4.3-4.3', 'M8 11h6'],
+  },
   download: {
     paths: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'm7 10 5 5 5-5', 'M12 15V3'],
   },

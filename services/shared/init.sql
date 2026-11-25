@@ -36,6 +36,7 @@ ALTER TABLE auth_svc.tenants ADD COLUMN IF NOT EXISTS primary_color VARCHAR(32);
 ALTER TABLE auth_svc.tenants ADD COLUMN IF NOT EXISTS logo_url TEXT;
 ALTER TABLE auth_svc.tenants ADD COLUMN IF NOT EXISTS overrides JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE auth_svc.tenants ADD COLUMN IF NOT EXISTS custom_contract JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE auth_svc.tenants ADD COLUMN IF NOT EXISTS agent_config_enc TEXT;
 
 CREATE TABLE IF NOT EXISTS auth_svc.users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

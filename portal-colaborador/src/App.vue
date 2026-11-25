@@ -1349,6 +1349,7 @@ onBeforeUnmount(() => {
           :user="session.user"
           :user-email="session.user.email || ''"
           :user-department="session.user.department || 'Geral'"
+          :assets="assets"
           :ws-state="wsState"
           :live-sheet-event="latestSheetEvent"
         />

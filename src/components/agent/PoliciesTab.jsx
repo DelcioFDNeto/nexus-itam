@@ -5,6 +5,8 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { db } from '../../services/firebase';
 import { rotateAgentToken } from '../../services/tenantSecretService';
+import { firebaseConfig } from '../../services/firebase';
+import { getGatewayBaseUrl, microservicesApi } from '../../services/microservicesClient';
 import { DEFAULT_AGENT_NAMING, generateAgentAssetCode } from '../../services/agentService';
 import { invalidateTenantSettings } from '../../hooks/useTenantSettings';
 import { useConfirm } from '../ConfirmDialog';
@@ -183,7 +185,17 @@ const PoliciesTab = ({ tenantId, currentUser, agentToken, onTokenChange }) => {
     try {
       const token = await rotateAgentToken(tenantId, currentUser?.email || 'sistema');
       onTokenChange(token);
-      toast.success('Token gerado. Baixe os scripts novamente.');
+      if (token && import.meta.env?.MODE !== 'test') {
+        microservicesApi
+          .syncTenantAgentConfig({
+            agentToken: token,
+            projectId: firebaseConfig.projectId || 'itam-nexus',
+            apiKey: firebaseConfig.apiKey || '',
+            relayBase: getGatewayBaseUrl(),
+          })
+          .catch(() => {});
+      }
+      toast.success('Token gerado e sincronizado com o Portal do Colaborador. Baixe os pacotes novamente.');
     } catch (error) {
       console.error(error);
       toast.error('Erro ao gerar o token.');

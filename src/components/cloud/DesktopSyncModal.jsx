@@ -3,7 +3,7 @@
 // Modais de Edição Sincronizada Desktop (`nexusvault://` via Agente Windows)
 // e Guia Passo a Passo para Colaboradores & Equipe (Excel, Word, Apps Nativos)
 // =============================================================================
-import React from 'react';
+import React, { useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -16,8 +16,33 @@ import {
   Unlock,
   X,
 } from 'lucide-react';
+import { AGENT_VERSION } from '../../utils/agentInventory';
+import { microservicesApi } from '../../services/microservicesClient';
 
 const AGENT_DOWNLOAD_URL = '/downloads/NexusAgent.zip';
+
+async function downloadConfiguredAgentPackage() {
+  try {
+    const res = await microservicesApi.downloadAgentPackage();
+    if (res?.blob) {
+      const url = URL.createObjectURL(res.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `NexusAgent-Configurado-v${AGENT_VERSION}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      return;
+    }
+  } catch {
+    /* fallback para pacote estático */
+  }
+  const a = document.createElement('a');
+  a.href = AGENT_DOWNLOAD_URL;
+  a.download = 'NexusAgent.zip';
+  a.click();
+}
 
 function formatFriendlyTime(iso) {
   if (!iso) return '—';
@@ -127,7 +152,7 @@ export function DesktopSyncStatusModal({
                 <div className="space-y-1">
                   <p className="font-bold">O Agente Nexus ainda não abriu o arquivo?</p>
                   <p className="text-[11px] leading-relaxed">
-                    Confirme se o <strong>NexusAgent v3.4+</strong> está ativo na bandeja do Windows (ou dispare a
+                    Confirme se o <strong>NexusAgent v{AGENT_VERSION}</strong> está ativo na bandeja do Windows (ou dispare a
                     atualização OTA pela aba <em>Agente ITAM</em>).
                   </p>
                 </div>
@@ -141,14 +166,14 @@ export function DesktopSyncStatusModal({
                   <Info size={13} />
                   <span>Ver Passo a Passo</span>
                 </button>
-                <a
-                  href={AGENT_DOWNLOAD_URL}
-                  download="NexusAgent.zip"
+                <button
+                  type="button"
+                  onClick={downloadConfiguredAgentPackage}
                   className="px-3 py-1.5 rounded-lg border border-amber-600/40 text-amber-800 dark:text-amber-200 text-[11px] font-bold inline-flex items-center gap-1"
                 >
                   <ExternalLink size={13} />
-                  <span>Baixar Agente v3.4 (.ZIP)</span>
-                </a>
+                  <span>Baixar Agente v{AGENT_VERSION} (.ZIP + config)</span>
+                </button>
               </div>
             </div>
           )}
@@ -202,7 +227,17 @@ export function DesktopSyncStatusModal({
 }
 
 export function DesktopSyncGuideModal({ open, onClose }) {
+  const [downloading, setDownloading] = useState(false);
   if (!open) return null;
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      await downloadConfiguredAgentPackage();
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div
@@ -305,14 +340,15 @@ export function DesktopSyncGuideModal({ open, onClose }) {
         </div>
 
         <div className="px-5 py-3.5 border-t border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 flex flex-wrap items-center justify-between gap-2">
-          <a
-            href={AGENT_DOWNLOAD_URL}
-            download="NexusAgent.zip"
-            className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1.5 hover:opacity-95"
+          <button
+            type="button"
+            disabled={downloading}
+            onClick={handleDownload}
+            className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1.5 hover:opacity-95 disabled:opacity-50"
           >
             <ExternalLink size={14} />
-            <span>Baixar Agente Windows v3.4 (.ZIP)</span>
-          </a>
+            <span>{downloading ? 'Gerando pacote…' : `Baixar Agente Windows v${AGENT_VERSION} (.ZIP + config)`}</span>
+          </button>
           <button
             type="button"
             onClick={onClose}

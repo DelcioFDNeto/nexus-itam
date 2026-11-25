@@ -1,20 +1,24 @@
 // src/components/assets/AgentInventoryCard.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Activity, AlertTriangle, Battery, CheckCircle2, Cpu, HardDrive, Monitor, Network, Package, Search, ShieldAlert, ShieldCheck, Terminal, UserCheck, Users, Wifi,
+  Activity, AlertTriangle, Battery, CheckCircle2, Cpu, Download, HardDrive, Monitor, Network, Package, Search, ShieldAlert, ShieldCheck, Terminal, UserCheck, Users, Wifi,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTenantSettings } from '../../hooks/useTenantSettings';
 import { getAssetInventory } from '../../services/agentService';
 import { moveAsset } from '../../services/assetService';
+import { firebaseConfig } from '../../services/firebase';
+import { getGatewayBaseUrl, microservicesApi } from '../../services/microservicesClient';
+import { getAgentToken } from '../../services/tenantSecretService';
 import {
   findLiveDeviceForAsset,
   formatAccessId,
   isDeviceOnline,
   subscribeAgentDevices,
 } from '../../services/rmmService';
-import { agentHealth, ALERT_LEVELS, resolveAgentPolicy } from '../../utils/agentInventory';
+import { AGENT_VERSION, agentHealth, ALERT_LEVELS, resolveAgentPolicy } from '../../utils/agentInventory';
+import { buildAgentConfigJson } from '../../utils/agentScripts';
 import { lifecycleBlocker } from '../../utils/assetStatus';
 import { can } from '../../utils/permissions';
 import RemoteControlModal from '../agent/RemoteControlModal';
@@ -58,6 +62,7 @@ const AgentInventoryCard = ({ asset }) => {
   const [search, setSearch] = useState('');
   const [showAllSoftware, setShowAllSoftware] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [downloadingPkg, setDownloadingPkg] = useState(false);
   const [liveDevices, setLiveDevices] = useState([]);
   const [remoteModal, setRemoteModal] = useState({ open: false, tab: 'screen' });
   const lastSeenKey = String(asset.agent?.collectedAt || '');
@@ -110,6 +115,76 @@ const AgentInventoryCard = ({ asset }) => {
       toast.error(error.message || 'Não foi possível atualizar o ativo.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleDownloadAgentForAsset = async () => {
+    const tag = String(asset.internalId || '').trim();
+    setDownloadingPkg(true);
+    try {
+      const tenantId = currentUser?.tenantId;
+      let token = '';
+      if (tenantId) {
+        token = await getAgentToken(tenantId).catch(() => '');
+        if (token) {
+          await microservicesApi
+            .syncTenantAgentConfig({
+              agentToken: token,
+              projectId: firebaseConfig.projectId || 'itam-nexus',
+              apiKey: firebaseConfig.apiKey || '',
+              relayBase: getGatewayBaseUrl(),
+            })
+            .catch(() => {});
+        }
+      }
+
+      try {
+        const res = await microservicesApi.downloadAgentPackage({
+          assetId: asset.id || '',
+          patrimony: tag,
+        });
+        if (res?.blob) {
+          const url = URL.createObjectURL(res.blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `NexusAgent-${tag || tenantId || 'Configurado'}.zip`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 10_000);
+          toast.success(`Pacote NexusAgent v${AGENT_VERSION} baixado já configurado para ${tag || 'este ativo'}!`);
+          return;
+        }
+      } catch {
+        /* fallback local em 2 arquivos se gateway estiver indisponível */
+      }
+
+      const zipLink = document.createElement('a');
+      zipLink.href = '/downloads/NexusAgent.zip';
+      zipLink.download = 'NexusAgent.zip';
+      zipLink.click();
+      if (tenantId && token) {
+        const cfg = buildAgentConfigJson({
+          projectId: firebaseConfig.projectId || 'itam-nexus',
+          apiKey: firebaseConfig.apiKey || '',
+          tenantId,
+          agentToken: token,
+          patrimony: tag,
+          relayBase: getGatewayBaseUrl(),
+        });
+        const cfgBlob = new Blob([cfg.content], { type: cfg.mime });
+        const cfgUrl = URL.createObjectURL(cfgBlob);
+        const cfgLink = document.createElement('a');
+        cfgLink.href = cfgUrl;
+        cfgLink.download = cfg.filename;
+        cfgLink.click();
+        setTimeout(() => URL.revokeObjectURL(cfgUrl), 10_000);
+      }
+      toast.success(`NexusAgent.zip + config.json (${tag || 'tenant'}) baixados.`);
+    } catch (error) {
+      toast.error(error?.message || 'Não foi possível baixar o pacote do agente.');
+    } finally {
+      setDownloadingPkg(false);
     }
   };
 
@@ -167,6 +242,16 @@ const AgentInventoryCard = ({ asset }) => {
                 className="min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-transparent dark:border-zinc-800 text-gray-700 dark:text-zinc-200 font-bold text-xs transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               >
                 <Terminal size={13} aria-hidden="true" /> Terminal
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadAgentForAsset}
+                disabled={downloadingPkg}
+                title={`Baixar NexusAgent v${AGENT_VERSION} já com o config.json do tenant e patrimônio ${asset.internalId || ''}`}
+                className="min-h-[44px] inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-500/35 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-xs transition-colors active:scale-[0.98] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              >
+                <Download size={13} aria-hidden="true" />
+                {downloadingPkg ? 'Gerando…' : `Baixar Agente (${asset.internalId || `v${AGENT_VERSION}`})`}
               </button>
             </>
           )}
